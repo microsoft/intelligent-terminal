@@ -15090,6 +15090,7 @@ namespace winrt::TerminalApp::implementation
                     itemImpl->MetadataText(winrt::hstring{ value.text });
                     itemImpl->MetadataHighlightRanges(TabHeaderControl::BuildMetadataHighlightRanges(value));
                     itemImpl->MetadataHighlightColor(TabHeaderControl::AgentStatusHighlightColor(value.agentStatus));
+                    itemImpl->IsAgentComplete(value.agentStatus == "Complete");
                     itemImpl->MetadataVisibility(value.text.empty() ? Visibility::Collapsed : Visibility::Visible);
                     if (!value.accessibilityText.empty())
                     {

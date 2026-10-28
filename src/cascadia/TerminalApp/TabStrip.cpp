@@ -135,6 +135,10 @@ namespace winrt::TerminalApp::implementation
         {
             UpdateStatusText(TerminalPage::_SidebarHistoryStatusText(winrt::to_string(StatusForPresentation())));
         }
+        if (previous != _hasUnreadCompletion)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"HasUnreadCompletion" });
+        }
         return previous != _hasUnreadCompletion;
     }
 
@@ -1009,6 +1013,7 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataHighlightColor(pane.MetadataHighlightColor());
                 existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
+                existing.IsAgentComplete(pane.IsAgentComplete());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
                 existing.ProgressState(pane.ProgressState());

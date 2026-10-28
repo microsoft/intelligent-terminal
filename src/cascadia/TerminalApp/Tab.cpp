@@ -648,6 +648,7 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
         _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
+        _headerControl.Presentation().IsAgentComplete(presentation && presentation->agentStatus == "Complete");
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;

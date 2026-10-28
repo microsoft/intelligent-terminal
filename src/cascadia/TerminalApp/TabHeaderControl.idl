@@ -18,6 +18,7 @@ namespace TerminalApp
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
         Object IconSource;
+        Boolean IsAgentComplete;
     };
 
     delegate void TitleChangeRequestedArgs(String title);

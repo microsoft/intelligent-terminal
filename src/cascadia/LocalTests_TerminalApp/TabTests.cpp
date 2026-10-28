@@ -710,6 +710,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(KeepRunningMenuTogglesOwningTab);
         TEST_METHOD(KeepRunningBadgeFitsLongTitle);
         TEST_METHOD(KeepRunningBadgeFollowsTitleAcrossRichTabRows);
+        TEST_METHOD(RichTabCompletionIndicatorFollowsTitleRow);
         TEST_METHOD(KeepRunningMixedTabCloseRestoresSameContent);
         TEST_METHOD(KeepRunningDirectPaneCloseTerminates);
         TEST_METHOD(KeepRunningDetachedPaneCloseDiscardsGroup);
@@ -2373,6 +2374,62 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+        });
+    }
+
+    void TabTests::RichTabCompletionIndicatorFollowsTitleRow()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        UIElement previousContent{ nullptr };
+        winrt::TerminalApp::TabHeaderControl header{ nullptr };
+        const auto restore = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            previousContent = Window::Current().Content();
+            header = winrt::TerminalApp::TabHeaderControl{};
+            header.Presentation(tab->_headerControl.Presentation());
+            header.IsMetadataVisible(true);
+            header.VerticalAlignment(VerticalAlignment::Top);
+            Window::Current().Content(header);
+            Window::Current().Activate();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return header.IsLoaded();
+        });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
+            const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+            for (const auto width : { 120.0f, 240.0f })
+            {
+                for (const auto& titleText : { winrt::hstring{ L"Tab" }, winrt::hstring{ std::wstring(240, L'W') } })
+                {
+                    tab->SetTabText(titleText);
+                    for (const auto text : { L"", L"Complete", L"main\nComplete" })
+                    {
+                        ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+                        presentation.text = text;
+                        presentation.agentStatus = "Complete";
+                        tab->SetRichTabPresentation(presentation);
+                        header.Width(width);
+                        header.Measure({ width, 100 });
+                        header.Arrange({ 0, 0, width, header.DesiredSize().Height });
+                        header.UpdateLayout();
+                        VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+                        const auto position = indicator.TransformToVisual(header).TransformPoint({ 0, 0 });
+                        const auto titlePosition = title.TransformToVisual(header).TransformPoint({ 0, 0 });
+                        VERIFY_IS_TRUE(position.X >= titlePosition.X + title.ActualWidth());
+                        VERIFY_IS_TRUE(std::abs(position.X + indicator.ActualWidth() - header.ActualWidth()) <= 1.0);
+                        VERIFY_IS_TRUE(std::abs(position.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+                    }
+                }
+            }
+            tab->SetRichTabPresentation(std::nullopt);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
         });
     }
 
@@ -9931,6 +9988,11 @@ namespace TerminalAppLocalTests
             strip->CommitHistorySnapshot({ makeRow() });
             VERIFY_ARE_EQUAL(1u, view.strip.HistoryItems().Size());
             const auto visible = view.strip.HistoryItems().GetAt(0);
+            view.strip.UpdateLayout();
+            const auto container = strip->ItemsList().ContainerFromItem(visible).as<ListViewItem>();
+            const auto row = container.ContentTemplateRoot().as<FrameworkElement>();
+            const auto indicator = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
+            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, visible.Status());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Complete"), visible.StatusLabelText());
             VERIFY_IS_TRUE(visible.IsLive());
@@ -9943,6 +10005,8 @@ namespace TerminalAppLocalTests
             unread = false;
             strip->RefreshHistoryAgentCompletions();
             VERIFY_IS_TRUE(view.strip.HistoryItems().GetAt(0) == visible);
+            VERIFY_IS_TRUE(strip->ItemsList().ContainerFromItem(visible) == container);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Idle"), visible.StatusLabelText());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Idle"), strip->_historySnapshot[0].StatusLabelText());
             VERIFY_IS_TRUE(visible.StatusTextStyle() == completedStyle);
@@ -9950,6 +10014,7 @@ namespace TerminalAppLocalTests
 
             unread = true;
             strip->RefreshHistoryAgentCompletions();
+            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
             const auto native = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(visible);
             native->UpdateHeadlessState(true);
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Complete"), visible.StatusLabelText());
@@ -9957,6 +10022,7 @@ namespace TerminalAppLocalTests
                 L"history-completion", visible.PaneSessionId(), L"Working", Page::_SidebarHistoryStatusText("Working")));
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Working"), visible.StatusLabelText());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Working" }, visible.Status());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
         });
     }
 
@@ -24751,6 +24817,9 @@ namespace TerminalAppLocalTests
                 TestOnUIThread([&]() {
                     const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto historyText = Media::VisualTreeHelper::GetChild(historyStatus, 0).as<TextBlock>();
+                    const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
+                    VERIFY_ARE_EQUAL(std::string_view{ status } == "Complete" ? Visibility::Visible : Visibility::Collapsed,
+                                     indicator.Visibility());
                     VERIFY_ARE_EQUAL(winrt::hstring{ presentation->text }, metadata.Text());
                     VERIFY_ARE_EQUAL(color, metadata.ColorHighlight());
                     VERIFY_IS_NOT_NULL(metadata.ColorHighlightRanges());
@@ -24866,10 +24935,12 @@ namespace TerminalAppLocalTests
             });
             auto update = makePane();
             update.MetadataText(L"Waiting for input");
+            update.IsAgentComplete(true);
             update.MetadataHighlightColor(winrt::TerminalApp::TextHighlightColor::Caution);
             update.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 0, 16 } }));
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
             VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
+            VERIFY_IS_TRUE(original.IsAgentComplete());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::Caution, original.MetadataHighlightColor());
             VERIFY_ARE_EQUAL(1u, original.MetadataHighlightRanges().Size());
             VERIFY_ARE_EQUAL(uint64_t{ 16 }, original.MetadataHighlightRanges().GetAt(0).End);
@@ -24878,6 +24949,7 @@ namespace TerminalAppLocalTests
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
             VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"main" }, original.MetadataText());
+            VERIFY_IS_FALSE(original.IsAgentComplete());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::None, original.MetadataHighlightColor());
             VERIFY_IS_NULL(original.MetadataHighlightRanges());
             VERIFY_ARE_EQUAL(0u, collectionChanges);
@@ -24938,6 +25010,7 @@ namespace TerminalAppLocalTests
                     replacement.MetadataText(L"main\nActive");
                     replacement.MetadataVisibility(Visibility::Visible);
                     replacement.MetadataHighlightColor(color);
+                    replacement.IsAgentComplete(color == winrt::TerminalApp::TextHighlightColor::None);
                     replacement.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 5, 10 } }));
                     strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ replacement }), true);
                     strip.UpdateLayout();
@@ -24949,6 +25022,9 @@ namespace TerminalAppLocalTests
                     const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->DisplayItemForTab(tab);
                     VERIFY_IS_TRUE(display.PaneItems().GetAt(0) == pane);
                     VERIFY_IS_TRUE(Media::VisualTreeHelper::GetChild(paneContainer, 0) == paneRoot);
+                    const auto indicator = paneRoot.FindName(L"PaneCompletionIndicator").as<Grid>();
+                    VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? Visibility::Visible : Visibility::Collapsed,
+                                     indicator.Visibility());
                     const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto highlights = textBlock.TextHighlighters();
                     VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? 1u : 2u, highlights.Size());
@@ -24980,6 +25056,7 @@ namespace TerminalAppLocalTests
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ replacement }), true);
             strip.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, metadata.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, paneRoot.FindName(L"PaneCompletionIndicator").as<Grid>().Visibility());
             const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
             VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
         });

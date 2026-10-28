@@ -29,6 +29,8 @@
                     <ResourceDictionary.ThemeDictionaries>
                         <ResourceDictionary x:Key="Light">
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#005FB7" />
+                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                             Color="#005FB7" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -40,6 +42,8 @@
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="Dark">
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#60CDFF" />
+                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                             Color="#60CDFF" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -51,6 +55,8 @@
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="HighContrast">
                             <StaticResource x:Key="AgentsOnlyIndicatorBrush"
+                                            ResourceKey="SystemColorWindowTextColorBrush" />
+                            <StaticResource x:Key="AgentCompletionIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
@@ -237,6 +243,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -246,7 +253,7 @@
                     </Grid.RowDefinitions>
                     <Border x:Name="HistorySelectionBackground"
                             Grid.RowSpan="3"
-                            Grid.ColumnSpan="2"
+                            Grid.ColumnSpan="3"
                             Margin="-12,-8"
                             Background="{ThemeResource ListViewItemBackgroundSelected}"
                             CornerRadius="{StaticResource SidebarTabCornerRadius}"
@@ -295,9 +302,22 @@
                                   Glyph="&#xE8EE;"
                                   Visibility="{x:Bind IsKeepRunning, Mode=OneWay}" />
                     </Grid>
+                    <Grid x:Name="HistoryCompletionIndicator"
+                          Grid.Column="2"
+                          Width="16"
+                          Height="16"
+                          VerticalAlignment="Center"
+                          AutomationProperties.AccessibilityView="Raw"
+                          IsHitTestVisible="False"
+                          Visibility="{x:Bind HasUnreadCompletion, Mode=OneWay}">
+                        <Ellipse Width="4"
+                                 Height="4"
+                                 Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                    </Grid>
                     <local:HighlightedTextControl x:Name="HistoryCwdText"
                                                   Grid.Row="1"
                                                   Grid.Column="1"
+                                                  Grid.ColumnSpan="2"
                                                   Margin="0,2,0,0"
                                                   SearchText="{x:Bind SearchQuery}"
                                                   Text="{x:Bind Cwd}"
@@ -305,6 +325,7 @@
                     <Grid x:Name="HistoryMetadata"
                           Grid.Row="2"
                           Grid.Column="1"
+                          Grid.ColumnSpan="2"
                           Margin="0,2,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -788,6 +809,7 @@
                                                     <ColumnDefinition Width="3" />
                                                     <ColumnDefinition Width="28" />
                                                     <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <ContentPresenter x:Name="PaneIconPresenter"
                                                                   Grid.Column="1"
@@ -836,20 +858,34 @@
                                                         </Style>
                                                     </local:HighlightedTextControl.TextBlockStyle>
                                                 </local:HighlightedTextControl>
+                                                <Grid x:Name="PaneCompletionIndicator"
+                                                      Grid.Column="3"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Margin="4,3,4,0"
+                                                      VerticalAlignment="Center"
+                                                      AutomationProperties.AccessibilityView="Raw"
+                                                      IsHitTestVisible="False"
+                                                      Visibility="{x:Bind IsAgentComplete, Mode=OneWay}">
+                                                    <Ellipse Width="4"
+                                                             Height="4"
+                                                             Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                                </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneMetadataText"
                                                                               Grid.Row="1"
                                                                               Grid.Column="2"
+                                                                              Grid.ColumnSpan="2"
                                                                               Margin="2,1,0,3"
-                                                                              TextOpacity="0.72"
+                                                                              AutomationProperties.AccessibilityView="Raw"
+                                                                              CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
                                                                               ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
                                                                               ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
-                                                                              SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
-                                                                              CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
                                                                               CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                              SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
                                                                               Text="{x:Bind MetadataText, Mode=OneWay}"
-                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
-                                                                              AutomationProperties.AccessibilityView="Raw">
+                                                                              TextOpacity="0.72"
+                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}">
                                                     <local:HighlightedTextControl.TextBlockStyle>
                                                         <Style TargetType="TextBlock">
                                                             <Setter Property="MaxLines" Value="2" />

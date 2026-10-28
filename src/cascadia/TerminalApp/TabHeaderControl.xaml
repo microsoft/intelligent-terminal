@@ -16,6 +16,20 @@
 
     <UserControl.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                     Color="#005FB7" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                     Color="#60CDFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <StaticResource x:Key="AgentCompletionIndicatorBrush"
+                                    ResourceKey="SystemColorWindowTextColorBrush" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
@@ -30,6 +44,7 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="HeaderStackPanel"
                     Orientation="Horizontal">
@@ -145,9 +160,22 @@
                       Glyph="&#xE8EE;"
                       Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
         </Grid>
+        <Grid x:Name="HeaderCompletionIndicator"
+              Grid.Column="2"
+              Width="16"
+              Height="16"
+              Margin="4,0,0,0"
+              VerticalAlignment="Center"
+              AutomationProperties.AccessibilityView="Raw"
+              IsHitTestVisible="False"
+              Visibility="{x:Bind Presentation.IsAgentComplete, Mode=OneWay}">
+            <Ellipse Width="4"
+                     Height="4"
+                     Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+        </Grid>
         <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
                                       Grid.Row="1"
-                                      Grid.ColumnSpan="2"
+                                      Grid.ColumnSpan="3"
                                       Margin="0,1,0,0"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
