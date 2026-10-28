@@ -374,6 +374,7 @@ namespace winrt::TerminalApp::implementation
         void SearchActive(bool value);
         winrt::hstring SearchQuery() const { return _sidebarFilters.SearchQuery(); }
         void SearchQuery(winrt::hstring const& value);
+        void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
@@ -591,6 +592,9 @@ namespace winrt::TerminalApp::implementation
         bool _isRailCollapsed{ false };
         bool _isVerticalPresentation{ true };
         bool _searchActive{ false };
+        winrt::hstring _searchKeyChordText;
+        winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipLabel{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipShortcut{ nullptr };
         bool _syncingSearchState{ false };
         bool _searchPanelExpanded{ false };
         bool _searchAnimationEnabled{ false };

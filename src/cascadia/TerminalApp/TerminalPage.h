@@ -529,6 +529,8 @@ namespace winrt::TerminalApp::implementation
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
             bool agentSessionManagementEnabled{ true };
+            std::vector<std::wstring> allowedAgentIds;
+            bool customAgentsAllowed{ true };
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -824,8 +826,11 @@ namespace winrt::TerminalApp::implementation
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
         // (first acquire) and `_ReconcileAgentSettings` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
-        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs(const std::function<winrt::hstring()>& detectFallback = {});
         std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
+        bool _EnsureSharedWtaService();
+        safe_void_coroutine _StartSharedWtaServiceWithFallback();
+        bool _sharedWtaFallbackProbeInFlight{ false };
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
@@ -1048,6 +1053,7 @@ namespace winrt::TerminalApp::implementation
             Json::Value location;
             Json::Value inferredHistoryKey;
             std::optional<uint64_t> attentionEventId;
+            bool launchMetadata{ false };
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1063,6 +1069,7 @@ namespace winrt::TerminalApp::implementation
         static bool _NativeAgentReceiverSnapshotReady(const Json::Value& response, uint64_t capturedGeneration, uint64_t currentGeneration);
         void _PreserveNativeAgentIdentity(const Microsoft::Terminal::Control::TermControl& control);
         void _ReplayNativeAgentObservationsForReceiver(uint64_t receiverGeneration);
+        std::optional<_RichTabAgentInfo> _ManagedProfileLaunchInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateAgentCompletions();
         void _ReadFocusedPaneAgentActivity(Tab& tab);
@@ -1366,7 +1373,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _GetTabIndex(const TerminalApp::Tab& tab) const noexcept;
         TerminalApp::Tab _GetFocusedTab() const noexcept;
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
-        static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab);
+        static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab, bool requireVisible = false);
         winrt::Microsoft::Terminal::Settings::Model::INewContentArgs _PrepareSplitDirectory(
             const winrt::com_ptr<Tab>& tab,
             const winrt::Microsoft::Terminal::Settings::Model::INewContentArgs& content,

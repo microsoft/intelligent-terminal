@@ -498,6 +498,8 @@ pub struct NativeAgentObservation {
     #[serde(default)]
     pub location: Option<SessionLocation>,
     #[serde(default)]
+    pub launch_cwd: Option<PathBuf>,
+    #[serde(default)]
     pub pane_created_at_ms: Option<u64>,
     #[serde(default)]
     pub pane_creation_sequence: Option<u64>,
@@ -525,6 +527,7 @@ pub struct NativePaneObservation {
     pub agent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SessionLocation>,
+    /// Stored observations retain launch cwd; projections prefer confirmed session cwd.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2465,7 +2468,14 @@ impl SessionRegistry for InMemoryRegistry {
                                     .and_then(|session| session.attention_event_id)
                                     .or(native.attention_event_id)
                             }),
-                        cwd: pane_status_cwd(&row.provider_id, None, row.cwd.as_ref()),
+                        cwd: pane_status_cwd(&row.provider_id, None, row.cwd.as_ref()).or_else(
+                            || {
+                                state
+                                    .native_panes
+                                    .get(&row.pane_id)
+                                    .and_then(|pane| pane.observation.cwd.clone())
+                            },
+                        ),
                         location: row.location.clone(),
                         mode_epoch: Some(row.mode_epoch),
                         window_id: Some(row.window_id),
@@ -3051,7 +3061,8 @@ fn native_pane_observations_locked(state: &RegistryState) -> Vec<NativePaneObser
             observation.agent_session_id = row.map(|row| row.session_id.to_string());
             observation.cwd = row
                 .map(|row| row.cwd.clone())
-                .filter(|cwd| !cwd.as_os_str().is_empty());
+                .filter(|cwd| !cwd.as_os_str().is_empty())
+                .or_else(|| pane.observation.cwd.clone());
             if let Some(row) = row {
                 observation.location = row.location.is_actionable().then(|| row.location.clone());
                 if let Some(status) = &row.status {
@@ -3337,7 +3348,11 @@ fn apply_native_observation_locked(
         window_id: event.window_id,
         tab_id: event.tab_id,
         mode_epoch: event.mode_epoch,
-        cwd: None,
+        cwd: if reset {
+            event.launch_cwd.filter(|cwd| !cwd.as_os_str().is_empty())
+        } else {
+            old.and_then(|old| old.observation.cwd.clone())
+        },
         agent_session_id: event.agent_session_id.or_else(|| {
             (!reset)
                 .then(|| old.and_then(|old| old.observation.agent_session_id.clone()))
@@ -5913,6 +5928,100 @@ mod tests {
         );
         assert!(native.agent_session_id.is_none());
         assert!(native.cwd.is_none());
+    }
+
+    #[tokio::test]
+    async fn native_profile_launch_cwd_is_pane_only_and_survives_activity() {
+        let launch = PathBuf::from(r"C:\profile-launch");
+        for provider in ["codex", "antigravity", "opencode"] {
+            let registry = InMemoryRegistry::new();
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            for kind in [
+                serde_json::json!({"kind":"progress", "progress_state":1, "launch_cwd":r"C:\stale"}),
+                serde_json::json!({"kind":"bell"}),
+            ] {
+                let mut event = native_event(kind, 1);
+                event.provider_id = provider.into();
+                assert!(registry.apply_native_observation(event).await);
+                let (panes, native) = registry.pane_status_snapshot().await;
+                assert_eq!(panes[0].cwd.as_ref(), Some(&launch));
+                assert_eq!(native[0].cwd.as_ref(), Some(&launch));
+                assert!(panes[0].agent_session_id.is_none());
+                assert!(native[0].agent_session_id.is_none());
+            }
+            {
+                let state = registry.inner.lock().await;
+                assert!(state.sessions.is_empty());
+                assert!(state.active_by_pane.is_empty());
+            }
+            let mut reset = native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+                2,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            let mut stale = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            stale.provider_id = provider.into();
+            assert!(!registry.apply_native_observation(stale).await);
+            assert!(registry.pane_status_snapshot().await.0[0].cwd.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_launch_cwd_preserves_confirmed_cwd_precedence() {
+        let launch = PathBuf::from(r"C:\profile-launch");
+        let canonical = PathBuf::from(r"C:\confirmed-session");
+        for provider in ["codex", "antigravity", "opencode"] {
+            let registry = InMemoryRegistry::new();
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            let mut row = qualified_info("confirmed", provider, SessionLocation::Host, "confirmed")
+                .with_pane_session_id(NATIVE_PANE);
+            row.cwd = canonical.clone();
+            row.status = Some(AgentStatus::Idle);
+            let identity = SessionIdentity::from_info(&row);
+            registry.upsert(row).await;
+            assert!(
+                registry
+                    .register_native_born_binding(&identity, NATIVE_PANE, &canonical, None, None)
+                    .await
+            );
+            let (panes, native) = registry.pane_status_snapshot().await;
+            assert_eq!(panes[0].agent_session_id.as_deref(), Some("confirmed"));
+            assert_eq!(native[0].cwd.as_ref(), Some(&canonical));
+            assert_eq!(
+                panes[0].cwd.as_ref(),
+                Some(if provider == "antigravity" {
+                    &launch
+                } else {
+                    &canonical
+                })
+            );
+            let state = registry.inner.lock().await;
+            assert_eq!(state.sessions[&identity].cwd, canonical);
+            assert_eq!(
+                state.native_panes[NATIVE_PANE].observation.cwd.as_ref(),
+                Some(&launch)
+            );
+        }
     }
 
     #[tokio::test]

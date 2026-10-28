@@ -61,6 +61,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileAntigravitySettingsRoundtrip);
         TEST_METHOD(AgentProfileCommandQuoting);
         TEST_METHOD(AgentProfileNativeCommands);
+        TEST_METHOD(AgentProfileSessionIdCommands);
         TEST_METHOD(AgentProfileArgumentValidation);
         TEST_METHOD(AgentProfileDiscoveryLifecycle);
         TEST_METHOD(AgentProfileDiscoveryExecutionAliases);
@@ -496,6 +497,40 @@ namespace SettingsModelUnitTests
         {
             const auto args = Agents::ParseArguments(Agents::BuildCommand(L"C:\\agent.exe", id, {}, mode, {}));
             VERIFY_ARE_EQUAL(std::wstring{ flag }, args[1]);
+        }
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileSessionIdCommands()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const std::wstring sessionId{ L"11111111-2222-4333-8444-555555555555" };
+        for (const auto id : { L"copilot", L"claude", L"gemini" })
+        {
+            const auto argumentFlag = std::wstring_view{ id } == L"gemini" ? L"--prompt-interactive" : L"--add-dir";
+            const auto arguments = std::wstring{ argumentFlag } + LR"( "C:\source tree")";
+            VERIFY_IS_TRUE(Agents::CanPinNewSession(id, arguments));
+            const auto args = Agents::ParseArguments(Agents::BuildCommand(
+                L"C:\\agent.exe", id, L"chosen-model", {}, arguments, true, sessionId));
+            VERIFY_ARE_EQUAL(size_t{ 7 }, args.size());
+            VERIFY_ARE_EQUAL(std::wstring{ L"--session-id" }, args[3]);
+            VERIFY_ARE_EQUAL(sessionId, args[4]);
+            VERIFY_ARE_EQUAL(std::wstring{ argumentFlag }, args[5]);
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\source tree" }, args[6]);
+            const auto batch = Agents::BuildCommand(L"C:\\agent.cmd", id, {}, {}, {}, true, sessionId);
+            VERIFY_IS_TRUE(batch.ends_with(L"\"--session-id\" \"" + sessionId + L"\"\""));
+            const auto preview = Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, {});
+            VERIFY_IS_TRUE(preview.find(L"--session-id") == std::wstring::npos);
+            for (const auto argument : { L"--resume", L"--resume=existing", L"--resume existing", L"--continue", L"--help", L"--version" })
+            {
+                VERIFY_IS_FALSE(Agents::CanPinNewSession(id, argument));
+                VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, argument, true, sessionId), wil::ResultException);
+            }
+        }
+        VERIFY_IS_TRUE(Agents::CanPinNewSession(L"claude", LR"(--add-dir "C:\--resume")"));
+        for (const auto id : { L"codex", L"opencode", L"antigravity", L"custom:agent" })
+        {
+            VERIFY_IS_FALSE(Agents::CanPinNewSession(id, {}));
+            VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, {}, true, sessionId), wil::ResultException);
         }
     }
 

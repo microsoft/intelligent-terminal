@@ -1255,6 +1255,10 @@
     <value>Ĉћõоšė τћε αģėňţ ůšěð ƒòґ čσммąиď ρåłєтťē δеľєġâťìбπ ìŋ ţнïѕ рŗóƒιĺέ. Ţħĩŝ śëĺéċŧіőл ţâķ℮ŝ рґēčёδёпсз ονέґ тĥę ğľǿваℓ ďęľĕĝàŧέ ªğĕñť ŝĕŧŧίňğ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>Description for the per-profile command palette agent setting.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>[Ųŝè ġļσьàĺ ѕęтŧìпğ ({0}) !!! !!]</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
