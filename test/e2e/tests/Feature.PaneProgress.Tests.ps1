@@ -374,8 +374,23 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 $row = Get-PaneRow $Title
                 $bounds = $row.Current.BoundingRectangle
                 $size = 16 * $script:scale
-                $slot = [Windows.Rect]::new($bounds.X + 9 * $script:scale,
-                    $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+                $identities = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                if ($identities.Count) {
+                    $identities | Should -HaveCount 1
+                    $slot = $identities[0]
+                    $script:expandedSlotBaselines[$Title] = $slot.X - $bounds.X
+                }
+                else {
+                    # Preserve the measured identity offset, not a guessed column or the spinner's own position.
+                    if (-not $script:expandedSlotBaselines.ContainsKey($Title)) { throw 'Capture the owned identity slot before starting progress.' }
+                    $slot = [Windows.Rect]::new($bounds.X + $script:expandedSlotBaselines[$Title],
+                        $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+                }
             }
             elseif ($Surface -eq 'collapsed') {
                 $list = @(Get-OwnedElements AutomationId ItemsList)
@@ -605,6 +620,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing -Gone | Out-Null
         $script:profileIcon = Get-ProfileIconDigest 'baseline-profile'
         $script:siblingIcon = Get-ProfileIconDigest 'baseline-sibling' $script:titleB
+        $script:expandedSlotBaselines = @{}
+        Get-LeadingSlot expanded | Out-Null
     }
     AfterAll {
         if ($script:evidence) {
@@ -860,7 +877,7 @@ $endHook
 "@
             Wait-Until -TimeoutSec 20 -Because 'the fixture reached its pre-progress barrier' -Condition { Test-Path $ready } | Out-Null
             if ($Identity -eq 'provider') {
-                Assert-NativeStatus $sid Working
+                Assert-NativeStatus $sid Idle
                 Wait-Until -TimeoutSec 20 -Because 'the provider icon is realized before OSC begins' -Condition {
                     (Get-ProfileIconDigest "$token-provider-baseline") -ne $script:profileIcon
                 } | Out-Null
@@ -967,7 +984,7 @@ $endHook
                     (Get-VisualDigest -Bounds (Get-LeadingSlot compact).slot -Name "$token-reselected" -Icon) -eq $icon
                 } | Out-Null
             }
-            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
+            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Idle }
             @((Get-WtPanes -App $script:app -TabId $script:tab.tab_id).session_id | Sort-Object) |
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
             @{
@@ -1004,7 +1021,7 @@ $endHook
         # Contract/title: above; deterministic native CLI fixture, NOT a real Copilot/model claim.
         # Trigger: child shell calls shipped agent-hook start/prompt/end with inherited WT_SESSION.
         # Boundary: real native hook -> COM -> registry -> owned pane icon, with OSC3 and OSC0.
-        # Oracle: pane/session-scoped Working/Ended events and profile raster restored after CLI exit.
+        # Oracle: OSC-derived activity retains native identity until Ended restores the profile raster.
         # Negative: sibling B stays unbranded. Protection: SessionHookRouting and HookBridgeCli.
         foreach ($state in @(3, 0)) {
             $sid = [guid]::NewGuid().ToString()
@@ -1027,9 +1044,9 @@ $hook agent.session.end
                         $_.params.pane_id -eq $script:a.session_id -and $_.params.agent_session_id -eq $sid
                     } | Should -Not -BeNullOrEmpty
                 }
-                Assert-NativeStatus $sid Working
+                Assert-NativeStatus $sid $(if ($state -eq 3) { 'Working' } else { 'Idle' })
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
-                Wait-Until -TimeoutSec 20 -Because 'Working native identity replaces the profile raster' -Condition {
+                Wait-Until -TimeoutSec 20 -Because 'live native identity replaces the profile raster' -Condition {
                     (Get-ProfileIconDigest "working-$state" -Progress:($state -eq 3)) -ne $script:profileIcon
                 } | Out-Null
                 Get-ProfileIconDigest "working-$state-sibling" $script:titleB | Should -Be $script:siblingIcon
