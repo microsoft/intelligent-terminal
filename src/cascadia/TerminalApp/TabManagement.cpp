@@ -205,7 +205,7 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto tab = weakTab.get())
                 {
-                    page->_ReadTabAgentCompletions(*tab);
+                    page->_ReadFocusedPaneAgentActivity(*tab);
                 }
             }
         });

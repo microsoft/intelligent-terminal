@@ -18,7 +18,7 @@ namespace TerminalApp
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
         Object IconSource;
-        Boolean IsAgentComplete;
+        Boolean HasUnreadActivity;
     };
 
     delegate void TitleChangeRequestedArgs(String title);
@@ -49,5 +49,6 @@ namespace TerminalApp
         Boolean ShowPinnedIcon { get; set; };
         TextHighlightColor MetadataHighlightColor { get; set; };
         IVector<HighlightedRun> MetadataHighlightRanges { get; set; };
+        Windows.UI.Xaml.Visibility PaneRowsVisibility { get; set; };
     }
 }

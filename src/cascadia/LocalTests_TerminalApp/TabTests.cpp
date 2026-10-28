@@ -586,6 +586,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SessionCompletionClearsWhenActivePaneRegainsFocus);
         TEST_METHOD(SessionCompletionSnapshotsPreserveReadState);
         TEST_METHOD(SessionCompletionHistoryPreservesCanonicalStatusAndRows);
+        TEST_METHOD(SessionAttentionUnreadIsPaneLocal);
+        TEST_METHOD(SidebarUnreadGroupAndDismissSlotStayStable);
         TEST_METHOD(FailedAgentStatusRefreshDoesNotRestoreStaleCwds);
         TEST_METHOD(UnknownAgentSessionDoesNotReusePreviousCwd);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
@@ -2405,6 +2407,7 @@ namespace TerminalAppLocalTests
             header = winrt::TerminalApp::TabHeaderControl{};
             header.Presentation(tab->_headerControl.Presentation());
             header.IsMetadataVisible(true);
+            tab->SetUnreadAgentActivity(true);
             header.VerticalAlignment(VerticalAlignment::Top);
             Window::Current().Content(header);
             Window::Current().Activate();
@@ -2442,6 +2445,11 @@ namespace TerminalAppLocalTests
                 }
             }
             tab->SetRichTabPresentation(std::nullopt);
+            header.PaneRowsVisibility(Visibility::Visible);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+            header.PaneRowsVisibility(Visibility::Collapsed);
+            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            tab->SetUnreadAgentActivity(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
         });
     }
@@ -9869,8 +9877,11 @@ namespace TerminalAppLocalTests
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(split->SessionId(), "split-session", "copilot"));
             owner->Focus(FocusState::Programmatic);
-            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(first->SessionId(), "completion-session", "copilot"));
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(first->SessionId(), "completion-session", "copilot"));
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(split->SessionId(), "split-session", "copilot"));
+            const auto originalPane = owner->GetRootPane()->FindPaneByContentId(gsl::narrow<uint32_t>(control.ContentId()));
+            originalPane->GotFocus.raise(originalPane, FocusState::Pointer);
+            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(first->SessionId(), "completion-session", "copilot"));
 
             owner->Focus(FocusState::Unfocused);
             VERIFY_ARE_EQUAL(std::string{ "Working" }, report("completion-session", 10000, "Working"));
@@ -9883,6 +9894,108 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "Complete" }, report("completion-session", 16000, "Idle"));
             VERIFY_ARE_EQUAL(std::string{ "Idle" }, report("replacement-session", 17000, "Idle"));
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(first->SessionId(), "completion-session", "copilot"));
+        });
+    }
+
+    void TabTests::SessionAttentionUnreadIsPaneLocal()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"64911111-2222-3333-4444-555555555555" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"64921111-2222-3333-4444-555555555555" }, State::Connected);
+        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto firstControl = tab->GetActiveTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second)));
+            const auto secondControl = tab->GetActiveTerminalControl();
+            const auto firstPane = tab->GetRootPane()->FindPaneByContentId(gsl::narrow<uint32_t>(firstControl.ContentId()));
+            const auto secondPane = tab->GetRootPane()->FindPaneByContentId(gsl::narrow<uint32_t>(secondControl.ContentId()));
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(second->SessionId()));
+            const auto report = [&](const uint64_t activity, const uint64_t notification) {
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", activity, "Attention", std::nullopt, notification));
+                VERIFY_ARE_EQUAL(std::string{ "Attention" }, page->_BuildRichTabFirstPartyFields(secondControl).at("agentStatusId"));
+            };
+            firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
+            report(1000, 100);
+            VERIFY_IS_TRUE(tab->IsFocused());
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            VERIFY_IS_TRUE(tab->_headerControl.Presentation().HasUnreadActivity());
+            firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            secondPane->GotFocus.raise(secondPane, FocusState::Pointer);
+            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
+            report(2000, 100);
+            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            report(3000, 101);
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tab->TabViewItem());
+            VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
+            for (const auto& pane : display.PaneItems())
+            {
+                VERIFY_ARE_EQUAL(pane.ContentId() == secondControl.ContentId(), pane.HasUnreadActivity());
+            }
+        });
+    }
+
+    void TabTests::SidebarUnreadGroupAndDismissSlotStayStable()
+    {
+        UIElement previousContent{ nullptr };
+        winrt::TerminalApp::TabStrip strip{ nullptr };
+        winrt::MUX::Controls::TabViewItem tab{ nullptr };
+        const auto restore = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { Window::Current().Content(previousContent); });
+        });
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            strip = winrt::TerminalApp::TabStrip{};
+            strip.Width(272);
+            strip.Height(240);
+            tab = winrt::MUX::Controls::TabViewItem{};
+            winrt::TerminalApp::TabHeaderControl header;
+            header.Title(winrt::hstring{ std::wstring(240, L'W') });
+            header.Presentation().HasUnreadActivity(true);
+            tab.Header(header);
+            strip.TabItems().Append(tab);
+            const auto pane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Unread pane", true);
+            pane.HasUnreadActivity(true);
+            strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ pane }), true);
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() { return strip.IsLoaded() && strip.ContainerFromIndex(0) != nullptr; });
+        TestOnUIThread([&]() {
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto display = impl->DisplayItemForTab(tab);
+            const auto nativeDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(display);
+            const auto root = _sidebarProgressRoot(strip, tab);
+            const auto header = root.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+            const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
+            display.IsExpanded(true);
+            impl->SyncTabPresentation(display);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+            display.IsExpanded(false);
+            impl->SyncTabPresentation(display);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            display.SelectionVisibility(Visibility::Collapsed);
+            nativeDisplay->SetPointerOver(false, false);
+            strip.UpdateLayout();
+            const auto before = indicator.TransformToVisual(root).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(root.ActualWidth() - before.X - indicator.ActualWidth() >= 31);
+            nativeDisplay->SetPointerOver(true, false);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, root.FindName(L"TabCloseButton").as<Button>().Visibility());
+            const auto hovered = indicator.TransformToVisual(root).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(std::abs(before.X - hovered.X) <= 0.5);
+            nativeDisplay->SetPointerOver(false, false);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, root.FindName(L"TabCloseButton").as<Button>().Visibility());
+            VERIFY_IS_TRUE(std::abs(before.X - indicator.TransformToVisual(root).TransformPoint({ 0, 0 }).X) <= 0.5);
         });
     }
 
@@ -24835,9 +24948,6 @@ namespace TerminalAppLocalTests
                 TestOnUIThread([&]() {
                     const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto historyText = Media::VisualTreeHelper::GetChild(historyStatus, 0).as<TextBlock>();
-                    const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
-                    VERIFY_ARE_EQUAL(std::string_view{ status } == "Complete" ? Visibility::Visible : Visibility::Collapsed,
-                                     indicator.Visibility());
                     VERIFY_ARE_EQUAL(winrt::hstring{ presentation->text }, metadata.Text());
                     VERIFY_ARE_EQUAL(color, metadata.ColorHighlight());
                     VERIFY_IS_NOT_NULL(metadata.ColorHighlightRanges());
@@ -24953,12 +25063,12 @@ namespace TerminalAppLocalTests
             });
             auto update = makePane();
             update.MetadataText(L"Waiting for input");
-            update.IsAgentComplete(true);
+            update.HasUnreadActivity(true);
             update.MetadataHighlightColor(winrt::TerminalApp::TextHighlightColor::Caution);
             update.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 0, 16 } }));
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
             VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
-            VERIFY_IS_TRUE(original.IsAgentComplete());
+            VERIFY_IS_TRUE(original.HasUnreadActivity());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::Caution, original.MetadataHighlightColor());
             VERIFY_ARE_EQUAL(1u, original.MetadataHighlightRanges().Size());
             VERIFY_ARE_EQUAL(uint64_t{ 16 }, original.MetadataHighlightRanges().GetAt(0).End);
@@ -24967,7 +25077,7 @@ namespace TerminalAppLocalTests
             strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ update }), true);
             VERIFY_IS_TRUE(original == display.PaneItems().GetAt(0));
             VERIFY_ARE_EQUAL(winrt::hstring{ L"main" }, original.MetadataText());
-            VERIFY_IS_FALSE(original.IsAgentComplete());
+            VERIFY_IS_FALSE(original.HasUnreadActivity());
             VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::None, original.MetadataHighlightColor());
             VERIFY_IS_NULL(original.MetadataHighlightRanges());
             VERIFY_ARE_EQUAL(0u, collectionChanges);
@@ -25028,7 +25138,7 @@ namespace TerminalAppLocalTests
                     replacement.MetadataText(L"main\nActive");
                     replacement.MetadataVisibility(Visibility::Visible);
                     replacement.MetadataHighlightColor(color);
-                    replacement.IsAgentComplete(color == winrt::TerminalApp::TextHighlightColor::None);
+                    replacement.HasUnreadActivity(color == winrt::TerminalApp::TextHighlightColor::None);
                     replacement.MetadataHighlightRanges(winrt::single_threaded_vector<winrt::TerminalApp::HighlightedRun>({ { 5, 10 } }));
                     strip.SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ replacement }), true);
                     strip.UpdateLayout();

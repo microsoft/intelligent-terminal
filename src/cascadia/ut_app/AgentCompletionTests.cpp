@@ -17,6 +17,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CompletionRequiresObservedActivity);
         TEST_METHOD(ReadingAndRepeatedIdleDoNotRearmCompletion);
         TEST_METHOD(NewActivityAndIdentityResetCompletion);
+        TEST_METHOD(AttentionRearmsOnlyForANewNotification);
+        TEST_METHOD(ReadingOnePanePreservesOtherPaneActivity);
     };
 
     void AgentCompletionTests::CompletionRequiresObservedActivity()
@@ -53,6 +55,39 @@ namespace TerminalAppUnitTests
         state.Update(pane, "session", "copilot", "Working", true);
         state.Update(pane, "session", "copilot", "Idle", false);
         VERIFY_IS_TRUE(state.unread);
+    }
+
+    void AgentCompletionTests::AttentionRearmsOnlyForANewNotification()
+    {
+        const winrt::guid pane{ L"64751111-2222-3333-4444-555555555555" };
+        CompletionState state;
+        VERIFY_IS_TRUE(state.Update(pane, "session", "copilot", "Attention", false, 100));
+        VERIFY_IS_TRUE(state.unread);
+        state.Update(pane, "session", "copilot", "Attention", true, 100);
+        VERIFY_IS_FALSE(state.unread);
+        VERIFY_IS_FALSE(state.Update(pane, "session", "copilot", "Attention", false, 100));
+        VERIFY_IS_FALSE(state.unread);
+        VERIFY_IS_TRUE(state.Update(pane, "session", "copilot", "Attention", false, 101));
+        VERIFY_IS_TRUE(state.unread);
+        state.Update(pane, "session", "copilot", "Attention", true, 101);
+        VERIFY_IS_FALSE(state.Update(pane, "session", "copilot", "Attention", false, 100));
+        VERIFY_IS_FALSE(state.unread);
+        VERIFY_IS_TRUE(state.Update(pane, "replacement", "copilot", "Attention", false, 1));
+        VERIFY_IS_TRUE(state.unread);
+    }
+
+    void AgentCompletionTests::ReadingOnePanePreservesOtherPaneActivity()
+    {
+        const winrt::guid first{ L"64761111-2222-3333-4444-555555555555" };
+        const winrt::guid second{ L"64771111-2222-3333-4444-555555555555" };
+        CompletionState firstState;
+        CompletionState secondState;
+        firstState.Update(first, "first", "copilot", "Attention", false, 100);
+        secondState.Update(second, "second", "copilot", "Working", false);
+        secondState.Update(second, "second", "copilot", "Idle", false);
+        firstState.Update(first, "first", "copilot", "Attention", true, 100);
+        VERIFY_IS_FALSE(firstState.unread);
+        VERIFY_IS_TRUE(secondState.unread);
     }
 
     void AgentCompletionTests::NewActivityAndIdentityResetCompletion()

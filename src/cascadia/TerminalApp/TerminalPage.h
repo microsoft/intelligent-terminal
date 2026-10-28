@@ -1047,6 +1047,7 @@ namespace winrt::TerminalApp::implementation
             std::string tabId;
             Json::Value location;
             Json::Value inferredHistoryKey;
+            std::optional<uint64_t> attentionEventId;
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1064,7 +1065,9 @@ namespace winrt::TerminalApp::implementation
         void _ReplayNativeAgentObservationsForReceiver(uint64_t receiverGeneration);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateAgentCompletions();
-        void _ReadTabAgentCompletions(Tab& tab);
+        void _ReadFocusedPaneAgentActivity(Tab& tab);
+        bool _HasUnreadAgentActivity(const Microsoft::Terminal::Control::TermControl& control);
+        void _RefreshTabUnreadActivity(Tab& tab);
         void _AgentCompletionChanged(const winrt::guid& paneId);
         bool _HistoryItemHasUnreadCompletion(const TerminalApp::TabStripHistoryItem& item) const;
         std::string_view _AgentStatusForPresentation(const _RichTabAgentInfo& info) const;
@@ -1141,7 +1144,8 @@ namespace winrt::TerminalApp::implementation
                                            std::string_view providerId,
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status,
-                                           std::optional<std::string> cwd = std::nullopt);
+                                           std::optional<std::string> cwd = std::nullopt,
+                                           std::optional<uint64_t> attentionEventId = std::nullopt);
         void _RaiseAgentAttentionBell(const winrt::guid& paneSessionId);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
         friend struct TabStripHistoryItem;

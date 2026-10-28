@@ -168,7 +168,7 @@
               VerticalAlignment="Center"
               AutomationProperties.AccessibilityView="Raw"
               IsHitTestVisible="False"
-              Visibility="{x:Bind Presentation.IsAgentComplete, Mode=OneWay}">
+              Visibility="Collapsed">
             <Ellipse Width="4"
                      Height="4"
                      Fill="{ThemeResource AgentCompletionIndicatorBrush}" />

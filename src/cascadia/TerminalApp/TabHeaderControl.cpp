@@ -17,6 +17,8 @@ namespace winrt::TerminalApp::implementation
         Presentation(winrt::make<TabHeaderPresentation>());
         InitializeComponent();
         _progressRingPresenter = HeaderProgressRingPresenter();
+        _initialized = true;
+        _UpdateUnreadActivityVisibility();
 
         Loaded([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self = weakThis.get())
@@ -152,11 +154,37 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->PropertyChanged.raise(*self, args);
+                if (args.PropertyName() == L"HasUnreadActivity")
+                {
+                    self->_UpdateUnreadActivityVisibility();
+                }
             }
         });
         for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName", L"MetadataHighlightColor", L"MetadataHighlightRanges" })
         {
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
+        }
+        _UpdateUnreadActivityVisibility();
+    }
+
+    void TabHeaderControl::PaneRowsVisibility(const Windows::UI::Xaml::Visibility value)
+    {
+        if (_paneRowsVisibility != value)
+        {
+            _paneRowsVisibility = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"PaneRowsVisibility" });
+            _UpdateUnreadActivityVisibility();
+        }
+    }
+
+    void TabHeaderControl::_UpdateUnreadActivityVisibility()
+    {
+        if (_initialized)
+        {
+            HeaderCompletionIndicator().Visibility(
+                _presentation.HasUnreadActivity() && _paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible ?
+                    Windows::UI::Xaml::Visibility::Visible :
+                    Windows::UI::Xaml::Visibility::Collapsed);
         }
     }
 

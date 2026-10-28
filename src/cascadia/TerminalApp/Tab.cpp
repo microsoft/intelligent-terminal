@@ -648,12 +648,17 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
         _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
-        _headerControl.Presentation().IsAgentComplete(presentation && presentation->agentStatus == "Complete");
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
+    }
+
+    void Tab::SetUnreadAgentActivity(const bool unread)
+    {
+        ASSERT_UI_THREAD();
+        _headerControl.Presentation().HasUnreadActivity(unread);
     }
 
     void Tab::_UpdateRichTabPresentation()

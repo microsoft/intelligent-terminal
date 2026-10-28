@@ -24,7 +24,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, MetadataHighlightRanges, PropertyChanged.raise, nullptr);
-        WINRT_OBSERVABLE_PROPERTY(bool, IsAgentComplete, PropertyChanged.raise, false);
+        WINRT_OBSERVABLE_PROPERTY(bool, HasUnreadActivity, PropertyChanged.raise, false);
     };
 
     struct TabHeaderControl : TabHeaderControlT<TabHeaderControl>
@@ -41,6 +41,8 @@ namespace winrt::TerminalApp::implementation
         void IsMetadataVisible(bool value);
         bool ShowProgressRing() const noexcept;
         void ShowProgressRing(bool value);
+        winrt::Windows::UI::Xaml::Visibility PaneRowsVisibility() const noexcept { return _paneRowsVisibility; }
+        void PaneRowsVisibility(winrt::Windows::UI::Xaml::Visibility value);
         winrt::Windows::UI::Xaml::Controls::Grid ProgressRingPresenter() const noexcept { return _progressRingPresenter; }
         static winrt::TerminalApp::TextHighlightColor AgentStatusHighlightColor(std::string_view status) noexcept;
         static winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun> BuildMetadataHighlightRanges(const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation);
@@ -75,6 +77,8 @@ namespace winrt::TerminalApp::implementation
         bool _renameCancelled{ false };
         bool _isMetadataVisible{ false };
         bool _showProgressRing{ true };
+        bool _initialized{ false };
+        winrt::Windows::UI::Xaml::Visibility _paneRowsVisibility{ winrt::Windows::UI::Xaml::Visibility::Collapsed };
         winrt::TerminalApp::TabHeaderPresentation _presentation{ nullptr };
         winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _presentationChanged;
         // This view remains owned here when its visual parent is the native slot.
@@ -82,6 +86,7 @@ namespace winrt::TerminalApp::implementation
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();
     };
 }

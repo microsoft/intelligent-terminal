@@ -307,10 +307,11 @@
                           Grid.Column="2"
                           Width="24"
                           Height="24"
+                          Margin="0,0,32,0"
                           VerticalAlignment="Center"
                           AutomationProperties.AccessibilityView="Raw"
                           IsHitTestVisible="False"
-                          Visibility="{x:Bind HasUnreadCompletion, Mode=OneWay}">
+                          Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
                         <Ellipse Width="4"
                                  Height="4"
                                  Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
@@ -697,29 +698,34 @@
                                                     Margin="0,3"
                                                     HorizontalAlignment="Stretch"
                                                     VerticalAlignment="Center"
-                                                    Loaded="OnRowHeaderLoaded"
-                                                    Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     IsMetadataVisible="{x:Bind IsMetadataVisible, Mode=OneWay}"
+                                                    Loaded="OnRowHeaderLoaded"
+                                                    PaneRowsVisibility="{x:Bind ChildrenVisibility, Mode=OneWay}"
+                                                    Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     ShowProgressRing="False"
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
-                            <Button x:Name="TabCloseButton"
-                                    Grid.Column="2"
-                                    Width="28"
-                                    Height="28"
-                                    MinWidth="0"
-                                    MinHeight="0"
-                                    Margin="0,4,4,0"
-                                    Padding="0"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    CornerRadius="4"
-                                    Click="OnTabCloseClick"
-                                    VerticalAlignment="Top"
-                                    Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
-                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="10"
-                                          Glyph="&#xE711;" />
-                            </Button>
+                            <Grid x:Name="TabCloseButtonSlot"
+                                  Grid.Column="2"
+                                  Width="32"
+                                  Visibility="{x:Bind HeaderVisibility, Mode=OneWay}">
+                                <Button x:Name="TabCloseButton"
+                                        Width="28"
+                                        Height="28"
+                                        MinWidth="0"
+                                        MinHeight="0"
+                                        Margin="0,4,4,0"
+                                        Padding="0"
+                                        VerticalAlignment="Top"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Click="OnTabCloseClick"
+                                        CornerRadius="4"
+                                        Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
+                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="10"
+                                              Glyph="&#xE711;" />
+                                </Button>
+                            </Grid>
                         </Grid>
                         <ItemsControl x:Name="TabPaneItems"
                                       Margin="10,0,0,0"
@@ -867,7 +873,7 @@
                                                       VerticalAlignment="Center"
                                                       AutomationProperties.AccessibilityView="Raw"
                                                       IsHitTestVisible="False"
-                                                      Visibility="{x:Bind IsAgentComplete, Mode=OneWay}">
+                                                      Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
                                                     <Ellipse Width="4"
                                                              Height="4"
                                                              Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
@@ -897,24 +903,27 @@
                                                 </local:HighlightedTextControl>
                                             </Grid>
                                         </Button>
-                                        <Button x:Name="PaneCloseButton"
-                                                Grid.Column="1"
-                                                Width="26"
-                                                Height="26"
-                                                MinWidth="0"
-                                                MinHeight="0"
-                                                Margin="0,4,4,0"
-                                                Padding="0"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                CornerRadius="4"
-                                                Click="OnPaneCloseClick"
-                                                VerticalAlignment="Top"
-                                                Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
-                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                      FontSize="10"
-                                                      Glyph="&#xE711;" />
-                                        </Button>
+                                        <Grid x:Name="PaneCloseButtonSlot"
+                                              Grid.Column="1"
+                                              Width="32">
+                                            <Button x:Name="PaneCloseButton"
+                                                    Width="26"
+                                                    Height="26"
+                                                    MinWidth="0"
+                                                    MinHeight="0"
+                                                    Margin="0,4,4,0"
+                                                    Padding="0"
+                                                    VerticalAlignment="Top"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Click="OnPaneCloseClick"
+                                                    CornerRadius="4"
+                                                    Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
+                                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="10"
+                                                          Glyph="&#xE711;" />
+                                            </Button>
+                                        </Grid>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

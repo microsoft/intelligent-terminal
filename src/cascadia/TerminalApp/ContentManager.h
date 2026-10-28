@@ -24,6 +24,7 @@ Abstract:
 --*/
 #pragma once
 
+#include <algorithm>
 #include <mutex>
 #include <string_view>
 #include "ContentManager.g.h"
@@ -79,21 +80,32 @@ namespace winrt::TerminalApp::implementation
             std::string providerId;
             bool wasActive{ false };
             bool unread{ false };
+            bool wasAttention{ false };
+            std::optional<uint64_t> attentionEventId;
 
-            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider,
-                        const std::string_view status, const bool focused)
+            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider, const std::string_view status, const bool focused, const std::optional<uint64_t> attentionEvent = std::nullopt)
             {
                 const auto wasUnread = unread;
-                if (paneId != pane || sessionId != session || providerId != provider)
+                const auto identityChanged = paneId != pane || sessionId != session || providerId != provider;
+                if (identityChanged)
                 {
                     *this = { pane, std::string{ session }, std::string{ provider } };
                 }
-                unread = status == "Idle" && !focused && (unread || wasActive);
+                const auto attention = status == "Attention";
+                const auto newAttention = attention &&
+                                          (!wasAttention || (attentionEvent && (!attentionEventId || *attentionEvent > *attentionEventId)));
+                unread = !focused && ((attention && (unread || newAttention)) ||
+                                      (status == "Idle" && (unread || wasActive)));
                 wasActive = status == "Working" || status == "Attention";
-                return wasUnread != unread;
+                wasAttention = attention;
+                if (attentionEvent)
+                {
+                    attentionEventId = std::max(attentionEventId.value_or(0), *attentionEvent);
+                }
+                return wasUnread != unread || (identityChanged && (wasUnread || unread));
             }
         };
-        void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
+        void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused, std::optional<uint64_t> attentionEvent = std::nullopt);
         bool HasUnreadAgentCompletion(const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId) const;
         void MarkAgentCompletionRead(uint64_t contentId);
         void ResetAgentCompletion(uint64_t contentId);

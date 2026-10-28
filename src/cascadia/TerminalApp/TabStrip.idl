@@ -77,7 +77,7 @@ namespace TerminalApp
         Boolean IsKeepRunning;
         String StatusLabelText;
         String WindowHintText;
-        Boolean HasUnreadCompletion { get; };
+        Boolean HasUnreadActivity { get; };
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
@@ -106,7 +106,7 @@ namespace TerminalApp
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
         Windows.UI.Xaml.Visibility CloseVisibility;
-        Boolean IsAgentComplete;
+        Boolean HasUnreadActivity;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

@@ -3650,7 +3650,7 @@ namespace winrt::TerminalApp::implementation
                                            params["pane_session_id"].asString() :
                                            std::string{};
             if (!sessionId.empty() && !status.empty() &&
-                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status, cwd))
+                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status, cwd, params["attention_event_id"].isUInt64() ? std::optional<uint64_t>{ params["attention_event_id"].asUInt64() } : std::nullopt))
             {
                 if (_AreRecentAgentSessionsVisible())
                 {
@@ -3672,7 +3672,8 @@ namespace winrt::TerminalApp::implementation
                                                      const std::string_view providerId,
                                                      const std::optional<uint64_t> lastActivityAtMs,
                                                      const std::string_view status,
-                                                     std::optional<std::string> cwd)
+                                                     std::optional<std::string> cwd,
+                                                     const std::optional<uint64_t> attentionEventId)
     {
         if (sessionId.empty() ||
             (status != "Idle" &&
@@ -3695,7 +3696,8 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        const auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId, std::move(cwd) };
+        auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId, std::move(cwd) };
+        incoming.attentionEventId = attentionEventId;
         const auto rejectsIncoming = [&](const auto& info) {
             return info.sessionId == sessionId && info.paneSessionId == paneId &&
                    !(info.providerId.empty() && !providerId.empty()) &&
@@ -3736,6 +3738,7 @@ namespace winrt::TerminalApp::implementation
                 info.providerId = report.providerId;
             }
             info.lastActivityAtMs = report.lastActivityAtMs;
+            info.attentionEventId = report.attentionEventId;
             info.cwd = report.cwd;
         };
         ++_agentSnapshotRequestGeneration;
@@ -12861,6 +12864,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tab = _GetTabImpl(runtimeTab))
             {
+                const auto focusedControl = tab->IsFocused() ? tab->GetActiveTerminalControl() : nullptr;
                 if (const auto root = tab->GetRootPane())
                 {
                     root->WalkTree([&](const auto& pane) {
@@ -12869,29 +12873,46 @@ namespace winrt::TerminalApp::implementation
                             if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId,
-                                    info->providerId, info->status, tab->IsFocused());
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId(), info->attentionEventId);
                             }
                         }
                         return false;
                     });
                 }
+                _RefreshTabUnreadActivity(*tab);
             }
         }
     }
 
-    void TerminalPage::_ReadTabAgentCompletions(Tab& tab)
+    bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control)
     {
+        const auto info = control ? _RichTabAgentInfoForControl(control) : std::nullopt;
+        return info && info->paneSessionId &&
+               winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
+                   *info->paneSessionId, info->sessionId, info->providerId);
+    }
+
+    void TerminalPage::_RefreshTabUnreadActivity(Tab& tab)
+    {
+        bool unread = false;
         if (const auto root = tab.GetRootPane())
         {
-            const auto manager = winrt::get_self<ContentManager>(_manager);
             root->WalkTree([&](const auto& pane) {
-                if (const auto control = pane->GetTerminalControl())
-                {
-                    manager->MarkAgentCompletionRead(control.ContentId());
-                }
+                unread = unread || _HasUnreadAgentActivity(pane->GetTerminalControl());
                 return false;
             });
+        }
+        tab.SetUnreadAgentActivity(unread);
+    }
+
+    void TerminalPage::_ReadFocusedPaneAgentActivity(Tab& tab)
+    {
+        if (tab.IsFocused())
+        {
+            if (const auto control = tab.GetActiveTerminalControl())
+            {
+                winrt::get_self<ContentManager>(_manager)->MarkAgentCompletionRead(control.ContentId());
+            }
         }
     }
 
@@ -12905,6 +12926,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto pane = root->FindPaneBySessionId(paneId))
                     {
+                        _RefreshTabUnreadActivity(*tab);
                         if (const auto control = pane->GetTerminalControl())
                         {
                             _UpdateRichTabFirstPartyFields(control);
@@ -12925,7 +12947,7 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_HistoryItemHasUnreadCompletion(const TerminalApp::TabStripHistoryItem& item) const
     {
         const auto paneId = _TryParsePaneSessionId(winrt::to_string(item.PaneSessionId()));
-        return item.IsLive() && item.Status() == L"Idle" && paneId &&
+        return item.IsLive() && (item.Status() == L"Idle" || item.Status() == L"Attention") && paneId &&
                winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
                    *paneId, winrt::to_string(item.SessionId()), winrt::to_string(item.AgentId()));
     }
@@ -13124,6 +13146,10 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             _RichTabAgentInfo info{ row.get("agent_session_id", "").asString(), row["status"].asString(), provider, row["last_activity_at_ms"].isUInt64() ? std::optional<uint64_t>{ row["last_activity_at_ms"].asUInt64() } : std::nullopt, paneId };
+            if (row["attention_event_id"].isUInt64())
+            {
+                info.attentionEventId = row["attention_event_id"].asUInt64();
+            }
             if (row["cwd"].isString() && !row["cwd"].asString().empty())
             {
                 info.cwd = row["cwd"].asString();
@@ -14929,7 +14955,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (tab->IsFocused())
             {
-                _ReadTabAgentCompletions(*tab);
+                _ReadFocusedPaneAgentActivity(*tab);
             }
             const auto tabStrip = _isVerticalLayout && _tabStrip ?
                                       winrt::get_self<implementation::TabStrip>(_tabStrip) :
@@ -14990,6 +15016,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        _RefreshTabUnreadActivity(*tab);
         const auto visiblePanes = tab->GetVisiblePaneSnapshot();
         const auto activeSourcePane = _SourceTerminalPaneForTab(tab);
         const auto activeSourceContentId = activeSourcePane && activeSourcePane->ContentId() ?
@@ -15075,6 +15102,7 @@ namespace winrt::TerminalApp::implementation
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
+            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourcePane ? sourcePane->GetTerminalControl() : nullptr));
             itemImpl->ProgressState(pane.ProgressState);
             itemImpl->IsProgressRingActive(pane.ProgressState != 0);
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
@@ -15090,7 +15118,6 @@ namespace winrt::TerminalApp::implementation
                     itemImpl->MetadataText(winrt::hstring{ value.text });
                     itemImpl->MetadataHighlightRanges(TabHeaderControl::BuildMetadataHighlightRanges(value));
                     itemImpl->MetadataHighlightColor(TabHeaderControl::AgentStatusHighlightColor(value.agentStatus));
-                    itemImpl->IsAgentComplete(value.agentStatus == "Complete");
                     itemImpl->MetadataVisibility(value.text.empty() ? Visibility::Collapsed : Visibility::Visible);
                     if (!value.accessibilityText.empty())
                     {
