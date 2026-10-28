@@ -9394,6 +9394,10 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
+            if (newWorkingDirectory.empty() && settingsInternal->UsesManagedAgentCommand())
+            {
+                newWorkingDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+            }
             connection = TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),
                                                                             newWorkingDirectory,
@@ -12586,6 +12590,14 @@ namespace winrt::TerminalApp::implementation
         const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
         if (!previous || previous->modeEpoch != identity.modeEpoch || birthBeforeReset)
         {
+            if (const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+                connection && winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand())
+            {
+                if (const auto cwd = connection.StartingDirectory(); !cwd.empty())
+                {
+                    params["launch_cwd"] = winrt::to_string(cwd);
+                }
+            }
             if (birthBeforeReset && !enabled && !identity.agentSessionId.empty() &&
                 (explicitBinding || !identity.qualifiedLocation.empty()))
             {

@@ -257,4 +257,13 @@ Real hooks can still take ownership of the same session.
 
 Command previews and profile settings do not contain a generated UUID.
 Handwritten command overrides, resume/continue commands, help/version commands,
-and providers without new-session ID support keep their existing behavior.
+and providers without new-session ID support keep their existing command behavior.
+
+All managed native profiles also publish their evaluated launch directory as
+pane-only metadata for the native status fallback. This supplies an initial cwd
+for Codex, Antigravity, and OpenCode without inventing a conversation ID or
+binding a history row. Empty managed starting directories use the window's
+virtual cwd or capture the inherited host cwd before delayed connection startup.
+A confirmed session cwd takes precedence where supported;
+Antigravity's existing shell-session cwd suppression remains unchanged, with the
+Terminal-authored launch directory available as a fallback.
