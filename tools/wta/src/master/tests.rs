@@ -17659,6 +17659,114 @@ async fn history_retry_reopens_retained_gate_after_chat_retirement_without_bypas
 }
 
 #[tokio::test(start_paused = true)]
+async fn history_retry_wakes_paused_worker_without_waiting_for_other_agents() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let (paused, mut paused_requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let (busy, mut busy_requests) =
+                controlled_history_agent("claude", crate::agent_source::AgentSource::Host);
+            let paused_gate = Arc::clone(&paused.history_refresh.gate);
+            {
+                let mut refresh = paused_gate.lock().await;
+                let process = refresh.query.process.take();
+                refresh.query = history::HistoryQuery::default();
+                let target = history::HistoryTarget {
+                    command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
+                    agent_id: "custom:paused-history".into(),
+                    source: crate::agent_source::AgentSource::Host,
+                    provider: ProviderBinding::Native,
+                };
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                for _ in 0..3 {
+                    assert!(refresh
+                        .query
+                        .poll(Some(&target), &cancelled, false)
+                        .await
+                        .is_err());
+                }
+                assert!(refresh.query.recovery_paused());
+                refresh.query.process = process;
+                refresh.owner = Some(paused.instance_id);
+                refresh.failures = 3;
+                refresh.next_refresh_at =
+                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(60));
+            }
+            {
+                let mut gates = state.history_queries.lock().await;
+                gates.insert(paused.cmd_key.clone(), Arc::clone(&paused_gate));
+                gates.insert("shared-paused-gate".into(), Arc::clone(&paused_gate));
+                gates.insert(busy.cmd_key.clone(), Arc::clone(&busy.history_refresh.gate));
+            }
+            add_test_agent_to_pool(&state, &paused).await;
+            add_test_agent_to_pool(&state, &busy).await;
+            start_agent_history_worker(&state, &paused);
+            tokio::task::yield_now().await;
+
+            let mut busy_refresh = Box::pin(refresh_agent_history(
+                &state,
+                &busy,
+                HistoryRefreshTrigger::Immediate,
+            ));
+            let held = tokio::select! {
+                request = busy_requests.recv() => request.unwrap(),
+                result = &mut busy_refresh => panic!("missing busy history request: {result:?}"),
+            };
+            handle_sessions_list(
+                &state,
+                None,
+                &crate::session_registry::SessionsListParams {
+                    rescan: true,
+                    retry_history: true,
+                },
+            )
+            .await
+            .unwrap();
+            let reply =
+                tokio::time::timeout(std::time::Duration::from_secs(1), paused_requests.recv())
+                    .await
+                    .expect("a busy unrelated gate must not delay a paused worker")
+                    .unwrap();
+            reply.send(Ok(vec![])).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    if paused_gate.lock().await.last_count == Some(0) {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(
+                busy_requests.try_recv().is_err(),
+                "retry must not duplicate or replace the healthy in-flight request"
+            );
+            held.send(Ok(vec![])).unwrap();
+            assert_eq!(busy_refresh.await, Some(0));
+            for agent in [&paused, &busy] {
+                agent
+                    .history_refresh
+                    .retired
+                    .store(true, std::sync::atomic::Ordering::Release);
+                agent.history_refresh.cancelled.cancel();
+                agent
+                    .history_refresh
+                    .gate
+                    .lock()
+                    .await
+                    .query
+                    .stop()
+                    .await
+                    .unwrap();
+            }
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn history_refresh_periodic_dispatch_jitter_does_not_skip_the_next_tick() {
     tokio::task::LocalSet::new()
         .run_until(async {

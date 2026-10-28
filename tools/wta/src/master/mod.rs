@@ -8131,24 +8131,19 @@ fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentC
     let state = Arc::clone(state);
     tokio::task::spawn_local(async move {
         let discover = agent.is_none();
-        let mut reopened_gates = Vec::new();
-        if discover {
-            let gates: Vec<_> = state
+        let retained: Vec<_> = if discover {
+            state
                 .history_queries
                 .lock()
                 .await
                 .values()
                 .cloned()
-                .collect();
-            for gate in gates {
-                let reopened = gate.lock().await.retry_paused_history();
-                if reopened {
-                    reopened_gates.push(gate);
-                }
-            }
-        }
-        let agents = match agent {
-            Some(agent) => vec![agent],
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let agents = match agent.as_ref() {
+            Some(agent) => vec![Arc::clone(agent)],
             None => state
                 .agents
                 .lock()
@@ -8157,23 +8152,54 @@ fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentC
                 .filter_map(|cell| cell.get().cloned())
                 .collect(),
         };
-        for agent in agents {
-            let mut refresh = agent.history_refresh.gate.lock().await;
-            if agent.history_refresh.retired.load(Ordering::Acquire) {
-                continue;
-            }
-            let reopened = reopened_gates
+        let mut gates = Vec::new();
+        for gate in retained.into_iter().chain(
+            agents
                 .iter()
-                .any(|gate| Arc::ptr_eq(gate, &agent.history_refresh.gate))
-                || refresh.retry_paused_history();
-            drop(refresh);
-            if reopened {
-                tracing::info!(target: "master_history",
-                    agent_id = %agent.resolved_agent_id, agent_source = %agent.source,
-                    "explicit history retry reopened automatic recovery");
-                agent.history_refresh.retry_requested.notify_one();
+                .map(|agent| Arc::clone(&agent.history_refresh.gate)),
+        ) {
+            if !gates.iter().any(|known| Arc::ptr_eq(known, &gate)) {
+                gates.push(gate);
             }
-            start_agent_history_worker(&state, &agent);
+        }
+        for gate in gates {
+            let state = Arc::clone(&state);
+            let bound = agent.clone();
+            tokio::task::spawn_local(async move {
+                let mut refresh = gate.lock().await;
+                if bound
+                    .as_ref()
+                    .is_some_and(|agent| agent.history_refresh.retired.load(Ordering::Acquire))
+                {
+                    return;
+                }
+                let reopened = refresh.retry_paused_history();
+                drop(refresh);
+                let agents = match bound {
+                    Some(agent) => vec![agent],
+                    None => state
+                        .agents
+                        .lock()
+                        .await
+                        .values()
+                        .filter_map(|cell| cell.get())
+                        .filter(|agent| Arc::ptr_eq(&agent.history_refresh.gate, &gate))
+                        .cloned()
+                        .collect(),
+                };
+                for agent in agents {
+                    if agent.history_refresh.retired.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    if reopened {
+                        tracing::info!(target: "master_history",
+                            agent_id = %agent.resolved_agent_id, agent_source = %agent.source,
+                            "explicit history retry reopened automatic recovery");
+                        agent.history_refresh.retry_requested.notify_one();
+                    }
+                    start_agent_history_worker(&state, &agent);
+                }
+            });
         }
         if discover {
             request_host_history_refresh(&state);
