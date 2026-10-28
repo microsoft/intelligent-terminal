@@ -45,6 +45,7 @@
 #include "AgentSessionTelemetry.h"
 #include "AgentPolicyTelemetry.h"
 #include "App.h"
+#include "AppLogic.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
 #include "../inc/AgentPaneRestore.h"
@@ -2420,6 +2421,11 @@ namespace winrt::TerminalApp::implementation
             std::wstring{ _settings.ProfileDefaults().AgentPaneBackend() });
         snapshot.agentSessionManagementEnabled =
             globals.EffectiveAgentSessionManagementEnabled();
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredAcpAgents())
+        {
+            snapshot.allowedAgentIds.emplace_back(agent.id);
+        }
+        snapshot.customAgentsAllowed = AgentPolicy::IsCustomAgentAllowed();
         return snapshot;
     }
 
@@ -2429,6 +2435,12 @@ namespace winrt::TerminalApp::implementation
         identity["acp_agent"] = winrt::to_string(winrt::hstring{ snapshot.acpAgent });
         identity["acp_custom_command"] = winrt::to_string(winrt::hstring{ snapshot.acpCustomCommand });
         identity["acp_model"] = winrt::to_string(winrt::hstring{ snapshot.acpModel });
+        identity["allowed_agent_ids"] = Json::arrayValue;
+        for (const auto& id : snapshot.allowedAgentIds)
+        {
+            identity["allowed_agent_ids"].append(winrt::to_string(winrt::hstring{ id }));
+        }
+        identity["custom_agents_allowed"] = snapshot.customAgentsAllowed;
         if (snapshot.customModelLaunch)
         {
             const auto& custom = *snapshot.customModelLaunch;
@@ -2458,6 +2470,11 @@ namespace winrt::TerminalApp::implementation
         const AgentSettingsSnapshot& previous,
         const AgentSettingsSnapshot& current)
     {
+        if (previous.allowedAgentIds != current.allowedAgentIds ||
+            previous.customAgentsAllowed != current.customAgentsAllowed)
+        {
+            return AgentSettingsChangeKind::RecreatePane;
+        }
         const bool changed =
             previous.acpAgent != current.acpAgent ||
             previous.acpCustomCommand != current.acpCustomCommand ||
@@ -3976,13 +3993,85 @@ namespace winrt::TerminalApp::implementation
         _RaiseProtocolEvent("set_agent_state", params);
     }
 
+    bool TerminalPage::_EnsureSharedWtaService()
+    {
+        if (!AppLogic::Current())
+        {
+            return false;
+        }
+        auto& shared = SharedWta::Instance();
+        if (shared.IsRunning())
+        {
+            return true;
+        }
+        if (!shared.CanStart() || _sharedWtaFallbackProbeInFlight)
+        {
+            return false;
+        }
+        const auto wtaPath = _DetectWtaPath();
+        if (wtaPath.empty())
+        {
+            return false;
+        }
+        if (_settings.GlobalSettings().EffectiveAcpAgent().empty())
+        {
+            _sharedWtaFallbackProbeInFlight = true;
+            _StartSharedWtaServiceWithFallback();
+            return false;
+        }
+        return shared.EnsureStarted(wtaPath, _BuildSharedWtaExtraArgs(), _BuildSharedWtaEnvironment());
+    }
+
+    safe_void_coroutine TerminalPage::_StartSharedWtaServiceWithFallback()
+    {
+        const auto weakThis = get_weak();
+        const auto dispatcher = Dispatcher();
+        std::unordered_set<std::wstring> availableAgents;
+        try
+        {
+            co_await winrt::resume_background();
+            availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto page = weakThis.get())
+        {
+            page->_sharedWtaFallbackProbeInFlight = false;
+            auto& shared = SharedWta::Instance();
+            if (shared.CanStart())
+            {
+                const auto extraArgs = page->_BuildSharedWtaExtraArgs([&]() {
+                    for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredAcpAgents())
+                    {
+                        if (availableAgents.contains(std::wstring{ agent.id }))
+                        {
+                            return winrt::hstring{ agent.id };
+                        }
+                    }
+                    return winrt::hstring{};
+                });
+                if (!shared.EnsureStarted(page->_DetectWtaPath(), extraArgs, page->_BuildSharedWtaEnvironment()))
+                {
+                    co_return;
+                }
+            }
+            if (shared.IsRunning())
+            {
+                page->_RequestAgentSnapshotRefresh();
+            }
+        }
+    }
+
     // Builds the per-process flag/value pairs that wta-master inherits
     // at spawn time. Single source of truth so the first-acquire path
     // (`_AutoCreateHiddenAgentPaneShared`) and the settings-change-
     // driven respawn path (`_ReconcileAgentSettings` → `SharedWta::Restart`)
     // stay in sync. Each pair is pushed as two separate vector elements
     // so SharedWta can apply its own Windows command-line quoting.
-    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs()
+    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs(const std::function<winrt::hstring()>& detectFallback)
     {
         const auto& globals = _settings.GlobalSettings();
         // Resolved here (not on the caller side) so the Restart path
@@ -3990,7 +4079,9 @@ namespace winrt::TerminalApp::implementation
         // empty when no agent CLI is detected but policy doesn't actively
         // block — pass through anyway; wta will surface the failure to
         // spawn the child as an ACP error.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this, &detectFallback]() {
+            return detectFallback ? detectFallback() : _DetectAgentCli();
+        });
 
         std::vector<std::wstring> extraArgs;
         const auto pushFlagValue = [&extraArgs](const std::wstring_view flag, const std::wstring_view value) {
@@ -4001,7 +4092,15 @@ namespace winrt::TerminalApp::implementation
             extraArgs.emplace_back(flag);
             extraArgs.emplace_back(value);
         };
-        pushFlagValue(L"--agent", agentCliPath);
+        if (agentCliPath.empty())
+        {
+            // Omitting this flag restores WTA's executable Copilot default.
+            extraArgs.emplace_back(L"--agent=");
+        }
+        else
+        {
+            pushFlagValue(L"--agent", agentCliPath);
+        }
         pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
         // Pass the GPO-filtered set of allowed agent ids to the master.
         // A per-tab helper declares the agent it wants by *id* over the
@@ -5199,10 +5298,14 @@ namespace winrt::TerminalApp::implementation
             _lastAgentSettings.customModelLaunch != current.customModelLaunch;
         const bool cloudModelChanged =
             _lastAgentSettings.acpModel != current.acpModel;
+        const bool agentPolicyChanged =
+            _lastAgentSettings.allowedAgentIds != current.allowedAgentIds ||
+            _lastAgentSettings.customAgentsAllowed != current.customAgentsAllowed;
         const bool masterConfigurationChanged =
-            !modelHotUpdate &&
-            (customMasterArgsChanged ||
-             (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged)));
+            agentPolicyChanged ||
+            (!modelHotUpdate &&
+             (customMasterArgsChanged ||
+              (!rebindAgentInPlace && (cloudModelChanged || customModelLaunchChanged))));
         const bool globalModelBindingChanged =
             cloudModelChanged || customModelLaunchChanged;
         const bool globalAgentChanged =
@@ -12426,6 +12529,48 @@ namespace winrt::TerminalApp::implementation
         }
         const auto replacement = _lastReadyNativeAgentReceiverGeneration != receiverGeneration;
         _lastReadyNativeAgentReceiverGeneration = receiverGeneration;
+        if (replacement && _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        {
+            for (const auto& runtimeTab : _RuntimeTabs())
+            {
+                if (const auto tab = _GetTabImpl(runtimeTab); tab && tab->GetRootPane())
+                {
+                    for (const auto& [paneId, binding] : _paneAgentSessions)
+                    {
+                        const auto active = _activeCliAgentPanes.find(paneId);
+                        const auto interactive = _interactiveResumeSessions.find(paneId);
+                        const auto confirmed = active != _activeCliAgentPanes.end() ?
+                                                   active->second.sessionId == binding.sessionId :
+                                                   interactive != _interactiveResumeSessions.end() &&
+                                                       interactive->second.sessionId == binding.sessionId &&
+                                                       interactive->second.agent == binding.agent;
+                        if (binding.sessionId.empty() || binding.agent.empty() ||
+                            !confirmed)
+                        {
+                            continue;
+                        }
+                        if (const auto pane = tab->GetRootPane()->FindPaneBySessionId(paneId))
+                        {
+                            if (const auto control = pane->GetTerminalControl();
+                                control && control.ConnectionState() == ConnectionState::Connected)
+                            {
+                                // Replay only a confirmed, still-live shell binding.
+                                // This registers identity; it never launches or resumes a CLI.
+                                _pendingRestoredSessionBindings.try_emplace(
+                                    paneId,
+                                    _PendingRestoredSessionBinding{
+                                        binding.sessionId,
+                                        binding.agent,
+                                        binding.cwd.empty() ? control.WorkingDirectory() : binding.cwd,
+                                        binding.backend,
+                                        0,
+                                        true });
+                            }
+                        }
+                    }
+                }
+            }
+        }
         for (const auto& tabId : std::exchange(_tabsAwaitingRestoredBindings, {}))
         {
             if (const auto tab = _FindTabByStableId(tabId))
@@ -12499,6 +12644,7 @@ namespace winrt::TerminalApp::implementation
         const auto receiverGeneration = SharedWta::Instance().MasterGeneration();
         if (receiverGeneration != 0 && _lastReadyNativeAgentReceiverGeneration != receiverGeneration)
         {
+            _RequestAgentSnapshotRefresh();
             return;
         }
         const auto previous = manager->NativeAgentObservationForContent(control.ContentId());
@@ -13064,6 +13210,16 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        if (!_EnsureSharedWtaService())
+        {
+            if (_historyRefreshInFlight)
+            {
+                _SidebarHistorySnapshot history;
+                history.state = _SidebarHistorySnapshot::State::MasterUnavailable;
+                _CompleteSidebarHistoryRefresh(_historyRequestGeneration, std::move(history));
+            }
+            return;
+        }
         _agentSnapshotRefreshInFlight = true;
         _agentSnapshotRefreshPending = false;
         _LoadAgentSnapshot(++_agentSnapshotRequestGeneration);

@@ -449,6 +449,13 @@ namespace winrt::TerminalApp::implementation
                     self->_RaiseProtocolEvent("tab_renamed", params);
                 });
 
+                // CLI tracking is a background consumer even if this tab
+                // suppresses assistant pre-warm or restores only shell panes.
+                if (self->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                {
+                    self->_EnsureSharedWtaService();
+                }
+
                 // Pre-warm a stashed agent pane on this tab so the helper is
                 // running from the start (autofix needs it). A transferred
                 // pane keeps its existing helper and skips this path, and a

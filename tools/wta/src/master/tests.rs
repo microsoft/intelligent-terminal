@@ -11,6 +11,90 @@ use std::path::PathBuf;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[tokio::test(flavor = "current_thread")]
+async fn service_shutdown_closes_only_master_owned_sessions() {
+    LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let session_id = SessionId::new("owned-service-session");
+            let shell_session_id = SessionId::new("ordinary-shell-cli");
+            let live = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
+            let (events, mut received) = mpsc::unbounded_channel();
+            let mut agent = unbound_test_agent("service-agent");
+            let owned = Arc::get_mut(&mut agent).unwrap();
+            owned.conn =
+                client_connection_to_controlled_new_session_agent(events, Arc::clone(&live), None);
+            owned
+                .cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close =
+                Some(acp::schema::v1::SessionCloseCapabilities::new());
+            add_test_agent_to_pool(&state, &agent).await;
+            register_retirement_tab(&state, &agent, HelperId(1), "tab", &session_id).await;
+            state
+                .registry
+                .upsert(crate::session_registry::SessionInfo::new(
+                    shell_session_id.clone(),
+                    PathBuf::from("C:\\shell"),
+                ))
+                .await;
+
+            shutdown_master(&state).await;
+
+            assert!(
+                matches!(received.recv().await, Some(ReplacementEvent::Close(id)) if id == session_id)
+            );
+            assert!(live.lock().await.is_empty());
+            assert!(agent.conn.transport_ended());
+            assert!(agent.history_refresh.cancelled.is_cancelled());
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(state
+                .registry
+                .snapshot()
+                .await
+                .iter()
+                .any(|row| row.session_id == shell_session_id));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn service_shutdown_bounds_unresponsive_provider_cleanup() {
+    LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (events, mut received) = mpsc::unbounded_channel();
+            let mut agent = unbound_test_agent("blocked-service-agent");
+            let owned = Arc::get_mut(&mut agent).unwrap();
+            owned.conn = client_connection_to_blocking_close_agent(events);
+            owned
+                .cached_init_resp
+                .agent_capabilities
+                .session_capabilities
+                .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
+            add_test_agent_to_pool(&state, &agent).await;
+            register_retirement_tab(
+                &state,
+                &agent,
+                HelperId(1),
+                "tab",
+                &SessionId::new("blocked-session"),
+            )
+            .await;
+            let cleanup = tokio::task::spawn_local(async move { shutdown_master(&state).await });
+            let Some(ReplacementEvent::BlockingClose(_, _keep_pending)) = received.recv().await
+            else {
+                panic!("shutdown must first attempt provider cleanup");
+            };
+            tokio::time::advance(std::time::Duration::from_secs(2)).await;
+            cleanup.await.unwrap();
+            assert!(agent.conn.transport_ended());
+            assert!(agent.history_refresh.cancelled.is_cancelled());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn auth_bridge_private_owner_and_shared_serialization_survive_disconnect() {
     LocalSet::new().run_until(async {
         const URL: &str = "https://accounts.google.com/o/oauth2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A8181%2Fcallback&state=fixture";

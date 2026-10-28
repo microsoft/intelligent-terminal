@@ -72,6 +72,7 @@ use crate::protocol::acp::spawn::{
 pub(crate) mod config;
 mod history;
 mod session_mcp;
+mod shutdown;
 
 use config::MasterConfig;
 
@@ -4768,12 +4769,6 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
         "=== wta-master starting ==="
     );
 
-    if config.agent.is_empty() {
-        return Err(anyhow!(
-            "wta-master requires --agent <cmd>; nothing to multiplex onto"
-        ));
-    }
-
     if config.session_management_enabled {
         // Reconciliation is fire-and-forget so slow third-party plugin
         // managers never delay ACP startup. Missing hooks are installed and
@@ -4997,6 +4992,7 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> {
+    let shutdown = shutdown::ShutdownSignal::from_environment()?;
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
     // to Ended on pane-close even when no helper publishes a `PaneClosed`
@@ -5217,9 +5213,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // cannot delay helper connections. An individual agent CLI dying is handled by its reaper
     // (`spawn_one_agent`) — it removes that agent from the pool but the
     // master stays alive so sibling tabs on OTHER agents keep working.
-    // Only a fatal pipe error returns from this loop. SharedWta on the
-    // C++ side still owns the master's process lifetime (job object +
-    // pane refcount).
+    // Host shutdown or a fatal pipe error returns from this loop. SharedWta on the
+    // C++ side owns the process-scoped service lifetime and job object.
     // Tighten the pipe ACL (defense in depth — see
     // `build_pipe_security_attributes`). Held for the whole accept loop so
     // every follow-up instance inherits the same attributes; `None` means
@@ -5248,11 +5243,25 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // Both connect and disconnect log it, so a single grep on
     // "live_helpers=" reconstructs the timeline.
     let live_helpers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let shutdown_requested = async {
+        match &shutdown {
+            Some(signal) => signal.requested().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(shutdown_requested);
     loop {
-        server
-            .connect()
-            .await
-            .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_requested => {
+                drop(server);
+                shutdown_master(&inner).await;
+                return Ok(());
+            }
+            connected = server.connect() => {
+                connected.with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+            }
+        }
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
@@ -5294,6 +5303,51 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
                 ),
             }
         });
+    }
+}
+
+async fn shutdown_master(state: &Arc<MasterStateInner>) {
+    const CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+    tracing::info!(target: "master", "Terminal requested master service shutdown");
+    let agents: Vec<_> = state
+        .agents
+        .lock()
+        .await
+        .values()
+        .filter_map(|cell| cell.get().cloned())
+        .collect();
+    let sessions: Vec<_> = state
+        .session_to_helper
+        .lock()
+        .await
+        .iter()
+        .filter_map(|(id, route)| {
+            agents
+                .iter()
+                .find(|agent| agent.instance_id == route.agent_instance_id)
+                .map(|agent| (id.clone(), route.helper_id, Arc::clone(agent)))
+        })
+        .collect();
+    let cleanup = async {
+        futures::future::join_all(sessions.iter().map(|(id, helper, agent)| async move {
+            if let Err(error) =
+                close_and_retire_replaced_session(state, *helper, agent, id, CLEANUP_TIMEOUT).await
+            {
+                tracing::warn!(target: "master", %error, "session cleanup failed during service shutdown");
+            }
+        }))
+        .await;
+        futures::future::join_all(agents.iter().map(|agent| retire_agent_history(agent))).await;
+    };
+    if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup)
+        .await
+        .is_err()
+    {
+        tracing::warn!(target: "master", "service cleanup deadline reached; closing owned transports");
+    }
+    for agent in agents {
+        agent.history_refresh.cancelled.cancel();
+        agent.conn.shutdown();
     }
 }
 
