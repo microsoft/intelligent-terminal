@@ -1392,7 +1392,8 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto groupIndicatorVisible = isGroup && display.ChildrenVisibility() == Visibility::Visible;
-            const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible;
+            const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
+            const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
@@ -1411,7 +1412,7 @@ namespace winrt::TerminalApp::implementation
                     if (Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
                             L"Windows.UI.Xaml.Controls.Primitives.ListViewItemPresenter", L"SelectionIndicatorVisualEnabled"))
                     {
-                        presenter.SelectionIndicatorVisualEnabled(!groupIndicatorVisible);
+                        presenter.SelectionIndicatorVisualEnabled(!groupIndicatorVisible && !searchFocused);
                     }
                     const auto marker = box_value(L"SidebarThemedHover");
                     if (!_highContrast)
@@ -1486,7 +1487,14 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (control)
                     {
-                        control.ClearValue(WUX::Controls::Control::ForegroundProperty());
+                        if (searchFocused)
+                        {
+                            control.Foreground(ItemsList().Foreground());
+                        }
+                        else
+                        {
+                            control.ClearValue(WUX::Controls::Control::ForegroundProperty());
+                        }
                     }
                 }
             }
@@ -1510,7 +1518,8 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto button = root.FindName(L"PaneActivateButton").try_as<WUX::Controls::Control>();
-        const auto active = pane.ActiveIndicatorVisibility() == Visibility::Visible;
+        const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
+        const auto active = pane.ActiveIndicatorVisibility() == Visibility::Visible && !searchFocused;
         const auto color = active ? _tabSelectionBrush(pane.Tab(), true) : nullptr;
         const auto hoverBrush = !active && !highContrastActive ? _tabHoverBrush(pane.Tab()) : nullptr;
         const auto hovered = hoverBrush && winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
@@ -1538,6 +1547,10 @@ namespace winrt::TerminalApp::implementation
                 if (foreground)
                 {
                     control.Foreground(foreground);
+                }
+                else if (searchFocused)
+                {
+                    control.Foreground(ItemsList().Foreground());
                 }
                 else
                 {
@@ -2749,6 +2762,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         SearchQuery(SearchTextBox().Text());
+    }
+
+    void TabStrip::OnSearchBoxFocusChanged(IInspectable const&, RoutedEventArgs const&)
+    {
+        for (const auto& display : _displayItems)
+        {
+            _refreshDisplayItemVisuals(display);
+        }
     }
 
     void TabStrip::OnSearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
