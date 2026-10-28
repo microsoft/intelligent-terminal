@@ -173,6 +173,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Profile Agent pane agent
 
+- [ ] `C463` `[new]` `[E2E]` **Profile agent pickers distinguish global and fixed selections:** Both profile agent pickers offer an explicit global option showing the current global agent. Saving global stores an empty override even when profile defaults pin another agent; fixed selections remain fixed when global agents change. _(E2E: `Feature.SettingsUi`, tag `ProfileGlobalAgent`; no model prompts or hook installation.)_
 - [ ] `C237` `[new]` `[UT~]` `[E2E]` **Profile Agent pane agent picker works:** Each profile's Agent pane agent picker lists installed, policy-allowed Windows agents plus agents installed natively in that profile's WSL distro; saving persists `agentPaneBackend`, while an unconfigured profile inherits the global Windows agent. _(#481; UT: `ProfileTests::AgentPaneBackendDefaultsAndInherits`.)_
 - [ ] `C238` `[new]` `[E2E]` **Profile WSL agent routing is strict:** Changing a profile to a WSL backend rebuilds its helper, routes the exact selected agent through `wsl:<distro>`, and does not fall back to a Windows-hosted agent. _(#481; E2E: `Feature.WslAgentBackend`.)_
 

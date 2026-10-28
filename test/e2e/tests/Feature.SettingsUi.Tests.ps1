@@ -108,6 +108,177 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
     }
 }
 
+Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobalAgent' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+        $script:profileGuid = '{42e4499d-63ee-48ce-9fe9-d8d72e0dfb98}'
+        $script:profileName = 'ITE2E Global Agent'
+        $script:fixedProfileGuid = '{42e4499d-63ee-48ce-9fe9-d8d72e0dfb99}'
+        $script:fixedProfileName = 'ITE2E Fixed Agent'
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            language = 'en-US'
+            acpAgent = 'copilot'
+            delegateAgent = 'claude'
+            autoErrorDetectionEnabled = $false
+            agentSessionManagementEnabled = $false
+            defaultProfile = $script:fixedProfileGuid
+            firstWindowPreference = 'defaultProfile'
+            profiles = @{
+                defaults = @{ agentPaneBackend = 'host:codex'; commandPaletteAgent = 'host:codex' }
+                list = @(
+                    @{
+                        guid = $script:profileGuid
+                        name = $script:profileName
+                        commandline = 'cmd.exe'
+                        agentPaneBackend = 'host:copilot'
+                        commandPaletteAgent = 'host:claude'
+                    }
+                    @{
+                        guid = $script:fixedProfileGuid
+                        name = $script:fixedProfileName
+                        commandline = 'cmd.exe'
+                        agentPaneBackend = 'host:copilot'
+                        commandPaletteAgent = 'host:claude'
+                    }
+                )
+            }
+        }
+
+        function Get-ProfileAgentCombo {
+            param([string]$Header)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::IsExpandCollapsePatternAvailableProperty, $true)
+            $expander = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
+                Where-Object { $_.Current.Name.StartsWith($Header) } | Select-Object -First 1
+            $expander | Should -Not -BeNullOrEmpty
+            $expander.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ComboBox)
+            Wait-Until -TimeoutSec 8 -Because "$Header must expose its agent choices" -Condition {
+                $script:profileAgentCombo = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
+                    Where-Object { $_.Current.Name.StartsWith($Header) } | Select-Object -First 1
+                $null -ne $script:profileAgentCombo
+            } | Out-Null
+            $script:profileAgentCombo
+        }
+
+        function Get-ProfileAgentSelection {
+            param($Combo)
+            $Combo.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()[0].Current.Name
+        }
+
+        function Select-ProfileAgent {
+            param($Combo, [string]$Name)
+            $expand = $Combo.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $expand.Expand()
+            $condition = [Windows.Automation.AndCondition]::new(
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name),
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem))
+            Wait-Until -TimeoutSec 8 -Because "$Name must be a distinct selectable option" -Condition {
+                $script:profileAgentChoice = $Combo.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+                $null -ne $script:profileAgentChoice
+            } | Out-Null
+            $script:profileAgentChoice.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            if ($expand.Current.ExpandCollapseState -eq [Windows.Automation.ExpandCollapseState]::Expanded) { $expand.Collapse() }
+        }
+
+        function Save-ProfileAgents {
+            param([AllowEmptyString()][string]$Pane, [AllowEmptyString()][string]$Palette,
+                [string]$ProfileGuid = $script:profileGuid)
+            Invoke-UiElement -App $script:app -Selector SaveButton | Out-Null
+            try {
+                # Empty WinRT strings serialize as explicit JSON null, not an absent override.
+                Wait-Until -TimeoutSec 8 -Because 'both profile selections must persist exactly' -Condition {
+                    $profile = @((Get-WtSettingsObject -App $script:app).profiles.list) |
+                        Where-Object guid -eq $ProfileGuid | Select-Object -First 1
+                    $null -ne $profile -and
+                        $profile.PSObject.Properties.Name -contains 'agentPaneBackend' -and
+                        $profile.PSObject.Properties.Name -contains 'commandPaletteAgent' -and
+                        [string]$profile.agentPaneBackend -ceq $Pane -and [string]$profile.commandPaletteAgent -ceq $Palette
+                } | Out-Null
+            }
+            catch {
+                @((Get-WtSettingsObject -App $script:app).profiles.list) |
+                    Where-Object { $_.guid -in @($script:profileGuid, $script:fixedProfileGuid) } |
+                    Select-Object guid, name, agentPaneBackend, commandPaletteAgent | ConvertTo-Json | Write-Host
+                throw
+            }
+        }
+
+        function Open-ProfileAgentSettings {
+            param([string]$Name = $script:profileName)
+            Open-WtSettings -App $script:app | Out-Null
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $nav = $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SettingsNav'))
+            $condition = [Windows.Automation.AndCondition]::new(
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name),
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::IsSelectionItemPatternAvailableProperty, $true))
+            $profile = $nav.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+            $profile | Should -Not -BeNullOrEmpty
+            $profile.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x0D | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'profile navigation must update the visible page' -Condition {
+                (Get-UiTree -App $script:app -Selector NavigationBreadcrumbBar -Depth 5) -match [regex]::Escape($Name)
+            } | Out-Null
+        }
+
+        function Change-GlobalAgents {
+            param([string]$Pane, [string]$Palette)
+            Send-WtWindowKey -App $script:app -Vk 0x57 -Ctrl -Shift | Out-Null
+            Wait-Until -TimeoutSec 8 -Because 'the old Settings clone must close' -Condition {
+                -not (Test-UiElementExists -App $script:app -Selector SettingsNav -TimeoutSec 1)
+            } | Out-Null
+            Set-WtSetting -App $script:app -Key acpAgent -Value $Pane | Out-Null
+            Set-WtSetting -App $script:app -Key delegateAgent -Value $Palette | Out-Null
+        }
+    }
+
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'Profile agent pickers distinguish global and fixed selections' {
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        (Get-ProfileAgentSelection $pane) | Should -Match '^GitHub Copilot'
+        (Get-ProfileAgentSelection $palette) | Should -Match '^Claude'
+
+        Open-ProfileAgentSettings
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        Select-ProfileAgent $pane 'Use global setting (GitHub Copilot)'
+        Select-ProfileAgent $palette 'Use global setting (Claude)'
+        Save-ProfileAgents -Pane '' -Palette ''
+
+        Change-GlobalAgents -Pane claude -Palette codex
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        (Get-ProfileAgentSelection $pane) | Should -Match '^GitHub Copilot'
+        (Get-ProfileAgentSelection $palette) | Should -Match '^Claude'
+        Save-ProfileAgents -Pane 'host:copilot' -Palette 'host:claude' -ProfileGuid $script:fixedProfileGuid
+
+        Open-ProfileAgentSettings
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        (Get-ProfileAgentSelection $pane) | Should -Be 'Use global setting (Claude)'
+        (Get-ProfileAgentSelection $palette) | Should -Be 'Use global setting (Codex)'
+
+        Change-GlobalAgents -Pane copilot -Palette claude
+        Open-ProfileAgentSettings
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        (Get-ProfileAgentSelection $pane) | Should -Be 'Use global setting (GitHub Copilot)'
+        (Get-ProfileAgentSelection $palette) | Should -Be 'Use global setting (Claude)'
+        Save-ProfileAgents -Pane '' -Palette ''
+    }
+}
+
 Describe 'Feature Settings editor language direction' -Tag 'Feature', 'SettingsRtl' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
