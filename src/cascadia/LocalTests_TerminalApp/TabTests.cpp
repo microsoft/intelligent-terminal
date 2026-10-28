@@ -215,6 +215,18 @@ namespace TerminalAppLocalTests
                _progressIndicatorsMatch(root, L"Tab", shown, indeterminate, value);
     }
 
+    static void _verifyCompletionIndicatorLayout(const Grid& indicator)
+    {
+        const auto dot = indicator.Children().GetAt(0).as<FrameworkElement>();
+        const auto position = dot.TransformToVisual(indicator).TransformPoint({ 0, 0 });
+        VERIFY_ARE_EQUAL(24.0, indicator.ActualWidth());
+        VERIFY_ARE_EQUAL(24.0, indicator.ActualHeight());
+        VERIFY_ARE_EQUAL(4.0, dot.ActualWidth());
+        VERIFY_ARE_EQUAL(4.0, dot.ActualHeight());
+        VERIFY_IS_TRUE(std::abs(position.X - 10.0) <= 0.5);
+        VERIFY_IS_TRUE(std::abs(position.Y - 10.0) <= 0.5);
+    }
+
     static double _effectiveTextOpacity(const TextBlock& text, const Media::Brush& brush)
     {
         auto opacity = brush.Opacity() * brush.as<Media::SolidColorBrush>().Color().A / 255.0;
@@ -2404,7 +2416,7 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetFocusedTabImpl();
             const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
             const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
-            for (const auto width : { 120.0f, 240.0f })
+            for (const auto width : { 120.0f, 240.0f, 272.0f })
             {
                 for (const auto& titleText : { winrt::hstring{ L"Tab" }, winrt::hstring{ std::wstring(240, L'W') } })
                 {
@@ -2420,6 +2432,7 @@ namespace TerminalAppLocalTests
                         header.Arrange({ 0, 0, width, header.DesiredSize().Height });
                         header.UpdateLayout();
                         VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+                        _verifyCompletionIndicatorLayout(indicator);
                         const auto position = indicator.TransformToVisual(header).TransformPoint({ 0, 0 });
                         const auto titlePosition = title.TransformToVisual(header).TransformPoint({ 0, 0 });
                         VERIFY_IS_TRUE(position.X >= titlePosition.X + title.ActualWidth());
@@ -9993,6 +10006,11 @@ namespace TerminalAppLocalTests
             const auto row = container.ContentTemplateRoot().as<FrameworkElement>();
             const auto indicator = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
             VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            _verifyCompletionIndicatorLayout(indicator);
+            const auto title = row.FindName(L"HistoryTitleText").as<FrameworkElement>();
+            const auto indicatorPosition = indicator.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(std::abs(indicatorPosition.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, visible.Status());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Complete"), visible.StatusLabelText());
             VERIFY_IS_TRUE(visible.IsLive());
@@ -25039,6 +25057,13 @@ namespace TerminalAppLocalTests
                         VERIFY_IS_TRUE(highlights.GetAt(1).Foreground() == expected);
                     }
                     const auto title = paneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
+                    if (indicator.Visibility() == Visibility::Visible)
+                    {
+                        _verifyCompletionIndicatorLayout(indicator);
+                        const auto indicatorPosition = indicator.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
+                        const auto titlePosition = title.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
+                        VERIFY_IS_TRUE(std::abs(indicatorPosition.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+                    }
                     VERIFY_ARE_EQUAL(1.0, title.Opacity());
                     VERIFY_ARE_EQUAL(1.0, title.TextOpacity());
                     bool bold = false;

@@ -283,7 +283,8 @@
                                     ContentTemplate="{x:Bind IconTemplate}"
                                     IsTabStop="False" />
                     <Grid Grid.Column="1"
-                          HorizontalAlignment="Left">
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -304,8 +305,8 @@
                     </Grid>
                     <Grid x:Name="HistoryCompletionIndicator"
                           Grid.Column="2"
-                          Width="16"
-                          Height="16"
+                          Width="24"
+                          Height="24"
                           VerticalAlignment="Center"
                           AutomationProperties.AccessibilityView="Raw"
                           IsHitTestVisible="False"
@@ -860,9 +861,9 @@
                                                 </local:HighlightedTextControl>
                                                 <Grid x:Name="PaneCompletionIndicator"
                                                       Grid.Column="3"
-                                                      Width="16"
-                                                      Height="16"
-                                                      Margin="4,3,4,0"
+                                                      Width="24"
+                                                      Height="24"
+                                                      Margin="0,3,0,0"
                                                       VerticalAlignment="Center"
                                                       AutomationProperties.AccessibilityView="Raw"
                                                       IsHitTestVisible="False"

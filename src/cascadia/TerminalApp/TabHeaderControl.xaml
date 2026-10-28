@@ -109,7 +109,8 @@
         </StackPanel>
         <Grid Grid.Column="1"
               MinWidth="0"
-              HorizontalAlignment="Left">
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -162,9 +163,8 @@
         </Grid>
         <Grid x:Name="HeaderCompletionIndicator"
               Grid.Column="2"
-              Width="16"
-              Height="16"
-              Margin="4,0,0,0"
+              Width="24"
+              Height="24"
               VerticalAlignment="Center"
               AutomationProperties.AccessibilityView="Raw"
               IsHitTestVisible="False"
