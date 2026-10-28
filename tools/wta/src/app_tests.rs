@@ -9122,6 +9122,70 @@ fn copilot_fork_native_resume_requires_current_post_dispatch_live_evidence() {
 }
 
 #[test]
+fn copilot_fork_native_resume_rejects_delayed_pre_dispatch_exit_evidence() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history");
+    };
+    let mut historical = session_info_for_test("fork-parent");
+    historical.cli_source = Some(CliSource::Copilot);
+    historical.provider_id = Some("copilot".into());
+    historical.status = Some(AgentStatus::Historical);
+    historical.last_activity_at_ms = Some(
+        (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64)
+            .saturating_sub(10_000),
+    );
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: first, .. } = requests.try_recv().unwrap()
+    else {
+        panic!("historical session must activate");
+    };
+    let dispatched_at_ms = app.native_resume_attempts[&first.identity]
+        .dispatched_at
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let mut ended = historical;
+    ended.status = Some(AgentStatus::Ended);
+    ended.last_activity_at_ms = Some(dispatched_at_ms - 1);
+    app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("refetch must request history");
+    };
+    app.handle_agents_snapshot_loaded(request_id, vec![ended.clone()]);
+    assert!(app.native_resume_attempts.contains_key(&first.identity));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "pre-dispatch exit evidence must not permit a fresh activation"
+    );
+    assert!(app.native_resume_attempts.contains_key(&first.identity));
+
+    ended.last_activity_at_ms = Some(dispatched_at_ms + 1_000);
+    app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("refetch must request history");
+    };
+    app.handle_agents_snapshot_loaded(request_id, vec![ended]);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: later, .. } = requests.try_recv().unwrap()
+    else {
+        panic!("a genuine later exit must permit another resume");
+    };
+    assert_ne!(later.activation_id, first.activation_id);
+}
+
+#[test]
 fn copilot_fork_native_resume_success_settles_without_intervening_live_snapshot() {
     use crate::agent_sessions::{AgentStatus, CliSource};
     use crate::protocol::acp::client::MasterExtRequest;

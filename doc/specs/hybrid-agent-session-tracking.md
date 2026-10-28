@@ -39,6 +39,8 @@ Confirmed helper resume success settles that exact attempt without waiting
 for a live snapshot, while pending or indeterminate attempts remain suppressed.
 Snapshot-based settlement requires current request-generation evidence newer
 than the attempt; an ignored old snapshot cannot release a newer attempt.
+The Enter-side exit path also requires post-dispatch exit activity before
+releasing an attempt; a delayed pre-dispatch Ended row cannot permit a duplicate.
 Reverse file notifications retain bounded, short-lived
 unmatched fork/activity evidence in memory; only a verified predecessor can
 promote that evidence into a binding transition.

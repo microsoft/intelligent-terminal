@@ -3701,6 +3701,7 @@ impl App {
                 .is_some_and(|attempt| {
                     s.status == crate::agent_sessions::AgentStatus::Ended
                         && s.last_activity_at > attempt.selected_last_activity_at
+                        && s.last_activity_at > attempt.dispatched_at
                 })
             {
                 self.native_resume_attempts.remove(&identity);
