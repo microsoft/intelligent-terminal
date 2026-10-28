@@ -705,8 +705,12 @@ namespace winrt::TerminalApp::implementation
             name += L", ";
             name += _richTabAccessibilityText;
         }
-        if (_headerControl.Presentation().HasUnreadActivity() &&
-            (!_isVerticalTabLayout || _richTabAccessibilityText.empty()))
+        const auto unreadStatus = _unreadAgentActivityNeedsAttention ? "Attention" : "Complete";
+        const auto metadataIncludesUnreadStatus = _isVerticalTabLayout &&
+                                                  !_richTabAccessibilityText.empty() &&
+                                                  _richTabPresentation &&
+                                                  _richTabPresentation->agentStatus == unreadStatus;
+        if (_headerControl.Presentation().HasUnreadActivity() && !metadataIncludesUnreadStatus)
         {
             name += L", ";
             name += _unreadAgentActivityNeedsAttention ? RS_(L"VerticalTabsHistoryStatusAttention") : RS_(L"VerticalTabsHistoryStatusComplete");

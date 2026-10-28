@@ -2460,6 +2460,35 @@ namespace TerminalAppLocalTests
             tab->SetUnreadAgentActivity(true, true);
             VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ tab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusAttention").c_str() },
                              Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            tab->SetVerticalTabLayout(true);
+            for (const auto needsAttention : { false, true })
+            {
+                tab->SetUnreadAgentActivity(true, needsAttention);
+                const auto unreadStatus = needsAttention ? "Attention" : "Complete";
+                const auto localizedUnread = needsAttention ? RS_(L"VerticalTabsHistoryStatusAttention") : RS_(L"VerticalTabsHistoryStatusComplete");
+                for (const auto status : { "", "Idle", unreadStatus })
+                {
+                    ::Microsoft::Terminal::RichTab::Provider::Presentation metadata;
+                    metadata.agentStatus = status;
+                    metadata.text = std::string_view{ status }.empty() ?
+                                        L"main" :
+                                        std::wstring{ winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status) };
+                    metadata.accessibilityText = metadata.text;
+                    tab->SetRichTabPresentation(metadata);
+                    auto expected = std::wstring{ tab->Title() } + L", " + metadata.accessibilityText;
+                    if (std::string_view{ status } != unreadStatus)
+                    {
+                        expected += L", ";
+                        expected += localizedUnread;
+                    }
+                    VERIFY_ARE_EQUAL(winrt::hstring{ expected }, Automation::AutomationProperties::GetName(tab->TabViewItem()));
+                }
+                tab->SetUnreadAgentActivity(false);
+                VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ tab->Title() } + L", " + localizedUnread.c_str() },
+                                 Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            }
+            tab->SetRichTabPresentation(std::nullopt);
+            tab->SetVerticalTabLayout(false);
             tab->SetUnreadAgentActivity(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             VERIFY_ARE_EQUAL(tab->Title(), Automation::AutomationProperties::GetName(tab->TabViewItem()));
