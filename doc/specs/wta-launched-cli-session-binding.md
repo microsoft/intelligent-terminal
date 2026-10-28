@@ -273,8 +273,6 @@ master before announcing its replacement, even if a failure was already reported
 Host resume actions retain the evaluated session cwd when the terminal has no
 usable cwd report, rather than saving an empty or relative profile directory.
 
-A pinned UUID is not proof that a conversation was persisted. When restoring a
-managed host Claude profile, a confirmed missing or metadata-only transcript
-starts a fresh empty profile instead of executing an invalid `--resume`.
-Existing conversations keep their resume ID. An unreadable, malformed, or
-unknown store preserves the original resume rather than discarding history.
+A pinned UUID is not proof that a conversation was persisted. Restore uses the
+saved resume command without inspecting Claude transcripts or replacing its
+session ID; an empty Claude session can still report that no conversation exists.

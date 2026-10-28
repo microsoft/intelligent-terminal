@@ -62,7 +62,6 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileCommandQuoting);
         TEST_METHOD(AgentProfileNativeCommands);
         TEST_METHOD(AgentProfileSessionIdCommands);
-        TEST_METHOD(AgentProfileClaudeConversationAvailability);
         TEST_METHOD(AgentProfileArgumentValidation);
         TEST_METHOD(AgentProfileDiscoveryLifecycle);
         TEST_METHOD(AgentProfileDiscoveryExecutionAliases);
@@ -533,32 +532,6 @@ namespace SettingsModelUnitTests
             VERIFY_IS_FALSE(Agents::CanPinNewSession(id, {}));
             VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, {}, true, sessionId), wil::ResultException);
         }
-    }
-
-    void CustomAgentAndPolicyTests::AgentProfileClaudeConversationAvailability()
-    {
-        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        const auto root = std::filesystem::current_path() / (L"Claude Resume " + Utils::GuidToString(Utils::CreateGuid()));
-        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
-        const std::wstring id{ L"11111111-2222-4333-8444-555555555555" };
-        const auto projects = root / L"projects";
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation(projects, id).value());
-        std::filesystem::create_directories(projects / L"first");
-        const auto first = projects / L"first" / (id + L".jsonl");
-        std::ofstream{ first } << "{\"type\":\"queue-operation\"}\n{\"type\":\"file-history-snapshot\"}\n";
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation(projects, id).value());
-        std::filesystem::create_directories(projects / L"second");
-        const auto second = projects / L"second" / (id + L".jsonl");
-        std::ofstream{ second } << "{\"type\":\"user\"}\n";
-        VERIFY_IS_TRUE(Agents::HasClaudeConversation(projects, id).value());
-        std::ofstream{ second, std::ios::trunc } << "{\"type\":\"assistant\"}\n";
-        VERIFY_IS_TRUE(Agents::HasClaudeConversation(projects, id).value());
-        std::ofstream{ second, std::ios::trunc } << "{incomplete";
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation(projects, id).has_value());
-        std::ofstream{ second, std::ios::trunc } << std::string(70 * 1024, 'x');
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation(projects, id).has_value());
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation(projects, L"../invalid").has_value());
-        VERIFY_IS_FALSE(Agents::HasClaudeConversation({}, id).has_value());
     }
 
     void CustomAgentAndPolicyTests::AgentProfileArgumentValidation()

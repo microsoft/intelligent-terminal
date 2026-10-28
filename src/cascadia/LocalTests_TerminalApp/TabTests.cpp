@@ -7464,43 +7464,6 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(winrt::hstring{ expected }, launch.as<Conpty>().StartingDirectory());
                     VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
                 }
-                profile.AgentProfileId(L"claude");
-                const auto originalReload = profile.ReloadEnvironmentVariables();
-                const auto originalEnvironment = page->_WindowProperties.VirtualEnvVars();
-                auto restoreEnvironment = wil::scope_exit([&]() {
-                    profile.ReloadEnvironmentVariables(originalReload);
-                    page->_WindowProperties.VirtualEnvVars(originalEnvironment);
-                });
-                profile.ReloadEnvironmentVariables(false);
-                const auto claudeConfig = fixture / L"claude-config";
-                std::wstring environment = L"CLAUDE_CONFIG_DIR=" + claudeConfig.native();
-                environment.push_back(L'\0');
-                environment.push_back(L'\0');
-                page->_WindowProperties.VirtualEnvVars(winrt::hstring{ environment });
-                for (const auto persisted : { false, true })
-                {
-                    const auto conversation = Utils::GuidToString(Utils::CreateGuid());
-                    const auto id = std::wstring{ conversation }.substr(1, 36);
-                    if (persisted)
-                    {
-                        std::filesystem::create_directories(claudeConfig / L"projects" / L"fixture");
-                        std::ofstream{ claudeConfig / L"projects" / L"fixture" / (id + L".jsonl") } << "{\"type\":\"user\"}\n";
-                    }
-                    NewTerminalArgs saved;
-                    saved.Profile(Utils::GuidToString(profile.Guid()));
-                    saved.SessionId(Utils::CreateGuid());
-                    saved.StartingDirectory(winrt::hstring{ fixture.native() });
-                    saved.Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(L"claude", id) });
-                    const auto restored = page->_MakePane(saved, nullptr, nullptr);
-                    const auto restoredConnection = restored->GetTerminalControl().Connection().as<Conpty>();
-                    const auto& restoredBinding = page->_paneAgentSessions.at(restoredConnection.SessionId());
-                    VERIFY_ARE_NOT_EQUAL(saved.SessionId(), restoredConnection.SessionId());
-                    VERIFY_ARE_EQUAL(persisted, restoredBinding.sessionId == winrt::hstring{ id });
-                    VERIFY_ARE_EQUAL(persisted, std::wstring_view{ restoredConnection.Commandline() }.find(L"--resume") != std::wstring_view::npos);
-                    VERIFY_ARE_EQUAL(!persisted, std::wstring_view{ restoredConnection.Commandline() }.find(L"--session-id") != std::wstring_view::npos);
-                    restored->Shutdown();
-                }
-                restoreEnvironment.reset();
                 profile.AgentProfileId(L"copilot");
                 for (const auto argument : { L"--resume", L"--continue", L"--version" })
                 {

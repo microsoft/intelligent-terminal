@@ -5,13 +5,8 @@
 
 #include "AgentPaneRestore.h"
 #include "AgentRegistry.h"
-#include <array>
 #include <filesystem>
-#include <fstream>
-#include <json/json.h>
 #include <map>
-#include <memory>
-#include <optional>
 #include <shellapi.h>
 #include <til/env.h>
 
@@ -34,121 +29,6 @@ namespace Microsoft::Terminal::AgentProfiles
             path.append(inherited);
         }
         return path;
-    }
-
-    template<typename Settings>
-    std::filesystem::path ClaudeProjectsDirectory(const Settings& settings, const std::wstring_view initialEnvironment)
-    {
-        auto environment = til::env::from_current_environment();
-        if (settings.ReloadEnvironmentVariables())
-        {
-            environment.regenerate();
-        }
-        else if (!initialEnvironment.empty())
-        {
-            environment = til::env{ initialEnvironment.data() };
-        }
-        if (const auto variables = settings.EnvironmentVariables())
-        {
-            for (const auto& variable : variables)
-            {
-                environment.set_user_environment_var(variable.Key(), variable.Value());
-            }
-        }
-        auto& values = environment.as_map();
-        auto directory = std::filesystem::path{ values[L"CLAUDE_CONFIG_DIR"] };
-        if (directory.empty())
-        {
-            directory = std::filesystem::path{ values[L"USERPROFILE"] } / L".claude";
-        }
-        return directory.is_absolute() ? directory / L"projects" : std::filesystem::path{};
-    }
-
-    // Unknown or unreadable stores must not discard a potentially valid resume.
-    inline std::optional<bool> HasClaudeConversation(const std::filesystem::path& projects, const std::wstring_view sessionId) noexcept
-    {
-        try
-        {
-            if (projects.empty())
-            {
-                return std::nullopt;
-            }
-            static_cast<void>(winrt::guid{ sessionId });
-            if (!std::filesystem::exists(projects))
-            {
-                return false;
-            }
-            bool unknown = false;
-            std::array<char, 64 * 1024> line;
-            Json::CharReaderBuilder builder;
-            builder["collectComments"] = false;
-            builder["stackLimit"] = 64;
-            const std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
-            for (const auto& project : std::filesystem::directory_iterator{ projects })
-            {
-                if (!project.is_directory())
-                {
-                    continue;
-                }
-                const auto transcript = project.path() / (std::wstring{ sessionId } + L".jsonl");
-                if (!std::filesystem::exists(transcript))
-                {
-                    continue;
-                }
-                std::ifstream stream{ transcript, std::ios::binary };
-                if (!stream)
-                {
-                    unknown = true;
-                    continue;
-                }
-                size_t bytesRead = 0;
-                while (true)
-                {
-                    stream.getline(line.data(), line.size());
-                    bytesRead += static_cast<size_t>(stream.gcount());
-                    if (bytesRead > 256 * 1024)
-                    {
-                        unknown = true;
-                        break;
-                    }
-                    if (stream.bad() || (stream.fail() && !stream.eof()))
-                    {
-                        unknown = true;
-                        break;
-                    }
-                    if (!stream.gcount())
-                    {
-                        break;
-                    }
-                    const std::string_view record{ line.data() };
-                    Json::Value value;
-                    if (!reader->parse(record.data(), record.data() + record.size(), &value, nullptr))
-                    {
-                        unknown = true;
-                        break;
-                    }
-                    const auto type = value.get("type", "").asString();
-                    if (type == "user" || type == "assistant")
-                    {
-                        return true;
-                    }
-                    if (type != "queue-operation" && type != "file-history-snapshot")
-                    {
-                        unknown = true;
-                        break;
-                    }
-                    if (stream.eof())
-                    {
-                        break;
-                    }
-                }
-            }
-            return unknown ? std::nullopt : std::optional<bool>{ false };
-        }
-        catch (...)
-        {
-            return std::nullopt;
-        }
     }
 
     inline std::filesystem::path ResolveExecutable(const std::wstring_view id, const std::wstring_view path)

@@ -16964,9 +16964,9 @@ namespace winrt::TerminalApp::implementation
             controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs);
         }
 
-        auto restoredAgent = newTerminalArgs ?
-                                 ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
-                                 ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
+        const auto restoredAgent = newTerminalArgs ?
+                                       ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
+                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
         if (newTerminalArgs && newTerminalArgs.NativeAgentProviderId().empty() && !restoredAgent.agent.empty())
         {
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ restoredAgent.agent });
@@ -16980,31 +16980,6 @@ namespace winrt::TerminalApp::implementation
 
         const auto sessionId = controlSettings.DefaultSettings()->SessionId();
         const auto hasSessionId = sessionId != winrt::guid{};
-
-        if (hasSessionId && !existingConnection && restoredAgent.agent == L"claude" && profile.AgentProfileId() == L"claude" &&
-            ::Microsoft::Terminal::AgentProfiles::IsManaged(profile) &&
-            ::Microsoft::Terminal::AgentProfiles::CanPinNewSession(L"claude", profile.AgentProfileArguments()))
-        {
-            const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
-                restoredAgent.backend);
-            if (restoredAgent.backend.empty() ||
-                (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host))
-            {
-                const auto available = ::Microsoft::Terminal::AgentProfiles::HasClaudeConversation(
-                    ::Microsoft::Terminal::AgentProfiles::ClaudeProjectsDirectory(
-                        *controlSettings.DefaultSettings(), std::wstring_view{ _WindowProperties.VirtualEnvVars() }),
-                    restoredAgent.sessionId);
-                if (available && !*available)
-                {
-                    const auto freshArgs = newTerminalArgs.Copy().as<NewTerminalArgs>();
-                    freshArgs.Commandline(L"");
-                    freshArgs.SessionId(winrt::guid{});
-                    controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, freshArgs);
-                    _agentPaneLog("_MakeTerminalPane: saved Claude conversation is absent; starting a fresh managed profile");
-                    restoredAgent = {};
-                }
-            }
-        }
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
         if (existingConnection)
