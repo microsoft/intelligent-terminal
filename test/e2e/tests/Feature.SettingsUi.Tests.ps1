@@ -190,7 +190,14 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
 
         function Get-ProfileAgentSelection {
             param($Combo)
-            $Combo.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()[0].Current.Name
+            $selected = $Combo.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()[0]
+            if ($selected.Current.Name) { return $selected.Current.Name }
+            # Agents-page ListItems are unnamed; their provider label is a child Text peer.
+            $textCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)
+            $labels = @($selected.FindAll([Windows.Automation.TreeScope]::Descendants, $textCondition))
+            $labels.Count | Should -Be 1 -Because 'the selected agent must have one unambiguous provider label'
+            $labels[0].Current.Name
         }
 
         function Select-ProfileAgent {
@@ -201,8 +208,24 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
                 [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name),
                 [Windows.Automation.PropertyCondition]::new(
                     [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem))
+            $itemCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+            $labelCondition = [Windows.Automation.AndCondition]::new(
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Name),
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text))
             Wait-Until -TimeoutSec 8 -Because "$Name must be a distinct selectable option" -Condition {
-                $script:profileAgentChoice = $Combo.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+                $choices = @($Combo.FindAll([Windows.Automation.TreeScope]::Descendants, $condition))
+                if (-not $choices.Count) {
+                    $choices = @($Combo.FindAll([Windows.Automation.TreeScope]::Descendants, $itemCondition)) |
+                        Where-Object {
+                            -not $_.Current.Name -and
+                                @($_.FindAll([Windows.Automation.TreeScope]::Descendants, $labelCondition)).Count -eq 1
+                        }
+                    $choices = @($choices)
+                }
+                $choices.Count | Should -BeLessOrEqual 1 -Because 'the exact provider label must identify a unique ListItem'
+                $script:profileAgentChoice = $choices | Select-Object -First 1
                 $null -ne $script:profileAgentChoice
             } | Out-Null
             $script:profileAgentChoice.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
@@ -233,8 +256,13 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         }
 
         function Open-ProfileAgentSettings {
-            param([string]$Name = $script:profileName)
-            Open-WtSettings -App $script:app | Out-Null
+            param([string]$Name = $script:profileName, [switch]$CurrentSession)
+            if ($CurrentSession) {
+                Test-UiElementExists -App $script:app -Selector SettingsNav -TimeoutSec 1 | Should -BeTrue
+            }
+            else {
+                Open-WtSettings -App $script:app | Out-Null
+            }
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
             $nav = $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.PropertyCondition]::new(
@@ -252,25 +280,79 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
             } | Out-Null
         }
 
-        function Change-GlobalAgents {
-            param([string]$Pane, [string]$Palette)
+        function Close-ProfileAgentSettings {
             Send-WtWindowKey -App $script:app -Vk 0x57 -Ctrl -Shift | Out-Null
             Wait-Until -TimeoutSec 8 -Because 'the old Settings clone must close' -Condition {
                 -not (Test-UiElementExists -App $script:app -Selector SettingsNav -TimeoutSec 1)
             } | Out-Null
+        }
+
+        function Change-GlobalAgents {
+            param([string]$Pane, [string]$Palette)
+            Close-ProfileAgentSettings
             Set-WtSetting -App $script:app -Key acpAgent -Value $Pane | Out-Null
             Set-WtSetting -App $script:app -Key delegateAgent -Value $Palette | Out-Null
+        }
+
+        function Test-ProfileHostAgents {
+            # Use the same launch-ready host probe as AgentAvailability, not fallback UI labels.
+            $probe = Invoke-Wta -App $script:app -Arguments @('probe-host-agents')
+            foreach ($id in @('copilot', 'claude')) {
+                $status = @($probe.availability | Where-Object id -eq $id)
+                $status.Count | Should -Be 1 -Because 'an invalid probe response is a product failure'
+                $status[0].native_cli_found | Should -BeOfType ([bool])
+                $status[0].requires_npx | Should -BeOfType ([bool])
+                $probe.npx_found | Should -BeOfType ([bool])
+                if (-not $status[0].native_cli_found -or ($status[0].requires_npx -and -not $probe.npx_found)) {
+                    Set-ItResult -Skipped -Because "external prerequisite missing: installed Windows $id CLI and its required npx"
+                    return $false
+                }
+                $status[0].launch_ready | Should -BeTrue
+                @($probe.agents.id) | Should -Contain $id
+            }
+            return $true
+        }
+
+        function Get-GlobalAgentCombo {
+            param([string]$AutomationId)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, $AutomationId)
+            Wait-Until -TimeoutSec 8 -Because "$AutomationId must render on the actual Agents page" -Condition {
+                $script:globalAgentCombo = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+                $null -ne $script:globalAgentCombo
+            } | Out-Null
+            $script:globalAgentCombo
         }
     }
 
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Profile agent pickers distinguish global and fixed selections' {
+        if (-not (Test-ProfileHostAgents)) { return }
         Open-ProfileAgentSettings -Name $script:fixedProfileName
         $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
         $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
-        (Get-ProfileAgentSelection $pane) | Should -Match '^GitHub Copilot'
-        (Get-ProfileAgentSelection $palette) | Should -Match '^Claude'
+        Select-ProfileAgent $pane 'Use global setting (GitHub Copilot)'
+        Select-ProfileAgent $palette 'Use global setting (Claude)'
+        Save-ProfileAgents -Pane '' -Palette '' -ProfileGuid $script:fixedProfileGuid
+        Close-ProfileAgentSettings
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        (Get-ProfileAgentSelection $pane) | Should -Be 'Use global setting (GitHub Copilot)'
+        (Get-ProfileAgentSelection $palette) | Should -Be 'Use global setting (Claude)'
+        Select-ProfileAgent $pane 'GitHub Copilot · Windows'
+        Select-ProfileAgent $palette 'Claude · Windows'
+        Save-ProfileAgents -Pane 'host:copilot' -Palette 'host:claude' -ProfileGuid $script:fixedProfileGuid
+        Close-ProfileAgentSettings
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')) | Should -Be 'GitHub Copilot · Windows'
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')) | Should -Be 'Claude · Windows'
+        $fixed = @((Get-WtSettingsObject -App $script:app).profiles.list) |
+            Where-Object guid -eq $script:fixedProfileGuid | Select-Object -First 1
+        $fixed.agentPaneBackend | Should -Be 'host:copilot'
+        $fixed.commandPaletteAgent | Should -Be 'host:claude'
 
         Open-ProfileAgentSettings
         $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
@@ -283,8 +365,8 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         Open-ProfileAgentSettings -Name $script:fixedProfileName
         $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
         $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
-        (Get-ProfileAgentSelection $pane) | Should -Match '^GitHub Copilot'
-        (Get-ProfileAgentSelection $palette) | Should -Match '^Claude'
+        (Get-ProfileAgentSelection $pane) | Should -Be 'GitHub Copilot · Windows'
+        (Get-ProfileAgentSelection $palette) | Should -Be 'Claude · Windows'
         Save-ProfileAgents -Pane 'host:copilot' -Palette 'host:claude' -ProfileGuid $script:fixedProfileGuid
 
         Open-ProfileAgentSettings
@@ -315,10 +397,72 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         Select-ProfileAgent $pane 'Use global setting (GitHub Copilot)'
         Select-ProfileAgent $palette 'Use global setting (Claude)'
         Save-ProfileAgents -Pane '' -Palette ''
-        Invoke-SettingsNav -App $script:app -NavItem LaunchNavItem | Out-Null
+        Close-ProfileAgentSettings
         Open-ProfileAgentSettings
         Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel 'Use global setting (GitHub Copilot)'
         Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel 'Use global setting (Claude)'
+    }
+
+    It 'Cached profile agent choices refresh after unsaved global edits' -Tag 'ProfileAgentRefresh' {
+        if (-not (Test-ProfileHostAgents)) { return }
+        Open-ProfileAgentSettings
+        Change-GlobalAgents -Pane copilot -Palette claude
+        Open-ProfileAgentSettings
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Agent pane agent') 'Use global setting (GitHub Copilot)'
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Command palette agent') 'Use global setting (Claude)'
+        Save-ProfileAgents -Pane '' -Palette ''
+
+        Open-ProfileAgentSettings -Name 'Defaults'
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Agent pane agent') 'Use global setting (GitHub Copilot)'
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Command palette agent') 'Use global setting (Claude)'
+        Invoke-UiElement -App $script:app -Selector SaveButton | Out-Null
+        Wait-Until -TimeoutSec 8 -Because 'Defaults must explicitly follow globals before the unsaved edit' -Condition {
+            $defaults = (Get-WtSettingsObject -App $script:app).profiles.defaults
+            $defaults.PSObject.Properties.Name -contains 'agentPaneBackend' -and
+                $defaults.PSObject.Properties.Name -contains 'commandPaletteAgent' -and
+                [string]$defaults.agentPaneBackend -ceq '' -and [string]$defaults.commandPaletteAgent -ceq ''
+        } | Out-Null
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Agent pane agent') 'GitHub Copilot · Windows'
+        Select-ProfileAgent (Get-ProfileAgentCombo -Header 'Command palette agent') 'Claude · Windows'
+        Save-ProfileAgents -Pane 'host:copilot' -Palette 'host:claude' -ProfileGuid $script:fixedProfileGuid
+
+        Close-ProfileAgentSettings
+        Open-ProfileAgentSettings
+        # Cache both global-following view models after the last Save and its settings reload.
+        foreach ($name in @($script:profileName, 'Defaults')) {
+            Open-ProfileAgentSettings -Name $name -CurrentSession
+            (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')) | Should -Be 'Use global setting (GitHub Copilot)'
+            (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')) | Should -Be 'Use global setting (Claude)'
+        }
+        Open-ProfileAgentSettings -Name $script:fixedProfileName -CurrentSession
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')) | Should -Be 'GitHub Copilot · Windows'
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')) | Should -Be 'Claude · Windows'
+
+        # From here, never save, close/reopen Settings or write disk.
+        Open-ProfileAgentSettings -Name 'Agents' -CurrentSession
+        $pane = Get-GlobalAgentCombo -AutomationId AcpAgentComboBox
+        $palette = Get-GlobalAgentCombo -AutomationId DelegateAgentComboBox
+        Select-ProfileAgent $pane 'Claude'
+        Select-ProfileAgent $palette 'GitHub Copilot'
+        (Get-ProfileAgentSelection $pane) | Should -Be 'Claude'
+        (Get-ProfileAgentSelection $palette) | Should -Be 'GitHub Copilot'
+
+        foreach ($name in @($script:profileName, 'Defaults')) {
+            Open-ProfileAgentSettings -Name $name -CurrentSession
+            (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')) | Should -Be 'Use global setting (Claude)'
+            (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')) | Should -Be 'Use global setting (GitHub Copilot)'
+            Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel 'Use global setting (Claude)'
+            Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel 'Use global setting (GitHub Copilot)'
+        }
+        Open-ProfileAgentSettings -Name $script:fixedProfileName -CurrentSession
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')) | Should -Be 'GitHub Copilot · Windows'
+        (Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')) | Should -Be 'Claude · Windows'
+        Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel 'GitHub Copilot · Windows'
+        Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel 'Claude · Windows'
+        $persisted = Get-WtSettingsObject -App $script:app
+        $persisted.acpAgent | Should -Be 'copilot' -Because 'global UI edits must remain unsaved throughout the regression'
+        $persisted.delegateAgent | Should -Be 'claude'
     }
 }
 
