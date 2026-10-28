@@ -527,6 +527,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         if (page == ProfileSubPage::Base)
         {
+            _ApplyHostAgentAvailability(profile);
             contentFrame().Navigate(xaml_typename<Editor::Profiles_Base>(), winrt::make<NavigateToPageArgs>(profile, *this, elementToFocus));
         }
         else if (page == ProfileSubPage::Appearance)
