@@ -65,7 +65,16 @@ no new MVVM framework, generic store or conversation-ID migration is required.
 Terminal uses `EffectiveAgentSessionManagementEnabled()` (the user setting
 combined with hooks policy), not listener availability, to enable native
 OSC/BEL observation publishing. WTA remains the authoritative status source.
-With Sessions ON, the existing hook/registry path is unchanged.
+With Sessions ON, observed OSC 9;4 progress takes precedence over hook
+Idle/Working only for the same confirmed pane/provider/session owner: states
+1/3 map to Working and states 0/4 map to Idle. An unobserved default zero is not
+an OSC Idle signal. Attention, Error and terminal liveness states retain hook
+precedence. Terminal retains the parsed progress receipt across admission/mode
+changes, but clears it when the connection lifetime is replaced. The registry
+retains raw hook activity
+separately from this shared read projection, so clearing progress restores Idle
+without waiting for another Stop. Complete/unread completion is derived only
+after arbitration. This path does not read transcript activity or infer subagents.
 With Sessions OFF, only a native agent provider recorded at pane creation or an
 explicit resume identifies a CLI pane. ACP helper panes keep their direct status;
 ordinary shells do not gain agent status from titles, bells or progress.
@@ -198,8 +207,8 @@ its known binding under the actual connection
 SessionId even without a saved pane ID. Explicit binding ownership transfers with
 the pane between windows and remains until the pane is removed or a later
 authoritative explicit resume replaces that conversation, including after
-command marks or retained Closed/Failed connection states. The existing Sessions
-ON hook/completion policy is unchanged. A reused saved pane GUID cannot
+command marks or retained Closed/Failed connection states. Sessions ON applies
+the hook/OSC arbitration above. A reused saved pane GUID cannot
 inherit the closed pane's explicit ownership marker.
 
 The watcher design below describes registry tracking, not an authority to

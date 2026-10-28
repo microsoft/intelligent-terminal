@@ -11792,6 +11792,13 @@ namespace winrt::TerminalApp::implementation
                             _richTabEndedSessionByPaneId.insert_or_assign(*paneSessionId, agentSessionId);
                         }
                     }
+                    if (const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId))
+                    {
+                        if (const auto control = ownerPane->GetTerminalControl())
+                        {
+                            _PublishNativeAgentObservation(control, "reset");
+                        }
+                    }
                     if (_RichTabCwdDependentFieldsVisible())
                     {
                         if (const auto ownerPane = rootPane->FindPaneBySessionId(*paneSessionId))
@@ -12440,7 +12447,7 @@ namespace winrt::TerminalApp::implementation
                 _ReplayRestoredSessionBindings(tab, /*helperSubscribed*/ false);
             }
         }
-        if (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        if (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() && !replacement)
         {
             return;
         }
@@ -12471,7 +12478,14 @@ namespace winrt::TerminalApp::implementation
                         }
                         if (replacement)
                         {
-                            _PublishNativeAgentObservation(control, "progress", true, control.TaskbarState(), true);
+                            if (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                            {
+                                _PublishNativeAgentObservation(control, "reset", true, std::nullopt, true);
+                            }
+                            else
+                            {
+                                _PublishNativeAgentObservation(control, "progress", true, control.TaskbarState(), true);
+                            }
                         }
                         else
                         {
@@ -12503,6 +12517,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto previous = manager->NativeAgentObservationForContent(control.ContentId());
         const auto paneSessionId = _TryParsePaneSessionId(paneId);
+        const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
         std::string agentSessionId;
         std::string source;
         bool explicitBinding = false;
@@ -12524,15 +12539,29 @@ namespace winrt::TerminalApp::implementation
                 previous->providerId, manager->NativeAgentProviderId(control.ContentId())))
         {
             agentSessionId = previous->receiverGeneration != receiverGeneration && !previous->qualifiedSessionId.empty() ?
-                                 previous->qualifiedSessionId : previous->agentSessionId;
+                                 previous->qualifiedSessionId :
+                                 previous->agentSessionId;
             source = previous->location;
         }
         if (explicitBinding && agentSessionId.empty() && previous)
         {
             manager->RetainQualifiedNativeAgentIdentity(control.ContentId(), previous->modeEpoch, {}, {});
         }
-        const auto identity = manager->AdmitNativeAgentObservation(
-            control.ContentId(), _WindowProperties.WindowId(), tabId, agentSessionId, source, reset, receiverGeneration);
+        winrt::hstring hookProviderId;
+        if (enabled && paneSessionId)
+        {
+            if (const auto binding = _paneAgentSessions.find(*paneSessionId);
+                binding != _paneAgentSessions.end() && !binding->second.sessionId.empty())
+            {
+                hookProviderId = binding->second.agent;
+                agentSessionId = winrt::to_string(binding->second.sessionId);
+                source = _NativeAgentObservationSource(control, binding->second.backend);
+            }
+        }
+        const auto identity = kind == "removed" && previous ?
+                                  *previous :
+                                  manager->AdmitNativeAgentObservation(
+                                      control.ContentId(), _WindowProperties.WindowId(), tabId, agentSessionId, source, reset, receiverGeneration, hookProviderId);
         if (identity.modeEpoch == 0)
         {
             return;
@@ -12545,9 +12574,9 @@ namespace winrt::TerminalApp::implementation
         params["mode_epoch"] = Json::UInt64{ identity.modeEpoch };
         params["pane_created_at_ms"] = Json::UInt64{ identity.paneCreatedAtMs };
         params["pane_creation_sequence"] = Json::UInt64{ identity.paneCreationSequence };
-        if (receiverGeneration != 0)
+        if (identity.receiverGeneration != 0)
         {
-            params["receiver_generation"] = Json::UInt64{ receiverGeneration };
+            params["receiver_generation"] = Json::UInt64{ identity.receiverGeneration };
         }
         if (!identity.agentSessionId.empty())
         {
@@ -12558,7 +12587,6 @@ namespace winrt::TerminalApp::implementation
         {
             params["location"] = observationLocation;
         }
-        const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
         if (!previous || previous->modeEpoch != identity.modeEpoch || birthBeforeReset)
         {
             if (birthBeforeReset && !enabled && !identity.agentSessionId.empty() &&
@@ -12607,8 +12635,16 @@ namespace winrt::TerminalApp::implementation
             }
             params["kind"] = "reset";
             params["tracking_enabled"] = enabled;
+            if (enabled)
+            {
+                const auto parsedProgress = progressState ? progressState : manager->NativeAgentProgressForContent(control.ContentId());
+                if (parsedProgress)
+                {
+                    params["current_progress_state"] = Json::UInt64{ *parsedProgress };
+                }
+            }
             if (paneSessionId && (!enabled ||
-                (_richTabAgentStatusByPaneId.contains(*paneSessionId) && _richTabAgentStatusByPaneId.at(*paneSessionId).modeEpoch)))
+                                  (_richTabAgentStatusByPaneId.contains(*paneSessionId) && _richTabAgentStatusByPaneId.at(*paneSessionId).modeEpoch)))
             {
                 _richTabAgentStatusByPaneId.erase(*paneSessionId);
             }
@@ -12627,7 +12663,7 @@ namespace winrt::TerminalApp::implementation
                 _RequestAgentSnapshotRefresh();
             }
         }
-        if (kind != "reset" && (!enabled || kind == "removed"))
+        if (kind != "reset" && (!enabled || kind == "progress" || kind == "removed"))
         {
             params.removeMember("tracking_enabled");
             params["kind"] = std::string{ kind };
@@ -12650,7 +12686,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_PublishNativeAgentSignal(const TermControl& control, const bool attention, const uint64_t progressState)
     {
         _SyncNativeAgentStatusMode();
-        if (!_lastEffectiveAgentSessionManagementEnabled.value())
+        if (!_lastEffectiveAgentSessionManagementEnabled.value() || !attention)
         {
             _PublishNativeAgentObservation(control, attention ? "bell" : "progress", false, progressState);
         }
@@ -13555,14 +13591,26 @@ namespace winrt::TerminalApp::implementation
             const auto observe = [weakThis = get_weak(), weakTerm, contentId, publication, manager = _manager](const bool attention, const uint64_t progressState = 0) {
                 if (const auto page = weakThis.get())
                 {
-                    const auto identity = winrt::get_self<ContentManager>(manager)->NativeAgentObservationForContent(contentId);
+                    const auto nativeManager = winrt::get_self<ContentManager>(manager);
+                    const auto identity = nativeManager->NativeAgentObservationForContent(contentId);
                     const auto control = weakTerm.get();
-                    if (!identity || !control)
+                    if (!control)
                     {
                         return;
                     }
                     const auto paneIdStr = page->_FindSessionIdForControl(control);
                     if (paneIdStr.empty())
+                    {
+                        return;
+                    }
+                    if (!attention)
+                    {
+                        if (const auto paneId = _TryParsePaneSessionId(paneIdStr))
+                        {
+                            nativeManager->RecordNativeAgentProgress(contentId, *paneId, progressState);
+                        }
+                    }
+                    if (!identity)
                     {
                         return;
                     }
@@ -17217,6 +17265,10 @@ namespace winrt::TerminalApp::implementation
                 _ForgetPaneAgentIdentity(*paneId);
             }
             _DetachRichTabControl(termControl);
+        }
+        else
+        {
+            _PublishNativeAgentObservation(termControl, "removed");
         }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
         // Reset the terminal's VT state before attaching the new connection.

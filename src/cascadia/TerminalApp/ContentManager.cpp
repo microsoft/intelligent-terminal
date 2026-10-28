@@ -94,6 +94,33 @@ namespace winrt::TerminalApp::implementation
         return it->second.observation;
     }
 
+    void ContentManager::RecordNativeAgentProgress(const uint64_t contentId, const winrt::guid& paneId, const uint64_t progressState)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper && progressState <= 4)
+        {
+            if (const auto connection = it->second.core.Core().Connection();
+                connection && connection.SessionId() == paneId)
+            {
+                it->second.parsedProgress = std::pair{ paneId, progressState };
+            }
+        }
+    }
+
+    std::optional<uint64_t> ContentManager::NativeAgentProgressForContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && it->second.parsedProgress)
+        {
+            if (const auto connection = it->second.core.Core().Connection();
+                connection && connection.SessionId() == it->second.parsedProgress->first)
+            {
+                return it->second.parsedProgress->second;
+            }
+        }
+        return std::nullopt;
+    }
+
     void ContentManager::SetExplicitNativeAgentProvider(const uint64_t contentId, const winrt::hstring& providerId)
     {
         std::lock_guard lock{ _mutex };
@@ -126,13 +153,23 @@ namespace winrt::TerminalApp::implementation
     }
 
     ContentManager::NativeAgentObservationIdentity ContentManager::AdmitNativeAgentObservation(
-        const uint64_t contentId, const uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, const bool reset, const uint64_t receiverGeneration)
+        const uint64_t contentId,
+        const uint64_t windowId,
+        const std::string& tabId,
+        const std::string& agentSessionId,
+        const std::string& location,
+        const bool reset,
+        const uint64_t receiverGeneration,
+        const winrt::hstring& hookProviderId)
     {
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper)
         {
-            const auto provider = it->second.explicitNativeAgentProviderId.empty() || agentSessionId.empty() ?
-                                      it->second.nativeAgentProviderId : it->second.explicitNativeAgentProviderId;
+            const auto provider = _nativeAgentSessionEventsEnabled && !hookProviderId.empty() && !agentSessionId.empty() ?
+                                      hookProviderId :
+                                  it->second.explicitNativeAgentProviderId.empty() || agentSessionId.empty() ?
+                                      it->second.nativeAgentProviderId :
+                                      it->second.explicitNativeAgentProviderId;
             if (provider.empty())
             {
                 return {};
@@ -192,6 +229,7 @@ namespace winrt::TerminalApp::implementation
             it->second.observation = {};
             it->second.observationAdmitted = false;
             it->second.completion = {};
+            it->second.parsedProgress.reset();
             if (!_nativeAgentSessionEventsEnabled)
             {
                 it->second.explicitNativeAgentProviderId = winrt::hstring{};

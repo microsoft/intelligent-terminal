@@ -520,6 +520,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
+        TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
         TEST_METHOD(NativeAgentSessionsOffObservesParsedSignals);
         TEST_METHOD(NativeAgentSessionsOffResumeUsesConnectionIdentity);
         TEST_METHOD(NativeAgentSessionsOffResumeUpdatesProviderIdentity);
@@ -21068,6 +21069,101 @@ namespace TerminalAppLocalTests
             snapshot.byPane.at(control.Connection().SessionId()));
         page->_PreserveNativeAgentIdentity(control);
         page->_agentSnapshotLoaded = true;
+    }
+
+    void TabTests::NativeAgentSessionsOnPublishesProgressForHookOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            const winrt::guid paneId{ L"{00112233-4455-6677-8899-AABBCCDDEEFF}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            const auto pane = page->_MakePane(NewTerminalArgs{}, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            const auto control = pane->GetTerminalControl();
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            std::vector<Json::Value> observations;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                Json::CharReaderBuilder builder;
+                std::istringstream stream{ winrt::to_string(json) };
+                std::string errors;
+                if (Json::parseFromStream(builder, stream, &event, &errors) &&
+                    event.get("method", "").asString() == "native_agent_observation")
+                {
+                    observations.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            const auto hook = _keepRunningHook(paneId, "agent.session.start", "hook-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(hook);
+            page->OnPaneAgentSessionChanged(hook);
+            VERIFY_IS_TRUE(manager->NativeAgentProviderId(control.ContentId()).empty());
+            VERIFY_IS_FALSE(observations.empty());
+            VERIFY_ARE_EQUAL(std::string{ "reset" }, observations.back()["kind"].asString());
+            VERIFY_IS_TRUE(observations.back()["tracking_enabled"].asBool());
+            VERIFY_ARE_EQUAL(std::string{ "hook-owner" }, observations.back()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, observations.back()["provider_id"].asString());
+            VERIFY_IS_FALSE(observations.back().isMember("current_progress_state"));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), winrt::guid{ L"{11112233-4455-6677-8899-AABBCCDDEEFF}" }, 0);
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), paneId, 0);
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "reset", true);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_IS_TRUE(observations[0].isMember("current_progress_state"));
+            VERIFY_ARE_EQUAL(0u, observations[0]["current_progress_state"].asUInt());
+
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "progress", true, 3);
+            VERIFY_ARE_EQUAL(size_t{ 2 }, observations.size());
+            VERIFY_ARE_EQUAL(3u, observations[0]["current_progress_state"].asUInt());
+            VERIFY_ARE_EQUAL(std::string{ "progress" }, observations[1]["kind"].asString());
+            const auto epoch = observations[1]["mode_epoch"].asUInt64();
+            observations.clear();
+            page->_PublishNativeAgentSignal(control, false, 1);
+            page->_PublishNativeAgentSignal(control, true, 0);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_ARE_EQUAL(_formatPaneId(paneId), observations[0]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(epoch, observations[0]["mode_epoch"].asUInt64());
+            VERIFY_ARE_EQUAL(1u, observations[0]["progress_state"].asUInt());
+            VERIFY_ARE_EQUAL(std::string{ "hook-owner" }, observations[0]["agent_session_id"].asString());
+
+            const auto nested = _keepRunningHook(paneId, "agent.prompt.submit", "nested-agent", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(nested);
+            page->OnPaneAgentSessionChanged(nested);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"hook-owner" }, page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(epoch, manager->NativeAgentObservationForContent(control.ContentId()).value().modeEpoch);
+            const auto ended = _keepRunningHook(paneId, "agent.session.end", "hook-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(ended);
+            page->OnPaneAgentSessionChanged(ended);
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "removed");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_ARE_EQUAL(std::string{ "removed" }, observations[0]["kind"].asString());
+            VERIFY_ARE_EQUAL(epoch, observations[0]["mode_epoch"].asUInt64());
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+            page->_SyncNativeAgentStatusMode();
+            observations.clear();
+            page->_PublishNativeAgentSignal(control, false, 3);
+            VERIFY_IS_TRUE(observations.empty());
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(control.ContentId()).value());
+            const auto replacement = winrt::make_self<TestConnection>(winrt::guid{ L"{11112233-4455-6677-8899-AABBCCDDEEFF}" }, State::Connected);
+            control.Connection(*replacement);
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), paneId, 3);
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), replacement->SessionId(), 0);
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(control.ContentId()).value());
+            manager->RestartNativeAgentConnectionTracking(control.ContentId());
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+        });
     }
 
     void TabTests::NativeAgentSessionsOffStatusIsPaneLocal()

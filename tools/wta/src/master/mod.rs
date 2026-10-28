@@ -4565,7 +4565,7 @@ impl HelperHandler {
         // No torn-state window because the registry holds a
         // tokio::sync::Mutex<HashMap<...>> internally; each
         // upsert/remove/snapshot is one full hashmap op.
-        let snapshot = self.state.registry.snapshot().await;
+        let snapshot = self.state.registry.effective_snapshot().await;
         tracing::info!(
             target: "master",
             op = "list_sessions",
@@ -6995,7 +6995,7 @@ async fn broadcast_session_status_change(state: &MasterStateInner, session_id: O
 
 async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) -> bool {
     let sid = acp::schema::v1::SessionId::new(session_id.to_string());
-    let Some(row) = state.registry.lookup(&sid).await else {
+    let Some(row) = state.registry.lookup_effective(&sid).await else {
         return false;
     };
     let Some(status) = row.status.as_ref() else {
@@ -8182,7 +8182,7 @@ where
     // Reconcile before collecting panes: registrations made during the probe
     // need ownership queries too. Apply external evidence only to unchanged
     // historical rows, never resurrecting removed rows or overriding new bindings.
-    let mut sessions = state.registry.snapshot().await;
+    let mut sessions = state.registry.effective_snapshot().await;
     for row in &mut sessions {
         let identity = crate::session_registry::SessionIdentity::from_info(row);
         if evidence.get(&identity) == Some(row) {
