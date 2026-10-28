@@ -17418,17 +17418,20 @@ namespace TerminalAppLocalTests
                              firstPaneHover.TransformToVisual(firstPaneRoot).TransformPoint({ 0, 0 }));
             const auto firstPaneActivateButton = firstPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto firstPaneClose = firstPaneRoot.FindName(L"PaneCloseButton").as<Button>();
+            const auto firstPaneCloseSlot = firstPaneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
+            const auto paneCloseColumn = firstPaneRoot.ColumnDefinitions().GetAt(1).ActualWidth();
             const auto secondPaneActivateButton = secondPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto secondPaneClose = secondPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneBackground.Visibility());
             VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 10, firstPaneBackground.ActualWidth());
-            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth(), firstPaneActivateButton.ActualWidth());
+            VERIFY_IS_TRUE(std::abs(firstPaneRoot.ActualWidth() - paneCloseColumn - firstPaneActivateButton.ActualWidth()) <= 1.0);
             const auto tabSelection = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
             VERIFY_ARE_EQUAL(tabSelection.Background().as<Media::SolidColorBrush>().Color(),
                              firstPaneBackground.Background().as<Media::SolidColorBrush>().Color());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondPaneClose.Visibility());
-            VERIFY_ARE_EQUAL(0.0, firstPaneRoot.ColumnDefinitions().GetAt(1).ActualWidth());
+            VERIFY_ARE_EQUAL(24.0, firstPaneCloseSlot.ActualWidth());
+            VERIFY_IS_TRUE(std::abs(paneCloseColumn - firstPaneCloseSlot.ActualWidth() - firstPaneCloseSlot.Margin().Left - firstPaneCloseSlot.Margin().Right) <= 1.0);
             VERIFY_ARE_EQUAL(0.0, firstPaneActivateButton.Content().as<Grid>().Margin().Right);
             stripImpl->OnPanePointerEntered(firstPaneRoot, nullptr);
             VERIFY_ARE_EQUAL(0.0, firstPaneHover.Opacity());
@@ -24559,12 +24562,20 @@ namespace TerminalAppLocalTests
             const auto secondRow = row(1);
             const auto firstClose = firstRow.FindName(L"TabCloseButton").as<Button>();
             const auto secondClose = secondRow.FindName(L"TabCloseButton").as<Button>();
+            const auto firstSlot = firstRow.FindName(L"TabCloseButtonSlot").as<Grid>();
+            const auto firstTitle = firstRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderTextBlock").as<FrameworkElement>();
             const auto secondDisplay = impl->DisplayItemForTab(second);
 
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondClose.Visibility());
-            VERIFY_IS_TRUE(firstClose.Margin().Top >= 4);
-            VERIFY_IS_TRUE(firstClose.Margin().Right >= 4);
+            const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& title, const FrameworkElement& slot) {
+                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto slotPosition = slot.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_ARE_EQUAL(24.0, slot.ActualWidth());
+                VERIFY_ARE_EQUAL(24.0, slot.ActualHeight());
+                VERIFY_IS_TRUE(std::abs(slotPosition.Y + slot.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+            };
+            verifyCloseAlignment(firstRow, firstTitle, firstSlot);
             const auto verifyCloseInteractionBackground = [](const Button& close) {
                 close.ApplyTemplate();
                 const auto findPresenter = [](const auto& self, const DependencyObject& element) -> ContentPresenter {
@@ -24601,8 +24612,11 @@ namespace TerminalAppLocalTests
             const auto paneList = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(1).as<ItemsControl>();
             const auto paneRoot = Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(0), 0).as<Grid>();
             const auto paneClose = paneRoot.FindName(L"PaneCloseButton").as<Button>();
+            const auto paneSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
+            const auto paneTitle = paneRoot.FindName(L"PaneTitleText").as<FrameworkElement>();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, paneClose.Visibility());
-            VERIFY_ARE_EQUAL(0.0, paneRoot.ColumnDefinitions().GetAt(1).ActualWidth());
+            verifyCloseAlignment(paneRoot, paneTitle, paneSlot);
+            VERIFY_IS_TRUE(std::abs(paneRoot.ColumnDefinitions().GetAt(1).ActualWidth() - paneSlot.ActualWidth() - paneSlot.Margin().Left - paneSlot.Margin().Right) <= 1.0);
             strip.SetPaneItems(first, nullptr, false);
             strip.SelectedItem(nullptr);
             second.IsClosable(true);
@@ -24627,8 +24641,7 @@ namespace TerminalAppLocalTests
             firstDisplay.HeaderMinHeight(56);
             strip.UpdateLayout();
             VERIFY_IS_TRUE(firstRow.ActualHeight() >= 56);
-            const auto closeTop = firstClose.TransformToVisual(firstRow).TransformPoint({ 0, 0 }).Y;
-            VERIFY_IS_TRUE(closeTop <= 8);
+            verifyCloseAlignment(firstRow, firstTitle, firstSlot);
             VERIFY_IS_TRUE(firstClose.TransformToVisual(firstRow).TransformPoint({ 0, 0 }).X + firstClose.ActualWidth() <= firstRow.ActualWidth());
 
             strip.IsRailCollapsed(true);
