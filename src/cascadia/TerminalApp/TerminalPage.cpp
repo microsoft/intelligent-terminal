@@ -12695,6 +12695,40 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    std::optional<TerminalPage::_RichTabAgentInfo> TerminalPage::_ManagedProfileLaunchInfoForControl(const TermControl& control)
+    {
+        const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+        if (!connection || connection.State() > ConnectionState::Connected ||
+            !winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand())
+        {
+            return std::nullopt;
+        }
+        const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
+        const auto provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
+        if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
+            _richTabEndedSessionByPaneId.contains(*paneId))
+        {
+            return std::nullopt;
+        }
+        if (const auto active = _activeCliAgentPanes.find(*paneId);
+            active != _activeCliAgentPanes.end() && !active->second.sessionId.empty())
+        {
+            return std::nullopt;
+        }
+        _RichTabAgentInfo info{ {}, "Idle", winrt::to_string(provider), std::nullopt, paneId };
+        if (const auto binding = _paneAgentSessions.find(*paneId);
+            binding != _paneAgentSessions.end())
+        {
+            info.sessionId = winrt::to_string(binding->second.sessionId);
+        }
+        if (const auto cwd = connection.StartingDirectory(); !cwd.empty())
+        {
+            info.cwd = winrt::to_string(cwd);
+        }
+        info.launchMetadata = true;
+        return info;
+    }
+
     std::optional<TerminalPage::_RichTabAgentInfo> TerminalPage::_RichTabAgentInfoForControl(const TermControl& control)
     {
         const auto paneSessionId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
@@ -12710,7 +12744,7 @@ namespace winrt::TerminalApp::implementation
                 if (identity->receiverGeneration != _nativeAgentStatusSnapshotReceiverGeneration ||
                     identity->receiverGeneration != SharedWta::Instance().MasterGeneration())
                 {
-                    return std::nullopt;
+                    return _ManagedProfileLaunchInfoForControl(control);
                 }
                 if (const auto info = _richTabAgentStatusByPaneId.find(*paneSessionId);
                     info != _richTabAgentStatusByPaneId.end() &&
@@ -12730,13 +12764,13 @@ namespace winrt::TerminalApp::implementation
                     }
                     return info->second;
                 }
-                return std::nullopt;
+                return _ManagedProfileLaunchInfoForControl(control);
             }
             // ACP helper panes retain their direct status; an ordinary shell
             // must not acquire native-agent status from historical/hook caches.
             if (!winrt::get_self<ContentManager>(_manager)->AcceptsAgentSessionEvents(*paneSessionId))
             {
-                return std::nullopt;
+                return _ManagedProfileLaunchInfoForControl(control);
             }
         }
         if (const auto info = _richTabAgentStatusByPaneId.find(*paneSessionId);
@@ -12775,7 +12809,7 @@ namespace winrt::TerminalApp::implementation
                 return info;
             }
         }
-        return std::nullopt;
+        return _ManagedProfileLaunchInfoForControl(control);
     }
 
     std::pair<bool, std::optional<std::string>> TerminalPage::_RichTabAgentCwdForControl(const TermControl& control)
@@ -12784,6 +12818,11 @@ namespace winrt::TerminalApp::implementation
         if (!paneId)
         {
             return { false, std::nullopt };
+        }
+        const auto info = _RichTabAgentInfoForControl(control);
+        if (info && info->launchMetadata)
+        {
+            return { true, info->cwd };
         }
         std::optional<std::string> expectedSession;
         bool hasOwner = false;
@@ -12841,7 +12880,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        const auto info = _RichTabAgentInfoForControl(control);
         const auto live = info &&
                           (info->status == "Idle" || info->status == "Working" ||
                            info->status == "Attention" || info->status == "Error") &&

@@ -271,6 +271,12 @@ A confirmed session cwd takes precedence where supported;
 Antigravity's existing shell-session cwd suppression remains unchanged, with the
 Terminal-authored launch directory available as a fallback.
 
+All managed native profiles display an initial Idle state and their fixed
+ConPTY launch cwd without waiting for master or hooks, regardless of session
+management mode. This presentation-only fallback does not invent conversation
+IDs or change native signal ownership. Confirmed pane/session status takes
+precedence, and closing or failed connections do not retain the launch fallback.
+
 Replacing a managed profile connection explicitly retires the old pane in
 master before announcing its replacement, even if a failure was already reported.
 Host resume actions retain the evaluated session cwd when the terminal has no
