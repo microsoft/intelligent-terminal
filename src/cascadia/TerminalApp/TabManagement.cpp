@@ -214,6 +214,7 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab)
             {
+                page->_RefreshTabUnreadActivity(*tab);
                 page->_ApplyTabListProjection(*tab);
                 if (tab->KeepRunning())
                 {

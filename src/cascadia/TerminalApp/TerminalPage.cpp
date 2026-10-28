@@ -12895,14 +12895,20 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_RefreshTabUnreadActivity(Tab& tab)
     {
         bool unread = false;
+        bool needsAttention = false;
         if (const auto root = tab.GetRootPane())
         {
             root->WalkTree([&](const auto& pane) {
-                unread = unread || _HasUnreadAgentActivity(pane->GetTerminalControl());
+                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control))
+                {
+                    unread = true;
+                    const auto info = _RichTabAgentInfoForControl(control);
+                    needsAttention = needsAttention || (info && info->status == "Attention");
+                }
                 return false;
             });
         }
-        tab.SetUnreadAgentActivity(unread);
+        tab.SetUnreadAgentActivity(unread, needsAttention);
     }
 
     void TerminalPage::_ReadFocusedPaneAgentActivity(Tab& tab)
@@ -15132,6 +15138,19 @@ namespace winrt::TerminalApp::implementation
             itemImpl->AutomationName(winrt::hstring{ automationName });
             items.emplace_back(std::move(item));
         }
+        bool unreadActivityProjectedToPaneRows = true;
+        if (const auto root = tab->GetRootPane())
+        {
+            root->WalkTree([&](const auto& pane) {
+                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control))
+                {
+                    unreadActivityProjectedToPaneRows = unreadActivityProjectedToPaneRows &&
+                                                        std::ranges::any_of(items, [&](const auto& item) { return item.ContentId() == control.ContentId(); });
+                }
+                return false;
+            });
+        }
+        display.Presentation().UnreadActivityProjectedToPaneRows(unreadActivityProjectedToPaneRows);
         tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon(), true);
         tabStrip->SetPaneItems(
             display,

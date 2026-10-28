@@ -154,7 +154,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->PropertyChanged.raise(*self, args);
-                if (args.PropertyName() == L"HasUnreadActivity")
+                if (args.PropertyName() == L"HasUnreadActivity" || args.PropertyName() == L"UnreadActivityProjectedToPaneRows")
                 {
                     self->_UpdateUnreadActivityVisibility();
                 }
@@ -182,7 +182,8 @@ namespace winrt::TerminalApp::implementation
         if (_initialized)
         {
             HeaderCompletionIndicator().Visibility(
-                _presentation.HasUnreadActivity() && _paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible ?
+                _presentation.HasUnreadActivity() &&
+                        (_paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible || !_presentation.UnreadActivityProjectedToPaneRows()) ?
                     Windows::UI::Xaml::Visibility::Visible :
                     Windows::UI::Xaml::Visibility::Collapsed);
         }

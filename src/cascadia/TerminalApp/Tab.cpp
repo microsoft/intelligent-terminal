@@ -655,10 +655,12 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void Tab::SetUnreadAgentActivity(const bool unread)
+    void Tab::SetUnreadAgentActivity(const bool unread, const bool needsAttention)
     {
         ASSERT_UI_THREAD();
+        _unreadAgentActivityNeedsAttention = unread && needsAttention;
         _headerControl.Presentation().HasUnreadActivity(unread);
+        _UpdateAutomationName();
     }
 
     void Tab::_UpdateRichTabPresentation()
@@ -702,6 +704,12 @@ namespace winrt::TerminalApp::implementation
         {
             name += L", ";
             name += _richTabAccessibilityText;
+        }
+        if (_headerControl.Presentation().HasUnreadActivity() &&
+            (!_isVerticalTabLayout || _richTabAccessibilityText.empty()))
+        {
+            name += L", ";
+            name += _unreadAgentActivityNeedsAttention ? RS_(L"VerticalTabsHistoryStatusAttention") : RS_(L"VerticalTabsHistoryStatusComplete");
         }
         _headerControl.Presentation().AutomationName(name);
         Automation::AutomationProperties::SetName(TabViewItem(), name);

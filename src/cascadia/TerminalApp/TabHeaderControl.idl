@@ -19,6 +19,7 @@ namespace TerminalApp
         IVector<HighlightedRun> MetadataHighlightRanges;
         Object IconSource;
         Boolean HasUnreadActivity;
+        Boolean UnreadActivityProjectedToPaneRows;
     };
 
     delegate void TitleChangeRequestedArgs(String title);

@@ -2445,12 +2445,24 @@ namespace TerminalAppLocalTests
                 }
             }
             tab->SetRichTabPresentation(std::nullopt);
+            header.Presentation().UnreadActivityProjectedToPaneRows(true);
             header.PaneRowsVisibility(Visibility::Visible);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+            header.Presentation().UnreadActivityProjectedToPaneRows(false);
+            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            header.Presentation().UnreadActivityProjectedToPaneRows(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             header.PaneRowsVisibility(Visibility::Collapsed);
             VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            tab->SetVerticalTabLayout(false);
+            VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ tab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusComplete").c_str() },
+                             Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            tab->SetUnreadAgentActivity(true, true);
+            VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ tab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusAttention").c_str() },
+                             Automation::AutomationProperties::GetName(tab->TabViewItem()));
             tab->SetUnreadAgentActivity(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+            VERIFY_ARE_EQUAL(tab->Title(), Automation::AutomationProperties::GetName(tab->TabViewItem()));
         });
     }
 
@@ -9917,26 +9929,48 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", activity, "Attention", std::nullopt, notification));
                 VERIFY_ARE_EQUAL(std::string{ "Attention" }, page->_BuildRichTabFirstPartyFields(secondControl).at("agentStatusId"));
             };
+            tab->SetVerticalTabLayout(false);
             firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
             report(1000, 100);
             VERIFY_IS_TRUE(tab->IsFocused());
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             VERIFY_IS_TRUE(tab->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ tab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusAttention").c_str() },
+                             Automation::AutomationProperties::GetName(tab->TabViewItem()));
             firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             secondPane->GotFocus.raise(secondPane, FocusState::Pointer);
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            VERIFY_ARE_EQUAL(tab->Title(), Automation::AutomationProperties::GetName(tab->TabViewItem()));
             firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
             report(2000, 100);
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             report(3000, 101);
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            tab->SetVerticalTabLayout(true);
             const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tab->TabViewItem());
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             for (const auto& pane : display.PaneItems())
             {
                 VERIFY_ARE_EQUAL(pane.ContentId() == secondControl.ContentId(), pane.HasUnreadActivity());
             }
+            VERIFY_IS_TRUE(display.Presentation().UnreadActivityProjectedToPaneRows());
+            tab->GetRootPane()->HidePane(secondPane);
+            tab->PaneProjectionChanged.raise();
+            VERIFY_IS_TRUE(tab->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_IS_FALSE(display.Presentation().UnreadActivityProjectedToPaneRows());
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            tab->GetRootPane()->RestorePane(secondPane);
+            tab->PaneProjectionChanged.raise();
+            VERIFY_IS_TRUE(display.Presentation().UnreadActivityProjectedToPaneRows());
+
+            page->_isVerticalLayout = false;
+            tab->SetVerticalTabLayout(false);
+            const auto attentionName = winrt::hstring{ std::wstring{ tab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusAttention").c_str() };
+            VERIFY_ARE_EQUAL(attentionName, Automation::AutomationProperties::GetName(tab->TabViewItem()));
+            VERIFY_IS_TRUE(tab->DetachPane(secondPane) == secondPane);
+            VERIFY_IS_FALSE(tab->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_ARE_EQUAL(tab->Title(), Automation::AutomationProperties::GetName(tab->TabViewItem()));
         });
     }
 
@@ -9957,6 +9991,7 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabHeaderControl header;
             header.Title(winrt::hstring{ std::wstring(240, L'W') });
             header.Presentation().HasUnreadActivity(true);
+            header.Presentation().UnreadActivityProjectedToPaneRows(true);
             tab.Header(header);
             strip.TabItems().Append(tab);
             const auto pane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"Unread pane", true);
