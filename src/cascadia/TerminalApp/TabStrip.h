@@ -490,6 +490,8 @@ namespace winrt::TerminalApp::implementation
                                     winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSearchTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
+        void OnSearchBoxFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryExpandedChanged(winrt::Windows::Foundation::IInspectable const& sender,

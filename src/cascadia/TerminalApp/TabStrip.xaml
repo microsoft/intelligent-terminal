@@ -427,8 +427,117 @@
                           VerticalAlignment="Center"
                           Background="Transparent"
                           BorderThickness="0"
+                          Click="OnSearchToggleClick"
+                          CornerRadius="{ThemeResource ControlCornerRadius}"
                           PointerPressed="OnSearchPointerPressed"
-                          Click="OnSearchToggleClick">
+                          UseSystemFocusVisuals="True">
+                <ToggleButton.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Dark">
+                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
+                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
+                                                ResourceKey="ControlFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
+                                                ResourceKey="ControlFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundChecked"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed"
+                                                ResourceKey="TextFillColorSecondaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Light">
+                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
+                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
+                                                ResourceKey="ControlFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
+                                                ResourceKey="ControlFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundChecked"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed"
+                                                ResourceKey="TextFillColorSecondaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="HighContrast" />
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                </ToggleButton.Resources>
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <!--  Keep the hit target larger than the visible toolbar affordance.  -->
+                        <Grid Background="Transparent">
+                            <ContentPresenter x:Name="SearchButtonPresenter"
+                                              Width="24"
+                                              Height="24"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              HorizontalContentAlignment="Center"
+                                              VerticalContentAlignment="Center"
+                                              Background="{TemplateBinding Background}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Control.IsTemplateFocusTarget="True"
+                                              CornerRadius="{TemplateBinding CornerRadius}"
+                                              FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                              FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                              FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                              FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                              FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundPointerOver}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundPressed}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundDisabled}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundDisabled}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundChecked}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundChecked}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundCheckedPointerOver}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundCheckedPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundCheckedPressed}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundCheckedPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedDisabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundDisabled}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundDisabled}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </ToggleButton.Template>
                 <PathIcon Width="16"
                           Height="16"
                           Data="M11.0195 11.7266C10.0658 12.5217 8.83875 13 7.5 13C4.46243 13 2 10.5376 2 7.5C2 4.46243 4.46243 2 7.5 2C10.5376 2 13 4.46243 13 7.5C13 8.83875 12.5217 10.0658 11.7266 11.0195L14.8535 14.1464C15.0488 14.3417 15.0488 14.6583 14.8535 14.8536C14.6583 15.0488 14.3417 15.0488 14.1464 14.8536L11.0195 11.7266ZM12 7.5C12 5.01472 9.98528 3 7.5 3C5.01472 3 3 5.01472 3 7.5C3 9.98528 5.01472 12 7.5 12C9.98528 12 12 9.98528 12 7.5Z" />
@@ -509,15 +618,26 @@
               Height="0"
               Opacity="0"
               Visibility="Collapsed">
-            <Grid Margin="6,4">
+            <Grid Margin="20,4">
                 <TextBox x:Name="SearchTextBox"
                          x:Uid="VerticalTabsSearchBox"
                          Height="32"
-                         Padding="8,6,8,0"
+                         Padding="36,6,8,0"
                          VerticalAlignment="Center"
                          VerticalContentAlignment="Center"
+                         GotFocus="OnSearchBoxFocusChanged"
                          KeyDown="OnSearchBoxKeyDown"
+                         LostFocus="OnSearchBoxFocusChanged"
                          TextChanged="OnSearchTextChanged" />
+                <PathIcon Width="16"
+                          Height="16"
+                          Margin="12,0,0,0"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          AutomationProperties.AccessibilityView="Raw"
+                          Data="M11.0195 11.7266C10.0658 12.5217 8.83875 13 7.5 13C4.46243 13 2 10.5376 2 7.5C2 4.46243 4.46243 2 7.5 2C10.5376 2 13 4.46243 13 7.5C13 8.83875 12.5217 10.0658 11.7266 11.0195L14.8535 14.1464C15.0488 14.3417 15.0488 14.6583 14.8535 14.8536C14.6583 15.0488 14.3417 15.0488 14.1464 14.8536L11.0195 11.7266ZM12 7.5C12 5.01472 9.98528 3 7.5 3C5.01472 3 3 5.01472 3 7.5C3 9.98528 5.01472 12 7.5 12C9.98528 12 12 9.98528 12 7.5Z"
+                          Foreground="{Binding Foreground, ElementName=SearchTextBox, Mode=OneWay}"
+                          IsHitTestVisible="False" />
             </Grid>
         </Grid>
 
