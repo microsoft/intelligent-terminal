@@ -435,6 +435,9 @@ pub struct SessionsListParams {
     /// discovery for an unbound control client. Ordinary snapshots are read-only.
     #[serde(default)]
     pub rescan: bool,
+    /// Explicitly reopen paused history recovery without resetting chat admission.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub retry_history: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -645,8 +648,17 @@ pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification
 /// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` refreshes
 /// the bound agent, or requests background host discovery for a control client.
 pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams { rescan })
-        .expect("SessionsListParams is trivially serializable");
+    build_sessions_list_request_with_params(SessionsListParams {
+        rescan,
+        ..Default::default()
+    })
+}
+
+pub fn build_sessions_list_request_with_params(
+    params: SessionsListParams,
+) -> acp::schema::v1::ExtRequest {
+    let json =
+        serde_json::to_string(&params).expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
@@ -8454,6 +8466,24 @@ mod tests {
                 .expect("empty is valid")
                 .rescan
         );
+        assert!(!parse_sessions_list_params(&empty).unwrap().retry_history);
+        assert!(
+            !parse_sessions_list_params(&req_rescan.params)
+                .unwrap()
+                .retry_history
+        );
+
+        let retry = build_sessions_list_request_with_params(SessionsListParams {
+            rescan: true,
+            retry_history: true,
+        });
+        assert!(matches!(
+            parse_ext_request(retry),
+            WtaExtRequest::SessionsList(SessionsListParams {
+                rescan: true,
+                retry_history: true,
+            })
+        ));
     }
 
     #[test]

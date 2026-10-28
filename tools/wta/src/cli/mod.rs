@@ -125,14 +125,26 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 origin,
                 include_status,
             } => {
-                sessions::run_list(master, origin.to_filter(), false, json_mode, include_status)
-                    .await
+                sessions::run_list(
+                    master,
+                    origin.to_filter(),
+                    Default::default(),
+                    json_mode,
+                    include_status,
+                )
+                .await
             }
-            SessionsAction::Refresh { master } => {
+            SessionsAction::Refresh {
+                master,
+                retry_history,
+            } => {
                 sessions::run_list(
                     master,
                     crate::agent_sessions::OriginFilter::All,
-                    true,
+                    crate::session_registry::SessionsListParams {
+                        rescan: true,
+                        retry_history,
+                    },
                     json_mode,
                     json_mode,
                 )

@@ -140,9 +140,18 @@ ledger, so old files cannot block a new process.
 
 Dedicated history ACP connections do not participate in chat startup admission.
 They retain single-flight queries, adaptive waits, the 300-second hard query
-deadline and backoff-based recovery. Cleanup must finish before the query
-replaces its owned process, but history failures cannot quarantine chat startup
-or require a chat retry epoch to recover.
+deadline and backoff-based recovery. Three consecutive failed query cycles pause
+automatic recovery. Preparation/initialize failures, protocol failures and hard
+query timeouts consume one cycle each; soft timeouts retain the same request and
+do not consume or reset cycles. Only a successful session-list response resets
+the failure streak, not successful initialization. Cancellation is not a failure.
+Cleanup must finish before the query replaces its owned process; a paused query
+retains ownership if cleanup remains unconfirmed. Ordinary refresh cannot reopen
+the breaker. `wta sessions refresh --master <pipe> --retry-history` explicitly
+reopens paused history workers without resetting chat admission or disrupting a
+healthy chat connection. The request returns a cached snapshot while recovery
+runs in the background. Restarting the master also starts a fresh history
+lifetime. No history recovery state is written to disk.
 
 The `probe-sessions` and `probe-host-sessions` diagnostics also own independent,
 invocation-local startup state. They confirm process cleanup without changing a

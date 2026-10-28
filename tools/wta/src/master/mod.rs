@@ -1909,6 +1909,7 @@ struct AgentHistoryRefresh {
     target: OnceLock<history::HistoryTarget>,
     cancelled: tokio_util::sync::CancellationToken,
     worker_started: std::sync::atomic::AtomicBool,
+    retry_requested: tokio::sync::Notify,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7845,6 +7846,7 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             tokio::select! {
                 _ = agent.history_refresh.cancelled.cancelled() => break,
                 _ = tokio::time::sleep_until(next) => {}
+                _ = agent.history_refresh.retry_requested.notified() => {}
             }
         }
     });
@@ -8114,6 +8116,47 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
     });
 }
 
+fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentCli>>) {
+    use std::sync::atomic::Ordering;
+
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let discover = agent.is_none();
+        let agents = match agent {
+            Some(agent) => vec![agent],
+            None => state
+                .agents
+                .lock()
+                .await
+                .values()
+                .filter_map(|cell| cell.get().cloned())
+                .collect(),
+        };
+        for agent in agents {
+            let mut refresh = agent.history_refresh.gate.lock().await;
+            if agent.history_refresh.retired.load(Ordering::Acquire) {
+                continue;
+            }
+            let reopened = refresh.query.retry_paused();
+            if reopened {
+                refresh.failures = 0;
+                refresh.next_refresh_at = None;
+            }
+            drop(refresh);
+            if reopened {
+                tracing::info!(target: "master_history",
+                    agent_id = %agent.resolved_agent_id, agent_source = %agent.source,
+                    "explicit history retry reopened automatic recovery");
+                agent.history_refresh.retry_requested.notify_one();
+            }
+            start_agent_history_worker(&state, &agent);
+        }
+        if discover {
+            request_host_history_refresh(&state);
+        }
+    });
+}
+
 /// Ordinary reads never contact agents. Only an explicit rescan may refresh.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
@@ -8137,8 +8180,13 @@ where
     F: FnOnce(Vec<crate::session_registry::SessionInfo>) -> Fut,
     Fut: std::future::Future<Output = Vec<crate::session_registry::SessionInfo>>,
 {
+    if parsed.retry_history && !parsed.rescan {
+        return Err(acp::Error::invalid_params().data("history retry requires an explicit rescan"));
+    }
     if parsed.rescan {
-        if let Some(agent) = agent {
+        if parsed.retry_history {
+            request_history_retry(state, agent.cloned());
+        } else if let Some(agent) = agent {
             // F5 shares the bound source's worker, but the helper's ACP
             // dispatch must never wait behind a slow history request.
             start_agent_history_worker(state, agent);

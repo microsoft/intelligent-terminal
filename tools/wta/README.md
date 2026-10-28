@@ -255,7 +255,7 @@ has a separate, reusable history-only ACP process, including already-connected
 WSL and custom agents. It is never used for chat, Autofix, or session restoration.
 Its ACP transport driver owns a `LocalSet` on the blocking boundary, so ordinary
 `Send` tasks can start the history worker safely. Worker exit releases its
-startup ownership, allowing a later refresh to restart it.
+worker slot, but does not reset a paused recovery cycle.
 History and title updates share one response. After success, the next query waits
 five seconds from completion; timer, manual, and hook refreshes share this stream
 and cannot queue additional RPCs. Slow title queries never block hook dispatch.
@@ -272,7 +272,9 @@ so its replacement can pick up credentials from the normal sign-in flow; it
 never starts a separate interactive login.
 
 At 300 seconds without a response, master recycles only the dedicated history
-process, confirms its exit, then rebuilds after backoff. Windows query launchers
+process, confirms its exit, then rebuilds after backoff within its three-failed-cycle
+budget. Reaching that limit pauses automatic recovery until an explicit history
+retry or master restart. Windows query launchers
 are assigned to a private kill-on-close Job Object before executing, so their
 descendants are reclaimed too. WSL uses a private process group with a PID/start
 time receipt and a stdin-EOF guardian; recovery checks that the group has exited.
@@ -468,7 +470,17 @@ See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
 
 Dedicated history connections retain their own single-flight, adaptive wait,
 hard timeout, backoff and confirmed-cleanup recovery without consuming the chat
-startup budget. The `probe-sessions` and `probe-host-sessions` diagnostics likewise
+startup budget. Automatic recovery pauses after three consecutive failed query
+cycles, including initialization failures and 300-second query timeouts.
+Successful initialization does not reset that count; an actual successful
+session-list response does, including an empty result. Soft timeouts retain the
+same request without counting as failed cycles. Ordinary refresh cannot reopen
+paused recovery. Use `wta sessions refresh --master <pipe> --retry-history` to
+request a fresh history-only recovery cycle in the background, or restart the
+master. This does not reset chat admission, drop a healthy chat connection, or
+bypass confirmed process cleanup.
+
+The `probe-sessions` and `probe-host-sessions` diagnostics likewise
 own invocation-local state and preserve their output shapes. Both still accept
 `--retry-startup`, but a new invocation needs no retry flag to recover from an
 earlier failure. An unsupported session-list method remains a normal result,

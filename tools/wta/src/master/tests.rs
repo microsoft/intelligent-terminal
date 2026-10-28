@@ -17403,12 +17403,13 @@ async fn history_refresh_real_process_restarts_after_confirmed_job_exit_without_
 $marker='{marker}'
 $launches='{launches}'
 Add-Content -LiteralPath $launches -Value $PID
+$launchNumber=@(Get-Content -LiteralPath $launches).Count
 while ($null -ne ($line=[Console]::In.ReadLine())) {{
     $request=$line | ConvertFrom-Json
     if ($request.method -eq 'initialize') {{
         $result=@{{protocolVersion=1;agentCapabilities=@{{sessionCapabilities=@{{list=@{{}}}}}}}}
     }} elseif ($request.method -eq 'session/list') {{
-        if (-not (Test-Path -LiteralPath $marker)) {{
+        if ($launchNumber -le 3) {{
             Set-Content -LiteralPath $marker -Value $PID
             while ($true) {{ Start-Sleep -Seconds 30 }}
         }}
@@ -17423,7 +17424,8 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     tokio::task::LocalSet::new()
         .run_until(async {
-            let state = make_state();
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
             let mut agent = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
             let inner = Arc::get_mut(&mut agent).unwrap();
             Arc::get_mut(&mut inner.history_refresh.gate)
@@ -17445,61 +17447,95 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 })
                 .ok()
                 .unwrap();
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
+            add_test_agent_to_pool(&state, &agent).await;
+            let _ = state.startup_registry.lock(&agent.cmd_key).await.unwrap().failed(
+                anyhow!("chat cleanup remains quarantined")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
             );
-            assert!(
-                marker.exists(),
-                "real process received and held its first list request"
-            );
-            assert_eq!(
-                std::fs::read_to_string(&launches).unwrap().lines().count(),
-                1
-            );
-            assert!(agent
-                .conn
-                .list_sessions(acp::schema::v1::ListSessionsRequest::new())
-                .await
-                .is_ok());
-            agent
-                .history_refresh
-                .gate
-                .lock()
-                .await
-                .query
-                .expire_for_test();
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
-            assert!(
-                agent
-                    .history_refresh
-                    .gate
-                    .lock()
-                    .await
-                    .query
-                    .process
-                    .is_none(),
-                "confirmed job exit precedes replacement"
-            );
+            for attempt in 1..=3 {
+                let mut refresh = Box::pin(refresh_agent_history(
+                    &state, &agent, HistoryRefreshTrigger::Immediate,
+                ));
+                let received = async {
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+                    loop {
+                        let starts = std::fs::read_to_string(&launches).unwrap_or_default();
+                        let held = std::fs::read_to_string(&marker).unwrap_or_default();
+                        if starts.lines().count() == attempt
+                            && starts.lines().last().is_some_and(|pid| pid.trim() == held.trim())
+                        {
+                            break;
+                        }
+                        assert!(std::time::Instant::now() < deadline, "real session/list request never arrived");
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                };
+                tokio::select! {
+                    _ = received => {}
+                    result = &mut refresh => panic!("history completed before the held request: {result:?}"),
+                }
+                tokio::time::pause();
+                tokio::time::advance(std::time::Duration::from_secs(300)).await;
+                tokio::time::resume();
+                assert_eq!(refresh.await, None);
+                assert!(agent.history_refresh.gate.lock().await.query.process.is_none(),
+                    "confirmed job exit precedes replacement");
+                if attempt < 3 {
+                    tokio::time::pause();
+                    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+                    tokio::time::resume();
+                }
+            }
+            assert!(agent.history_refresh.gate.lock().await.query.recovery_paused());
             tokio::time::pause();
-            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            tokio::time::advance(std::time::Duration::from_secs(60)).await;
             tokio::time::resume();
             assert_eq!(
                 refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                Some(0)
+                None
             );
             assert_eq!(
                 std::fs::read_to_string(&launches).unwrap().lines().count(),
-                2
+                3,
+                "successful initialize must not reset repeated session/list timeouts"
             );
+            handle_sessions_list(&state, Some(&agent), &crate::session_registry::SessionsListParams {
+                rescan: true,
+                ..Default::default()
+            }).await.unwrap();
+            tokio::task::yield_now().await;
+            assert!(agent.history_refresh.gate.lock().await.query.recovery_paused(),
+                "ordinary refresh must not reopen a failed recovery cycle");
+            let invalid_retry = handle_sessions_list(&state, Some(&agent),
+                &crate::session_registry::SessionsListParams {
+                    retry_history: true,
+                    ..Default::default()
+                }).await;
+            assert!(invalid_retry.is_err(), "a read-only snapshot cannot reset recovery");
+            handle_sessions_list(&state, None, &crate::session_registry::SessionsListParams {
+                rescan: true,
+                retry_history: true,
+            }).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                loop {
+                    if agent.history_refresh.gate.lock().await.last_count == Some(0) {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }).await.expect("explicit history retry wakes the existing worker without waiting for backoff");
+            assert_eq!(std::fs::read_to_string(&launches).unwrap().lines().count(), 4);
+            assert!(!agent.history_refresh.gate.lock().await.query.recovery_paused());
+            let blocked = state.startup_registry.lock(&agent.cmd_key).await.unwrap().begin().unwrap_err();
+            assert!(blocked.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>(),
+                "history retry must not reset chat admission");
             assert!(agent
                 .conn
                 .list_sessions(acp::schema::v1::ListSessionsRequest::new())
                 .await
                 .is_ok());
+            agent.history_refresh.retired.store(true, std::sync::atomic::Ordering::Release);
+            agent.history_refresh.cancelled.cancel();
             agent
                 .history_refresh
                 .gate
@@ -17736,7 +17772,7 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                     PathBuf::from("C:\\repo"),
                 ))
                 .await;
-            for delay in [5, 10, 20, 40, 60, 60] {
+            for delay in [5, 10] {
                 let refresh =
                     refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
                 let reply = async {
