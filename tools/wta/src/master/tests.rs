@@ -10,6 +10,97 @@ use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdat
 use std::path::PathBuf;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+async fn test_marker_identity(
+    state: &MasterStateInner,
+    sid: &SessionId,
+) -> crate::session_registry::SessionIdentity {
+    let rows = state.registry.snapshot().await;
+    let rows: Vec<_> = rows.iter().filter(|row| row.session_id == *sid).collect();
+    match rows.as_slice() {
+        [row] => crate::session_registry::SessionIdentity::from_info(row),
+        [] => crate::session_registry::SessionIdentity::legacy(sid.clone()),
+        _ => panic!("test must specify the qualified ownership identity"),
+    }
+}
+
+#[tokio::test]
+async fn session_hook_ownership_retains_acp_universe_and_rejects_ambiguous_raw_activity() {
+    use crate::agent_sessions::{
+        AgentStatus, CliSource, SessionEvent, SessionLocation, SessionOrigin,
+    };
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+
+    let state = make_state();
+    let sid = SessionId::new("qualified-hook");
+    let mut row = SessionInfo::new(sid.clone(), "C:\\repo".into());
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.session_universe = Some("acp-store".into());
+    row.origin = Some(SessionOrigin::AgentPane);
+    row.pane_session_id = Some("agent-pane".into());
+    row.status = Some(AgentStatus::Idle);
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row.clone()).await;
+    handle_session_hook(
+        &state,
+        SessionEvent::SessionStarted {
+            key: sid.to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "nested-shell".into(),
+            cwd: "C:\\repo".into(),
+            title: String::new(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        *state.hook_owned.lock().await,
+        HashSet::from([identity.clone()])
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&identity)
+            .await
+            .unwrap()
+            .pane_session_id,
+        row.pane_session_id
+    );
+
+    let mut foreign = row;
+    foreign.provider_id = Some("claude".into());
+    foreign.cli_source = Some(CliSource::Claude);
+    foreign.session_universe = None;
+    foreign.origin = Some(SessionOrigin::Unknown);
+    foreign.pane_session_id = Some("foreign-pane".into());
+    let foreign_identity = SessionIdentity::from_info(&foreign);
+    state.registry.upsert(foreign).await;
+    state
+        .born_bound
+        .lock()
+        .await
+        .insert(foreign_identity.clone());
+    let before = state.registry.snapshot().await;
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.to_string(),
+            tool_name: "ambiguous".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.registry.snapshot().await, before);
+    assert_eq!(*state.hook_owned.lock().await, HashSet::from([identity]));
+    assert_eq!(
+        *state.born_bound.lock().await,
+        HashSet::from([foreign_identity])
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn auth_bridge_private_owner_and_shared_serialization_survive_disconnect() {
     LocalSet::new().run_until(async {
@@ -2304,8 +2395,16 @@ async fn native_pinned_launch_registration_after_reset_preserves_identity_and_ac
             let native = state.registry.native_pane_observations().await.remove(0);
             assert_eq!(native.agent_session_id.as_deref(), Some("pinned-launch"));
             assert!(native.inferred_history_key.is_none());
-            assert!(state.born_bound.lock().await.contains(&sid));
-            assert!(!state.hook_owned.lock().await.contains(&sid));
+            assert!(state
+                .born_bound
+                .lock()
+                .await
+                .contains(&test_marker_identity(&state, &sid).await));
+            assert!(!state
+                .hook_owned
+                .lock()
+                .await
+                .contains(&test_marker_identity(&state, &sid).await));
 
             let unrelated = SessionEvent::SessionStarted {
                 key: "unrelated-hook".into(),
@@ -2380,7 +2479,11 @@ async fn native_pinned_launch_registration_selects_route_after_waiting_for_lifec
     assert_eq!(row.pane_session_id.as_deref(), Some(pane));
     assert_eq!(row.status, Some(AgentStatus::Working));
     assert!(row.born_bound_pane);
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
     assert_eq!(
         state.registry.native_pane_observations().await[0]
             .agent_session_id
@@ -2415,7 +2518,9 @@ async fn native_pinned_launch_registration_rejects_conflicting_provider_or_locat
         if bound {
             existing.pane_session_id = Some(pane.into());
             existing.born_bound_pane = true;
-            state.born_bound.lock().await.insert(sid.clone());
+            state.born_bound.lock().await.insert(
+                crate::session_registry::SessionIdentity::from_info(&existing),
+            );
         }
         state.registry.upsert(existing).await;
         handle_master_wt_event(
@@ -2446,7 +2551,14 @@ async fn native_pinned_launch_registration_rejects_conflicting_provider_or_locat
             serde_json::to_value(state.registry.lookup(&sid).await.unwrap()).unwrap(),
             before
         );
-        assert_eq!(state.born_bound.lock().await.contains(&sid), bound);
+        assert_eq!(
+            state
+                .born_bound
+                .lock()
+                .await
+                .contains(&test_marker_identity(&state, &sid).await),
+            bound
+        );
         assert_eq!(
             state.registry.native_pane_observations().await[0]
                 .agent_session_id
@@ -2493,8 +2605,16 @@ async fn born_bound_wsl_replay_preserves_live_hook_and_stamps_legacy_location() 
     );
     assert_eq!(row.status, Some(AgentStatus::Working));
     assert_eq!(row.title.as_deref(), Some("Live title"));
-    assert!(state.hook_owned.lock().await.contains(&sid));
-    assert!(!state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
+    assert!(!state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 }
 
 #[tokio::test]
@@ -12988,7 +13108,11 @@ async fn sidebar_cli_resume_enables_watcher_activity_for_new_generation() {
         let identity = SessionIdentity::from_info(&row);
         state.registry.upsert(row).await;
         if stale_hook {
-            state.hook_owned.lock().await.insert(sid.clone());
+            state
+                .hook_owned
+                .lock()
+                .await
+                .insert(test_marker_identity(&state, &sid).await);
         }
         let response = execute_session_activation(
             &state,
@@ -13343,11 +13467,7 @@ async fn sidebar_cli_resume_reports_creation_and_focus_failures() {
             assert_eq!(row.pane_session_id.as_deref(), Some("old-pane-binding"));
         }
         assert_eq!(
-            state
-                .born_bound
-                .lock()
-                .await
-                .contains(&params.identity.session_id),
+            state.born_bound.lock().await.contains(&params.identity),
             call_count == 3,
             "a created and bound pane keeps watcher fallback even if focus fails"
         );
@@ -13586,7 +13706,7 @@ async fn sidebar_cli_resume_updates_only_selected_collision_identity() {
         "qualified collisions require structural invalidation, not a raw-ID status delta"
     );
     assert!(state.hook_owned.lock().await.is_empty());
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(state.born_bound.lock().await.contains(&target_identity));
     apply_watcher_event(
         &state,
         crate::session_watcher::Emitted {
@@ -13738,8 +13858,16 @@ async fn sidebar_cli_resume_accepts_a_matching_hook_binding_without_resetting_ac
                     state.registry.lookup_identity(&identity).await.unwrap(),
                     current
                 );
-                assert!(state.hook_owned.lock().await.contains(&sid));
-                assert!(!state.born_bound.lock().await.contains(&sid));
+                assert!(state
+                    .hook_owned
+                    .lock()
+                    .await
+                    .contains(&test_marker_identity(&state, &sid).await));
+                assert!(!state
+                    .born_bound
+                    .lock()
+                    .await
+                    .contains(&test_marker_identity(&state, &sid).await));
                 apply_watcher_event(
                     &state,
                     crate::session_watcher::Emitted {
@@ -14069,7 +14197,11 @@ async fn copilot_fork_without_a_prompt_or_target_lease_waits_only_for_terminal_c
         })
         .await;
     let source_id = SessionId::new(source);
-    state.hook_owned.lock().await.insert(source_id.clone());
+    state
+        .hook_owned
+        .lock()
+        .await
+        .insert(test_marker_identity(&state, &source_id).await);
     let fork = crate::session_watcher::copilot_fork::CopilotFork {
         source: source.into(),
         target: target.into(),
@@ -14132,12 +14264,16 @@ async fn copilot_fork_without_a_prompt_or_target_lease_waits_only_for_terminal_c
             .as_deref(),
         Some(pane)
     );
-    assert!(!state.hook_owned.lock().await.contains(&source_id));
+    assert!(!state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &source_id).await));
     assert!(state
         .born_bound
         .lock()
         .await
-        .contains(&SessionId::new(target)));
+        .contains(&test_marker_identity(&state, &SessionId::new(target)).await));
     copilot_fork::confirm(&state, &request["params"]).await;
     assert_eq!(
         state
@@ -14606,23 +14742,35 @@ async fn copilot_fork_buffered_and_subsequent_activity_uses_qualified_host_ident
         })
         .await;
     let mut foreign = Vec::new();
-    for (provider, cli, location) in [
-        ("claude", CliSource::Claude, SessionLocation::Host),
+    for (provider, cli, location, universe) in [
+        ("claude", CliSource::Claude, SessionLocation::Host, None),
         (
             "copilot",
             CliSource::Copilot,
             SessionLocation::Wsl {
                 distro: "Ubuntu".into(),
             },
+            None,
+        ),
+        (
+            "copilot",
+            CliSource::Copilot,
+            SessionLocation::Host,
+            Some("acp-store"),
         ),
     ] {
-        let mut row = SessionInfo::new(SessionId::new("target"), "C:\\foreign".into());
-        row.provider_id = Some(provider.into());
-        row.cli_source = Some(cli);
-        row.location = location;
-        row.status = Some(AgentStatus::Historical);
-        foreign.push((SessionIdentity::from_info(&row), row.clone()));
-        state.registry.upsert(row).await;
+        for key in ["source", "target"] {
+            let mut row = SessionInfo::new(SessionId::new(key), "C:\\foreign".into());
+            row.provider_id = Some(provider.into());
+            row.cli_source = Some(cli.clone());
+            row.location = location.clone();
+            row.session_universe = universe.map(str::to_owned);
+            row.status = Some(AgentStatus::Historical);
+            let identity = SessionIdentity::from_info(&row);
+            state.hook_owned.lock().await.insert(identity.clone());
+            foreign.push((identity, row.clone()));
+            state.registry.upsert(row).await;
+        }
     }
     copilot_fork::request(
         &state,
@@ -14674,6 +14822,7 @@ async fn copilot_fork_buffered_and_subsequent_activity_uses_qualified_host_ident
         Some(AgentStatus::Idle)
     );
     for (identity, row) in foreign {
+        assert!(state.hook_owned.lock().await.contains(&identity));
         assert_eq!(
             state.registry.lookup_identity(&identity).await.unwrap(),
             row
@@ -14686,6 +14835,39 @@ async fn copilot_fork_buffered_and_subsequent_activity_uses_qualified_host_ident
     assert!(
         event["params"].get("session_id").is_none(),
         "ambiguous raw ID requires a snapshot"
+    );
+    let identity =
+        SessionIdentity::from_info(&state.registry.lookup_active_by_pane("pane").await.unwrap());
+    apply_master_session_event_with_identity(
+        &state,
+        SessionEvent::ToolStarting {
+            key: "target".into(),
+            tool_name: "real-hook".into(),
+        },
+        false,
+        SessionLocation::Host,
+        Some(identity.clone()),
+    )
+    .await;
+    assert!(state.hook_owned.lock().await.contains(&identity));
+    assert!(!state.born_bound.lock().await.contains(&identity));
+    let before = state.registry.lookup_identity(&identity).await.unwrap();
+    assert_eq!(before.status, Some(AgentStatus::Working));
+    assert_eq!(before.current_tool.as_deref(), Some("real-hook"));
+    apply_watcher_event(
+        &state,
+        Emitted {
+            cli: CliSource::Copilot,
+            key: "target".into(),
+            event: SessionEvent::ToolCompleted {
+                key: "target".into(),
+            },
+        },
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup_identity(&identity).await.unwrap(),
+        before
     );
 }
 
@@ -20196,7 +20378,11 @@ async fn native_off_watcher_admits_exact_copilot_input_activity() {
         AgentStatus::Attention
     );
     let identity = crate::session_registry::SessionIdentity::from_info(&row);
-    state.hook_owned.lock().await.insert(sid.clone());
+    state
+        .hook_owned
+        .lock()
+        .await
+        .insert(test_marker_identity(&state, &sid).await);
     let mut collision = row.clone();
     collision.provider_id = Some("claude".into());
     collision.pane_session_id = None;
@@ -20706,11 +20892,13 @@ async fn watcher_event_dropped_when_session_is_hook_owned() {
     // `hook_owned`. The watcher is a fallback and must not double-track it:
     // its event is dropped before any row is created.
     let state = make_state();
-    state
-        .hook_owned
-        .lock()
-        .await
-        .insert(acp::schema::v1::SessionId::new("sid-hooked".to_string()));
+    state.hook_owned.lock().await.insert(
+        test_marker_identity(
+            &state,
+            &acp::schema::v1::SessionId::new("sid-hooked".to_string()),
+        )
+        .await,
+    );
 
     apply_watcher_event(&state, codex_emitted("sid-hooked")).await;
 
@@ -20769,11 +20957,13 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
         .expect("valid session_hook accepted");
 
     assert!(
-        state
-            .hook_owned
-            .lock()
+        state.hook_owned.lock().await.contains(
+            &test_marker_identity(
+                &state,
+                &acp::schema::v1::SessionId::new("sid-claimed".to_string())
+            )
             .await
-            .contains(&acp::schema::v1::SessionId::new("sid-claimed".to_string())),
+        ),
         "a keyed session_hook event must mark the session hook-owned"
     );
 
@@ -20821,8 +21011,16 @@ async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
         let row = state.registry.lookup(&sid).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Idle));
         assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
-        assert!(state.born_bound.lock().await.contains(&sid));
-        assert!(!state.hook_owned.lock().await.contains(&sid));
+        assert!(state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await));
+        assert!(!state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await));
     }
 }
 
@@ -20863,8 +21061,16 @@ async fn restored_session_birth_preserves_an_earlier_live_hook() {
     assert_eq!(row.status, Some(AgentStatus::Working));
     assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
     assert_eq!(row.title.as_deref(), Some("Live conversation title"));
-    assert!(state.hook_owned.lock().await.contains(&sid));
-    assert!(!state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
+    assert!(!state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 }
 
 #[tokio::test]
@@ -20929,8 +21135,16 @@ async fn restored_session_birth_normalizes_pane_identity_and_preserves_live_hook
             assert_eq!(row.current_tool, before.current_tool);
             assert_eq!(row.attention_reason, before.attention_reason);
             assert_eq!(row.pane_session_id.as_deref(), Some(plain));
-            assert!(state.hook_owned.lock().await.contains(&sid));
-            assert!(!state.born_bound.lock().await.contains(&sid));
+            assert!(state
+                .hook_owned
+                .lock()
+                .await
+                .contains(&test_marker_identity(&state, &sid).await));
+            assert!(!state
+                .born_bound
+                .lock()
+                .await
+                .contains(&test_marker_identity(&state, &sid).await));
             assert!(
                 state
                     .registry
@@ -20966,11 +21180,19 @@ async fn session_born_bound_marks_born_bound_not_hook_owned() {
 
     let sid = acp::schema::v1::SessionId::new("bb-mark".to_string());
     assert!(
-        state.born_bound.lock().await.contains(&sid),
+        state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "born-bound registration must record the session in `born_bound`"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "born-bound is binding-only — must NOT be hook-owned"
     );
 }
@@ -21001,7 +21223,11 @@ async fn born_bound_wsl_stamps_wsl_location() {
         "WSL born-bound row must be stamped Wsl {{ distro }}"
     );
     // Still binding-only, like any born-bound row.
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 }
 
 #[tokio::test]
@@ -21045,7 +21271,11 @@ async fn born_bound_session_gets_watcher_activity_without_rebinding() {
     info.status = Some(crate::agent_sessions::AgentStatus::Idle);
     info.pane_session_id = Some("born-pane".to_string());
     state.registry.upsert(info).await;
-    state.born_bound.lock().await.insert(sid.clone());
+    state
+        .born_bound
+        .lock()
+        .await
+        .insert(test_marker_identity(&state, &sid).await);
 
     apply_watcher_event(
         &state,
@@ -21109,8 +21339,9 @@ async fn watcher_activity_requires_an_unambiguous_matching_native_session() {
             }
             _ => unreachable!(),
         }
+        let identity = crate::session_registry::SessionIdentity::from_info(&row);
         state.registry.upsert(row).await;
-        state.born_bound.lock().await.insert(sid);
+        state.born_bound.lock().await.insert(identity);
         let before = state.registry.snapshot().await;
         apply_watcher_event(&state, codex_emitted("watcher-scope")).await;
         assert_eq!(state.registry.snapshot().await, before, "{case}");
@@ -21135,7 +21366,11 @@ async fn real_hook_takes_over_born_bound_session() {
     handle_session_hook(&state, bb, true)
         .await
         .expect("born-bound accepted");
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 
     // A real hook event arrives via session_hook (is_born_bound = false).
     let hook = crate::agent_sessions::SessionEvent::ToolStarting {
@@ -21147,11 +21382,19 @@ async fn real_hook_takes_over_born_bound_session() {
         .expect("real hook accepted");
 
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "the real hook must take ownership"
     );
     assert!(
-        !state.born_bound.lock().await.contains(&sid),
+        !state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "the real hook must remove the stale born-bound claim"
     );
 }
@@ -21172,11 +21415,19 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         .await
         .expect("resume dispatched accepted");
     assert!(
-        state.born_bound.lock().await.contains(&sid),
+        state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "ResumeDispatched must be born_bound"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "ResumeDispatched must NOT be hook_owned"
     );
 
@@ -21188,10 +21439,18 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         .await
         .expect("resume pane assigned accepted");
     assert!(
-        state.born_bound.lock().await.contains(&sid),
+        state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "ResumePaneAssigned must be born_bound"
     );
-    assert!(!state.hook_owned.lock().await.contains(&sid));
+    assert!(!state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 }
 
 #[tokio::test]
@@ -21216,7 +21475,11 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
     handle_session_hook(&state, first_run, false)
         .await
         .expect("real hook accepted");
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 
     let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
         key: "sid-rerun".to_string(),
@@ -21226,12 +21489,20 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
         .expect("resume dispatched accepted");
 
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "the resume must drop the previous run's hook_owned claim, or the \
          watcher's status fallback stays suppressed for the whole session"
     );
     assert!(
-        state.born_bound.lock().await.contains(&sid),
+        state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "the resumed session is born-bound"
     );
 }
@@ -21250,7 +21521,11 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
     handle_session_hook(&state, earlier, false)
         .await
         .expect("real hook accepted");
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 
     let born = crate::agent_sessions::SessionEvent::SessionStarted {
         key: "sid-delegate".to_string(),
@@ -21263,8 +21538,16 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
         .await
         .expect("born-bound accepted");
 
-    assert!(!state.hook_owned.lock().await.contains(&sid));
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(!state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 }
 
 /// The authoritative hook path is the master's own COM subscription, not a
@@ -21331,7 +21614,11 @@ async fn master_com_hook_source_rejects_invalid_metadata_without_mutation() {
                 row.status = Some(AgentStatus::Idle);
                 row.pane_session_id = Some("owner".into());
                 state.registry.upsert(row).await;
-                state.born_bound.lock().await.insert(sid.clone());
+                state
+                    .born_bound
+                    .lock()
+                    .await
+                    .insert(test_marker_identity(&state, &sid).await);
             }
             let before = state.registry.snapshot().await;
             let (tx, mut notifications) = mpsc::unbounded_channel();
@@ -21361,7 +21648,14 @@ async fn master_com_hook_source_rejects_invalid_metadata_without_mutation() {
                 "distro={distro}, existing={existing}"
             );
             assert!(state.hook_owned.lock().await.is_empty());
-            assert_eq!(state.born_bound.lock().await.contains(&sid), existing);
+            assert_eq!(
+                state
+                    .born_bound
+                    .lock()
+                    .await
+                    .contains(&test_marker_identity(&state, &sid).await),
+                existing
+            );
             assert!(notifications.try_recv().is_err());
         }
     }
@@ -21519,7 +21813,11 @@ async fn master_com_hook_source_preserves_known_wsl_without_external_lookup() {
             distro: "Ubuntu".into()
         }
     );
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
     assert!(wt.calls().is_empty());
 }
 
@@ -21585,6 +21883,8 @@ async fn master_com_hook_source_rejects_foreign_raw_id_before_reduction() {
                 };
                 foreign.status = Some(AgentStatus::Idle);
                 foreign.pane_session_id = Some("owner".into());
+                let foreign_identity =
+                    crate::session_registry::SessionIdentity::from_info(&foreign);
                 state.registry.upsert(foreign.clone()).await;
                 if own_row_exists {
                     let mut own = foreign;
@@ -21592,7 +21892,11 @@ async fn master_com_hook_source_rejects_foreign_raw_id_before_reduction() {
                     own.cli_source = Some(CliSource::Antigravity);
                     state.registry.upsert(own).await;
                 }
-                state.born_bound.lock().await.insert(sid.clone());
+                state
+                    .born_bound
+                    .lock()
+                    .await
+                    .insert(foreign_identity.clone());
                 let before = state.registry.snapshot().await;
                 assert_eq!(before.len(), if own_row_exists { 2 } else { 1 });
                 let (tx, mut notifications) = mpsc::unbounded_channel();
@@ -21626,7 +21930,7 @@ async fn master_com_hook_source_rejects_foreign_raw_id_before_reduction() {
                     "{event}, own={own_row_exists}, wsl={wsl_metadata}"
                 );
                 assert!(state.hook_owned.lock().await.is_empty());
-                assert!(state.born_bound.lock().await.contains(&sid));
+                assert!(state.born_bound.lock().await.contains(&foreign_identity));
                 assert!(notifications.try_recv().is_err());
             }
         }
@@ -21649,7 +21953,11 @@ async fn master_antigravity_cli_hook_cannot_mutate_acp_owned_raw_id() {
     row.pane_session_id = Some("acp-owner".into());
     row.title = Some("ACP conversation".into());
     state.registry.upsert(row).await;
-    state.born_bound.lock().await.insert(sid.clone());
+    state
+        .born_bound
+        .lock()
+        .await
+        .insert(test_marker_identity(&state, &sid).await);
     let before = state.registry.snapshot().await;
     let (tx, mut notifications) = mpsc::unbounded_channel();
     state
@@ -21679,7 +21987,11 @@ async fn master_antigravity_cli_hook_cannot_mutate_acp_owned_raw_id() {
         "ordinary CLI hooks must not mutate an ACP-owned conversation with the same raw ID"
     );
     assert!(state.hook_owned.lock().await.is_empty());
-    assert!(state.born_bound.lock().await.contains(&sid));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
     assert!(notifications.try_recv().is_err());
 }
 
@@ -22205,7 +22517,11 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
     );
     assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "a real COM hook must suppress the hookless watcher just like the old \
          helper-forwarded path did"
     );
@@ -22701,7 +23017,11 @@ async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
         }),
     )
     .await;
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&test_marker_identity(&state, &sid).await));
 
     let response = handle_session_hook(
         &state,
@@ -22719,11 +23039,19 @@ async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
         "the callback is a no-op because the hook already bound this pane"
     );
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "a no-op binding callback must not erase current hook ownership"
     );
     assert!(
-        !state.born_bound.lock().await.contains(&sid),
+        !state
+            .born_bound
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "the no-op callback must not reclassify the current generation"
     );
 }
@@ -22758,7 +23086,11 @@ async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
         "a session that only ever reported its end must not materialize"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&test_marker_identity(&state, &sid).await),
         "a no-op terminal event must not claim watcher ownership"
     );
 }

@@ -37,6 +37,8 @@ because Terminal may already have queued its update; a late acknowledgment
 can still commit it, while a definite publication failure cancels the plan.
 Confirmed helper resume success settles that exact attempt without waiting
 for a live snapshot, while pending or indeterminate attempts remain suppressed.
+Snapshot-based settlement requires current request-generation evidence newer
+than the attempt; an ignored old snapshot cannot release a newer attempt.
 Reverse file notifications retain bounded, short-lived
 unmatched fork/activity evidence in memory; only a verified predecessor can
 promote that evidence into a binding transition.
@@ -46,7 +48,10 @@ cannot establish a shared hook binding, and prompt/subagent events cannot
 replace an established Copilot owner. Retained fork metadata does not synthesize
 a SessionStart hook.
 Normal hook activity and hook-free born-bound activity keep their existing
-precedence. This fallback does not infer WSL or ACP agent-pane ownership.
+precedence for the exact qualified conversation. Ownership claims retain
+provider, location and universe, so migration cannot remove or inherit another
+conversation's hook claim merely because its raw session ID matches.
+This fallback does not infer WSL or ACP agent-pane ownership.
 
 ## Shared read model: pane metadata and Recent conversations
 

@@ -9015,6 +9015,113 @@ fn copilot_fork_native_resume_uses_master_activation_before_any_local_launch() {
 }
 
 #[test]
+fn copilot_fork_native_resume_requires_current_post_dispatch_live_evidence() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn request_snapshot(
+        app: &mut App,
+        requests: &mut tokio::sync::mpsc::UnboundedReceiver<MasterExtRequest>,
+    ) -> u64 {
+        app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+        let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+            panic!("expected snapshot request");
+        };
+        request_id
+    }
+
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.window_id = Some("42".into());
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history");
+    };
+    let mut historical = session_info_for_test("fork-parent");
+    historical.cli_source = Some(CliSource::Copilot);
+    historical.provider_id = Some("copilot".into());
+    historical.status = Some(AgentStatus::Historical);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    let before_attempt = request_snapshot(&mut app, &mut requests);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: first, .. } = requests.try_recv().unwrap()
+    else {
+        panic!("historical session must activate");
+    };
+    app.handle_event(AppEvent::NativeResumeSettled {
+        identity: first.identity,
+        activation_id: first.activation_id,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: first, .. } = requests.try_recv().unwrap()
+    else {
+        panic!("known completion permits a new activation generation");
+    };
+    let attempt = &app.native_resume_attempts[&first.identity];
+    let dispatched_at_ms = attempt
+        .dispatched_at
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let mut live = historical.clone();
+    live.status = Some(AgentStatus::Idle);
+    live.pane_session_id = Some("old-pane".into());
+    live.last_activity_at_ms = Some(dispatched_at_ms + 1_000);
+    app.handle_agents_snapshot_loaded(before_attempt, vec![live.clone()]);
+    assert!(
+        app.native_resume_attempts.contains_key(&first.identity),
+        "a request issued before activation cannot settle it"
+    );
+
+    let request_id = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    let stale = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_failed(stale);
+    let current = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_loaded(stale, vec![live.clone()]);
+    assert_eq!(
+        app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].status,
+        Some(AgentStatus::Historical),
+        "the view ignores the delayed old live snapshot"
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        requests.try_recv().is_err(),
+        "the same stale snapshot must not release pending/unknown protection"
+    );
+
+    live.last_activity_at_ms = Some(dispatched_at_ms);
+    app.handle_agents_snapshot_loaded(current, vec![live.clone()]);
+    assert!(
+        app.native_resume_attempts.contains_key(&first.identity),
+        "accepted live evidence predating dispatch must not settle activation"
+    );
+    let request_id = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical.clone()]);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(requests.try_recv().is_err());
+
+    live.last_activity_at_ms = Some(dispatched_at_ms + 1_000);
+    let request_id = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_loaded(request_id, vec![live]);
+    assert!(
+        !app.native_resume_attempts.contains_key(&first.identity),
+        "current post-dispatch live proof settles activation"
+    );
+    historical.status = Some(AgentStatus::Ended);
+    historical.last_activity_at_ms = Some(dispatched_at_ms + 2_000);
+    let request_id = request_snapshot(&mut app, &mut requests);
+    app.handle_agents_snapshot_loaded(request_id, vec![historical]);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let MasterExtRequest::SessionActivate { params: later, .. } = requests.try_recv().unwrap()
+    else {
+        panic!("a later ended session must remain resumable");
+    };
+    assert_ne!(later.activation_id, first.activation_id);
+}
+
+#[test]
 fn copilot_fork_native_resume_success_settles_without_intervening_live_snapshot() {
     use crate::agent_sessions::{AgentStatus, CliSource};
     use crate::protocol::acp::client::MasterExtRequest;

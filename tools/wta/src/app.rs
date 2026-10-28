@@ -1370,6 +1370,14 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
+struct NativeResumeAttempt {
+    activation_id: String,
+    selected_last_activity_at: std::time::SystemTime,
+    dispatched_at: std::time::SystemTime,
+    request_id: u64,
+    tab_id: String,
+}
+
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -1488,8 +1496,7 @@ pub struct App {
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<AgentLifecycleRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
-    native_resume_attempts:
-        HashMap<crate::session_registry::SessionIdentity, (String, std::time::SystemTime)>,
+    native_resume_attempts: HashMap<crate::session_registry::SessionIdentity, NativeResumeAttempt>,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -3679,7 +3686,6 @@ impl App {
         if s.cli_source == crate::agent_sessions::CliSource::Copilot
             && s.location == crate::agent_sessions::SessionLocation::Host
         {
-            let request_id = self.next_agents_rpc_request_id();
             let identity = crate::session_registry::SessionIdentity {
                 session_id: agent_client_protocol::schema::v1::SessionId::new(key.clone()),
                 history_key: crate::session_registry::HistoryRowKey::new(
@@ -3692,9 +3698,9 @@ impl App {
             if self
                 .native_resume_attempts
                 .get(&identity)
-                .is_some_and(|(_, baseline)| {
+                .is_some_and(|attempt| {
                     s.status == crate::agent_sessions::AgentStatus::Ended
-                        && s.last_activity_at > *baseline
+                        && s.last_activity_at > attempt.selected_last_activity_at
                 })
             {
                 self.native_resume_attempts.remove(&identity);
@@ -3702,16 +3708,23 @@ impl App {
             if self.native_resume_attempts.contains_key(&identity) {
                 return;
             }
-            let activation_id = self
-                .native_resume_attempts
-                .entry(identity.clone())
-                .or_insert_with(|| (uuid::Uuid::new_v4().to_string(), s.last_activity_at))
-                .0
-                .clone();
+            let request_id = self.next_agents_rpc_request_id();
+            let tab_id = self.active_tab_key().to_string();
+            let activation_id = uuid::Uuid::new_v4().to_string();
+            self.native_resume_attempts.insert(
+                identity.clone(),
+                NativeResumeAttempt {
+                    activation_id: activation_id.clone(),
+                    selected_last_activity_at: s.last_activity_at,
+                    dispatched_at: std::time::SystemTime::now(),
+                    request_id,
+                    tab_id: tab_id.clone(),
+                },
+            );
             let dispatched = self.master_request_tx.send(
                 crate::protocol::acp::client::MasterExtRequest::SessionActivate {
                     request_id,
-                    tab_id: self.active_tab_key().to_string(),
+                    tab_id,
                     params: crate::session_registry::SessionActivateParams {
                         identity: identity.clone(),
                         window_id,
@@ -4122,28 +4135,40 @@ impl App {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
     ) {
-        self.native_resume_attempts.retain(|identity, _| {
-            !sessions.iter().any(|row| {
-                crate::session_registry::SessionIdentity::from_info(row) == *identity
-                    && row.pane_session_id.is_some()
-                    && matches!(
-                        row.status,
-                        Some(
-                            crate::agent_sessions::AgentStatus::Idle
-                                | crate::agent_sessions::AgentStatus::Working
-                                | crate::agent_sessions::AgentStatus::Attention
-                                | crate::agent_sessions::AgentStatus::Error
-                        )
-                    )
-            })
-        });
         let tabs: Vec<String> = self
             .tab_sessions
             .iter()
             .filter_map(|(id, tab)| {
-                (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
+                (tab.agents_view.snapshot.is_some()
+                    && tab.agents_view.latest_request_id == Some(request_id))
+                .then(|| id.clone())
             })
             .collect();
+        // Request IDs are tab-local. Only newer evidence accepted by the
+        // attempt's own view can settle an uncertain activation.
+        self.native_resume_attempts.retain(|identity, attempt| {
+            !tabs.contains(&attempt.tab_id)
+                || request_id <= attempt.request_id
+                || !sessions.iter().any(|row| {
+                    crate::session_registry::SessionIdentity::from_info(row) == *identity
+                        && row.pane_session_id.is_some()
+                        && row.last_activity_at_ms.is_some_and(|ms| {
+                            attempt
+                                .dispatched_at
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .is_ok_and(|dispatched| u128::from(ms) > dispatched.as_millis())
+                        })
+                        && matches!(
+                            row.status,
+                            Some(
+                                crate::agent_sessions::AgentStatus::Idle
+                                    | crate::agent_sessions::AgentStatus::Working
+                                    | crate::agent_sessions::AgentStatus::Attention
+                                    | crate::agent_sessions::AgentStatus::Error
+                            )
+                        )
+                })
+        });
         for tab_id in tabs {
             let old_selected = self
                 .tab_sessions

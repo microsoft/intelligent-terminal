@@ -2825,7 +2825,7 @@ impl App {
                 if self
                     .native_resume_attempts
                     .get(&identity)
-                    .is_some_and(|(current, _)| *current == activation_id)
+                    .is_some_and(|attempt| attempt.activation_id == activation_id)
                 {
                     self.native_resume_attempts.remove(&identity);
                 }

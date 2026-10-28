@@ -179,19 +179,20 @@ pub(super) async fn buffer_activity(
     // Only the watcher's fresh suffix reaches this boundary. Unowned activity
     // is evidence, never authority to create or move a registry binding.
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
-    let activity_owned = state.hook_owned.lock().await.contains(&sid)
-        || state.born_bound.lock().await.contains(&sid)
+    let identity = SessionIdentity {
+        session_id: sid,
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            SessionLocation::Host,
+            &emitted.key,
+            None,
+        ),
+    };
+    let activity_owned = state.hook_owned.lock().await.contains(&identity)
+        || state.born_bound.lock().await.contains(&identity)
         || state
             .registry
-            .lookup_identity(&SessionIdentity {
-                session_id: sid,
-                history_key: crate::session_registry::HistoryRowKey::new(
-                    "copilot",
-                    SessionLocation::Host,
-                    &emitted.key,
-                    None,
-                ),
-            })
+            .lookup_identity(&identity)
             .await
             .is_some_and(|row| {
                 row.origin == Some(SessionOrigin::AgentPane)
@@ -467,11 +468,20 @@ pub(super) async fn confirm(state: &Arc<MasterStateInner>, params: &serde_json::
         .await;
     if applied {
         let mut hooked = state.hook_owned.lock().await;
-        hooked.remove(&plan.source.session_id);
+        hooked.remove(&plan.source);
         let mut born = state.born_bound.lock().await;
-        born.remove(&plan.source.session_id);
-        if !hooked.contains(&plan.target) {
-            born.insert(plan.target.clone());
+        born.remove(&plan.source);
+        let target_identity = SessionIdentity {
+            session_id: plan.target.clone(),
+            history_key: crate::session_registry::HistoryRowKey::new(
+                "copilot",
+                SessionLocation::Host,
+                plan.target.0.as_ref(),
+                None,
+            ),
+        };
+        if !hooked.contains(&target_identity) {
+            born.insert(target_identity);
         }
     }
     drop(second_guard);

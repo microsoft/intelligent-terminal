@@ -756,10 +756,9 @@ struct MasterStateInner {
     /// [`apply_watcher_event`] so hooks and the watcher never double-track the
     /// same session.
     ///
-    /// Grow-only for the master's lifetime: a dead session id costs a few bytes
-    /// and re-adding is idempotent, so no eviction is needed. Independent lock —
-    /// touched only on the session_hook ingest path and the watcher apply path.
-    hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    /// Provider, location, and universe are part of ownership; an unrelated
+    /// session sharing the raw SDK ID must not suppress native file activity.
+    hook_owned: Mutex<HashSet<crate::session_registry::SessionIdentity>>,
     /// Sessions loaded on a shared agent CLI whose owning helper has
     /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
     /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
@@ -792,7 +791,7 @@ struct MasterStateInner {
     /// (activity-only, never re-binding the pane). A subsequent real hook moves
     /// the session into `hook_owned` and out of here, after which the watcher
     /// fully backs off.
-    born_bound: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    born_bound: Mutex<HashSet<crate::session_registry::SessionIdentity>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -8897,8 +8896,12 @@ async fn execute_session_activation_with_helper_mode(
                                     == qualified_identity
                             })
                     {
-                        state.hook_owned.lock().await.remove(&row.session_id);
-                        state.born_bound.lock().await.insert(row.session_id.clone());
+                        state.hook_owned.lock().await.remove(&qualified_identity);
+                        state
+                            .born_bound
+                            .lock()
+                            .await
+                            .insert(qualified_identity.clone());
                     }
                     drop(lifecycle_guard);
                     let mut publication_error = None;
@@ -9055,6 +9058,76 @@ async fn apply_master_session_event(
     is_born_bound: bool,
     birth_location: crate::agent_sessions::SessionLocation,
 ) -> (bool, Option<String>) {
+    apply_master_session_event_with_identity(state, event, is_born_bound, birth_location, None)
+        .await
+}
+
+async fn session_marker_identity(
+    state: &MasterStateInner,
+    event: &crate::agent_sessions::SessionEvent,
+    location: &crate::agent_sessions::SessionLocation,
+) -> Option<crate::session_registry::SessionIdentity> {
+    use crate::agent_sessions::SessionEvent;
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+    let key = session_event_key(event)?;
+    let sid = acp::schema::v1::SessionId::new(key.to_owned());
+    let rows = match state.registry.lookup(&sid).await {
+        Some(row) => vec![row],
+        None => state.registry.snapshot().await,
+    };
+    let candidates: Vec<_> = rows.iter().filter(|row| row.session_id == sid).collect();
+    if let SessionEvent::SessionStarted {
+        cli_source,
+        pane_session_id,
+        ..
+    } = event
+    {
+        let provider = cli_source.canonical_provider_id();
+        if let [row] = candidates.as_slice() {
+            if row.cli_source.as_ref() == Some(cli_source)
+                && row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
+            {
+                return Some(SessionIdentity::from_info(row));
+            }
+        }
+        let mut matching = candidates.iter().filter(|row| {
+            row.cli_source.as_ref() == Some(cli_source)
+                && ((row.location == *location && row.session_universe.is_none())
+                    || row.pane_session_id.as_deref().is_some_and(|pane| {
+                        crate::agent_sessions::pane_key(pane)
+                            == crate::agent_sessions::pane_key(pane_session_id)
+                    }))
+        });
+        if let Some(row) = matching.next() {
+            return matching
+                .next()
+                .is_none()
+                .then(|| SessionIdentity::from_info(row));
+        }
+        return Some(SessionIdentity {
+            session_id: sid,
+            history_key: provider
+                .and_then(|provider| HistoryRowKey::new(provider, location.clone(), key, None)),
+        });
+    }
+    match candidates.as_slice() {
+        [row] => Some(SessionIdentity::from_info(row)),
+        [] => Some(SessionIdentity::legacy(sid)),
+        _ => None,
+    }
+}
+
+async fn apply_master_session_event_with_identity(
+    state: &MasterStateInner,
+    event: crate::agent_sessions::SessionEvent,
+    is_born_bound: bool,
+    birth_location: crate::agent_sessions::SessionLocation,
+    identity: Option<crate::session_registry::SessionIdentity>,
+) -> (bool, Option<String>) {
+    let identity = match identity {
+        Some(identity) => Some(identity),
+        None => session_marker_identity(state, &event, &birth_location).await,
+    };
     if let crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id } = &event {
         state
             .pending_copilot_forks
@@ -9088,8 +9161,10 @@ async fn apply_master_session_event(
         let _gate_guard = gate.lock().await;
         let applied = state.registry.apply_event(event).await;
         if applied {
-            state.hook_owned.lock().await.remove(&sid);
-            state.born_bound.lock().await.remove(&sid);
+            if let Some(identity) = &identity {
+                state.hook_owned.lock().await.remove(identity);
+                state.born_bound.lock().await.remove(identity);
+            }
         }
         return (applied, refresh_key);
     }
@@ -9129,7 +9204,11 @@ async fn apply_master_session_event(
                     pane_session_id, ..
                 } = &event
                 {
-                    if let Some(row) = state.registry.lookup(&sid).await {
+                    let row = match &identity {
+                        Some(identity) => state.registry.lookup_identity(identity).await,
+                        None => state.registry.lookup(&sid).await,
+                    };
+                    if let Some(row) = row {
                         if row.pane_session_id.as_deref().is_some_and(|pane| {
                             crate::agent_sessions::pane_key(pane)
                                 == crate::agent_sessions::pane_key(pane_session_id)
@@ -9140,8 +9219,14 @@ async fn apply_master_session_event(
                                     | crate::agent_sessions::AgentStatus::Working
                                     | crate::agent_sessions::AgentStatus::Attention
                             )
-                        ) && (state.hook_owned.lock().await.contains(&sid)
-                            || state.born_bound.lock().await.contains(&sid))
+                        ) && (state
+                            .hook_owned
+                            .lock()
+                            .await
+                            .contains(&crate::session_registry::SessionIdentity::from_info(&row))
+                            || state.born_bound.lock().await.contains(
+                                &crate::session_registry::SessionIdentity::from_info(&row),
+                            ))
                         {
                             preserve_live_binding = true;
                         }
@@ -9159,23 +9244,46 @@ async fn apply_master_session_event(
                     &event,
                     crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
                 );
+            let event_for_identity = event.clone();
             let (applied, native_pane_owned) = if is_born_bound {
                 let result = state
                     .registry
-                    .apply_born_bound_event(event, birth_location, preserve_live_binding)
+                    .apply_born_bound_event(event, birth_location.clone(), preserve_live_binding)
                     .await;
                 (result.applied, result.native_pane_owned)
             } else {
                 (state.registry.apply_event(event).await, false)
             };
             if preserve_live_binding {
+                if let Some(previous) = &identity {
+                    if let Some(current) =
+                        session_marker_identity(state, &event_for_identity, &birth_location).await
+                    {
+                        if current != *previous {
+                            let mut hooked = state.hook_owned.lock().await;
+                            if hooked.remove(previous) {
+                                hooked.insert(current.clone());
+                            }
+                            let mut born = state.born_bound.lock().await;
+                            if born.remove(previous) {
+                                born.insert(current);
+                            }
+                        }
+                    }
+                }
                 return (applied, None);
             }
             if applied || (starts_new_generation && !native_pane_owned) {
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
-                state.hook_owned.lock().await.remove(&sid);
-                state.born_bound.lock().await.insert(sid.clone());
+                if let Some(identity) = &identity {
+                    let current =
+                        session_marker_identity(state, &event_for_identity, &birth_location)
+                            .await
+                            .unwrap_or_else(|| identity.clone());
+                    state.hook_owned.lock().await.remove(identity);
+                    state.born_bound.lock().await.insert(current);
+                }
             }
             return (
                 applied,
@@ -9193,17 +9301,61 @@ async fn apply_master_session_event(
             // `SessionStopped` deliberately cannot materialize an unseen row
             // (the cwd-basename ghost fix), so do not leave an ownership claim
             // behind for that same no-op.
-            let unseen_terminal = matches!(
+            let terminal_event = matches!(
                 &event,
                 crate::agent_sessions::SessionEvent::SessionStopped { .. }
                     | crate::agent_sessions::SessionEvent::SessionStoppedIfOwner { .. }
                     | crate::agent_sessions::SessionEvent::SessionUnbound { .. }
-            ) && state.registry.lookup(&sid).await.is_none();
+            );
+            let unseen_terminal = terminal_event
+                && match &identity {
+                    Some(identity) => state.registry.lookup_identity(identity).await.is_none(),
+                    None => state.registry.lookup(&sid).await.is_none(),
+                };
             if !unseen_terminal {
-                state.hook_owned.lock().await.insert(sid.clone());
-                state.born_bound.lock().await.remove(&sid);
+                if let Some(identity) = &identity {
+                    state.hook_owned.lock().await.insert(identity.clone());
+                    state.born_bound.lock().await.remove(identity);
+                }
             }
-            let applied = state.registry.apply_event(event).await;
+            let qualified_activity = identity.as_ref().filter(|identity| {
+                copilot_fork::is_host_identity(identity)
+                    && matches!(
+                        &event,
+                        crate::agent_sessions::SessionEvent::ToolStarting { .. }
+                            | crate::agent_sessions::SessionEvent::ToolReturned { .. }
+                            | crate::agent_sessions::SessionEvent::ToolCompleted { .. }
+                            | crate::agent_sessions::SessionEvent::Notification { .. }
+                    )
+            });
+            let applied = match qualified_activity {
+                Some(identity)
+                    if state.registry.lookup(&sid).await.is_none()
+                        && state.registry.lookup_identity(identity).await.is_some() =>
+                {
+                    // Raw ambiguity must not drop an admitted hook's activity
+                    // after it has taken ownership from the file watcher.
+                    state
+                        .registry
+                        .apply_bound_watcher_activity(identity, event)
+                        .await
+                }
+                _ => state.registry.apply_event(event).await,
+            };
+            if let Some(identity) = &identity {
+                if identity.history_key.is_none() {
+                    if let Some(row) = state.registry.lookup(&sid).await {
+                        let current = crate::session_registry::SessionIdentity::from_info(&row);
+                        if current != *identity {
+                            let mut hooked = state.hook_owned.lock().await;
+                            if hooked.remove(identity) {
+                                hooked.insert(current.clone());
+                            }
+                            state.born_bound.lock().await.remove(&current);
+                        }
+                    }
+                }
+            }
             return (applied, refresh_key);
         }
     }
@@ -9323,12 +9475,6 @@ async fn apply_watcher_event(
         // real hooks, so a watcher cannot overwrite a hook that just took over.
         let gate = session_lifecycle_gate(state, &sid).await;
         let _guard = gate.lock().await;
-        if state.hook_owned.lock().await.contains(&sid)
-            || !state.born_bound.lock().await.contains(&sid)
-        {
-            return;
-        }
-
         // Watcher records are native, provider-specific evidence. A raw ID
         // alone cannot identify a WSL, ACP, or colliding history row.
         let identity = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
@@ -9342,8 +9488,16 @@ async fn apply_watcher_event(
                 ),
             }
         } else {
-            crate::session_registry::SessionIdentity::legacy(sid.clone())
+            let Some(row) = state.registry.lookup(&sid).await else {
+                return;
+            };
+            crate::session_registry::SessionIdentity::from_info(&row)
         };
+        if state.hook_owned.lock().await.contains(&identity)
+            || !state.born_bound.lock().await.contains(&identity)
+        {
+            return;
+        }
         let row = if emitted.cli == crate::agent_sessions::CliSource::Copilot {
             state.registry.lookup_identity(&identity).await
         } else {
@@ -11052,7 +11206,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
                     .hook_owned
                     .lock()
                     .await
-                    .contains(&acp::schema::v1::SessionId::new(key.clone())) =>
+                    .contains(&crate::session_registry::SessionIdentity::from_info(row)) =>
             {
                 String::new()
             }
@@ -11136,6 +11290,29 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     }
     let activity_only = plan.events.iter().all(session_event_is_activity_only);
 
+    let hook_location = location
+        .clone()
+        .unwrap_or(crate::agent_sessions::SessionLocation::Host);
+    let mut matching_rows = rows.iter().filter(|row| {
+        row.session_id.0.as_ref() == session_key
+            && row.cli_source.as_ref() == Some(&cli_source)
+            && row.location == hook_location
+            && row.session_universe.is_none()
+    });
+    let hook_identity = match (matching_rows.next(), matching_rows.next()) {
+        (Some(row), None) => crate::session_registry::SessionIdentity::from_info(row),
+        _ => crate::session_registry::SessionIdentity {
+            session_id: acp::schema::v1::SessionId::new(session_key.clone()),
+            history_key: cli_source.canonical_provider_id().and_then(|provider| {
+                crate::session_registry::HistoryRowKey::new(
+                    provider,
+                    hook_location,
+                    &session_key,
+                    None,
+                )
+            }),
+        },
+    };
     let mut changed = false;
     let mut refresh_keys = HashSet::new();
     let transition_count = plan.events.len();
@@ -11159,11 +11336,12 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
             event = ?ev,
             "received COM agent hook"
         );
-        let (applied, refresh_key) = apply_master_session_event(
+        let (applied, refresh_key) = apply_master_session_event_with_identity(
             state,
             ev,
             false,
             crate::agent_sessions::SessionLocation::Host,
+            Some(hook_identity.clone()),
         )
         .await;
         changed |= applied;
@@ -11440,9 +11618,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     )
                     .await;
                 if applied {
-                    let hook_owned = state.hook_owned.lock().await.contains(&sid);
+                    let hook_owned = state.hook_owned.lock().await.contains(&identity);
                     if !hook_owned {
-                        state.born_bound.lock().await.insert(sid);
+                        state.born_bound.lock().await.insert(identity);
                     }
                 }
                 applied
