@@ -1393,7 +1393,7 @@ namespace winrt::TerminalApp::implementation
             }
             const auto groupIndicatorVisible = isGroup && display.ChildrenVisibility() == Visibility::Visible;
             const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
-            const auto customHover = !_highContrast || (searchFocused && isGroup);
+            const auto customHover = !_highContrast || searchFocused;
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
