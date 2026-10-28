@@ -816,6 +816,31 @@ namespace winrt::TerminalApp::implementation
             }
             if (!resume.empty())
             {
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ binding->second.backend.empty() ? binding->second.agent : binding->second.backend });
+                if (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host &&
+                    !binding->second.cwd.empty())
+                {
+                    bool hasReportedCwd = false;
+                    for (const auto& runtimeTab : _RuntimeTabs())
+                    {
+                        const auto tab = _GetTabImpl(runtimeTab);
+                        const auto pane = tab && tab->GetRootPane() ?
+                                              tab->GetRootPane()->FindPaneBySessionId(terminalArgs.SessionId()) :
+                                              nullptr;
+                        if (pane)
+                        {
+                            const auto control = pane->GetTerminalControl();
+                            hasReportedCwd = control && control.WorkingDirectoryReportedByShell() &&
+                                             Utils::IsUsableStartingDirectory(control.Settings().Commandline(), control.WorkingDirectory());
+                            break;
+                        }
+                    }
+                    if (!hasReportedCwd)
+                    {
+                        terminalArgs.StartingDirectory(binding->second.cwd);
+                    }
+                }
                 terminalArgs.Commandline(resume);
             }
         }

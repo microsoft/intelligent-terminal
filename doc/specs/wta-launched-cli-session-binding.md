@@ -267,3 +267,14 @@ virtual cwd or capture the inherited host cwd before delayed connection startup.
 A confirmed session cwd takes precedence where supported;
 Antigravity's existing shell-session cwd suppression remains unchanged, with the
 Terminal-authored launch directory available as a fallback.
+
+Replacing a managed profile connection explicitly retires the old pane in
+master before announcing its replacement, even if a failure was already reported.
+Host resume actions retain the evaluated session cwd when the terminal has no
+usable cwd report, rather than saving an empty or relative profile directory.
+
+A pinned UUID is not proof that a conversation was persisted. When restoring a
+managed host Claude profile, a confirmed missing or metadata-only transcript
+starts a fresh empty profile instead of executing an invalid `--resume`.
+Existing conversations keep their resume ID. An unreadable, malformed, or
+unknown store preserves the original resume rather than discarding history.

@@ -16964,9 +16964,9 @@ namespace winrt::TerminalApp::implementation
             controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs);
         }
 
-        const auto restoredAgent = newTerminalArgs ?
-                                       ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
-                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
+        auto restoredAgent = newTerminalArgs ?
+                                 ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
+                                 ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
         if (newTerminalArgs && newTerminalArgs.NativeAgentProviderId().empty() && !restoredAgent.agent.empty())
         {
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ restoredAgent.agent });
@@ -16980,6 +16980,30 @@ namespace winrt::TerminalApp::implementation
 
         const auto sessionId = controlSettings.DefaultSettings()->SessionId();
         const auto hasSessionId = sessionId != winrt::guid{};
+
+        if (hasSessionId && !existingConnection && restoredAgent.agent == L"claude" && profile.AgentProfileId() == L"claude" &&
+            ::Microsoft::Terminal::AgentProfiles::IsManaged(profile) &&
+            ::Microsoft::Terminal::AgentProfiles::CanPinNewSession(L"claude", profile.AgentProfileArguments()))
+        {
+            const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                restoredAgent.backend.empty() ? restoredAgent.agent : restoredAgent.backend);
+            if (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host)
+            {
+                const auto available = ::Microsoft::Terminal::AgentProfiles::HasClaudeConversation(
+                    ::Microsoft::Terminal::AgentProfiles::ClaudeProjectsDirectory(
+                        *controlSettings.DefaultSettings(), std::wstring_view{ _WindowProperties.VirtualEnvVars() }),
+                    restoredAgent.sessionId);
+                if (available && !*available)
+                {
+                    const auto freshArgs = newTerminalArgs.Copy().as<NewTerminalArgs>();
+                    freshArgs.Commandline(L"");
+                    freshArgs.SessionId(winrt::guid{});
+                    controlSettings = Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, freshArgs);
+                    _agentPaneLog("_MakeTerminalPane: saved Claude conversation is absent; starting a fresh managed profile");
+                    restoredAgent = {};
+                }
+            }
+        }
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
         if (existingConnection)
@@ -17255,6 +17279,17 @@ namespace winrt::TerminalApp::implementation
             }
             _DetachRichTabControl(termControl);
         }
+        else if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+        {
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
+            {
+                // Replacement retires the old lifetime even if a failure was already reported.
+                _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
+                _panesWithEmittedTerminalEndState.emplace(oldPaneId);
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
+            }
+        }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
         // Reset the terminal's VT state before attaching the new connection.
         // The previous client may have left dirty modes (e.g., bracketed
@@ -17284,11 +17319,6 @@ namespace winrt::TerminalApp::implementation
         }
         if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
         {
-            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
-                oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
-            {
-                _ForgetPaneAgentIdentity(*oldPaneSessionId);
-            }
             if (const auto tab = _FindTabByStableId(winrt::to_hstring(_FindTabIdForControl(termControl))))
             {
                 _NotifyRestoredSessionBindings(tab);
