@@ -456,21 +456,23 @@ probe. The normal agent-pane connection similarly verifies its prepared
 dependency in the actual shared runtime. An installation-time check is not a
 guarantee of future startup.
 
-Failure budgets are stored under the package-private `acp-startup` directory,
-scoped to the WTA binary identity and hashed effective launch target. They contain
-counts, structured failure fields and bounded, filtered native details rather
-than full provider configuration objects. Native details can include file paths. Ordinary
-refreshes and new helper generations do not reset them. A successful initialize
-or an explicit user retry resets the target's budget; unconfirmed cleanup stops
-replacement instead. `probe-models --retry-startup` is the CLI equivalent of the
-explicit retry action. See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
+Failure budgets and cleanup quarantine are held in memory for the lifetime of
+the owning WTA process. Helpers and pool replacements in one master share the
+same target budget; restarting the master clears it. Independent model-probe and
+verification processes each start their own bounded cycle. No startup admission
+state is read from or written to `acp-startup`; leftover files from older builds
+cannot block initialization. A successful initialize or explicit retry resets
+the target's budget, but retry does not override unconfirmed cleanup within the
+same process. Logs retain safely filtered diagnostic details.
+See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
 
-The `probe-sessions` and `probe-host-sessions` diagnostics share admission for
-their inherited provider binding and retain it through confirmed cleanup.
-Both accept `--retry-startup`; it reopens an exhausted cycle, not a cleanup
-quarantine. They preserve their diagnostic output shapes and treat an unsupported
-session-list method as a normal result rather than an initialization failure.
-Their session-list timeout remains 10 seconds.
+Dedicated history connections retain their own single-flight, adaptive wait,
+hard timeout, backoff and confirmed-cleanup recovery without consuming the chat
+startup budget. The `probe-sessions` and `probe-host-sessions` diagnostics likewise
+own invocation-local state and preserve their output shapes. Both still accept
+`--retry-startup`, but a new invocation needs no retry flag to recover from an
+earlier failure. An unsupported session-list method remains a normal result,
+and their session-list timeout remains 10 seconds.
 
 Startup checks allow up to 60 seconds for an ACP `initialize` reply from either a
 native agent or an `npx` adapter, including cold starts. Session creation and

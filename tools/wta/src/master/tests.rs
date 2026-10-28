@@ -9597,7 +9597,7 @@ async fn runtime_cleanup_wait_does_not_block_admission_for_a_live_agent() {
             .expect("waiting for a live agent must not hold startup admission")
             .unwrap();
             startup.begin().unwrap();
-            startup.succeeded().unwrap();
+            startup.succeeded();
         }
         drop(release_process);
         let status = tokio::time::timeout(std::time::Duration::from_secs(20), reaper)
@@ -15417,10 +15417,9 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
 }
 
 #[tokio::test(start_paused = true)]
-async fn dedicated_history_startup_stops_after_three_failures_and_accepts_explicit_retry() {
+async fn dedicated_history_startup_does_not_consume_the_chat_budget() {
     let state = make_state();
     let target = history::HistoryTarget {
-        startup_registry: Arc::clone(&state.startup_registry),
         command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
         agent_id: "custom:history-failure".to_string(),
         source: crate::agent_source::AgentSource::Host,
@@ -15434,14 +15433,27 @@ async fn dedicated_history_startup_stops_after_three_failures_and_accepts_explic
     );
     let cancelled = tokio_util::sync::CancellationToken::new();
     let mut query = history::HistoryQuery::default();
-    for _ in 0..3 {
+    for _ in 0..5 {
         assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
     }
-    assert!(state.startup_registry.lock(&key).await.unwrap().begin().is_err());
+    for _ in 0..crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS {
+        state
+            .startup_registry
+            .lock(&key)
+            .await
+            .unwrap()
+            .begin()
+            .unwrap();
+    }
+    let blocked = state
+        .startup_registry
+        .lock(&key)
+        .await
+        .unwrap()
+        .begin()
+        .unwrap_err();
+    assert!(blocked.is::<crate::agent_lifecycle::StartupLimitReached>());
     assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-    state.startup_registry.retry(&key).await.unwrap();
-    assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-    state.startup_registry.lock(&key).await.unwrap().begin().unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -17236,7 +17248,7 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
 }
 
 #[tokio::test]
-async fn history_refresh_real_worker_initializes_from_send_task_and_releases_ownership() {
+async fn history_refresh_real_worker_ignores_chat_quarantine_and_releases_ownership() {
     use std::sync::atomic::Ordering;
 
     struct Fixture(PathBuf);
@@ -17286,7 +17298,6 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "pwsh.exe -NoProfile -EncodedCommand {}",
                         crate::osc52::base64_encode(&utf16)
@@ -17297,6 +17308,17 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 })
                 .ok()
                 .unwrap();
+            let target = agent.history_refresh.target.get().unwrap();
+            let key = agent_cmd_key_with_provider(
+                &target.command,
+                Some(&target.agent_id),
+                &target.source,
+                &target.provider,
+            );
+            let _ = state.startup_registry.lock(&key).await.unwrap().failed(
+                anyhow!("chat cleanup was not confirmed")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
+            );
             let worker_state = Arc::clone(&state);
             let worker_agent = Arc::clone(&agent);
             // This task has no LocalSet context, just like a hook callback.
@@ -17314,6 +17336,14 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
             .await
             .expect("production worker initializes and lists through its child ACP connection");
             assert_eq!(agent.history_refresh.gate.lock().await.last_count, Some(1));
+            let blocked = state
+                .startup_registry
+                .lock(&key)
+                .await
+                .unwrap()
+                .begin()
+                .unwrap_err();
+            assert!(blocked.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>());
             let rows = state.registry.snapshot().await;
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0].title.as_deref(), Some("Saved task"));
@@ -17405,7 +17435,6 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "pwsh.exe -NoProfile -EncodedCommand {}",
                         crate::osc52::base64_encode(&utf16)
@@ -17645,7 +17674,6 @@ async fn history_refresh_live_copilot_readonly_connection_can_be_recycled() {
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "{} --no-auto-update",
                         crate::agent_registry::build_acp_command("copilot", None)

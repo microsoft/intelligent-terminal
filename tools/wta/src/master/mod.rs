@@ -5074,7 +5074,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         Err(error) => return Err(error).context("read WTA_MASTER_GENERATION"),
     };
     let inner = Arc::new(MasterStateInner {
-        startup_registry: Arc::new(crate::agent_lifecycle::StartupRegistry::runtime()?),
+        startup_registry: crate::agent_lifecycle::StartupRegistry::runtime(),
         native_observation_receiver_generation,
         native_observation_listener_ready: std::sync::atomic::AtomicBool::new(false),
         session_lifecycle_gates: Mutex::new(SessionLifecycleGateTable::default()),
@@ -5738,14 +5738,8 @@ where
                 let result = match startup.begin() {
                     Ok(()) => match initialize(Arc::clone(&cell)).await {
                         Ok(agent) => {
-                            match startup.succeeded() {
-                                Ok(()) => Ok(agent),
-                                Err(error) => {
-                                    agent.conn.shutdown();
-                                    retire_agent_history(&agent).await;
-                                    Err(error)
-                                }
-                            }
+                            startup.succeeded();
+                            Ok(agent)
                         }
                         Err(error) => Err(startup.failed(error)),
                     },
@@ -5903,7 +5897,7 @@ async fn wait_for_agent_exit(
     child: &mut crate::protocol::acp::process::AgentProcess,
 ) -> Result<std::process::ExitStatus> {
     // Lease only retirement, not a healthy process's lifetime. Cleanup must
-    // still reclaim our owned process if the admission ledger is unavailable.
+    // still reclaim our owned process if the admission lease is unavailable.
     let exited = child.wait_for_exit_or_stop().await;
     let startup = state.startup_registry.lock(admission_key).await;
     let status = match exited {
@@ -6294,7 +6288,6 @@ async fn spawn_one_agent(
         .history_refresh
         .target
         .set(history::HistoryTarget {
-            startup_registry: Arc::clone(&state.startup_registry),
             command: agent_cmd.to_string(),
             agent_id: resolved_agent_id.clone(),
             source: source.clone(),

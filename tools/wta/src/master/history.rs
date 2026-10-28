@@ -14,23 +14,10 @@ const MAX_INVENTORY_ROWS: usize = 100_000;
 
 #[derive(Clone)]
 pub(super) struct HistoryTarget {
-    pub startup_registry: Arc<crate::agent_lifecycle::StartupRegistry>,
     pub command: String,
     pub agent_id: String,
     pub source: crate::agent_source::AgentSource,
     pub provider: ProviderBinding,
-}
-
-impl HistoryTarget {
-    fn admission_key(&self) -> String {
-        crate::agent_lifecycle::agent_key(
-            &self.command,
-            Some(&self.agent_id),
-            &self.source,
-            &self.provider.admission_binding_key(),
-            self.provider.is_model_scoped(),
-        )
-    }
 }
 
 async fn await_history_startup(
@@ -376,7 +363,6 @@ mod tests {
 
     fn fixture_target() -> HistoryTarget {
         HistoryTarget {
-            startup_registry: Arc::default(),
             command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
             agent_id: "custom:history-ownership".into(),
             source: crate::agent_source::AgentSource::Host,
@@ -384,29 +370,22 @@ mod tests {
         }
     }
 
-    fn fixture_process(target: &HistoryTarget) -> HistoryProcess {
+    fn fixture_process() -> HistoryProcess {
         let (pipe, _peer) = tokio::io::duplex(1024);
         let (read, write) = tokio::io::split(pipe);
         let (connection, _io) = conn::spawn_client(
             acp::Client.builder().name("history-ownership-fixture"),
             conn::byte_streams(write.compat_write(), read.compat()),
         );
-        let mut process = HistoryProcess::mock(connection);
-        process.startup_registry = Arc::clone(&target.startup_registry);
-        process.admission_key = target.admission_key();
-        process
+        HistoryProcess::mock(connection)
     }
 
     #[tokio::test]
-    async fn receipt_cancellation_retains_child_and_admission_until_confirmed_stop() {
+    async fn receipt_cancellation_retains_child_until_confirmed_stop() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut lease = target.startup_registry.lock(&key).await.unwrap();
-                lease.begin().unwrap();
-                process.startup = Some(lease);
+                let mut process = fixture_process();
                 process.initialized = false;
                 process.conn = None;
                 let mut command = tokio::process::Command::new("pwsh.exe");
@@ -443,16 +422,7 @@ mod tests {
                 }
                 let process = query.process.as_mut().unwrap();
                 assert_eq!(process.child.as_ref().unwrap().id(), pid);
-                assert!(process.startup.is_some());
                 assert!(query.recycling);
-                {
-                    let mut competing = std::pin::pin!(target.startup_registry.lock(&key));
-                    std::future::poll_fn(|cx| {
-                        assert!(std::future::Future::poll(competing.as_mut(), cx).is_pending());
-                        std::task::Poll::Ready(())
-                    })
-                    .await;
-                }
                 {
                     let mut stop = std::pin::pin!(query.stop());
                     std::future::poll_fn(|cx| {
@@ -461,7 +431,10 @@ mod tests {
                     })
                     .await;
                 }
-                assert!(query.process.as_ref().unwrap().startup.is_some());
+                assert_eq!(
+                    query.process.as_ref().unwrap().child.as_ref().unwrap().id(),
+                    pid
+                );
                 drop(
                     query
                         .process
@@ -478,121 +451,57 @@ mod tests {
                     .expect("retained receipt ownership permits confirmed cleanup")
                     .unwrap();
                 assert!(query.process.is_none());
-                target
-                    .startup_registry
-                    .lock(&key)
-                    .await
-                    .unwrap()
-                    .begin()
-                    .unwrap();
             })
             .await;
     }
 
     #[tokio::test]
-    async fn post_initialize_stop_failure_quarantines_independent_admission() {
+    async fn failed_cleanup_retains_the_history_process_until_recovery() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut startup = target.startup_registry.lock(&key).await.unwrap();
-                startup.begin().unwrap();
-                startup.succeeded().unwrap();
-                drop(startup);
-                assert!(process.initialized);
-                assert!(process.startup.is_none());
+                let mut process = fixture_process();
                 process.reject_stop = true;
-                let error = process.stop().await.unwrap_err();
+                let mut query = HistoryQuery {
+                    process: Some(process),
+                    ..Default::default()
+                };
+                let error = query.stop().await.unwrap_err();
                 assert_eq!(
-                    error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .unwrap()
-                        .phase,
-                    crate::agent_lifecycle::StartupPhase::Cleanup,
+                    error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+                    Some(&crate::agent_lifecycle::StartupPhase::Cleanup),
                 );
-                let registry = Arc::clone(&target.startup_registry);
-                let error = registry.lock(&key).await.unwrap().begin().unwrap_err();
-                assert!(error.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>());
-                assert!(registry.retry(&key).await.is_err());
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+                assert!(
+                    query.process.as_ref().unwrap().reject_stop,
+                    "unconfirmed cleanup must not replace the owned process"
+                );
+                assert!(query.recycling);
+                query.process.as_mut().unwrap().reject_stop = false;
+                query.stop().await.unwrap();
+                assert!(query.process.is_none());
+                assert!(!query.recycling);
             })
             .await;
     }
 
     #[tokio::test]
-    async fn initialization_failure_reuses_its_lease_during_cleanup() {
-        tokio::task::LocalSet::new()
-            .run_until(async {
-                let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut startup = target.startup_registry.lock(&key).await.unwrap();
-                startup.begin().unwrap();
-                process.startup = Some(startup);
-                process.initialized = false;
-                process.reject_stop = true;
-                let error =
-                    tokio::time::timeout(Duration::from_secs(1), process.initialize(&target))
-                        .await
-                        .expect("initialization cleanup must not reacquire its own lease")
-                        .unwrap_err();
-                assert_eq!(
-                    error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .unwrap()
-                        .phase,
-                    crate::agent_lifecycle::StartupPhase::Cleanup,
-                );
-                assert!(target
-                    .startup_registry
-                    .lock(&key)
-                    .await
-                    .unwrap()
-                    .begin()
-                    .is_err());
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    async fn stopped_history_requires_a_new_registry_retry_epoch() {
+    async fn history_startup_failures_do_not_require_explicit_retry() {
         let target = fixture_target();
-        let key = target.admission_key();
         let cancelled = tokio_util::sync::CancellationToken::new();
         let mut query = HistoryQuery::default();
-        for _ in 0..crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS {
-            assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+        for _ in 0..5 {
+            let error = query
+                .poll_inner(Some(&target), &cancelled, false)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+                Some(&crate::agent_lifecycle::StartupPhase::Spawn)
+            );
+            assert!(!error.is::<crate::agent_lifecycle::StartupLimitReached>());
         }
-        assert!(query.startup_stopped);
-        assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-        assert!(query.startup_stopped);
-        target.startup_registry.retry(&key).await.unwrap();
-        assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-        assert!(!query.startup_stopped);
-        assert_eq!(
-            query.retry_epoch,
-            target.startup_registry.retry_epoch(&key).await.unwrap()
-        );
-    }
-
-    #[test]
-    fn stale_failure_cannot_stop_a_new_retry_epoch() {
-        let mut query = HistoryQuery::default();
-        query.observe_startup_failure(0, 1);
-        assert!(!query.startup_stopped);
-        assert_eq!(query.retry_epoch, 1);
-        query.observe_startup_failure(1, 1);
-        assert!(query.startup_stopped);
-        query.observe_startup_failure(0, 1);
-        assert!(
-            query.startup_stopped,
-            "stale failure cannot change current state"
-        );
-        query.observe_startup_failure(1, 2);
-        assert!(!query.startup_stopped);
-        query.observe_startup_failure(0, 0);
-        assert!(!query.startup_stopped);
-        assert_eq!(query.retry_epoch, 2);
     }
 }
 
@@ -629,9 +538,6 @@ impl AdaptiveWait {
 }
 
 pub(super) struct HistoryProcess {
-    startup_registry: Arc<crate::agent_lifecycle::StartupRegistry>,
-    admission_key: String,
-    startup: Option<crate::agent_lifecycle::StartupLease>,
     conn: Option<conn::ClientLink>,
     child: Option<AgentProcess>,
     incoming: Option<BufReader<tokio::process::ChildStdout>>,
@@ -645,41 +551,26 @@ pub(super) struct HistoryProcess {
 
 impl HistoryProcess {
     async fn spawn(target: &HistoryTarget) -> Result<Self> {
-        let key = target.admission_key();
-        let mut startup = target.startup_registry.lock(&key).await?;
-        startup.begin()?;
-        let prepared = crate::agent_lifecycle::providers::prepare(
+        crate::agent_lifecycle::providers::prepare(
             &target.command,
             Some(&target.agent_id),
             &target.source,
         )
         .await
-        .context(crate::agent_lifecycle::StartupPhase::Preparation);
-        match prepared {
-            Ok(prepared) => startup.prepared(prepared),
-            Err(error) => return Err(startup.failed(error)),
-        }
-        let spawned = crate::protocol::acp::spawn::spawn_history_agent_process(
+        .context(crate::agent_lifecycle::StartupPhase::Preparation)?;
+        let mut spawned = crate::protocol::acp::spawn::spawn_history_agent_process(
             &target.command,
             &target.agent_id,
             &target.source,
             target.provider.spawn_selection(),
         )
-        .context(crate::agent_lifecycle::StartupPhase::Spawn);
-        let mut spawned = match spawned {
-            Ok(spawned) => spawned,
-            Err(error) => return Err(startup.failed(error)),
-        };
+        .context(crate::agent_lifecycle::StartupPhase::Spawn)?;
         let stderr = AgentStderrLog::new(format!("history-{}", target.agent_id));
         if let Some(pipe) = spawned.child.stderr.take() {
             stderr.drain(pipe);
         }
-        // No await after spawn: the query must own the child and admission
-        // lease before receipt acquisition can be cancelled.
+        // The query must own the child before receipt acquisition can be cancelled.
         Ok(Self {
-            startup_registry: Arc::clone(&target.startup_registry),
-            admission_key: key,
-            startup: Some(startup),
             conn: None,
             child: Some(spawned.child),
             incoming: None,
@@ -722,10 +613,6 @@ impl HistoryProcess {
                 acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                     .client_info(acp::schema::v1::Implementation::new("wta-history", env!("CARGO_PKG_VERSION"))),
             )).await.context("history ACP initialize timed out")??;
-            if let Some(startup) = &mut self.startup {
-                startup.succeeded()?;
-            }
-            self.startup = None;
             if response.agent_capabilities.session_capabilities.list.is_none() {
                 return Err(anyhow!("history ACP server does not support session/list"));
             }
@@ -740,18 +627,12 @@ impl HistoryProcess {
             for line in &lines {
                 tracing::warn!(target: "master_history", agent_id = %target.agent_id, "{line}");
             }
-            // Keep an initialization lease in self across cleanup awaits.
-            // Reacquiring it here would deadlock, and a local would be lost
-            // if retirement cancels cleanup.
-            let cleanup = self.cleanup().await;
+            let cleanup = self.stop().await;
             let error = crate::agent_lifecycle::StartupDetails::attach(
                 cleanup.err().unwrap_or(error),
                 &lines,
             );
-            return Err(match self.startup.take() {
-                Some(startup) => startup.failed(error),
-                None => error,
-            });
+            return Err(error);
         }
         Ok(())
     }
@@ -763,21 +644,6 @@ impl HistoryProcess {
     }
 
     async fn stop(&mut self) -> Result<()> {
-        let result = self.cleanup().await;
-        let startup = self.startup.take();
-        match result {
-            Ok(()) => Ok(()),
-            Err(error) => Err(match startup {
-                Some(startup) => startup.failed(error),
-                None => error,
-            }),
-        }
-    }
-
-    async fn cleanup(&mut self) -> Result<()> {
-        if self.startup.is_none() {
-            self.startup = Some(self.startup_registry.lock(&self.admission_key).await?);
-        }
         let result: Result<()> = async {
             #[cfg(test)]
             if self.reject_stop {
@@ -796,9 +662,7 @@ impl HistoryProcess {
             Ok(())
         }
         .await;
-        result
-            .context(crate::agent_lifecycle::StartupPhase::Cleanup)
-            .context(crate::agent_lifecycle::StartupCleanupUnconfirmed)
+        result.context(crate::agent_lifecycle::StartupPhase::Cleanup)
     }
 
     fn ended(&mut self) -> Result<bool> {
@@ -815,9 +679,6 @@ impl HistoryProcess {
     #[cfg(test)]
     pub(super) fn mock(conn: conn::ClientLink) -> Self {
         Self {
-            startup_registry: Arc::default(),
-            admission_key: "history-fixture".into(),
-            startup: None,
             conn: Some(conn),
             child: None,
             incoming: None,
@@ -896,8 +757,6 @@ pub(super) struct HistoryQuery {
     pending: Option<PendingList>,
     recycling: bool,
     wait: AdaptiveWait,
-    startup_stopped: bool,
-    retry_epoch: u64,
     last_response_complete: bool,
 }
 
@@ -922,19 +781,6 @@ impl HistoryQuery {
 
     pub fn in_flight(&self) -> bool {
         self.pending.is_some()
-    }
-
-    fn observe_startup_failure(&mut self, failed_epoch: u64, registry_epoch: u64) {
-        let retried = registry_epoch > self.retry_epoch;
-        self.retry_epoch = self.retry_epoch.max(registry_epoch);
-        if failed_epoch < self.retry_epoch {
-            if retried {
-                self.startup_stopped = false;
-            }
-            return;
-        }
-        self.startup_stopped = true;
-        self.retry_epoch = self.retry_epoch.max(failed_epoch);
     }
 
     pub fn last_response_complete(&self) -> bool {
@@ -970,31 +816,6 @@ impl HistoryQuery {
         match self.poll_inner(target, cancelled, complete_inventory).await {
             Ok(result) => result,
             Err(error) => {
-                if error.is::<crate::agent_lifecycle::StartupLimitReached>()
-                    || error.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>()
-                {
-                    let failed_epoch = error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .map(|failure| failure.retry_epoch)
-                        .unwrap_or(self.retry_epoch);
-                    let registry_epoch = if let Some(target) = target {
-                        match target
-                            .startup_registry
-                            .retry_epoch(&target.admission_key())
-                            .await
-                        {
-                            Ok(epoch) => epoch,
-                            Err(epoch_error) => {
-                                tracing::warn!(target: "master_history", error = %epoch_error,
-                                    "could not read history startup retry epoch");
-                                self.retry_epoch
-                            }
-                        }
-                    } else {
-                        self.retry_epoch
-                    };
-                    self.observe_startup_failure(failed_epoch, registry_epoch);
-                }
                 self.wait.fast_successes = 0;
                 tracing::warn!(target: "master_history",
                     pid = ?self.process.as_ref().and_then(|process| process.child.as_ref()).and_then(|child| child.id()),
@@ -1011,20 +832,6 @@ impl HistoryQuery {
         complete_inventory: bool,
     ) -> Result<std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure>>
     {
-        if self.startup_stopped {
-            let Some(target) = target else {
-                return Ok(Err(HistoryRefreshFailure::Other));
-            };
-            let epoch = target
-                .startup_registry
-                .retry_epoch(&target.admission_key())
-                .await?;
-            if epoch <= self.retry_epoch {
-                return Ok(Err(HistoryRefreshFailure::Other));
-            }
-            self.retry_epoch = epoch;
-            self.startup_stopped = false;
-        }
         if self.recycling {
             self.stop().await?;
         }
@@ -1048,13 +855,6 @@ impl HistoryQuery {
                 )
                 .await?,
             );
-            if let Some(startup) = self
-                .process
-                .as_ref()
-                .and_then(|process| process.startup.as_ref())
-            {
-                self.retry_epoch = self.retry_epoch.max(startup.retry_epoch());
-            }
         }
         if let Some(process) = self.process.as_mut().filter(|process| !process.initialized) {
             self.recycling = true;
