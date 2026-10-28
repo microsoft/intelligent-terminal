@@ -32,6 +32,7 @@
 #include "../WinRTUtils/inc/Utils.h"
 #include "../inc/AgentPaneRestore.h"
 #include "../inc/AgentPaneBackend.h"
+#include "../inc/AgentProfileUtils.h"
 #include "../inc/WindowPersistence.h"
 #include "../inc/WtaProcess.h"
 #include "../UnitTests_Control/MockControlSettings.h"
@@ -473,6 +474,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
         TEST_METHOD(SettingsProfileAgentIconAdaptsToTheme);
         TEST_METHOD(AgentProfileCommandlineCopies);
+        TEST_METHOD(AgentProfileSessionsAreBornBound);
+        TEST_METHOD(NativeAgentProfileLaunchCwdIsPaneMetadata);
+        TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
+        TEST_METHOD(ManagedProfileRestartRetiresOldPaneAfterFailure);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -4231,6 +4236,10 @@ namespace TerminalAppLocalTests
                 winrt::hstring{ L"known-session-1" },
                 winrt::hstring{ L"known-session-2" }
             };
+            const std::array retainedDirectories{
+                winrt::hstring{ L"C:\\original\\first" },
+                winrt::hstring{ L"C:\\original\\second" }
+            };
             std::vector<ActionAndArgs> actions;
             for (uint32_t i = 0; i < launchCommands.size(); ++i)
             {
@@ -4242,11 +4251,13 @@ namespace TerminalAppLocalTests
                 event["params"]["pane_id"] = _formatPaneId(paneId);
                 event["params"]["agent"] = "copilot";
                 event["params"]["agent_session_id"] = winrt::to_string(sessionIds[i]);
+                event["params"]["cwd"] = winrt::to_string(retainedDirectories[i]);
                 page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
 
                 NewTerminalArgs terminalArgs{};
                 terminalArgs.SessionId(paneId);
                 terminalArgs.Commandline(launchCommands[i]);
+                terminalArgs.StartingDirectory(i == 0 ? L"" : L".");
                 if (i == 0)
                 {
                     actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ terminalArgs });
@@ -4275,6 +4286,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(
                 winrt::hstring{ LR"(cmd.exe /d /s /c "copilot --resume known-session-2")" },
                 _getTerminalArgs(saved.GetAt(1)).Commandline());
+            page->_WindowProperties.VirtualWorkingDirectory(L"C:\\different-launch");
+            for (uint32_t i = 0; i < retainedDirectories.size(); ++i)
+            {
+                VERIFY_ARE_EQUAL(retainedDirectories[i], _getTerminalArgs(saved.GetAt(i)).StartingDirectory());
+                VERIFY_ARE_EQUAL(std::wstring{ retainedDirectories[i] }, page->_evaluatePathForCwd(_getTerminalArgs(saved.GetAt(i)).StartingDirectory()));
+            }
             VERIFY_ARE_EQUAL(unbound.Commandline(), _getTerminalArgs(saved.GetAt(2)).Commandline());
         });
     }
@@ -7269,6 +7286,350 @@ namespace TerminalAppLocalTests
                 }
             }
         });
+    }
+
+    void TabTests::ManagedProfileRestartRetiresOldPaneAfterFailure()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto failed : { false, true })
+        {
+            const winrt::guid oldId{ Utils::CreateGuid() };
+            const auto oldConnection = winrt::make_self<TestConnection>(oldId, State::Connected);
+            auto page = _commonSetup(*oldConnection, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+                page->_SyncNativeAgentStatusMode();
+                const auto tab = page->_GetFocusedTabImpl();
+                const auto control = tab->GetActiveTerminalControl();
+                const auto oldPane = page->_FindSessionIdForControl(control);
+                const winrt::guid newId{ Utils::CreateGuid() };
+                const auto newConnection = winrt::make_self<TestConnection>(newId, State::Connected);
+                page->_paneAgentSessions[oldId] = { L"old-session", L"copilot", {}, L"host:copilot", L"C:\\old" };
+                page->_explicitNativeAgentSessions.insert(oldId);
+                page->_paneAgentSessions[newId] = { L"new-session", L"copilot", {}, L"host:copilot", L"C:\\new" };
+                page->_explicitNativeAgentSessions.insert(newId);
+                page->_pendingRestoredSessionBindings[newId] = { L"new-session", L"copilot", L"C:\\new", L"host:copilot" };
+                if (failed)
+                {
+                    VERIFY_IS_TRUE(page->_TryRaiseTerminalEndStateEvent(oldPane, "failed", winrt::to_string(tab->StableId())));
+                }
+                std::vector<Json::Value> events;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream input{ winrt::to_string(json) };
+                    std::string errors;
+                    VERIFY_IS_TRUE(Json::parseFromStream(reader, input, &event, &errors));
+                    if (event["method"] == "connection_state" && event["params"]["pane_id"] == oldPane)
+                    {
+                        VERIFY_ARE_EQUAL(oldId, control.Connection().SessionId());
+                        VERIFY_IS_TRUE(page->_paneAgentSessions.contains(oldId));
+                        events.push_back(event);
+                    }
+                    else if (event["method"] == "session_born_bound")
+                    {
+                        events.push_back(event);
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+                page->_RestartPaneWithConnection(tab->GetActiveContent().as<TerminalPaneContent>(), *newConnection);
+                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(oldId));
+                VERIFY_IS_FALSE(events.empty());
+                VERIFY_ARE_EQUAL(std::string{ "connection_state" }, events[0]["method"].asString());
+                VERIFY_ARE_EQUAL(std::string{ "closed" }, events[0]["params"]["state"].asString());
+                page->_ReplayRestoredSessionBindings(tab);
+                VERIFY_ARE_EQUAL(std::string{ "session_born_bound" }, events.back()["method"].asString());
+                VERIFY_ARE_EQUAL(_formatPaneId(newId), events.back()["params"]["pane_id"].asString());
+            });
+        }
+    }
+
+    void TabTests::NativeAgentProfileLaunchCwdIsPaneMetadata()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+            page->_SyncNativeAgentStatusMode();
+            const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            for (const auto provider : { L"codex", L"antigravity", L"opencode" })
+            {
+                profile.AgentProfileId(provider);
+                profile.StartingDirectory(L".");
+                const auto paneId = Utils::CreateGuid();
+                const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                NewTerminalArgs args;
+                args.Profile(Utils::GuidToString(profile.Guid()));
+                const auto pane = page->_MakePane(args, nullptr, *connection);
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                std::vector<Json::Value> observations;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream input{ winrt::to_string(json) };
+                    std::string errors;
+                    VERIFY_IS_TRUE(Json::parseFromStream(reader, input, &event, &errors));
+                    if (event["method"] == "native_agent_observation" && event["params"]["kind"] == "reset")
+                    {
+                        observations.push_back(event["params"]);
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+                const auto metadata = Conpty{};
+                metadata.Initialize(Conpty::CreateSettings(L"cmd.exe", winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, profile.Guid()));
+                control.Connection(metadata);
+                const auto restoreConnection = wil::scope_exit([&]() { control.Connection(*connection); });
+                profile.StartingDirectory(L"C:\\profile-edited-after-launch");
+                page->_PublishNativeAgentObservation(control, "reset", true);
+                VERIFY_IS_FALSE(observations.empty());
+                VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ directory }), observations.back()["launch_cwd"].asString());
+                VERIFY_ARE_EQUAL(_formatPaneId(paneId), observations.back()["pane_id"].asString());
+                VERIFY_IS_FALSE(observations.back().isMember("agent_session_id"));
+                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                const auto settings = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(control.Settings());
+                settings->UsesManagedAgentCommand(false);
+                const auto restoreManaged = wil::scope_exit([&]() { settings->UsesManagedAgentCommand(true); });
+                page->_PublishNativeAgentObservation(control, "reset", true);
+                VERIFY_IS_FALSE(observations.back().isMember("launch_cwd"));
+            }
+        });
+    }
+
+    void TabTests::ManagedProfileLaunchMetadataDoesNotWaitForHooks()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        for (const auto enabled : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(enabled);
+                page->_SyncNativeAgentStatusMode();
+                const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+                const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                for (const auto provider : { L"copilot", L"claude", L"gemini", L"codex", L"antigravity", L"opencode" })
+                {
+                    profile.AgentProfileId(provider);
+                    profile.StartingDirectory(winrt::hstring{ directory });
+                    const winrt::guid paneId{ Utils::CreateGuid() };
+                    const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                    NewTerminalArgs args;
+                    args.Profile(Utils::GuidToString(profile.Guid()));
+                    const auto pane = page->_MakePane(args, nullptr, *connection);
+                    const auto control = pane->GetTerminalControl();
+                    VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                    const auto metadata = Conpty{};
+                    metadata.Initialize(Conpty::CreateSettings(L"cmd.exe", winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, profile.Guid()));
+                    control.Connection(metadata);
+                    const auto restoreConnection = wil::scope_exit([&]() { control.Connection(*connection); });
+                    profile.StartingDirectory(L"C:\\profile-edited-after-launch");
+                    page->_richTabAgentCwdAvailable = false;
+                    const auto initial = page->_RichTabAgentInfoForControl(control);
+                    VERIFY_IS_TRUE(initial.has_value());
+                    VERIFY_IS_TRUE(initial->launchMetadata);
+                    VERIFY_ARE_EQUAL(std::string{ "Idle" }, initial->status);
+                    VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ provider }), initial->providerId);
+                    VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ directory }), initial->cwd.value());
+                    VERIFY_IS_TRUE(initial->sessionId.empty());
+                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_ARE_EQUAL(std::string{ "Idle" }, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
+                    VERIFY_ARE_EQUAL(initial->cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
+
+                    page->_PublishNativeAgentObservation(control, "reset", true);
+                    const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                    const auto identity = manager->NativeAgentObservationForContent(control.ContentId());
+                    VERIFY_IS_TRUE(identity.has_value());
+                    winrt::TerminalApp::implementation::TerminalPage::_RichTabAgentInfo confirmed{
+                        "confirmed", "Working", initial->providerId, std::nullopt, paneId, "C:\\confirmed"
+                    };
+                    if (!enabled)
+                    {
+                        confirmed.modeEpoch = identity->modeEpoch;
+                        confirmed.windowId = identity->windowId;
+                        confirmed.tabId = identity->tabId;
+                        page->_nativeAgentStatusSnapshotReceiverGeneration = identity->receiverGeneration;
+                    }
+                    page->_richTabAgentStatusByPaneId[paneId] = confirmed;
+                    page->_richTabAgentCwdAvailable = true;
+                    VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
+                    VERIFY_ARE_EQUAL(confirmed.cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
+                    page->_richTabAgentStatusByPaneId.erase(paneId);
+                    const auto settings = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(control.Settings());
+                    settings->UsesManagedAgentCommand(false);
+                    VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
+                    settings->UsesManagedAgentCommand(true);
+                    metadata.Close();
+                    VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
+                }
+            });
+        }
+    }
+
+    void TabTests::AgentProfileSessionsAreBornBound()
+    {
+        using Owner = winrt::TerminalApp::implementation::SharedWta;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        const auto fixture = std::filesystem::path{ std::wstring_view{ winrt::Windows::Storage::ApplicationData::Current().TemporaryFolder().Path() } } /
+                             (L"agent-profile-" + std::wstring{ Utils::GuidToString(Utils::CreateGuid()) });
+        std::filesystem::create_directories(fixture);
+        const auto originalPath = wil::TryGetEnvironmentVariableW<std::wstring>(L"PATH");
+        const auto cleanup = wil::scope_exit([&]() {
+            VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", originalPath.c_str()));
+            std::filesystem::remove_all(fixture);
+        });
+        for (const auto executable : { L"copilot", L"claude", L"gemini", L"codex", L"opencode", L"agy" })
+        {
+            std::ofstream{ fixture / (std::wstring{ executable } + L".exe") }.put('\n');
+        }
+        VERIFY_WIN32_BOOL_SUCCEEDED(SetEnvironmentVariableW(L"PATH", (fixture.native() + L";" + originalPath).c_str()));
+        for (const auto sessionsEnabled : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto pageCleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                auto& owner = Owner::Instance();
+                VERIFY_IS_FALSE(owner.IsRunning());
+                const auto originalGeneration = owner.MasterGeneration();
+                const auto restoreGeneration = wil::scope_exit([&]() {
+                    std::lock_guard lock{ owner._mtx };
+                    owner._masterGeneration = originalGeneration;
+                });
+                {
+                    std::lock_guard lock{ owner._mtx };
+                    owner._masterGeneration = 7;
+                }
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(sessionsEnabled);
+                page->_SyncNativeAgentStatusMode();
+                page->_lastReadyNativeAgentReceiverGeneration = 7;
+                page->_agentSnapshotRefreshInFlight = true;
+                const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                profile.StartingDirectory(winrt::hstring{ fixture.native() });
+                std::vector<Json::Value> births;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::string errors;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+                    if (event["method"] == "session_born_bound")
+                    {
+                        births.push_back(event["params"]);
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+                std::set<winrt::hstring> sessionIds;
+                for (const auto agent : { L"copilot", L"claude", L"gemini", L"codex", L"opencode", L"antigravity" })
+                {
+                    profile.AgentProfileId(agent);
+                    NewTerminalArgs args;
+                    args.Profile(Utils::GuidToString(profile.Guid()));
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+                    VERIFY_IS_TRUE(settings.DefaultSettings()->UsesManagedAgentCommand());
+                    // Inspect the production launch metadata without running an agent or its hooks.
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                    const auto paneId = launch.SessionId();
+                    const auto pinnable = ::Microsoft::Terminal::AgentProfiles::CanPinNewSession(agent, {});
+                    VERIFY_ARE_EQUAL(pinnable, page->_pendingRestoredSessionBindings.contains(paneId));
+                    VERIFY_ARE_EQUAL(pinnable, page->_paneAgentSessions.contains(paneId));
+                    VERIFY_ARE_EQUAL(pinnable, page->_explicitNativeAgentSessions.contains(paneId));
+                    if (!pinnable)
+                    {
+                        VERIFY_IS_TRUE(std::wstring_view{ launch.as<Conpty>().Commandline() }.find(L"--session-id") == std::wstring_view::npos);
+                        continue;
+                    }
+                    const auto binding = page->_paneAgentSessions.at(paneId);
+                    VERIFY_IS_TRUE(sessionIds.insert(binding.sessionId).second);
+                    const auto parsedId = winrt::guid{ binding.sessionId };
+                    VERIFY_ARE_NOT_EQUAL(winrt::guid{}, parsedId);
+                    VERIFY_IS_TRUE(std::wstring_view{ launch.as<Conpty>().Commandline() }.find(
+                                       L"\"--session-id\" \"" + std::wstring{ binding.sessionId } + L"\"") != std::wstring_view::npos);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ fixture.native() }, page->_pendingRestoredSessionBindings.at(paneId).cwd);
+                    const auto resume = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(binding.resumeCommandline);
+                    VERIFY_ARE_EQUAL(std::wstring{ binding.sessionId }, resume.sessionId);
+                    const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                    const auto pane = page->_MakePane(args, nullptr, *connection);
+                    const auto tab = page->_GetTabImpl(page->_CreateNewTabFromPane(pane));
+                    VERIFY_IS_NOT_NULL(tab);
+                    VERIFY_ARE_EQUAL(sessionIds.size(), births.size());
+                    VERIFY_ARE_EQUAL(winrt::to_string(binding.sessionId), births.back()["agent_session_id"].asString());
+                    VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ agent }), births.back()["agent"].asString());
+                    VERIFY_ARE_EQUAL(_formatPaneId(paneId), births.back()["pane_id"].asString());
+                    VERIFY_ARE_EQUAL(winrt::to_string(tab->StableId()), births.back()["tab_id"].asString());
+                    if (!sessionsEnabled)
+                    {
+                        const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                        const auto identity = manager->NativeAgentObservationForContent(pane->GetTerminalControl().ContentId());
+                        VERIFY_IS_TRUE(identity.has_value());
+                        VERIFY_ARE_EQUAL(winrt::to_string(binding.sessionId), identity.value().agentSessionId);
+                    }
+                    page->_ReplayRestoredSessionBindings(tab, false);
+                    VERIFY_ARE_EQUAL(sessionIds.size(), births.size());
+                    const auto restarted = page->_duplicateConnectionForRestart(pane->GetContent().as<TerminalPaneContent>());
+                    const auto restartedBinding = page->_paneAgentSessions.at(restarted.SessionId());
+                    VERIFY_ARE_NOT_EQUAL(binding.sessionId, restartedBinding.sessionId);
+                    VERIFY_IS_TRUE(sessionIds.insert(restartedBinding.sessionId).second);
+                    const auto replacement = winrt::make_self<TestConnection>(restarted.SessionId(), State::Connected);
+                    page->_RestartPaneWithConnection(pane->GetContent().as<TerminalPaneContent>(), *replacement);
+                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                    VERIFY_IS_FALSE(page->_explicitNativeAgentSessions.contains(paneId));
+                    VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(paneId));
+                    VERIFY_ARE_EQUAL(sessionIds.size(), births.size());
+                    VERIFY_ARE_EQUAL(winrt::to_string(restartedBinding.sessionId), births.back()["agent_session_id"].asString());
+                    VERIFY_ARE_EQUAL(_formatPaneId(restarted.SessionId()), births.back()["pane_id"].asString());
+                }
+                profile.AgentProfileId(L"codex");
+                profile.StartingDirectory(L"");
+                for (const auto& virtualCwd : { winrt::hstring{}, winrt::hstring{ fixture.native() } })
+                {
+                    page->_WindowProperties.VirtualWorkingDirectory(virtualCwd);
+                    const auto expected = virtualCwd.empty() ? wil::GetCurrentDirectoryW<std::wstring>() :
+                                                               Utils::EvaluateStartingDirectory(virtualCwd, L"");
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ expected }, launch.as<Conpty>().StartingDirectory());
+                    VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
+                }
+                profile.AgentProfileId(L"copilot");
+                page->_WindowProperties.VirtualWorkingDirectory(L"");
+                const auto hostCwd = wil::GetCurrentDirectoryW<std::wstring>();
+                for (const auto relative : { L".", L".\\relative" })
+                {
+                    profile.StartingDirectory(relative);
+                    const auto expected = std::wstring_view{ relative } == L"." ?
+                                              hostCwd :
+                                              (std::filesystem::path{ hostCwd } / L"relative").wstring();
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                    const auto cwd = launch.as<Conpty>().StartingDirectory();
+                    VERIFY_IS_TRUE(std::filesystem::path{ std::wstring_view{ cwd } }.is_absolute());
+                    VERIFY_ARE_EQUAL(winrt::hstring{ expected }, cwd);
+                    VERIFY_ARE_EQUAL(cwd, page->_paneAgentSessions.at(launch.SessionId()).cwd);
+                    VERIFY_ARE_EQUAL(cwd, page->_pendingRestoredSessionBindings.at(launch.SessionId()).cwd);
+                }
+                for (const auto argument : { L"--resume", L"--continue", L"--version" })
+                {
+                    profile.AgentProfileArguments(argument);
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                    VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
+                }
+                profile.AgentProfileArguments(L"");
+                profile.Commandline(L"copilot --custom-option");
+                profile.StartingDirectory(L".");
+                const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false);
+                VERIFY_IS_FALSE(page->_pendingRestoredSessionBindings.contains(launch.SessionId()));
+                VERIFY_ARE_EQUAL(profile.Commandline(), launch.as<Conpty>().Commandline());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"." }, launch.as<Conpty>().StartingDirectory());
+            });
+        }
     }
 
     void TabTests::AgentProfileCommandlineCopies()

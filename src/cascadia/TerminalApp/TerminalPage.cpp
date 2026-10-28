@@ -8,6 +8,7 @@
 #include "TabHeaderControl.h"
 #include "CommandPalette.h"
 
+#include <filesystem>
 #include <iomanip>
 #include <icu.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
@@ -9456,6 +9457,7 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
+        winrt::hstring managedAgentSessionId;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9485,7 +9487,12 @@ namespace winrt::TerminalApp::implementation
                 ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
                 ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
                     profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+                if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
+                {
+                    managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
+                }
+                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
+                    profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
             }
 
             // Update the path to be relative to whatever our CWD is.
@@ -9504,6 +9511,11 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
+            if (settingsInternal->UsesManagedAgentCommand())
+            {
+                const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
+                newWorkingDirectory = std::filesystem::absolute(path).wstring();
+            }
             connection = TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),
                                                                             newWorkingDirectory,
@@ -9537,6 +9549,25 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
+
+        if (!managedAgentSessionId.empty())
+        {
+            const auto agent = profile.AgentProfileId();
+            const auto backend = winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ agent }) };
+            const auto cwd = connection.as<TerminalConnection::ConptyConnection>().StartingDirectory();
+            _explicitNativeAgentSessions.insert(connection.SessionId());
+            _paneAgentSessions.insert_or_assign(
+                connection.SessionId(),
+                _PaneAgentSession{
+                    managedAgentSessionId,
+                    agent,
+                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, managedAgentSessionId) },
+                    backend,
+                    cwd });
+            _pendingRestoredSessionBindings.insert_or_assign(
+                connection.SessionId(),
+                _PendingRestoredSessionBinding{ managedAgentSessionId, agent, cwd, backend });
+        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -12720,6 +12751,14 @@ namespace winrt::TerminalApp::implementation
         const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
         if (!previous || previous->modeEpoch != identity.modeEpoch || birthBeforeReset)
         {
+            if (const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+                connection && winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand())
+            {
+                if (const auto cwd = connection.StartingDirectory(); !cwd.empty())
+                {
+                    params["launch_cwd"] = winrt::to_string(cwd);
+                }
+            }
             if (birthBeforeReset && !enabled && !identity.agentSessionId.empty() &&
                 (explicitBinding || !identity.qualifiedLocation.empty()))
             {
@@ -12815,6 +12854,40 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    std::optional<TerminalPage::_RichTabAgentInfo> TerminalPage::_ManagedProfileLaunchInfoForControl(const TermControl& control)
+    {
+        const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+        if (!connection || connection.State() > ConnectionState::Connected ||
+            !winrt::get_self<Settings::TerminalSettings>(control.Settings())->UsesManagedAgentCommand())
+        {
+            return std::nullopt;
+        }
+        const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
+        const auto provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
+        if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
+            _richTabEndedSessionByPaneId.contains(*paneId))
+        {
+            return std::nullopt;
+        }
+        if (const auto active = _activeCliAgentPanes.find(*paneId);
+            active != _activeCliAgentPanes.end() && !active->second.sessionId.empty())
+        {
+            return std::nullopt;
+        }
+        _RichTabAgentInfo info{ {}, "Idle", winrt::to_string(provider), std::nullopt, paneId };
+        if (const auto binding = _paneAgentSessions.find(*paneId);
+            binding != _paneAgentSessions.end())
+        {
+            info.sessionId = winrt::to_string(binding->second.sessionId);
+        }
+        if (const auto cwd = connection.StartingDirectory(); !cwd.empty())
+        {
+            info.cwd = winrt::to_string(cwd);
+        }
+        info.launchMetadata = true;
+        return info;
+    }
+
     std::optional<TerminalPage::_RichTabAgentInfo> TerminalPage::_RichTabAgentInfoForControl(const TermControl& control)
     {
         const auto paneSessionId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
@@ -12830,7 +12903,7 @@ namespace winrt::TerminalApp::implementation
                 if (identity->receiverGeneration != _nativeAgentStatusSnapshotReceiverGeneration ||
                     identity->receiverGeneration != SharedWta::Instance().MasterGeneration())
                 {
-                    return std::nullopt;
+                    return _ManagedProfileLaunchInfoForControl(control);
                 }
                 if (const auto info = _richTabAgentStatusByPaneId.find(*paneSessionId);
                     info != _richTabAgentStatusByPaneId.end() &&
@@ -12850,13 +12923,13 @@ namespace winrt::TerminalApp::implementation
                     }
                     return info->second;
                 }
-                return std::nullopt;
+                return _ManagedProfileLaunchInfoForControl(control);
             }
             // ACP helper panes retain their direct status; an ordinary shell
             // must not acquire native-agent status from historical/hook caches.
             if (!winrt::get_self<ContentManager>(_manager)->AcceptsAgentSessionEvents(*paneSessionId))
             {
-                return std::nullopt;
+                return _ManagedProfileLaunchInfoForControl(control);
             }
         }
         if (const auto info = _richTabAgentStatusByPaneId.find(*paneSessionId);
@@ -12895,7 +12968,7 @@ namespace winrt::TerminalApp::implementation
                 return info;
             }
         }
-        return std::nullopt;
+        return _ManagedProfileLaunchInfoForControl(control);
     }
 
     std::pair<bool, std::optional<std::string>> TerminalPage::_RichTabAgentCwdForControl(const TermControl& control)
@@ -12904,6 +12977,11 @@ namespace winrt::TerminalApp::implementation
         if (!paneId)
         {
             return { false, std::nullopt };
+        }
+        const auto info = _RichTabAgentInfoForControl(control);
+        if (info && info->launchMetadata)
+        {
+            return { true, info->cwd };
         }
         std::optional<std::string> expectedSession;
         bool hasOwner = false;
@@ -12961,7 +13039,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        const auto info = _RichTabAgentInfoForControl(control);
         const auto live = info &&
                           (info->status == "Idle" || info->status == "Working" ||
                            info->status == "Attention" || info->status == "Error") &&
@@ -17408,6 +17485,17 @@ namespace winrt::TerminalApp::implementation
             }
             _DetachRichTabControl(termControl);
         }
+        else if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+        {
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
+            {
+                // Replacement retires the old lifetime even if a failure was already reported.
+                _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
+                _panesWithEmittedTerminalEndState.emplace(oldPaneId);
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
+            }
+        }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
         // Reset the terminal's VT state before attaching the new connection.
         // The previous client may have left dirty modes (e.g., bracketed
@@ -17431,9 +17519,16 @@ namespace winrt::TerminalApp::implementation
                     manager->SetExplicitNativeAgentProvider(termControl.ContentId(), resumeBinding->agent);
                 }
             }
-            _PublishNativeAgentObservation(termControl, "reset", false, std::nullopt, true);
+            _PublishNativeAgentObservation(termControl, "reset", false, std::nullopt, !_pendingRestoredSessionBindings.contains(connection.SessionId()));
             _AttachOrUpdateRichTabControl(termControl);
             _ApplyTabListProjection();
+        }
+        if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+        {
+            if (const auto tab = _FindTabByStableId(winrt::to_hstring(_FindTabIdForControl(termControl))))
+            {
+                _NotifyRestoredSessionBindings(tab);
+            }
         }
         connection.Start();
     }

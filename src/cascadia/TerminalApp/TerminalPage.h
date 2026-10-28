@@ -1052,6 +1052,7 @@ namespace winrt::TerminalApp::implementation
             std::string tabId;
             Json::Value location;
             Json::Value inferredHistoryKey;
+            bool launchMetadata{ false };
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1067,6 +1068,7 @@ namespace winrt::TerminalApp::implementation
         static bool _NativeAgentReceiverSnapshotReady(const Json::Value& response, uint64_t capturedGeneration, uint64_t currentGeneration);
         void _PreserveNativeAgentIdentity(const Microsoft::Terminal::Control::TermControl& control);
         void _ReplayNativeAgentObservationsForReceiver(uint64_t receiverGeneration);
+        std::optional<_RichTabAgentInfo> _ManagedProfileLaunchInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateAgentCompletions();
         void _ReadTabAgentCompletions(Tab& tab);
