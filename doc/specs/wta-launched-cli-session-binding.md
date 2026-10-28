@@ -239,3 +239,22 @@ executor its own master sender like (a)'s. Threading that through without
 disturbing the recommendation's other steps is why (b) is deferred to its own
 change. It will reuse the exact same id-pinning and born-bound registration as
 (a); only the transport differs.
+
+## Managed native agent profiles
+
+Managed Copilot, Claude, and Gemini profiles also pin a fresh UUID with
+`--session-id` when Terminal creates their ConPTY connection. The connection's
+pane GUID and evaluated starting directory are retained with that UUID, using
+the existing pending born-bound registration and subscribed-helper replay path.
+Registration waits for the owning tab and the ready master generation, so
+startup does not depend on hooks or on a helper subscribing before the launch.
+
+The explicit binding also supplies the native status path when session
+management is disabled. A profile restart generates a new conversation UUID
+and binds it to the replacement connection; persisted layouts retain a resume
+command for the known conversation instead of replaying the new-session command.
+Real hooks can still take ownership of the same session.
+
+Command previews and profile settings do not contain a generated UUID.
+Handwritten command overrides, resume/continue commands, help/version commands,
+and providers without new-session ID support keep their existing behavior.

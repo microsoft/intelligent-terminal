@@ -9340,6 +9340,7 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
+        winrt::hstring managedAgentSessionId;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9369,7 +9370,12 @@ namespace winrt::TerminalApp::implementation
                 ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
                 ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
                     profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
+                if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
+                {
+                    managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
+                }
+                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
+                    profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
             }
 
             // Update the path to be relative to whatever our CWD is.
@@ -9421,6 +9427,25 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
+
+        if (!managedAgentSessionId.empty())
+        {
+            const auto agent = profile.AgentProfileId();
+            const auto backend = winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ agent }) };
+            const auto cwd = connection.as<TerminalConnection::ConptyConnection>().StartingDirectory();
+            _explicitNativeAgentSessions.insert(connection.SessionId());
+            _paneAgentSessions.insert_or_assign(
+                connection.SessionId(),
+                _PaneAgentSession{
+                    managedAgentSessionId,
+                    agent,
+                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, managedAgentSessionId) },
+                    backend,
+                    cwd });
+            _pendingRestoredSessionBindings.insert_or_assign(
+                connection.SessionId(),
+                _PendingRestoredSessionBinding{ managedAgentSessionId, agent, cwd, backend });
+        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -17241,9 +17266,21 @@ namespace winrt::TerminalApp::implementation
                     manager->SetExplicitNativeAgentProvider(termControl.ContentId(), resumeBinding->agent);
                 }
             }
-            _PublishNativeAgentObservation(termControl, "reset", false, std::nullopt, true);
+            _PublishNativeAgentObservation(termControl, "reset", false, std::nullopt, !_pendingRestoredSessionBindings.contains(connection.SessionId()));
             _AttachOrUpdateRichTabControl(termControl);
             _ApplyTabListProjection();
+        }
+        if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+        {
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
+            {
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
+            }
+            if (const auto tab = _FindTabByStableId(winrt::to_hstring(_FindTabIdForControl(termControl))))
+            {
+                _NotifyRestoredSessionBindings(tab);
+            }
         }
         connection.Start();
     }
