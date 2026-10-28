@@ -3173,7 +3173,6 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::_updateSearchVisualState()
     {
         const auto searchLabel = RS_(L"VerticalTabsAgentsSearch/Text");
-        SearchTextBox().PlaceholderText(searchLabel);
         WUX::Automation::AutomationProperties::SetName(
             SearchTextBox(), searchLabel);
         WUX::Automation::AutomationProperties::SetName(

@@ -5692,7 +5692,8 @@ namespace TerminalAppLocalTests
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             const auto verifySearchHint = [&](const winrt::hstring& chord) {
                 const auto search = strip->SearchTabsButton();
-                const auto label = strip->SearchTextBox().PlaceholderText();
+                const auto label = Automation::AutomationProperties::GetName(strip->SearchTextBox());
+                VERIFY_ARE_NOT_EQUAL(strip->SearchTextBox().PlaceholderText(), label);
                 const auto content = ToolTipService::GetToolTip(search).as<ToolTip>().Content().as<StackPanel>();
                 const auto railContent = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
                 VERIFY_ARE_EQUAL(2u, content.Children().Size());
@@ -8709,6 +8710,45 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto search = stripImpl->SearchTabsButton();
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                strip.RequestedTheme(theme);
+                search.ApplyTemplate();
+                search.Measure({ 40, 40 });
+                search.Arrange({ 0, 0, 40, 40 });
+                search.UpdateLayout();
+                const auto root = Media::VisualTreeHelper::GetChild(search, 0).as<Grid>();
+                const auto presenter = root.FindName(L"SearchButtonPresenter").as<ContentPresenter>();
+                VERIFY_ARE_EQUAL(40.0, search.ActualWidth());
+                VERIFY_ARE_EQUAL(40.0, search.ActualHeight());
+                VERIFY_ARE_EQUAL(24.0, presenter.ActualWidth());
+                VERIFY_ARE_EQUAL(24.0, presenter.ActualHeight());
+                const auto bounds = presenter.TransformToVisual(search).TransformBounds({ 0, 0, 24, 24 });
+                VERIFY_ARE_EQUAL(8.0f, bounds.X);
+                VERIFY_ARE_EQUAL(8.0f, bounds.Y);
+                VERIFY_IS_TRUE(search.UseSystemFocusVisuals());
+                for (const auto state : { L"Checked", L"CheckedPointerOver", L"CheckedPressed" })
+                {
+                    VERIFY_IS_TRUE(VisualStateManager::GoToState(search, state, false));
+                    const auto fill = presenter.Background().as<Media::SolidColorBrush>().Color();
+                    VERIFY_IS_TRUE(fill.A > 0);
+                    if (!highContrast)
+                    {
+                        VERIFY_ARE_EQUAL(fill.R, fill.G);
+                        VERIFY_ARE_EQUAL(fill.G, fill.B);
+                    }
+                }
+                VERIFY_IS_TRUE(VisualStateManager::GoToState(search, L"Normal", false));
+            }
+            const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(search);
+            const auto toggle = peer.GetPattern(Automation::Peers::PatternInterface::Toggle).as<Automation::Provider::IToggleProvider>();
+            toggle.Toggle();
+            VERIFY_IS_TRUE(strip.SearchActive());
+            VERIFY_ARE_EQUAL(Automation::ToggleState::On, toggle.ToggleState());
+            toggle.Toggle();
+            VERIFY_IS_FALSE(strip.SearchActive());
 
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
@@ -8807,6 +8847,10 @@ namespace TerminalAppLocalTests
             tabsTooltip = ToolTipService::GetToolTip(stripImpl->SearchTabsButton()).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(0).as<TextBlock>().Text();
             const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
                                        .MainResourceMap().GetSubtree(L"TerminalApp/Resources");
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsSearchBox/PlaceholderText").ValueAsString(), tabsPlaceholder);
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsAgentsSearch/Text").ValueAsString(), tabsSearchName);
+            VERIFY_ARE_EQUAL(tabsSearchName, tabsButtonName);
+            VERIFY_ARE_EQUAL(tabsSearchName, tabsTooltip);
             const auto header = strip.FindName(L"VerticalTabsHeader").as<TextBlock>();
             VERIFY_IS_TRUE(header == stripImpl->VerticalTabsHeader());
             VERIFY_IS_NULL(header.try_as<Control>());
