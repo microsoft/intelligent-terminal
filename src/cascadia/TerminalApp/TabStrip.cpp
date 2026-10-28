@@ -1697,8 +1697,8 @@ namespace winrt::TerminalApp::implementation
 
         const auto rowMargin = container.Margin();
         const auto width = container.ActualWidth() + rowMargin.Left + rowMargin.Right;
-        // Figma's 272-DIP row has a 48-DIP hug-content action group and a
-        // 15-DIP trailing inset. Scale the group's outer edge, not its controls.
+        // Figma's 272-DIP row has a 15-DIP trailing inset.
+        // Scale the outer inset, not the 24-DIP controls.
         const auto inset = std::max(0.0, width * 15.0 / 272.0 - rowMargin.Right);
         for (const auto name : { L"TabCloseButtonSlot", L"PaneCloseButtonSlot" })
         {
@@ -1727,13 +1727,13 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
         }
-        if (const auto indicator = row.FindName(L"HistoryCompletionIndicator").try_as<FrameworkElement>())
+        if (const auto titleGroup = row.FindName(L"HistoryTitleGroup").try_as<FrameworkElement>())
         {
-            auto margin = indicator.Margin();
+            auto margin = titleGroup.Margin();
             margin.Right = 24.0 + inset - row.as<Grid>().Padding().Right;
-            if (indicator.Margin() != margin)
+            if (titleGroup.Margin() != margin)
             {
-                indicator.Margin(margin);
+                titleGroup.Margin(margin);
             }
         }
     }

@@ -243,7 +243,6 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -253,7 +252,7 @@
                     </Grid.RowDefinitions>
                     <Border x:Name="HistorySelectionBackground"
                             Grid.RowSpan="3"
-                            Grid.ColumnSpan="3"
+                            Grid.ColumnSpan="2"
                             Margin="-12,-8"
                             Background="{ThemeResource ListViewItemBackgroundSelected}"
                             CornerRadius="{StaticResource SidebarTabCornerRadius}"
@@ -282,19 +281,35 @@
                                     Content="{Binding Foreground, ElementName=HistoryTitleText}"
                                     ContentTemplate="{x:Bind IconTemplate}"
                                     IsTabStop="False" />
-                    <Grid Grid.Column="1"
+                    <Grid x:Name="HistoryTitleGroup"
+                          Grid.Column="1"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <local:HighlightedTextControl x:Name="HistoryTitleText"
+                                                      VerticalAlignment="Center"
                                                       SearchText="{x:Bind SearchQuery}"
                                                       Text="{x:Bind Title}"
                                                       TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
+                        <Grid x:Name="HistoryCompletionIndicator"
+                              Grid.Column="1"
+                              Width="24"
+                              Height="24"
+                              Margin="12,0,0,0"
+                              VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw"
+                              IsHitTestVisible="False"
+                              Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
+                            <Ellipse Width="4"
+                                     Height="4"
+                                     Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                        </Grid>
                         <FontIcon x:Name="HistoryKeepRunningIcon"
-                                  Grid.Column="1"
+                                  Grid.Column="2"
                                   Margin="12,0,0,0"
                                   VerticalAlignment="Center"
                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -303,23 +318,9 @@
                                   Glyph="&#xE8EE;"
                                   Visibility="{x:Bind IsKeepRunning, Mode=OneWay}" />
                     </Grid>
-                    <Grid x:Name="HistoryCompletionIndicator"
-                          Grid.Column="2"
-                          Width="24"
-                          Height="24"
-                          Margin="0,0,24,0"
-                          VerticalAlignment="Center"
-                          AutomationProperties.AccessibilityView="Raw"
-                          IsHitTestVisible="False"
-                          Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
-                        <Ellipse Width="4"
-                                 Height="4"
-                                 Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
-                    </Grid>
                     <local:HighlightedTextControl x:Name="HistoryCwdText"
                                                   Grid.Row="1"
                                                   Grid.Column="1"
-                                                  Grid.ColumnSpan="2"
                                                   Margin="0,2,0,0"
                                                   SearchText="{x:Bind SearchQuery}"
                                                   Text="{x:Bind Cwd}"
@@ -327,7 +328,6 @@
                     <Grid x:Name="HistoryMetadata"
                           Grid.Row="2"
                           Grid.Column="1"
-                          Grid.ColumnSpan="2"
                           Margin="0,2,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -818,7 +818,6 @@
                                                     <ColumnDefinition Width="3" />
                                                     <ColumnDefinition Width="28" />
                                                     <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <ContentPresenter x:Name="PaneIconPresenter"
                                                                   Grid.Column="1"
@@ -855,35 +854,41 @@
                                                                   IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
                                                                   Visibility="{x:Bind IsProgressRingIndeterminate, Mode=OneWay}" />
                                                 </Grid>
-                                                <local:HighlightedTextControl x:Name="PaneTitleText"
-                                                                              Grid.Column="2"
-                                                                              Margin="2,3,0,0"
-                                                                              VerticalAlignment="Center"
-                                                                              SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
-                                                                              Text="{x:Bind Title, Mode=OneWay}">
-                                                    <local:HighlightedTextControl.TextBlockStyle>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                                        </Style>
-                                                    </local:HighlightedTextControl.TextBlockStyle>
-                                                </local:HighlightedTextControl>
-                                                <Grid x:Name="PaneCompletionIndicator"
-                                                      Grid.Column="3"
-                                                      Width="24"
-                                                      Height="24"
-                                                      Margin="0,3,0,0"
-                                                      VerticalAlignment="Center"
-                                                      AutomationProperties.AccessibilityView="Raw"
-                                                      IsHitTestVisible="False"
-                                                      Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
-                                                    <Ellipse Width="4"
-                                                             Height="4"
-                                                             Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                                <Grid Grid.Column="2"
+                                                      Margin="2,3,0,0"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <local:HighlightedTextControl x:Name="PaneTitleText"
+                                                                                  VerticalAlignment="Center"
+                                                                                  SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                                  Text="{x:Bind Title, Mode=OneWay}">
+                                                        <local:HighlightedTextControl.TextBlockStyle>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                            </Style>
+                                                        </local:HighlightedTextControl.TextBlockStyle>
+                                                    </local:HighlightedTextControl>
+                                                    <Grid x:Name="PaneCompletionIndicator"
+                                                          Grid.Column="1"
+                                                          Width="24"
+                                                          Height="24"
+                                                          Margin="12,0,0,0"
+                                                          VerticalAlignment="Center"
+                                                          AutomationProperties.AccessibilityView="Raw"
+                                                          IsHitTestVisible="False"
+                                                          Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
+                                                        <Ellipse Width="4"
+                                                                 Height="4"
+                                                                 Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                                    </Grid>
                                                 </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneMetadataText"
                                                                               Grid.Row="1"
                                                                               Grid.Column="2"
-                                                                              Grid.ColumnSpan="2"
                                                                               Margin="2,1,0,3"
                                                                               AutomationProperties.AccessibilityView="Raw"
                                                                               CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"

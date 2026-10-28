@@ -44,7 +44,6 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <StackPanel x:Name="HeaderStackPanel"
                     Orientation="Horizontal">
@@ -126,9 +125,11 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <local:HighlightedTextControl x:Name="HeaderTextBlock"
                                           MinWidth="0"
+                                          VerticalAlignment="Center"
                                           SearchText="{x:Bind SearchText, Mode=OneWay}"
                                           Text="{x:Bind Title, Mode=OneWay}"
                                           Visibility="Visible">
@@ -153,7 +154,21 @@
                     <mtu:TextMenuFlyout />
                 </TextBox.ContextFlyout>
             </TextBox>
-            <Grid Grid.Column="1"
+            <Grid x:Name="HeaderCompletionIndicator"
+                  Grid.Column="1"
+                  Width="24"
+                  Height="24"
+                  Margin="12,0,0,0"
+                  VerticalAlignment="Center"
+                  AutomationProperties.AccessibilityView="Raw"
+                  IsHitTestVisible="False"
+                  Visibility="Collapsed">
+                <Ellipse x:Name="HeaderCompletionDot"
+                         Width="4"
+                         Height="4"
+                         Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+            </Grid>
+            <Grid Grid.Column="2"
                   VerticalAlignment="Center"
                   Visibility="{x:Bind ShowPinnedIcon, Mode=OneWay}">
                 <PathIcon x:Name="HeaderPinnedIcon"
@@ -164,7 +179,7 @@
                           Visibility="{x:Bind TabStatus.IsPinned, Mode=OneWay}" />
             </Grid>
             <FontIcon x:Name="HeaderKeepRunningIcon"
-                      Grid.Column="2"
+                      Grid.Column="3"
                       Margin="12,0,0,0"
                       VerticalAlignment="Center"
                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -172,22 +187,9 @@
                       Glyph="&#xE8EE;"
                       Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
         </Grid>
-        <Grid x:Name="HeaderCompletionIndicator"
-              Grid.Column="2"
-              Width="24"
-              Height="24"
-              VerticalAlignment="Center"
-              AutomationProperties.AccessibilityView="Raw"
-              IsHitTestVisible="False"
-              Visibility="Collapsed">
-            <Ellipse x:Name="HeaderCompletionDot"
-                     Width="4"
-                     Height="4"
-                     Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
-        </Grid>
         <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
                                       Grid.Row="1"
-                                      Grid.ColumnSpan="3"
+                                      Grid.ColumnSpan="2"
                                       Margin="0,1,0,0"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
