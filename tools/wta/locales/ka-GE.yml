@@ -150,6 +150,8 @@ agents.status.active: "მუშაობს"
 agents.status.waiting_for_input: "შეყვანის მოლოდინში"
 agents.status.error: "შეცდომა"
 agents.status.idle: "უმოქმედო"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "დასრულდა"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "გამოიყენება"
 

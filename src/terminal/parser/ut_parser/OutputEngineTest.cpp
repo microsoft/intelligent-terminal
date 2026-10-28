@@ -36,6 +36,19 @@ namespace Microsoft
 class DummyDispatch final : public TermDispatch
 {
 public:
+    size_t programStatusCalls = 0;
+    size_t rawOscCalls = 0;
+
+    void DoProgramStatus(const ProgramStatus::Command& /*command*/) override
+    {
+        ++programStatusCalls;
+    }
+
+    void NotifyVtSequence(const std::wstring_view /*sequence*/) override
+    {
+        ++rawOscCalls;
+    }
+
     virtual void Print(const wchar_t /*wchPrintable*/) override
     {
     }
@@ -667,6 +680,56 @@ class Microsoft::Console::VirtualTerminal::OutputEngineTest final
         VERIFY_ARE_EQUAL(mach._oscString.size(), 260u);
         mach.ProcessCharacter(AsciiChars::BEL);
         VERIFY_ARE_EQUAL(mach._state, StateMachine::VTStates::Ground);
+    }
+
+    TEST_METHOD(TestProgramStatusCollectionBound)
+    {
+        auto dispatch = std::make_unique<DummyDispatch>();
+        const auto observed = dispatch.get();
+        auto engine = std::make_unique<OutputStateMachineEngine>(std::move(dispatch));
+        StateMachine mach(std::move(engine));
+        mach.ProcessString(L"\x1b]7501;");
+        for (size_t i = 0; i < 10000; ++i)
+        {
+            mach.ProcessString(L"x");
+            VERIFY_IS_LESS_THAN_OR_EQUAL(mach._oscString.size(), size_t{ 4087 });
+            VERIFY_IS_TRUE(!mach._cachedSequence || mach._cachedSequence->size() <= 4096);
+        }
+        mach.ProcessString(L"\x1b\\");
+        VERIFY_ARE_EQUAL(StateMachine::VTStates::Ground, mach._state);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, observed->programStatusCalls);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, observed->rawOscCalls);
+        auto body = std::wstring{ L"state=working:" };
+        body.resize(4087, L':');
+        mach.ProcessString(L"\x1b]7501;" + body + L"\a");
+        VERIFY_ARE_EQUAL(size_t{ 1 }, observed->programStatusCalls);
+        mach.ProcessString(L"\x1b]7501;" + body + L":\x1b\\");
+        VERIFY_ARE_EQUAL(size_t{ 1 }, observed->programStatusCalls);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, observed->rawOscCalls);
+        mach.ProcessString(L"\x1b]9999;" + std::wstring(5000, L'x'));
+        VERIFY_ARE_EQUAL(size_t{ 5000 }, mach._oscString.size());
+        mach.ProcessString(L"\a");
+        VERIFY_ARE_EQUAL(StateMachine::VTStates::Ground, mach._state);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, observed->rawOscCalls);
+    }
+
+    TEST_METHOD(TestProgramStatusAsciiAndCancellation)
+    {
+        auto dispatch = std::make_unique<DummyDispatch>();
+        const auto observed = dispatch.get();
+        auto engine = std::make_unique<OutputStateMachineEngine>(std::move(dispatch));
+        StateMachine mach(std::move(engine));
+        mach.ProcessString(L"\x1b]7501;state=working:id=a\x80" L"b\a");
+        mach.ProcessString(L"\x1b]7501;state=working:id=a\u4f60" L"b\a");
+        mach.ProcessString(L"\x1b]7501;state=working:id=a\x01" L"b\a");
+        VERIFY_ARE_EQUAL(size_t{ 0 }, observed->programStatusCalls);
+        mach.ProcessString(L"\x1b]7501;state=working\x18");
+        mach.ProcessString(L"\x1b]7501;state=idle\a");
+        VERIFY_ARE_EQUAL(size_t{ 1 }, observed->programStatusCalls);
+        mach.SetParserMode(StateMachine::Mode::AcceptC1, true);
+        mach.ProcessString(L"\x9d" L"7501;?\x9c");
+        VERIFY_ARE_EQUAL(size_t{ 2 }, observed->programStatusCalls);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, observed->rawOscCalls);
     }
 
     TEST_METHOD(NormalTestOscParam)

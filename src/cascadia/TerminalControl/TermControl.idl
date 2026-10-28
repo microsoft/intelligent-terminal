@@ -189,5 +189,9 @@ namespace Microsoft.Terminal.Control
         void Detach();
         void EnableAgentMouseWheelZoom(Boolean enabled);
         void EnableAgentRightClickContextMenu(Boolean enabled);
+
+        String ProgramStatusJson();
+        void AcknowledgeProgramStatus(UInt64 revision);
+        event Windows.Foundation.TypedEventHandler<Object, Object> ProgramStatusChanged;
     }
 }

@@ -107,6 +107,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
+| `Feature.ProgramStatus.Tests.ps1` | OSC 7501 real stdout/ConPTY/Core/Control/Sidebar metadata, hierarchy, unread acknowledgment, malformed recovery and prompt cleanup; requires exact feature-branch Dev App and Control hashes | 4 |
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery, passive WTA publisher/listener shutdown suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 4 |
 | `Feature.TelemetryFunnels.Tests.ps1` | Opt-in real ETW: daily activity, correlated prompt/completion, detection/offer/Run, foreground palette visits, startup/provider configuration and policy state; AppCreated schema includes rejected enrollment (empty rollout name / NotEnrolled, typed UnicodeString) without changing the user's chosen layout. Run results remain unknown, not execution success | 18 required + 2 optional hot-policy diagnostics (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |

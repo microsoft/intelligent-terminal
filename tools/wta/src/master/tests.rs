@@ -2074,6 +2074,94 @@ fn make_state() -> Arc<MasterStateInner> {
 }
 
 #[tokio::test]
+async fn program_status_dispatch_preserves_hook_authority_and_enriches_pane_metadata() {
+    use crate::agent_sessions::{AgentStatus, SessionLocation};
+    use crate::session_registry::{SessionInfo, SessionRegistry};
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    for tracking_enabled in [false, true] {
+        let state = make_state();
+        let pane = "00112233-4455-6677-8899-aabbccddeeff";
+        let sid = acp::schema::v1::SessionId::new("osc-hook-owner");
+        let mut row = SessionInfo::new(sid.clone(), std::path::PathBuf::from(r"C:\repo"))
+            .with_pane_session_id(pane);
+        row.provider_id = Some("copilot".into());
+        row.location = SessionLocation::Host;
+        row.born_bound_pane = true;
+        row.status = Some(AgentStatus::Error);
+        state.registry.upsert(row).await;
+        state.hook_owned.lock().await.insert(sid.clone());
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method":"native_agent_observation", "params": {
+                    "pane_id":pane,"provider_id":"copilot","window_id":7,"tab_id":"tab-7",
+                    "mode_epoch":1,"kind":"reset","tracking_enabled":tracking_enabled
+                }
+            }),
+        )
+        .await;
+        let mut row = state.registry.lookup(&sid).await.unwrap();
+        row.status = Some(AgentStatus::Error);
+        state.registry.upsert(row).await;
+        let report = |revision| {
+            serde_json::json!({
+                "method":"native_agent_observation", "params": {
+                    "pane_id":pane,"provider_id":"copilot","window_id":7,"tab_id":"tab-7",
+                    "mode_epoch":1,"kind":"program_status","canonical_owned":false,
+                    "program_status":{"revision":revision,"observed":true,"state":"working","working":1}
+                }
+            })
+        };
+        handle_master_wt_event(&state, report(1)).await;
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Error)
+        );
+        let panes = state.registry.pane_status_snapshot().await.0;
+        assert_eq!(panes[0].program_status.as_ref().unwrap().working, 1);
+        let mut row = state.registry.lookup(&sid).await.unwrap();
+        row.status = Some(AgentStatus::Working);
+        state.registry.upsert(row).await;
+        for (revision, status) in [(2, serde_json::json!("done")), (3, serde_json::Value::Null)] {
+            let mut completion = report(revision);
+            completion["params"]["program_status"] = serde_json::json!({
+                "revision": revision, "observed": true, "state": status,
+                "done": if revision == 2 { 1 } else { 0 }, "unseen_done": 1
+            });
+            handle_master_wt_event(&state, completion).await;
+            let response = handle_sessions_list_with_probe(
+                &state,
+                None,
+                &Default::default(),
+                |rows| async move { rows },
+            )
+            .await
+            .unwrap();
+            let response =
+                crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+            let pane = serde_json::to_value(&response.pane_statuses[0]).unwrap();
+            assert_eq!(pane["canonical_working"], true);
+            assert_eq!(response.pane_statuses[0].status, AgentStatus::Working);
+        }
+        state.hook_owned.lock().await.remove(&sid);
+        handle_master_wt_event(&state, report(4)).await;
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+        let response =
+            handle_sessions_list_with_probe(&state, None, &Default::default(), |rows| async move {
+                rows
+            })
+            .await
+            .unwrap();
+        let response = crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+        let pane = serde_json::to_value(&response.pane_statuses[0]).unwrap();
+        assert_eq!(pane["canonical_working"], false);
+    }
+}
+
+#[tokio::test]
 async fn native_launch_source_dispatch_refines_only_admitted_unbound_pane_in_place() {
     let _capture = crate::wt_protocol_events::capture_test_published_events();
     let state = make_state();

@@ -105,6 +105,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             const std::unordered_map<std::string, Snapshot>& snapshots,
             const VisibleFieldMap& visibleFields = {},
             const FieldDisplayNameMap& fieldDisplayNames = {});
+        static std::optional<Presentation> OverlayAgentStatus(
+            const std::optional<Presentation>& presentation,
+            std::wstring_view text,
+            std::string_view status);
 
     private:
         friend class ::TerminalAppUnitTests::RichTabProviderTests;

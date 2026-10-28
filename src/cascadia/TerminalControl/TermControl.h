@@ -214,6 +214,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void ApplyPreviewColorScheme(const Core::ICoreScheme& scheme) { _core.ApplyPreviewColorScheme(scheme); }
         void ResetPreviewColorScheme() { _core.ResetPreviewColorScheme(); }
         void SetOverrideColorScheme(const Core::ICoreScheme& scheme) { _core.SetOverrideColorScheme(scheme); }
+        winrt::hstring ProgramStatusJson();
+        void AcknowledgeProgramStatus(uint64_t revision);
 
         // -------------------------------- WinRT Events ---------------------------------
         // clang-format off
@@ -248,12 +250,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         BUBBLED_FORWARDED_TYPED_EVENT(WriteToClipboard,         IInspectable, Control::WriteToClipboardEventArgs);
         BUBBLED_FORWARDED_TYPED_EVENT(PasteFromClipboard,       IInspectable, Control::PasteFromClipboardEventArgs);
         BUBBLED_FORWARDED_TYPED_EVENT(ShowNotification,         IInspectable, Control::ShowNotificationEventArgs);
+        BUBBLED_FORWARDED_TYPED_EVENT(ProgramStatusChanged,     IInspectable, IInspectable);
 
         // clang-format on
 
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, BackgroundBrush, PropertyChanged.raise, nullptr);
 
     private:
+        void _acknowledgeProgramStatusForUserInput(bool requireFocus = true);
         friend struct TermControlT<TermControl>; // friend our parent so it can bind private event handlers
         friend struct TsfDataProvider;
 
@@ -500,6 +504,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             Control::ControlCore::ShowNotification_revoker ShowNotification;
             Control::ControlCore::RefreshQuickFixUI_revoker RefreshQuickFixUI;
             Control::ControlCore::WindowSizeChanged_revoker WindowSizeChanged;
+            Control::ControlCore::ProgramStatusChanged_revoker ProgramStatusChanged;
 
             // These are set up in _InitializeTerminal
             Control::ControlCore::RendererWarning_revoker RendererWarning;

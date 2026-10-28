@@ -7,6 +7,7 @@
 
 #include "winrt/Microsoft.UI.Xaml.Controls.h"
 #include "winrt/Windows.UI.ViewManagement.h"
+#include "ProgramStatusPresentation.h"
 
 #include "TabStrip.g.h"
 #include "SidebarFiltersViewModel.g.h"
@@ -91,6 +92,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, WslDistro);
         WINRT_PROPERTY(winrt::hstring, SessionUniverse);
         WINRT_PROPERTY(winrt::hstring, Status);
+        WINRT_PROPERTY(std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus>, ProgramStatus);
+        WINRT_PROPERTY(winrt::hstring, DisplayStatus);
         WINRT_PROPERTY(winrt::hstring, SearchQuery);
         WINRT_PROPERTY(bool, IsLive, false);
         WINRT_PROPERTY(bool, IsAgentPane, false);
@@ -149,6 +152,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, ActiveIndicatorVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, CloseVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, MetadataText, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ProgramStatusDetails, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, MetadataVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);

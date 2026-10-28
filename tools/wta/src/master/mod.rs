@@ -8329,7 +8329,11 @@ where
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let (pane_statuses, native_pane_observations) = state.registry.pane_status_snapshot().await;
+    let hook_owners = state.hook_owned.lock().await.clone();
+    let (pane_statuses, native_pane_observations) = state
+        .registry
+        .pane_status_snapshot_with_hook_owners(&hook_owners)
+        .await;
     let raw = crate::session_registry::build_sessions_list_response(
         sessions,
         Some(history_status.status),
@@ -11513,14 +11517,38 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
 
     if method == "native_agent_observation" {
         match serde_json::from_value::<crate::session_registry::NativeAgentObservation>(params) {
-            Ok(event) => {
+            Ok(mut event) => {
                 if !native_observation_matches_receiver(state, event.receiver_generation) {
                     tracing::debug!(target: "master_wt_event",
                         owned_generation = ?state.native_observation_receiver_generation,
                         "native observation rejected before listener readiness or for receiver generation mismatch");
                     return;
                 }
-                if state.registry.apply_native_observation(event).await {
+                let applied = if matches!(
+                    event.event,
+                    crate::session_registry::NativeObservationKind::ProgramStatus { .. }
+                ) {
+                    let owner = state.registry.lookup_active_by_pane(&event.pane_id).await;
+                    if let Some(owner) = owner {
+                        let gate = session_lifecycle_gate(state, &owner.session_id).await;
+                        let _guard = gate.lock().await;
+                        let current = state.registry.lookup_active_by_pane(&event.pane_id).await;
+                        if current.as_ref().is_none_or(|current| {
+                            crate::session_registry::SessionIdentity::from_info(current)
+                                != crate::session_registry::SessionIdentity::from_info(&owner)
+                        }) {
+                            return;
+                        }
+                        event.canonical_owned =
+                            state.hook_owned.lock().await.contains(&owner.session_id);
+                        state.registry.apply_native_observation(event).await
+                    } else {
+                        state.registry.apply_native_observation(event).await
+                    }
+                } else {
+                    state.registry.apply_native_observation(event).await
+                };
+                if applied {
                     broadcast_session_status_change(state, None).await;
                 }
             }

@@ -37,6 +37,7 @@
     <ClCompile Include="ProtocolParsingTests.cpp" />
     <ClCompile Include="ProtocolMarshalingTests.cpp" />
     <ClCompile Include="RichTabProviderTests.cpp" />
+    <ClCompile Include="ProgramStatusPresentationTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
     <ClCompile Include="WtaProcessTests.cpp" />

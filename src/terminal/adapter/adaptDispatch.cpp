@@ -3041,6 +3041,7 @@ void AdaptDispatch::SoftReset()
 // - erase: if true, erase the screen and scrollback
 void AdaptDispatch::HardReset(bool erase)
 {
+    _api.ResetProgramStatus();
     // If in the alt buffer, switch back to main before doing anything else.
     if (_usingAltBuffer)
     {
@@ -3646,6 +3647,24 @@ void AdaptDispatch::DoConEmuAction(const std::wstring_view string)
     }
 }
 
+void AdaptDispatch::DoProgramStatus(const ProgramStatus::Command& command)
+{
+    if (!_api.SupportsProgramStatus())
+    {
+        // WriteCharsVT owns the ordered ConPTY relay of the original stream.
+        // Never return a response or write to the output pipe from dispatch.
+        return;
+    }
+    if (command.operation == ProgramStatus::Command::Operation::Query)
+    {
+        _ReturnOscResponse(ProgramStatus::CapabilityResponse);
+    }
+    else
+    {
+        _api.ApplyProgramStatus(command);
+    }
+}
+
 // Method Description:
 // - Performs an iTerm2 action
 // - Ascribes to the ITermDispatch interface
@@ -3656,6 +3675,10 @@ void AdaptDispatch::DoConEmuAction(const std::wstring_view string)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 {
+    if (string == L"SetMark" || string.starts_with(L"SetMark;"))
+    {
+        _api.ProgramStatusPromptStarted();
+    }
     if constexpr (!Feature_ScrollbarMarks::IsEnabled())
     {
         return;
@@ -3691,6 +3714,10 @@ void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoFinalTermAction(const std::wstring_view string)
 {
+    if (string == L"A" || string.starts_with(L"A;"))
+    {
+        _api.ProgramStatusPromptStarted();
+    }
     if constexpr (!Feature_ScrollbarMarks::IsEnabled())
     {
         return;

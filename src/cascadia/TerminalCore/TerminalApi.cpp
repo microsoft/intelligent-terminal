@@ -35,6 +35,90 @@ bool Terminal::IsConPTY() const noexcept
     return false;
 }
 
+bool Terminal::SupportsProgramStatus() const noexcept
+{
+    return _programStatusEnabled;
+}
+
+void Terminal::SetProgramStatusEnabled(const bool enabled)
+{
+    const auto lock = LockForWriting();
+    _programStatusEnabled = enabled;
+    if (!enabled)
+    {
+        ResetProgramStatus();
+    }
+}
+
+ProgramStatus::Snapshot Terminal::GetProgramStatusSnapshot() const
+{
+    const auto lock = LockForReading();
+    return _programStatus.GetSnapshot();
+}
+
+void Terminal::ProgramStatusChangedCallback(std::function<void()> pfn) noexcept
+{
+    _pfnProgramStatusChanged = std::move(pfn);
+}
+
+void Terminal::ApplyProgramStatus(const ProgramStatus::Command& command)
+{
+    if (_programStatusEnabled && _programStatus.Apply(command) && _pfnProgramStatusChanged)
+    {
+        // Like other Core callbacks, this runs in stream order under the
+        // terminal lock. Consumers must only enqueue a nonblocking invalidation.
+        _pfnProgramStatusChanged();
+    }
+}
+
+void Terminal::ProgramStatusPromptStarted()
+{
+    if (_programStatus.ProcessExited() && _pfnProgramStatusChanged)
+    {
+        _pfnProgramStatusChanged();
+    }
+}
+
+void Terminal::ProgramStatusProcessExited()
+{
+    const auto lock = LockForWriting();
+    ProgramStatusPromptStarted();
+}
+
+void Terminal::AcknowledgeProgramStatus(const uint64_t observedRevision)
+{
+    const auto lock = LockForWriting();
+    if (_programStatus.Acknowledge(observedRevision) && _pfnProgramStatusChanged)
+    {
+        _pfnProgramStatusChanged();
+    }
+}
+
+void Terminal::ResetProgramStatus()
+{
+    if (_programStatus.Reset())
+    {
+        // The protocol invalidation also updates the taskbar, without bypassing
+        // its coalescer through the legacy progress callback.
+        _taskbarState = 0;
+        _taskbarProgress = 0;
+        if (_pfnProgramStatusChanged)
+        {
+            _pfnProgramStatusChanged();
+        }
+    }
+}
+
+void Terminal::ResetProgramStatusForConnection()
+{
+    const auto lock = LockForWriting();
+    if (_stateMachine)
+    {
+        _stateMachine->ResetState();
+    }
+    ResetProgramStatus();
+}
+
 Microsoft::Console::VirtualTerminal::StateMachine& Terminal::GetStateMachine() noexcept
 {
     return *_stateMachine;
@@ -174,6 +258,11 @@ void Terminal::CopyToClipboard(wil::zwstring_view content)
 void Terminal::SetTaskbarProgress(const ::Microsoft::Console::VirtualTerminal::DispatchTypes::TaskbarState state, const size_t progress)
 {
     _assertLocked();
+
+    if (_programStatus.Observed())
+    {
+        return;
+    }
 
     _taskbarState = static_cast<size_t>(state);
 

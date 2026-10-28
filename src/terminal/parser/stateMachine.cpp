@@ -5,6 +5,7 @@
 
 #include "stateMachine.hpp"
 
+#include "../adapter/ProgramStatus.hpp"
 #include "../../types/inc/utils.hpp"
 #include "ascii.hpp"
 
@@ -626,6 +627,7 @@ void StateMachine::_ActionClear() noexcept
 
     _oscString.clear();
     _oscParameter = 0;
+    _oscDiscarded = false;
 
     _dcsStringHandler = nullptr;
 }
@@ -683,6 +685,23 @@ void StateMachine::_ActionOscPut(const wchar_t wch)
 {
     _trace.TraceOnAction(L"OscPut");
 
+    if (_oscParameter == 7501)
+    {
+        // Reserve the longer seven-bit OSC/ST framing (9 bytes). The wire
+        // alphabet is ASCII, so each accepted UTF-16 code unit is one byte.
+        if (_oscDiscarded)
+        {
+            return;
+        }
+        if (_oscString.size() == ProgramStatus::MaximumBodyLength || wch > 0x7f || (wch < L' ' && wch != L'\t' && wch != L'\r' && wch != L'\n'))
+        {
+            _oscDiscarded = true;
+            _oscString.clear();
+            _cachedSequence.reset();
+            _trace.ClearSequenceTrace();
+            return;
+        }
+    }
     _oscString.push_back(wch);
 }
 
@@ -696,6 +715,10 @@ void StateMachine::_ActionOscPut(const wchar_t wch)
 void StateMachine::_ActionOscDispatch()
 {
     _trace.TraceOnAction(L"OscDispatch");
+    if (_oscParameter == 7501 && _oscDiscarded)
+    {
+        return;
+    }
     _trace.DispatchSequenceTrace(_SafeExecute([=]() {
         return _engine->ActionOscDispatch(_oscParameter, _oscString);
     }));
@@ -1497,6 +1520,10 @@ void StateMachine::_EventOscString(const wchar_t wch)
     {
         _EnterOscTermination();
     }
+    else if (_oscParameter == 7501)
+    {
+        _ActionOscPut(wch);
+    }
     else if (_isOscInvalid(wch))
     {
         _ActionIgnore();
@@ -1838,7 +1865,10 @@ void StateMachine::_EventSosPmApcString(const wchar_t /*wch*/) noexcept
 // - <none>
 void StateMachine::ProcessCharacter(const wchar_t wch)
 {
-    _trace.TraceCharInput(wch);
+    if (!(_oscParameter == 7501 && _oscDiscarded))
+    {
+        _trace.TraceCharInput(wch);
+    }
 
     // Process "from anywhere" events first.
     const auto isFromAnywhereChar = (wch == AsciiChars::CAN || wch == AsciiChars::SUB);
@@ -1852,6 +1882,12 @@ void StateMachine::ProcessCharacter(const wchar_t wch)
         _ActionInterrupt();
         _ActionExecute(wch);
         _EnterGround();
+    }
+    // Disabled C1 controls normally disappear. They must not turn an invalid
+    // program-status id/text into a different, valid ASCII report.
+    else if (_oscParameter == 7501 && _state == VTStates::OscString && _isC1ControlCharacter(wch) && !_parserMode.test(Mode::AcceptC1))
+    {
+        _ActionOscPut(wch);
     }
     // Preprocess C1 control characters and treat them as ESC + their 7-bit equivalent.
     else if (_isC1ControlCharacter(wch))
@@ -2072,6 +2108,14 @@ void StateMachine::ProcessString(const std::wstring_view string)
                 // No need to cache the run, since we've dealt with it now.
                 cacheUnusedRun = false;
             }
+        }
+        else if (_oscParameter == 7501 && (_state == VTStates::OscString || _state == VTStates::OscTermination))
+        {
+            // Typed OSC dispatch cannot need the raw sequence. Bounding only
+            // _oscString would still leave this fragmented-sequence cache open
+            // to unbounded growth, including after body overflow.
+            _cachedSequence.reset();
+            cacheUnusedRun = false;
         }
         else if (_state == VTStates::SosPmApcString || _state == VTStates::DcsPassThrough || _state == VTStates::DcsIgnore)
         {

@@ -23,6 +23,7 @@
 #include "WindowListRequest.g.h"
 #include "Toast.h"
 #include "SharedWta.h"
+#include "ProgramStatusPresentation.h"
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -1052,6 +1053,10 @@ namespace winrt::TerminalApp::implementation
             std::string tabId;
             Json::Value location;
             Json::Value inferredHistoryKey;
+            bool inputRequired{};
+            bool canonicalError{};
+            bool canonicalWorking{};
+            std::string inputMessage;
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1075,6 +1080,12 @@ namespace winrt::TerminalApp::implementation
         std::string_view _AgentStatusForPresentation(const _RichTabAgentInfo& info) const;
         void _SyncNativeAgentStatusMode();
         void _PublishNativeAgentSignal(const Microsoft::Terminal::Control::TermControl& control, bool attention, uint64_t progressState);
+        void _UpdateProgramStatusForTab(Tab& tab);
+        void _AcknowledgeProgramStatusForTab(Tab& tab);
+        void _FocusNextProgramAttention();
+        ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus _ProgramPaneStatus(const Json::Value& snapshot, const Microsoft::Terminal::Control::TermControl& control);
+        static std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus> _ParseHistoryProgramStatus(const Json::Value& pane);
+        static winrt::hstring _ProgramSummaryText(const ::Microsoft::Terminal::ProgramStatusPresentation::Summary& summary);
         void _PublishNativeAgentObservation(const Microsoft::Terminal::Control::TermControl& control, std::string_view kind, bool reset = false, std::optional<uint64_t> progressState = std::nullopt, bool birthBeforeReset = false);
         static std::string _NativeAgentObservationSource(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& backend);
         static Json::Value _NativeAgentObservationLocation(std::string_view source);

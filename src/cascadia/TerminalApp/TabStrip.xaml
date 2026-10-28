@@ -772,7 +772,7 @@
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Click="OnPaneActivateClick"
-                                                ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
+                                                ToolTipService.ToolTip="{x:Bind ProgramStatusDetails, Mode=OneWay}">
                                             <Button.Resources>
                                                 <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                  Color="Transparent" />

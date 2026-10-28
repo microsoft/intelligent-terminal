@@ -32,6 +32,13 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C005` `[MANUAL]` **Agent CLI versions:** Copilot, Claude, Codex, Gemini, and any custom agent versions are recorded.
 - [ ] `C006` `[MANUAL]` **Known limitations:** Expected limitations are written down before sign-off.
 
+## OSC 7501 program status
+
+- [ ] `C460` `[new]` `[E2E]` **OSC 7501 hierarchy reaches pane and tab metadata:** Real program stdout crosses ConPTY, Core and Control to render blocked descendants, active children and unread root completion without averaging unrelated percentages. _(E2E: `Feature.ProgramStatus`.)_
+- [ ] `C461` `[new]` `[E2E]` **OSC 7501 unread completion survives rapid idle and focus:** Done followed immediately by Idle remains visible until deliberate input acknowledges it; merely focusing the pane does not acknowledge results. _(E2E: `Feature.ProgramStatus`.)_
+- [ ] `C462` `[new]` `[E2E]` **OSC 7501 rejects malformed reports and recovers without shell false positives:** Invalid IDs and oversized records cannot create a root task, the next valid child reaches metadata, and an ordinary shell never acquires an agent identity. _(E2E: `Feature.ProgramStatus`.)_
+- [ ] `C463` `[new]` `[E2E]` **OSC 7501 prompt cleanup retains unread results but removes live tasks:** A real OSC 133 A removes Working and Blocked records without erasing completed unread results. _(E2E: `Feature.ProgramStatus`; canonical hook request precedence has separate registry coverage.)_
+
 ## 0. First-run experience (FRE)
 
 **Feature definition:** FRE guides first-time users through agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup. Display preferences remain available in normal Settings.

@@ -302,7 +302,7 @@ namespace winrt::TerminalApp::implementation
     winrt::hstring Tab::ToolTipTextForKeyChord(const winrt::hstring& keyChord)
     {
         std::wstring text{ _CreateToolTipTitle() };
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabTooltipText.empty())
         {
             text.append(L"\n");
             text.append(_richTabTooltipText);
@@ -341,7 +341,7 @@ namespace winrt::TerminalApp::implementation
             textBlock.Inlines().Append(pinRun);
         }
 
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabTooltipText.empty())
         {
             auto metadataRun = WUX::Documents::Run();
             metadataRun.Text(_richTabTooltipText);
@@ -647,7 +647,6 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
-        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
@@ -663,25 +662,70 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> highlightRanges{ nullptr };
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
-            if (_richTabPresentation)
+            auto presentation = _richTabPresentation;
+            if (!_programStatusVisible || !_programStatusText.empty())
             {
-                text = _richTabPresentation->text;
-                tooltip = _richTabPresentation->tooltip;
-                accessibilityText = _richTabPresentation->accessibilityText;
-                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*_richTabPresentation);
+                presentation = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::OverlayAgentStatus(
+                    presentation, _programStatusVisible ? std::wstring_view{ _programStatusText } : std::wstring_view{}, _programStatusId);
+            }
+            _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
+            if (presentation)
+            {
+                text = presentation->text;
+                tooltip = presentation->tooltip;
+                accessibilityText = presentation->accessibilityText;
+                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*presentation);
             }
         }
-
+        if (_programStatusVisible && !_programStatusDetails.empty())
+        {
+            if (!tooltip.empty())
+            {
+                tooltip.append(L"\n");
+            }
+            tooltip.append(_programStatusDetails);
+        }
+        if (!_isVerticalTabLayout && _programStatusVisible && !_programStatusText.empty())
+        {
+            text = _programStatusText;
+            tooltip = _programStatusDetails;
+            accessibilityText = _programStatusText;
+            highlightRanges = nullptr;
+        }
         const auto hasVisibleMetadata = !text.empty();
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
         _headerControl.MetadataText(text);
         _headerControl.MetadataHighlightRanges(highlightRanges);
         _headerControl.MetadataAutomationName(_richTabAccessibilityText);
-        _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
+        _headerControl.IsMetadataVisible(hasVisibleMetadata && (_isVerticalTabLayout || (_programStatusVisible && !_programStatusText.empty())));
 
         _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::SetProgramStatusPresentation(const winrt::hstring& text, const winrt::hstring& details, std::vector<Pane::TaskbarStateWithContentId> states, const std::string_view status, const bool visible)
+    {
+        ASSERT_UI_THREAD();
+        const auto sameStates = std::equal(
+            states.begin(), states.end(), _programTaskbarStates.begin(), _programTaskbarStates.end(), [](const auto& left, const auto& right) {
+                return left.ContentId == right.ContentId &&
+                       left.CombinedState.State() == right.CombinedState.State() &&
+                       left.CombinedState.Progress() == right.CombinedState.Progress();
+            });
+        _programTaskbarStates = std::move(states);
+        if (_programStatusText != text || _programStatusDetails != details || _programStatusId != status || _programStatusVisible != visible)
+        {
+            _programStatusText = text;
+            _programStatusDetails = details;
+            _programStatusId = status;
+            _programStatusVisible = visible;
+            _UpdateRichTabPresentation();
+        }
+        if (!sameStates)
+        {
+            _UpdateProgressState();
+        }
     }
 
     void Tab::_UpdateAutomationName()
@@ -692,7 +736,7 @@ namespace winrt::TerminalApp::implementation
             name += L", ";
             name += RS_(L"PinnedTabName");
         }
-        if (_isVerticalTabLayout && !_richTabAccessibilityText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabAccessibilityText.empty())
         {
             name += L", ";
             name += _richTabAccessibilityText;
@@ -1575,6 +1619,14 @@ namespace winrt::TerminalApp::implementation
         {
             _rootPane->CollectTaskbarStates(states);
         }
+        for (auto& state : states)
+        {
+            if (const auto program = std::find_if(_programTaskbarStates.begin(), _programTaskbarStates.end(), [&](const auto& candidate) { return candidate.ContentId == state.ContentId; });
+                program != _programTaskbarStates.end())
+            {
+                state = *program;
+            }
+        }
         return states.empty() ?
                    Pane::TaskbarStateWithContentId{
                        .CombinedState = winrt::make<winrt::TerminalApp::implementation::TaskbarState>(),
@@ -2372,6 +2424,30 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Items().Append(_exportTabMenuItem);
         contextMenuFlyout.Items().Append(_findMenuItem);
         contextMenuFlyout.Items().Append(_restartConnectionMenuItem);
+        if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+        {
+            Controls::MenuFlyoutItem acknowledge;
+            acknowledge.Text(RS_(L"ProgramStatusMarkSeen"));
+            Automation::AutomationProperties::SetAutomationId(acknowledge, L"ProgramStatusMarkSeen");
+            acknowledge.Click([weakThis](auto&&, auto&&) {
+                if (const auto tab = weakThis.get())
+                {
+                    tab->ProgramStatusAcknowledgeRequested.raise();
+                }
+            });
+            contextMenuFlyout.Items().Append(acknowledge);
+
+            Controls::MenuFlyoutItem next;
+            next.Text(RS_(L"ProgramStatusNextAttention"));
+            Automation::AutomationProperties::SetAutomationId(next, L"ProgramStatusNextAttention");
+            next.Click([weakThis](auto&&, auto&&) {
+                if (const auto tab = weakThis.get())
+                {
+                    tab->_pendingProgramAttentionNavigation = true;
+                }
+            });
+            contextMenuFlyout.Items().Append(next);
+        }
         contextMenuFlyout.Items().Append(_switchTabLayoutMenuItem);
         contextMenuFlyout.Items().Append(menuSeparator);
 
@@ -2391,6 +2467,16 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Closed([weakThis](auto&&, auto&&) {
             if (auto tab{ weakThis.get() })
             {
+                if (std::exchange(tab->_pendingProgramAttentionNavigation, false))
+                {
+                    tab->TabViewItem().Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis]() {
+                        if (const auto deferredTab = weakThis.get())
+                        {
+                            deferredTab->NextProgramAttentionRequested.raise();
+                        }
+                    });
+                    return;
+                }
                 // GH#10112 - if we're opening the tab renamer, don't
                 // immediately toss focus to the control. We don't want to steal
                 // focus from the tab renamer.

@@ -137,6 +137,8 @@ agents.status.active: "Työskentelee"
 agents.status.waiting_for_input: "Odottaa syötettä"
 agents.status.error: "Virhe"
 agents.status.idle: "Vapaa"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Valmis"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Käytössä"
 

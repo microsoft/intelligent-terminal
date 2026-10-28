@@ -70,6 +70,13 @@ bool ConhostInternalGetSet::IsConPTY() const noexcept
     return gci.IsInVtIoMode();
 }
 
+bool ConhostInternalGetSet::SupportsProgramStatus() const noexcept
+{
+    // Standalone conhost has no record consumer. ConPTY's ordered writer
+    // relays the original OSC (and subsequent DA request) in WriteCharsVT.
+    return false;
+}
+
 // Routine Description:
 // - Retrieves the state machine for the active output buffer.
 // Arguments:

@@ -811,4 +811,28 @@
     <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟଙ୍କ କାର୍ଯ୍ୟକଳାପ ଏକ ନଜରରେ ଦେଖିବାକୁ ଭୂଲମ୍ବ ଟ୍ୟାବ୍‌କୁ ବଦଳାନ୍ତୁ। ଏକ ଟ୍ୟାବ୍‌ରେ ଡାହାଣ-କ୍ଲିକ୍ କରନ୍ତୁ ଏବଂ {0} ବାଛନ୍ତୁ।</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="ProgramStatusCompleted" xml:space="preserve">
+    <value>ସମ୍ପୂର୍ଣ୍ଣ ହେଲା</value>
+    <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
+  </data>
+  <data name="ProgramStatusMarkSeen" xml:space="preserve">
+    <value>ଫଳାଫଳଗୁଡ଼ିକୁ ଦେଖାଯାଇଛି ଭାବେ ଚିହ୍ନିତ କରନ୍ତୁ</value>
+    <comment>Tab context-menu command: acknowledge the currently observed completed or failed program results in this tab. Does not clear tasks, dismiss input requests, or acknowledge results that arrive later.</comment>
+  </data>
+  <data name="ProgramStatusNextAttention" xml:space="preserve">
+    <value>ଧ୍ୟାନ ଆବଶ୍ୟକ କରୁଥିବା ପରବର୍ତ୍ତୀ ଫଳକ</value>
+    <comment>Tab context-menu command: focus the highest-priority pane needing attention in this window, cycling between equally urgent panes. Includes input requests, blocked work, and unseen results. Focusing does not acknowledge a result.</comment>
+  </data>
+  <data name="ProgramStatusPreviousResult" xml:space="preserve">
+    <value>ପୂର୍ବ ଫଳାଫଳ</value>
+    <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>
+  </data>
+  <data name="ProgramStatusPermissionRequested" xml:space="preserve">
+    <value>ଅନୁମତି ଅନୁରୋଧ କରାଯାଇଛି</value>
+    <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
+  </data>
+  <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
+    <value>ଅନୁମୋଦନ ପାଇଁ ଅପେକ୍ଷା ହେଉଛି...</value>
+    <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
+  </data>
 </root>

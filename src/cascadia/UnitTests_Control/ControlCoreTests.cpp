@@ -7,6 +7,7 @@
 #include "MockControlSettings.h"
 #include "MockConnection.h"
 #include "../../inc/TestUtils.h"
+#include <winrt/Windows.Data.Json.h>
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -18,6 +19,39 @@ using namespace winrt::Microsoft::Terminal;
 
 namespace ControlUnitTests
 {
+    namespace Json = winrt::Windows::Data::Json;
+
+    class ProgramStatusConnection : public winrt::implements<ProgramStatusConnection, TerminalConnection::ITerminalConnection>
+    {
+    public:
+        void Initialize(const winrt::Windows::Foundation::Collections::ValueSet&) {}
+        void Start() {}
+        void Resize(uint32_t, uint32_t) {}
+        void Close() {}
+        winrt::guid SessionId() const { return {}; }
+        TerminalConnection::ConnectionState State() const { return _state; }
+        void WriteInput(const winrt::array_view<const char16_t> data)
+        {
+            input.append(reinterpret_cast<const wchar_t*>(data.data()), data.size());
+        }
+        void Emit(const std::wstring_view data)
+        {
+            TerminalOutput.raise(winrt_wstring_to_array_view(data));
+        }
+        void Exit(const bool failed = false)
+        {
+            _state = failed ? TerminalConnection::ConnectionState::Failed : TerminalConnection::ConnectionState::Closed;
+            StateChanged.raise(*this, nullptr);
+        }
+
+        std::wstring input;
+        til::event<TerminalConnection::TerminalOutputHandler> TerminalOutput;
+        til::typed_event<TerminalConnection::ITerminalConnection, IInspectable> StateChanged;
+
+    private:
+        TerminalConnection::ConnectionState _state{ TerminalConnection::ConnectionState::Connected };
+    };
+
     class ControlCoreTests
     {
         BEGIN_TEST_CLASS(ControlCoreTests)
@@ -53,6 +87,11 @@ namespace ControlUnitTests
         TEST_METHOD(TestSelectOutputExactWrap);
 
         TEST_METHOD(TestSimpleClickSelection);
+        TEST_METHOD(ProgramStatusJsonAndTaskbar);
+        TEST_METHOD(ProgramStatusResultsAndAcknowledgment);
+        TEST_METHOD(ProgramStatusConnectionLifecycle);
+        TEST_METHOD(ProgramStatusCoalescesInvalidations);
+        TEST_METHOD(ProgramStatusCallbackDoesNotWaitForDispatcherSetup);
 
         TEST_CLASS_SETUP(ModuleSetup)
         {
@@ -101,6 +140,190 @@ namespace ControlUnitTests
             VERIFY_ARE_EQUAL(20, core->_terminal->GetViewport().Height());
         }
     };
+
+    void ControlCoreTests::ProgramStatusJsonAndTaskbar()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        conn->Emit(L"\x1b]9;4;1;17\x7");
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+
+        conn->Emit(L"\x1b]7501;state=done:app=test\x7"
+                   L"\x1b]7501;id=job:state=working:progress=42:title=SGk=:msg=b2s=\x7");
+        auto json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_IS_TRUE(json.GetNamedBoolean(L"observed"));
+        VERIFY_ARE_EQUAL(L"working", json.GetNamedString(L"state"));
+        VERIFY_ARE_EQUAL(42.0, json.GetNamedNumber(L"progress"));
+        VERIFY_ARE_EQUAL(L"ok", json.GetNamedString(L"message"));
+        VERIFY_ARE_EQUAL(L"job", json.GetNamedString(L"task_id"));
+        VERIFY_ARE_EQUAL(L"Hi", json.GetNamedString(L"title"));
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"working"));
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"done"));
+        const auto records = json.GetNamedArray(L"records");
+        VERIFY_ARE_EQUAL(2u, records.Size());
+        bool found = false;
+        for (const auto& value : records)
+        {
+            const auto record = value.GetObject();
+            if (record.GetNamedString(L"id") == L"job")
+            {
+                found = true;
+                VERIFY_ARE_EQUAL(L"test", record.GetNamedString(L"app"));
+                VERIFY_ARE_EQUAL(L"Hi", record.GetNamedString(L"title"));
+                VERIFY_ARE_EQUAL(L"ok", record.GetNamedString(L"message"));
+                VERIFY_IS_FALSE(record.GetNamedBoolean(L"unread"));
+            }
+        }
+        VERIFY_IS_TRUE(found);
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(42u, core->TaskbarProgress());
+
+        conn->Emit(L"\x1b]7501;id=other:state=working:progress=65\x7");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(Json::JsonValueType::Null, json.GetNamedValue(L"progress").ValueType());
+        VERIFY_ARE_EQUAL(3u, core->TaskbarState());
+        conn->Emit(L"\x1b]7501;id=approval:state=blocked:kind=permission\x7");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(L"blocked", json.GetNamedString(L"state"));
+        VERIFY_ARE_EQUAL(L"permission", json.GetNamedString(L"kind"));
+        VERIFY_ARE_EQUAL(4u, core->TaskbarState());
+
+        conn->Emit(L"\x1b]7501;state=clear\x7\x1b]9;4;1;99\x7");
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(0u, core->TaskbarProgress());
+        VERIFY_IS_TRUE(Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedBoolean(L"observed"));
+    }
+
+    void ControlCoreTests::ProgramStatusResultsAndAcknowledgment()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        conn->Emit(L"\x1b]7501;state=done\x7");
+        const auto firstRevision = core->_terminal->GetProgramStatusSnapshot().revision;
+        conn->Emit(L"\x1b]7501;id=job:state=done:msg=ZmluaXNoZWQ=\x7\x1b]7501;id=job:state=idle\x7");
+        auto json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(2.0, json.GetNamedNumber(L"unseen_done"));
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        bool retainedResult = false;
+        for (const auto& value : json.GetNamedArray(L"results"))
+        {
+            const auto result = value.GetObject();
+            if (result.GetNamedString(L"id") == L"job")
+            {
+                retainedResult = true;
+                VERIFY_ARE_EQUAL(hstring{ L"done" }, result.GetNamedString(L"state"));
+                VERIFY_ARE_EQUAL(hstring{ L"finished" }, result.GetNamedString(L"message"));
+                VERIFY_IS_TRUE(result.GetNamedBoolean(L"unread"));
+            }
+        }
+        VERIFY_IS_TRUE(retainedResult);
+
+        conn->Emit(L"\x1b]7501;?\x1b\\");
+        VERIFY_IS_FALSE(conn->input.empty());
+        core->SendInput(L"programmatic");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(2.0, json.GetNamedNumber(L"unseen_done"));
+        core->AcknowledgeProgramStatus(firstRevision);
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"unseen_done"));
+        const auto observedRevision = core->_terminal->GetProgramStatusSnapshot().revision;
+        conn->Emit(L"\x1b]7501;id=job:state=error\x7");
+        core->AcknowledgeProgramStatus(observedRevision);
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"unseen_error"));
+        VERIFY_ARE_EQUAL(2u, core->TaskbarState());
+        core->AcknowledgeProgramStatus(core->_terminal->GetProgramStatusSnapshot().revision);
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        conn->Emit(L"\x1b]7501;id=job:state=error:msg=Zmlyc3Q=\x7");
+        core->ProgramStatusJson();
+        conn->Emit(L"\x1b]7501;id=job:state=error:msg=bGF0ZXI=\x7");
+        core->AcknowledgeProgramStatusForUserInput();
+        VERIFY_ARE_EQUAL(1.0, Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedNumber(L"unseen_error"));
+        core->AcknowledgeProgramStatusForUserInput();
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+    }
+
+    void ControlCoreTests::ProgramStatusConnectionLifecycle()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        conn->Emit(L"\x1b]7501;id=live:state=working\x7\x1b]7501;id=final:state=done\x7");
+        core->Detach();
+        core->AttachToNewControl();
+        VERIFY_ARE_EQUAL(2u, core->_terminal->GetProgramStatusSnapshot().records.size());
+        conn->Exit();
+        auto json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"working"));
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"done"));
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"unseen_done"));
+        conn->Emit(L"\x1b]7501;id=late-live:state=working\x7\x1b]7501;id=late-result:state=done\x7");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"working"));
+        VERIFY_ARE_EQUAL(2.0, json.GetNamedNumber(L"unseen_done"));
+        const auto oldRevision = core->_terminal->GetProgramStatusSnapshot().revision;
+
+        const auto replacement = winrt::make_self<ProgramStatusConnection>();
+        core->Connection(*replacement);
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_IS_FALSE(json.GetNamedBoolean(L"observed"));
+        VERIFY_ARE_EQUAL(0u, json.GetNamedArray(L"records").Size());
+        replacement->Emit(L"\x1b]7501;state=done\x7");
+        core->AcknowledgeProgramStatus(oldRevision);
+        VERIFY_ARE_EQUAL(1.0, Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedNumber(L"unseen_done"));
+        replacement->Emit(L"\x1b]7501;state=working\x7");
+        replacement->Exit(true);
+        core->AcknowledgeProgramStatus(core->_terminal->GetProgramStatusSnapshot().revision);
+        VERIFY_ARE_EQUAL(2u, core->TaskbarState());
+        core->Close();
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_IS_FALSE(json.GetNamedBoolean(L"observed"));
+        VERIFY_ARE_EQUAL(0u, json.GetNamedArray(L"records").Size());
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"unseen_done"));
+    }
+
+    void ControlCoreTests::ProgramStatusCoalescesInvalidations()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        wil::unique_event changed;
+        changed.create();
+        std::atomic<uint32_t> count{ 0 };
+        const auto revoker = core.as<Control::ControlCore>().ProgramStatusChanged(winrt::auto_revoke, [&](const auto&, const auto&) {
+            ++count;
+            changed.SetEvent();
+        });
+        conn->Emit(L"\x1b]7501;id=job:state=working\x7\x1b]7501;id=job:state=done\x7\x1b]7501;id=job:state=idle\x7");
+        VERIFY_IS_TRUE(changed.wait(3000));
+        VERIFY_ARE_EQUAL(1u, count.load());
+        VERIFY_ARE_EQUAL(1.0, Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedNumber(L"unseen_done"));
+    }
+
+    void ControlCoreTests::ProgramStatusCallbackDoesNotWaitForDispatcherSetup()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        {
+            const auto setupLock = core->_shared.lock();
+            const auto streamLock = core->_terminal->LockForWriting();
+            core->_terminal->ApplyProgramStatus(*::Microsoft::Console::VirtualTerminal::ProgramStatus::Parse(L"state=done"));
+        }
+        VERIFY_ARE_EQUAL(1u, core->_terminal->GetProgramStatusSnapshot().results.size());
+    }
 
     void ControlCoreTests::ComPtrSettings()
     {

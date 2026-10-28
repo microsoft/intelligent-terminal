@@ -907,6 +907,7 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 
     // The shell integration script content. The version is carried by the
     // filename, not embedded inside the script body.
+    // Split source literals below MSVC's per-literal limit without changing script bytes.
     inline std::string ScriptContent()
     {
         return std::string{
@@ -1038,7 +1039,8 @@ if (-not $Global:__ShellInteg_Installed) {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
         $gle           = $(__ShellInteg_GetLastExitCode)
 
-        # A prompt module may CHAIN rather than replace: it captures the
+)"
+            R"(        # A prompt module may CHAIN rather than replace: it captures the
         # current prompt (ours) and calls it from inside its own. Once we
         # adopt it, delegating calls us back. Serve the prompt it displaced
         # so its text survives, instead of recursing.

@@ -810,4 +810,28 @@
     <value>તમારા એજન્ટની પ્રવૃત્તિ એક નજરમાં જોવા માટે ઊભા ટૅબ પર સ્વિચ કરો. ટૅબ પર રાઇટ-ક્લિક કરો અને {0} પસંદ કરો.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="ProgramStatusCompleted" xml:space="preserve">
+    <value>પૂર્ણ થયું</value>
+    <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
+  </data>
+  <data name="ProgramStatusMarkSeen" xml:space="preserve">
+    <value>પરિણામોને જોયેલાં તરીકે ચિહ્નિત કરો</value>
+    <comment>Tab context-menu command: acknowledge the currently observed completed or failed program results in this tab. Does not clear tasks, dismiss input requests, or acknowledge results that arrive later.</comment>
+  </data>
+  <data name="ProgramStatusNextAttention" xml:space="preserve">
+    <value>ધ્યાન આપવાની જરૂર હોય તેવી આગલી તકતી</value>
+    <comment>Tab context-menu command: focus the highest-priority pane needing attention in this window, cycling between equally urgent panes. Includes input requests, blocked work, and unseen results. Focusing does not acknowledge a result.</comment>
+  </data>
+  <data name="ProgramStatusPreviousResult" xml:space="preserve">
+    <value>અગાઉનું પરિણામ</value>
+    <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>
+  </data>
+  <data name="ProgramStatusPermissionRequested" xml:space="preserve">
+    <value>પરવાનગી વિનંતી કરવામાં આવી</value>
+    <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
+  </data>
+  <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
+    <value>અધિકૃતતાની રાહ જોવામાં આવી રહી છે...</value>
+    <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
+  </data>
 </root>

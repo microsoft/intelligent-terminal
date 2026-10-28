@@ -19,6 +19,7 @@ Author(s):
 #include "../../buffer/out/LineRendition.hpp"
 #include "../../buffer/out/textBuffer.hpp"
 #include "../../renderer/inc/RenderSettings.hpp"
+#include "ProgramStatus.hpp"
 
 #include <deque>
 #include <memory>
@@ -39,6 +40,14 @@ namespace Microsoft::Console::VirtualTerminal
 
         virtual void UnknownSequence() noexcept = 0;
         virtual void ReturnResponse(const std::wstring_view response) = 0;
+
+        // Recognition in the shared parser is not evidence of a consumer.
+        // ConPTY relays the original stream in WriteCharsVT, after parsing;
+        // unsupported endpoints must neither answer nor write to that pipe.
+        virtual bool SupportsProgramStatus() const noexcept { return false; }
+        virtual void ApplyProgramStatus(const ProgramStatus::Command& /*command*/) {}
+        virtual void ProgramStatusPromptStarted() {}
+        virtual void ResetProgramStatus() {}
 
         struct BufferState
         {

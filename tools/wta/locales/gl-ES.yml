@@ -137,6 +137,8 @@ agents.status.active: "Traballando"
 agents.status.waiting_for_input: "Agardando entrada"
 agents.status.error: "Erro"
 agents.status.idle: "Inactivo"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Completado"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "En uso"
 

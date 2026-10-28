@@ -68,7 +68,40 @@ namespace TerminalAppUnitTests
         TEST_METHOD(GitStatusProviderSetsSafeGitConfigEnvironment);
         TEST_METHOD(AgentCwdInvalidatesOnlyTrustedGitStatusField);
         TEST_METHOD(DetachedSessionDoesNotReuseOldGitMetadata);
+        TEST_METHOD(AgentStatusOverlayReplacesOneLineAndPreservesOtherMetadata);
     };
+
+    void RichTabProviderTests::AgentStatusOverlayReplacesOneLineAndPreservesOtherMetadata()
+    {
+        Presentation original;
+        original.text = L"Active\nC:\\repo";
+        original.agentStatus = "Working";
+        original.tooltip = L"Repository details";
+        original.agentStatusRanges.push_back({ 0, 6 });
+        const auto updated = ProviderBroker::OverlayAgentStatus(original, L"Waiting for input", "Attention");
+        VERIFY_IS_TRUE(updated.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Waiting for input\nC:\\repo" }, updated->text);
+        VERIFY_ARE_EQUAL(std::string{ "Attention" }, updated->agentStatus);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, updated->agentStatusRanges.size());
+        VERIFY_ARE_EQUAL(size_t{ 17 }, updated->agentStatusRanges[0].length);
+        VERIFY_ARE_EQUAL(updated->text, updated->accessibilityText);
+        VERIFY_IS_TRUE(updated->tooltip.find(L"Repository details") != std::wstring::npos);
+
+        const auto hidden = ProviderBroker::OverlayAgentStatus(updated, {}, {});
+        VERIFY_IS_TRUE(hidden.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\repo" }, hidden->text);
+        VERIFY_IS_TRUE(hidden->agentStatusRanges.empty());
+        const auto restored = ProviderBroker::OverlayAgentStatus(hidden, L"Active 62%", "Working");
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active 62%\nC:\\repo" }, restored->text);
+        VERIFY_IS_FALSE(ProviderBroker::OverlayAgentStatus(
+                            ProviderBroker::OverlayAgentStatus(std::nullopt, L"Completed", "Idle"), {}, {})
+                            .has_value());
+
+        original.text = L"C:\\repo\nActive";
+        original.agentStatusRanges = { { 8, 6 } };
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\repo" }, ProviderBroker::OverlayAgentStatus(original, {}, {})->text);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active\nC:\\repo" }, ProviderBroker::OverlayAgentStatus(original, L"Active", "Working")->text);
+    }
 
     void RichTabProviderTests::ProviderDiagnosticVersionRejectsUntrustedText()
     {

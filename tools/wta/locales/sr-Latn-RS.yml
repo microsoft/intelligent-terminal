@@ -146,6 +146,8 @@ agents.status.active: "Radi"
 agents.status.waiting_for_input: "Čeka na unos"
 agents.status.error: "Greška"
 agents.status.idle: "Neaktivan"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Završeno"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "U upotrebi"
 

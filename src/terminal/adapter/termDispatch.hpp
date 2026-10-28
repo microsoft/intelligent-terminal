@@ -144,6 +144,7 @@ public:
     void EndHyperlink() override {}
 
     void DoConEmuAction(const std::wstring_view /*string*/) override {}
+    void DoProgramStatus(const ProgramStatus::Command& /*command*/) override {}
 
     void DoITerm2Action(const std::wstring_view /*string*/) override {}
 

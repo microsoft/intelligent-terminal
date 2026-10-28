@@ -11,6 +11,7 @@
 #include <DefaultSettings.h>
 #include <til/unicode.h>
 #include <unicode.hpp>
+#include <winrt/Windows.Data.Json.h>
 
 #include "EventArgs.h"
 #include "../../renderer/atlas/AtlasEngine.h"
@@ -32,6 +33,134 @@ using namespace winrt::Windows::ApplicationModel::DataTransfer;
 
 namespace winrt::Microsoft::Terminal::Control::implementation
 {
+    namespace
+    {
+        struct ProgramStatusSummary
+        {
+            const ProgramStatus::Record* current = nullptr;
+            std::optional<uint32_t> progress;
+            uint32_t working = 0;
+            uint32_t blocked = 0;
+            uint32_t done = 0;
+            uint32_t error = 0;
+            uint32_t unseenDone = 0;
+            uint32_t unseenError = 0;
+        };
+
+        int programStatusPriority(const ProgramStatus::Record& record) noexcept
+        {
+            if (record.state == ProgramStatus::State::Blocked)
+            {
+                return 5;
+            }
+            if (record.state == ProgramStatus::State::Working)
+            {
+                return 4;
+            }
+            if (record.id.empty())
+            {
+                return 3;
+            }
+            return record.state == ProgramStatus::State::Error ? 2 : 1;
+        }
+
+        ProgramStatusSummary summarizeProgramStatus(const ProgramStatus::Snapshot& snapshot,
+                                                    const std::optional<std::string>& retainedId = std::nullopt) noexcept
+        {
+            ProgramStatusSummary summary;
+            for (const auto& record : snapshot.records)
+            {
+                switch (record.state)
+                {
+                case ProgramStatus::State::Working:
+                    ++summary.working;
+                    break;
+                case ProgramStatus::State::Blocked:
+                    ++summary.blocked;
+                    break;
+                case ProgramStatus::State::Done:
+                    ++summary.done;
+                    break;
+                case ProgramStatus::State::Error:
+                    ++summary.error;
+                    break;
+                default:
+                    break;
+                }
+
+                const auto priority = programStatusPriority(record);
+                const auto currentPriority = summary.current ? programStatusPriority(*summary.current) : 0;
+                if (priority > currentPriority ||
+                    (priority == currentPriority &&
+                     ((retainedId && record.id == *retainedId) ||
+                      ((!retainedId || summary.current->id != *retainedId) && record.id < summary.current->id))))
+                {
+                    summary.current = &record;
+                }
+            }
+            for (const auto& result : snapshot.results)
+            {
+                if (result.unread)
+                {
+                    summary.unseenDone += result.record.state == ProgramStatus::State::Done;
+                    summary.unseenError += result.record.state == ProgramStatus::State::Error;
+                }
+            }
+            if (summary.current && summary.working + summary.blocked == 1 && summary.error == 0 && summary.unseenError == 0)
+            {
+                summary.progress = summary.current->progress;
+            }
+            return summary;
+        }
+
+        std::wstring_view programStatusStateName(const ProgramStatus::State state) noexcept
+        {
+            switch (state)
+            {
+            case ProgramStatus::State::Working:
+                return L"working";
+            case ProgramStatus::State::Blocked:
+                return L"blocked";
+            case ProgramStatus::State::Done:
+                return L"done";
+            case ProgramStatus::State::Error:
+                return L"error";
+            default:
+                return L"idle";
+            }
+        }
+
+        std::wstring_view programStatusKindName(const ProgramStatus::BlockKind kind) noexcept
+        {
+            switch (kind)
+            {
+            case ProgramStatus::BlockKind::Permission:
+                return L"permission";
+            case ProgramStatus::BlockKind::Question:
+                return L"question";
+            default:
+                return L"auth";
+            }
+        }
+
+        DispatchTypes::TaskbarState programStatusTaskbarState(const ProgramStatusSummary& summary) noexcept
+        {
+            if (summary.blocked)
+            {
+                return DispatchTypes::TaskbarState::Paused;
+            }
+            if (summary.unseenError)
+            {
+                return DispatchTypes::TaskbarState::Error;
+            }
+            if (summary.working)
+            {
+                return summary.progress ? DispatchTypes::TaskbarState::Set : DispatchTypes::TaskbarState::Indeterminate;
+            }
+            return DispatchTypes::TaskbarState::Clear;
+        }
+    }
+
     static winrt::Microsoft::Terminal::Core::OptionalColor OptionalFromColor(const til::color& c) noexcept
     {
         Core::OptionalColor result;
@@ -99,6 +228,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _hasUnfocusedAppearance = static_cast<bool>(unfocusedAppearance);
         _unfocusedAppearance = _hasUnfocusedAppearance ? unfocusedAppearance : settings;
         _terminal = std::make_shared<::Microsoft::Terminal::Core::Terminal>();
+        _terminal->SetProgramStatusEnabled(Feature_ProgramStatusProtocol::IsEnabled());
         const auto lock = _terminal->LockForWriting();
 
         _setupDispatcherAndCallbacks();
@@ -127,6 +257,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         auto pfnTerminalTaskbarProgressChanged = [this] { _terminalTaskbarProgressChanged(); };
         _terminal->TaskbarProgressChangedCallback(pfnTerminalTaskbarProgressChanged);
+        _terminal->ProgramStatusChangedCallback([this]() { _terminalProgramStatusChanged(); });
 
         auto pfnShowWindowChanged = [this](auto&& PH1) { _terminalShowWindowChanged(std::forward<decltype(PH1)>(PH1)); };
         _terminal->SetShowWindowCallback(pfnShowWindowChanged);
@@ -257,6 +388,33 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                     core->ScrollPositionChanged.raise(*core, update);
                 }
             });
+        const auto publication = ++_programStatusPublication;
+        auto notification = std::make_shared<ProgramStatusNotification>();
+        notification->callback = std::make_shared<ThrottledFunc<uint64_t>>(
+            _dispatcher,
+            til::throttled_func_options{
+                .delay = std::chrono::milliseconds{ 200 },
+                .trailing = true,
+            },
+            [weakThis = get_weak(), publication, weakNotification = std::weak_ptr{ notification }](const uint64_t generation) {
+                const auto notification = weakNotification.lock();
+                if (const auto self = weakThis.get(); notification && self && self->_programStatusPublication.load() == publication && !self->_closing.load())
+                {
+                    notification->pending = false;
+                    if (self->_programStatusGeneration.load() != generation)
+                    {
+                        self->_terminalProgramStatusChanged();
+                        return;
+                    }
+                    self->ProgramStatusChanged.raise(*self, nullptr);
+                    if (self->_programStatusPublication.load() == publication &&
+                        self->_programStatusGeneration.load() == generation && !self->_closing.load())
+                    {
+                        self->TaskbarProgressChanged.raise(*self, winrt::box_value(self->TaskbarState()));
+                    }
+                }
+            });
+        _programStatusNotification.store(std::move(notification));
     }
 
     // Safely disconnects event handlers from the connection and closes it. This is necessary because
@@ -295,11 +453,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         const auto shared = _shared.lock();
         shared->outputIdle.reset();
         shared->updateScrollBar.reset();
+        ++_programStatusPublication;
+        _programStatusNotification.store(nullptr);
     }
 
     void ControlCore::AttachToNewControl()
     {
         _setupDispatcherAndCallbacks();
+        _terminalProgramStatusChanged();
         const auto actualNewSize = _actualFont.GetSize();
         // Bubble this up, so our new control knows how big we want the font.
         FontSizeChanged.raise(*this, winrt::make<FontSizeChangedArgs>(actualNewSize.width, actualNewSize.height));
@@ -330,6 +491,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         {
             const auto lock = _terminal->LockForWriting();
+            ++_programStatusGeneration;
+            _lastProgramStatusSnapshotRevision = 0;
+            _programStatusRepresentativeId.reset();
+            _terminal->ResetProgramStatusForConnection();
             _terminal->ResetShellIntegrationState();
             if (_terminal->GetTaskbarState() != 0)
             {
@@ -341,8 +506,27 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         if (_connection)
         {
             // Subscribe to the connection's disconnected event and call our connection closed handlers.
-            _connectionStateChangedRevoker = newConnection.StateChanged(winrt::auto_revoke, [this](auto&& /*s*/, auto&& /*v*/) {
-                ConnectionStateChanged.raise(*this, nullptr);
+            _connectionStateChangedRevoker = newConnection.StateChanged(winrt::auto_revoke, [this, generation = _programStatusGeneration.load()](auto&& sender, auto&& /*v*/) {
+                if (_programStatusGeneration.load() != generation)
+                {
+                    return;
+                }
+                const auto state = sender.State();
+                if (state == TerminalConnection::ConnectionState::Closed || state == TerminalConnection::ConnectionState::Failed)
+                {
+                    const auto lock = _terminal->LockForWriting();
+                    if (_programStatusGeneration.load() != generation)
+                    {
+                        return;
+                    }
+                    // ConptyConnection raises its terminal state after its output
+                    // callbacks finish. Parse final results before dropping activity.
+                    _terminal->ProgramStatusProcessExited();
+                }
+                if (_programStatusGeneration.load() == generation)
+                {
+                    ConnectionStateChanged.raise(*this, nullptr);
+                }
             });
 
             // Get our current size in rows/cols, and hook them up to
@@ -378,6 +562,109 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         const auto lock = _terminal->LockForWriting();
         _terminal->HardResetWithoutErase();
+    }
+
+    void ControlCore::_terminalProgramStatusChanged()
+    {
+        if (_closing.load())
+        {
+            return;
+        }
+        // Dispatcher rebinding may wait for callbacks while holding _shared.
+        // Do not acquire that lock from a callback holding the parser lock.
+        const auto notification = _programStatusNotification.load();
+        if (notification && !notification->pending.exchange(true))
+        {
+            notification->callback->Run(_programStatusGeneration.load());
+        }
+    }
+
+    void ControlCore::AcknowledgeProgramStatus(const uint64_t revision)
+    {
+        _terminal->AcknowledgeProgramStatus(revision);
+    }
+
+    void ControlCore::AcknowledgeProgramStatusForUserInput()
+    {
+        AcknowledgeProgramStatus(_lastProgramStatusSnapshotRevision.load());
+    }
+
+    hstring ControlCore::ProgramStatusJson()
+    {
+        using namespace Windows::Data::Json;
+        ProgramStatus::Snapshot snapshot;
+        ProgramStatusSummary summary;
+        {
+            const auto lock = _terminal->LockForWriting();
+            snapshot = _terminal->GetProgramStatusSnapshot();
+            summary = summarizeProgramStatus(snapshot, _programStatusRepresentativeId);
+            _programStatusRepresentativeId = summary.current ? std::make_optional(summary.current->id) : std::nullopt;
+        }
+
+        const auto null = JsonValue::Parse(L"null");
+        const auto optionalText = [&null](const std::optional<std::wstring>& text) {
+            return text ? JsonValue::CreateStringValue(hstring{ *text }) : null;
+        };
+        const auto optionalNumber = [&null](const std::optional<uint32_t> value) {
+            return value ? JsonValue::CreateNumberValue(*value) : null;
+        };
+        const auto optionalKind = [&null](const std::optional<ProgramStatus::BlockKind> kind) {
+            return kind ? JsonValue::CreateStringValue(hstring{ programStatusKindName(*kind) }) : null;
+        };
+
+        const auto serializeRecord = [&](const ProgramStatus::Record& record, const bool unread) {
+            JsonObject value;
+            value.SetNamedValue(L"id", JsonValue::CreateStringValue(winrt::to_hstring(record.id)));
+            value.SetNamedValue(L"state", JsonValue::CreateStringValue(hstring{ programStatusStateName(record.state) }));
+            value.SetNamedValue(L"kind", optionalKind(record.kind));
+            value.SetNamedValue(L"progress", optionalNumber(record.progress));
+            value.SetNamedValue(L"app", record.effectiveApp ? JsonValue::CreateStringValue(winrt::to_hstring(*record.effectiveApp)) : null);
+            value.SetNamedValue(L"title", optionalText(record.title));
+            value.SetNamedValue(L"message", optionalText(record.message));
+            value.SetNamedValue(L"unread", JsonValue::CreateBooleanValue(unread));
+            return value;
+        };
+        JsonArray records;
+        for (const auto& record : snapshot.records)
+        {
+            const auto unread = std::any_of(snapshot.results.begin(), snapshot.results.end(), [&](const auto& result) {
+                return result.record.id == record.id && result.unread;
+            });
+            records.Append(serializeRecord(record, unread));
+        }
+        JsonArray results;
+        for (const auto& result : snapshot.results)
+        {
+            results.Append(serializeRecord(result.record, result.unread));
+        }
+
+        JsonObject root;
+        root.SetNamedValue(L"observed", JsonValue::CreateBooleanValue(snapshot.observed));
+        root.SetNamedValue(L"state", summary.current ? JsonValue::CreateStringValue(hstring{ programStatusStateName(summary.current->state) }) : null);
+        root.SetNamedValue(L"kind", summary.current ? optionalKind(summary.current->kind) : null);
+        root.SetNamedValue(L"task_id", summary.current ? JsonValue::CreateStringValue(winrt::to_hstring(summary.current->id)) : null);
+        root.SetNamedValue(L"title", summary.current ? optionalText(summary.current->title) : null);
+        root.SetNamedValue(L"progress", optionalNumber(summary.progress));
+        root.SetNamedValue(L"message", summary.current ? optionalText(summary.current->message) : null);
+        root.SetNamedValue(L"working", JsonValue::CreateNumberValue(summary.working));
+        root.SetNamedValue(L"blocked", JsonValue::CreateNumberValue(summary.blocked));
+        root.SetNamedValue(L"done", JsonValue::CreateNumberValue(summary.done));
+        root.SetNamedValue(L"error", JsonValue::CreateNumberValue(summary.error));
+        root.SetNamedValue(L"unseen_done", JsonValue::CreateNumberValue(summary.unseenDone));
+        root.SetNamedValue(L"unseen_error", JsonValue::CreateNumberValue(summary.unseenError));
+        root.SetNamedValue(L"records", records);
+        root.SetNamedValue(L"results", results);
+        std::wstring json{ root.Stringify() };
+        // Windows.Data.Json represents numbers as double. Preserve the revision's
+        // exact UInt64 digits while leaving all untrusted text escaping to it.
+        json.insert(1, L"\"revision\":" + std::to_wstring(snapshot.revision) + L",");
+        const hstring result{ json };
+        auto previousRevision = _lastProgramStatusSnapshotRevision.load();
+        while (previousRevision < snapshot.revision &&
+               !_lastProgramStatusSnapshotRevision.compare_exchange_weak(previousRevision, snapshot.revision))
+        {
+        }
+        return result;
     }
 
     bool ControlCore::Initialize(const float actualWidth,
@@ -1617,8 +1904,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - The taskbar state of this control
     const size_t ControlCore::TaskbarState() const noexcept
     {
-        const auto lock = _terminal->LockForReading();
-        return _terminal->GetTaskbarState();
+        try
+        {
+            const auto lock = _terminal->LockForReading();
+            const auto snapshot = _terminal->GetProgramStatusSnapshot();
+            if (snapshot.observed && ConnectionState() == TerminalConnection::ConnectionState::Failed)
+            {
+                return static_cast<size_t>(DispatchTypes::TaskbarState::Error);
+            }
+            return snapshot.observed ? static_cast<size_t>(programStatusTaskbarState(summarizeProgramStatus(snapshot))) : _terminal->GetTaskbarState();
+        }
+        CATCH_LOG();
+        return 0;
     }
 
     // Method Description:
@@ -1627,8 +1924,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - The taskbar progress of this control
     const size_t ControlCore::TaskbarProgress() const noexcept
     {
-        const auto lock = _terminal->LockForReading();
-        return _terminal->GetTaskbarProgress();
+        try
+        {
+            const auto lock = _terminal->LockForReading();
+            const auto snapshot = _terminal->GetProgramStatusSnapshot();
+            return snapshot.observed ? summarizeProgramStatus(snapshot).progress.value_or(0) : _terminal->GetTaskbarProgress();
+        }
+        CATCH_LOG();
+        return 0;
     }
 
     int ControlCore::ScrollOffset()
@@ -1916,7 +2219,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             _midiAudio.BeginSkip();
         }
 
+        _programStatusNotification.store(nullptr);
         _closeConnection();
+        const auto lock = _terminal->LockForWriting();
+        ++_programStatusGeneration;
+        _lastProgramStatusSnapshotRevision = 0;
+        _programStatusRepresentativeId.reset();
+        _terminal->ResetProgramStatusForConnection();
     }
 
     void ControlCore::PersistTo(HANDLE handle) const
@@ -2340,6 +2649,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                     vtSequences.emplace_back(seq);
                 });
                 _terminal->Write(winrt_array_to_wstring_view(str));
+                const auto state = ConnectionState();
+                if (state == TerminalConnection::ConnectionState::Closed || state == TerminalConnection::ConnectionState::Failed)
+                {
+                    // A backend may deliver queued output after its exit signal.
+                    // Keep its final results, but do not resurrect live activity.
+                    _terminal->ProgramStatusProcessExited();
+                }
                 _terminal->SetVtSequenceCallback([this](std::wstring_view seq) {
                     // Restore the original callback for non-output-handler callers.
                     VtSequenceReceived.raise(*this, winrt::hstring{ seq });

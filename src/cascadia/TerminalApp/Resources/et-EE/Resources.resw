@@ -807,4 +807,28 @@
     <value>Minge üle vertikaalsetele vahekaartidele, et näha oma agentide tegevust ühe pilguga. Paremklõpsake vahekaarti ja valige {0}.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="ProgramStatusCompleted" xml:space="preserve">
+    <value>Lõpetatud</value>
+    <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
+  </data>
+  <data name="ProgramStatusMarkSeen" xml:space="preserve">
+    <value>Märgi tulemused nähtuks</value>
+    <comment>Tab context-menu command: acknowledge the currently observed completed or failed program results in this tab. Does not clear tasks, dismiss input requests, or acknowledge results that arrive later.</comment>
+  </data>
+  <data name="ProgramStatusNextAttention" xml:space="preserve">
+    <value>Järgmine tähelepanu vajav paan</value>
+    <comment>Tab context-menu command: focus the highest-priority pane needing attention in this window, cycling between equally urgent panes. Includes input requests, blocked work, and unseen results. Focusing does not acknowledge a result.</comment>
+  </data>
+  <data name="ProgramStatusPreviousResult" xml:space="preserve">
+    <value>Eelmine tulemus</value>
+    <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>
+  </data>
+  <data name="ProgramStatusPermissionRequested" xml:space="preserve">
+    <value>Luba taotletud</value>
+    <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
+  </data>
+  <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
+    <value>Autoriseerimise ootel...</value>
+    <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
+  </data>
 </root>

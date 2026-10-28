@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "ProgramStatusPresentation.h"
 #include "TabStrip.h"
 #include "TabHeaderControl.h"
 #include "CommandPalette.h"
@@ -874,6 +875,14 @@ namespace winrt::TerminalApp::implementation
                     if (changed)
                     {
                         page->_LogSidebarRowFieldsTelemetry("UserChange");
+                    }
+                    for (const auto& runtime : page->_RuntimeTabs())
+                    {
+                        if (const auto tab = page->_GetTabImpl(runtime))
+                        {
+                            page->_UpdateProgramStatusForTab(*tab);
+                            page->_RefreshTabStripPaneItems(tab);
+                        }
                     }
                     if (page->_tabStrip.RichTabAgentStatusVisible() || page->_RichTabCwdDependentFieldsVisible())
                     {
@@ -3748,6 +3757,18 @@ namespace winrt::TerminalApp::implementation
             info.sessionId = report.sessionId;
             info.paneSessionId = report.paneSessionId;
             info.status = report.status;
+            if (report.status != "Attention")
+            {
+                info.inputRequired = false;
+            }
+            if (report.status != "Error")
+            {
+                info.canonicalError = false;
+            }
+            if (report.status != "Working")
+            {
+                info.canonicalWorking = false;
+            }
             if (!report.providerId.empty())
             {
                 info.providerId = report.providerId;
@@ -7549,6 +7570,20 @@ namespace winrt::TerminalApp::implementation
             nativeItem->LastActivityAtMs(lastActivityAtMs);
             nativeItem->BackgroundTab(background);
             nativeItem->OtherWindow(otherWindow);
+            if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+            {
+                const auto& pane = row["pane_status"];
+                if (isLive && pane.isObject() && pane["provider_id"] == providerId &&
+                    pane["location"] == location &&
+                    pane["session_universe"] == row["session_universe"] &&
+                    (pane["agent_session_id"].isNull() || pane["agent_session_id"] == sessionId) &&
+                    pane["pane_id"].isString() &&
+                    _TryParsePaneSessionId(pane["pane_id"].asString()) == _TryParsePaneSessionId(row.get("pane_session_id", "").asString()) &&
+                    _TryParsePaneSessionId(pane["pane_id"].asString()).has_value())
+                {
+                    nativeItem->ProgramStatus(_ParseHistoryProgramStatus(pane));
+                }
+            }
             nativeItem->UpdateStatusText(statusText);
             snapshot.items.emplace_back(std::move(item));
         }
@@ -12630,6 +12665,354 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    static Json::Value _ReadProgramStatus(const TermControl& control)
+    {
+        const auto encoded = winrt::to_string(control.ProgramStatusJson());
+        Json::Value snapshot;
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        const std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
+        if (!reader->parse(encoded.data(), encoded.data() + encoded.size(), &snapshot, &errors) || !snapshot.isObject())
+        {
+            LOG_HR_MSG(E_UNEXPECTED, "Invalid terminal program status snapshot");
+            return {};
+        }
+        return snapshot;
+    }
+
+    static winrt::hstring _ProgramStatusLabel(const ::Microsoft::Terminal::ProgramStatusPresentation::Category category)
+    {
+        using Category = ::Microsoft::Terminal::ProgramStatusPresentation::Category;
+        switch (category)
+        {
+        case Category::InputRequest:
+        case Category::Blocked:
+        case Category::Attention:
+            return RS_(L"VerticalTabsHistoryStatusAttention");
+        case Category::Error:
+            return RS_(L"VerticalTabsHistoryStatusError");
+        case Category::Working:
+            return RS_(L"VerticalTabsHistoryStatusWorking");
+        case Category::Done:
+            return RS_(L"ProgramStatusCompleted");
+        case Category::Idle:
+            return RS_(L"VerticalTabsHistoryStatusIdle");
+        default:
+            return {};
+        }
+    }
+
+    static void _ProgramTaskDescription(::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus& status, const Json::Value& snapshot)
+    {
+        status.taskState = snapshot.get("state", "").isString() ? snapshot["state"].asString() : std::string{};
+        status.blockKind = snapshot.get("kind", "").isString() ? snapshot["kind"].asString() : std::string{};
+        status.title = snapshot["title"].isString() ? std::wstring{ winrt::to_hstring(snapshot["title"].asString()) } : std::wstring{};
+        status.message = snapshot["message"].isString() ? std::wstring{ winrt::to_hstring(snapshot["message"].asString()) } : std::wstring{};
+    }
+
+    ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus TerminalPage::_ProgramPaneStatus(const Json::Value& snapshot, const TermControl& control)
+    {
+        ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus result;
+        result.observed = snapshot.get("observed", false).asBool();
+        result.working = snapshot.get("working", 0).asUInt();
+        result.blocked = snapshot.get("blocked", 0).asUInt();
+        result.unseenDone = snapshot.get("unseen_done", 0).asUInt();
+        result.unseenError = snapshot.get("unseen_error", 0).asUInt();
+        _ProgramTaskDescription(result, snapshot);
+        if (const auto connection = control.Connection())
+        {
+            result.connectionError = connection.State() == ConnectionState::Failed;
+        }
+        if (const auto canonical = _RichTabAgentInfoForControl(control))
+        {
+            result.canonicalInput = canonical->inputRequired;
+            result.canonicalAttention = canonical->status == "Attention";
+            result.connectionError = result.connectionError || canonical->canonicalError;
+            result.canonicalWorking = canonical->canonicalWorking;
+            result.inputMessage = winrt::to_hstring(canonical->inputMessage);
+        }
+        if (snapshot["progress"].isUInt() && snapshot["progress"].asUInt() <= 100)
+        {
+            result.progress = snapshot["progress"].asUInt();
+        }
+        return result;
+    }
+
+    std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus> TerminalPage::_ParseHistoryProgramStatus(const Json::Value& pane)
+    {
+        Json::Value response;
+        response["pane_statuses"].append(pane);
+        const auto statuses = _ParsePaneAgentStatuses(response);
+        const auto& program = pane["program_status"];
+        const auto counts = { "working", "blocked", "unseen_done", "unseen_error" };
+        const auto strings = { "state", "kind", "title", "message", "task_id" };
+        if (statuses.size() != 1 || !program.isObject() || !program["observed"].isBool() ||
+            std::ranges::any_of(counts, [&](const auto key) { return !program[key].isUInt() || program[key].asUInt() > 256; }) ||
+            std::ranges::any_of(strings, [&](const auto key) { return !program[key].isNull() && !program[key].isString(); }) ||
+            (!program["progress"].isNull() && (!program["progress"].isUInt() || program["progress"].asUInt() > 100)))
+        {
+            LOG_HR_MSG(E_INVALIDARG, "WTA history program status has an invalid facet");
+            return std::nullopt;
+        }
+        if (!program["observed"].asBool())
+        {
+            return std::nullopt;
+        }
+        const auto& canonical = statuses.front();
+        auto result = ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus{
+            true,
+            program["working"].asUInt(),
+            program["blocked"].asUInt(),
+            program["unseen_done"].asUInt(),
+            program["unseen_error"].asUInt(),
+            canonical.inputRequired,
+            canonical.status == "Attention",
+            canonical.canonicalError,
+            program["progress"].isUInt() ? std::optional<uint32_t>{ program["progress"].asUInt() } : std::nullopt,
+            canonical.canonicalWorking,
+        };
+        _ProgramTaskDescription(result, program);
+        result.inputMessage = winrt::to_hstring(canonical.inputMessage);
+        return result;
+    }
+
+    winrt::hstring TerminalPage::_ProgramSummaryText(const ::Microsoft::Terminal::ProgramStatusPresentation::Summary& summary)
+    {
+        using Category = ::Microsoft::Terminal::ProgramStatusPresentation::Category;
+        if (summary.category == Category::None)
+        {
+            return {};
+        }
+        auto text = std::wstring{ _ProgramStatusLabel(summary.category) };
+        if (summary.category == Category::Blocked && summary.blockKind == "permission")
+        {
+            text = RS_(L"ProgramStatusPermissionRequested");
+        }
+        else if (summary.category == Category::Blocked && summary.blockKind == "auth")
+        {
+            text = RS_(L"ProgramStatusWaitingAuthentication");
+        }
+        return winrt::hstring{ ::Microsoft::Terminal::ProgramStatusPresentation::FormatText(
+            summary, text, summary.progress ? _FormatLocalizedPercentValue(*summary.progress) : winrt::hstring{}) };
+    }
+
+    static winrt::hstring _ProgramStatusDetails(const Json::Value& snapshot, const ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus* status = nullptr)
+    {
+        using Category = ::Microsoft::Terminal::ProgramStatusPresentation::Category;
+        std::wstring details;
+        if (status && (status->canonicalInput || status->canonicalWorking))
+        {
+            details.append(L"Hook/ACP: ");
+            details.append(_ProgramStatusLabel(status->canonicalInput ? Category::InputRequest : Category::Working));
+            if (status->canonicalInput && !status->inputMessage.empty())
+            {
+                details.append(L" | \u2068");
+                details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(status->inputMessage));
+                details.append(L"\u2069");
+            }
+            details.append(L"\n");
+        }
+        details.append(L"OSC 7501:");
+        for (const bool archived : { false, true })
+        {
+            for (const auto& record : snapshot[archived ? "results" : "records"])
+            {
+                if (archived &&
+                    (!record.get("unread", false).asBool() ||
+                     std::any_of(snapshot["records"].begin(), snapshot["records"].end(), [&](const auto& current) {
+                         return current["id"] == record["id"] && current["state"] == record["state"];
+                     })))
+                {
+                    continue;
+                }
+                const auto state = record["state"].asString();
+                const auto category = state == "working" ? Category::Working :
+                                      state == "blocked" ? Category::Blocked :
+                                      state == "done"    ? Category::Done :
+                                      state == "error"   ? Category::Error :
+                                                           Category::Idle;
+                if (!details.empty())
+                {
+                    details.append(L"\n");
+                }
+                details.append(L"/");
+                details.append(winrt::to_hstring(record.get("id", "").asString()));
+                details.append(L": ");
+                if (archived)
+                {
+                    details.append(RS_(L"ProgramStatusPreviousResult"));
+                    details.append(L" - ");
+                }
+                details.append(_ProgramStatusLabel(category));
+                if (record["progress"].isUInt())
+                {
+                    details.append(fmt::format(FMT_COMPILE(L" {}%"), record["progress"].asUInt()));
+                }
+                for (const auto* field : { "app", "title", "kind", "message" })
+                {
+                    if (record[field].isString() && !record[field].asString().empty())
+                    {
+                        const auto value = winrt::to_hstring(record[field].asString());
+                        details.append(L" | \u2068");
+                        details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(std::wstring_view{ value.c_str(), value.size() }));
+                        details.append(L"\u2069");
+                    }
+                }
+                if (details.size() > 16384)
+                {
+                    return winrt::hstring{ details };
+                }
+            }
+        }
+        return winrt::hstring{ details };
+    }
+
+    void TerminalPage::_AcknowledgeProgramStatusForTab(Tab& tab)
+    {
+        if (const auto root = tab.GetRootPane())
+        {
+            root->WalkTree([&](const auto& pane) {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    const auto snapshot = _ReadProgramStatus(control);
+                    if (snapshot["revision"].isUInt64() &&
+                        (snapshot.get("unseen_done", 0).asUInt() != 0 || snapshot.get("unseen_error", 0).asUInt() != 0))
+                    {
+                        control.AcknowledgeProgramStatus(snapshot["revision"].asUInt64());
+                    }
+                }
+                return false;
+            });
+        }
+    }
+
+    void TerminalPage::_FocusNextProgramAttention()
+    {
+        using namespace ::Microsoft::Terminal::ProgramStatusPresentation;
+        std::vector<AttentionTarget> candidates;
+        std::optional<uint32_t> current;
+        if (const auto tab = _GetFocusedTabImpl())
+        {
+            if (const auto pane = tab->GetActivePane())
+            {
+                current = pane->ContentId();
+            }
+        }
+        for (const auto& projected : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(projected))
+            {
+                if (const auto root = tab->GetRootPane())
+                {
+                    root->WalkTree([&](const auto& pane) {
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            const auto status = _ProgramPaneStatus(_ReadProgramStatus(control), control);
+                            if (const auto contentId = pane->ContentId())
+                            {
+                                candidates.push_back({ *contentId, Reduce(std::span{ &status, 1 }).category, status.unseenDone != 0, status.unseenError != 0 });
+                            }
+                        }
+                        return false;
+                    });
+                }
+            }
+        }
+        if (const auto target = NextAttention(candidates, current))
+        {
+            for (uint32_t i = 0; i < _tabs.Size(); ++i)
+            {
+                if (const auto tab = _GetTabImpl(_tabs.GetAt(i)))
+                {
+                    const auto pane = tab->GetRootPane() ? tab->GetRootPane()->FindPaneByContentId(*target) : nullptr;
+                    if (pane && pane->Id())
+                    {
+                        _SelectTab(i);
+                        _UnZoomIfNeeded();
+                        if (pane->IsHidden())
+                        {
+                            if (pane->IsAgentPane())
+                            {
+                                const auto direction = _AgentPanePositionToSplitDirection(
+                                    tab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
+                                if (!tab->RestoreStashedAgentPane(direction))
+                                {
+                                    LOG_HR_MSG(E_UNEXPECTED, "Could not restore the agent pane needing attention");
+                                    return;
+                                }
+                                _RequestAgentStateForTab(tab, std::nullopt, true);
+                                return;
+                            }
+                            tab->ShowPane();
+                        }
+                        tab->FocusPane(*pane->Id());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    void TerminalPage::_UpdateProgramStatusForTab(Tab& tab)
+    {
+        if constexpr (!Feature_ProgramStatusProtocol::IsEnabled())
+        {
+            return;
+        }
+        using namespace ::Microsoft::Terminal::ProgramStatusPresentation;
+        std::vector<PaneStatus> panes;
+        std::vector<uint32_t> contentIds;
+        std::wstring details;
+        if (const auto root = tab.GetRootPane())
+        {
+            root->WalkTree([&](const auto& pane) {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    const auto snapshot = _ReadProgramStatus(control);
+                    auto status = _ProgramPaneStatus(snapshot, control);
+                    panes.push_back(status);
+                    contentIds.push_back(pane->ContentId().value());
+                    if (status.observed)
+                    {
+                        if (details.size() < 32768)
+                        {
+                            if (!details.empty())
+                            {
+                                details.append(L"\n\n");
+                            }
+                            details.append(control.Title());
+                            details.append(L"\n");
+                            details.append(_ProgramStatusDetails(snapshot, &status));
+                        }
+                    }
+                }
+                return false;
+            });
+        }
+        const auto summary = std::any_of(panes.begin(), panes.end(), [](const auto& pane) { return pane.observed; }) ? Reduce(panes) : Summary{};
+        auto text = _ProgramSummaryText(summary);
+        std::vector<Pane::TaskbarStateWithContentId> states;
+        for (size_t i = 0; i < panes.size(); ++i)
+        {
+            const auto& pane = panes[i];
+            if (!pane.observed)
+            {
+                continue;
+            }
+            const auto category = Reduce(std::span{ &pane, 1 }).category;
+            const auto state = category == Category::InputRequest || category == Category::Blocked ? 4u :
+                               category == Category::Error                                         ? 2u :
+                               category == Category::Attention                                     ? 4u :
+                               category == Category::Working                                       ? (summary.progress ? 1u : 3u) :
+                                                                                                     0u;
+            states.push_back({
+                .CombinedState = winrt::make<implementation::TaskbarState>(state, summary.progress.value_or(0)),
+                .ContentId = contentIds[i],
+            });
+        }
+        tab.SetProgramStatusPresentation(text, winrt::hstring{ details }, std::move(states), StatusId(summary.category), _tabStrip.RichTabAgentStatusVisible());
+    }
+
     void TerminalPage::_PublishNativeAgentObservation(const TermControl& control, const std::string_view kind, const bool reset, const std::optional<uint64_t> progressState, const bool birthBeforeReset)
     {
         _SyncNativeAgentStatusMode();
@@ -12759,6 +13142,20 @@ namespace winrt::TerminalApp::implementation
                 _richTabAgentStatusByPaneId.erase(*paneSessionId);
             }
             _RaiseProtocolEvent("native_agent_observation", params);
+            if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+            {
+                auto snapshot = _ReadProgramStatus(control);
+                if (snapshot.isObject() && snapshot.get("observed", false).asBool() && kind != "program_status")
+                {
+                    snapshot.removeMember("records");
+                    snapshot.removeMember("results");
+                    auto program = params;
+                    program.removeMember("tracking_enabled");
+                    program["kind"] = "program_status";
+                    program["program_status"] = std::move(snapshot);
+                    _RaiseProtocolEvent("native_agent_observation", program);
+                }
+            }
             if (!enabled && !birthBeforeReset && identity.initialAdmission && control.TaskbarState() != 0)
             {
                 auto initialProgress = params;
@@ -12773,13 +13170,24 @@ namespace winrt::TerminalApp::implementation
                 _RequestAgentSnapshotRefresh();
             }
         }
-        if (kind != "reset" && (!enabled || kind == "removed"))
+        if (kind != "reset" && (!enabled || kind == "removed" || kind == "program_status"))
         {
             params.removeMember("tracking_enabled");
             params["kind"] = std::string{ kind };
             if (kind == "progress")
             {
                 params["progress_state"] = Json::UInt64{ progressState.value_or(control.TaskbarState()) };
+            }
+            else if (kind == "program_status")
+            {
+                auto snapshot = _ReadProgramStatus(control);
+                if (!snapshot.isObject())
+                {
+                    return;
+                }
+                snapshot.removeMember("records");
+                snapshot.removeMember("results");
+                params["program_status"] = std::move(snapshot);
             }
             _RaiseProtocolEvent("native_agent_observation", params);
             if (kind == "removed")
@@ -13137,6 +13545,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_RefreshRichTabForTab(Tab& tab, const bool activate, const bool refreshPaneItems)
     {
+        _UpdateProgramStatusForTab(tab);
         if constexpr (!Feature_RichTabProviders::IsEnabled())
         {
             tab.SetRichTabPresentation(std::nullopt);
@@ -13247,6 +13656,10 @@ namespace winrt::TerminalApp::implementation
             }
             const auto native = !row["mode_epoch"].isNull();
             if (!row["status"].isString() ||
+                (!row["input_required"].isNull() && !row["input_required"].isBool()) ||
+                (!row["canonical_error"].isNull() && !row["canonical_error"].isBool()) ||
+                (!row["canonical_working"].isNull() && !row["canonical_working"].isBool()) ||
+                (!row["input_message"].isNull() && !row["input_message"].isString()) ||
                 (!row["provider_id"].isNull() && !row["provider_id"].isString()) ||
                 (!row["agent_session_id"].isNull() && !row["agent_session_id"].isString()) ||
                 !row["pane_id"].isString() ||
@@ -13280,6 +13693,10 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             _RichTabAgentInfo info{ row.get("agent_session_id", "").asString(), row["status"].asString(), provider, row["last_activity_at_ms"].isUInt64() ? std::optional<uint64_t>{ row["last_activity_at_ms"].asUInt64() } : std::nullopt, paneId };
+            info.inputRequired = row.get("input_required", false).asBool();
+            info.canonicalError = row.get("canonical_error", false).asBool();
+            info.canonicalWorking = row.get("canonical_working", false).asBool();
+            info.inputMessage = row["input_message"].isString() ? row["input_message"].asString() : std::string{};
             if (row["cwd"].isString() && !row["cwd"].asString().empty())
             {
                 info.cwd = row["cwd"].asString();
@@ -13707,6 +14124,52 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::weak_ref<TermControl> weakTerm{ term };
             const auto contentId = term.ContentId();
+
+            if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+            {
+                term.ProgramStatusChanged([weakThis = get_weak(), weakTerm, publication](auto&&, auto&&) {
+                    const auto page = weakThis.get();
+                    const auto control = weakTerm.get();
+                    if (!page || !control || (publication && !publication->load(std::memory_order_acquire)))
+                    {
+                        return;
+                    }
+                    const auto sessionId = page->_FindSessionIdForControl(control);
+                    page->Dispatcher().RunAsync(
+                        winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                        [weakThis, weakTerm, publication, sessionId]() {
+                            const auto page = weakThis.get();
+                            const auto control = weakTerm.get();
+                            if (!page || !control || sessionId.empty() ||
+                                (publication && !publication->load(std::memory_order_acquire)) ||
+                                page->_FindSessionIdForControl(control) != sessionId)
+                            {
+                                return;
+                            }
+                            page->_PublishNativeAgentObservation(control, "program_status");
+                            const auto tabId = page->_FindTabIdForControl(control);
+                            for (const auto& projected : page->_tabs)
+                            {
+                                const auto tab = page->_GetTabImpl(projected);
+                                if (tab && winrt::to_string(tab->StableId()) == tabId)
+                                {
+                                    page->_UpdateProgramStatusForTab(*tab);
+                                    page->_ApplyTabListProjection(*tab);
+                                    break;
+                                }
+                            }
+                            auto snapshot = _ReadProgramStatus(control);
+                            if (snapshot.isObject())
+                            {
+                                snapshot.removeMember("records");
+                                snapshot.removeMember("results");
+                                snapshot["pane_id"] = sessionId;
+                                snapshot["tab_id"] = tabId;
+                                page->_RaiseProtocolEvent("program_status_changed", snapshot);
+                            }
+                        });
+                });
+            }
 
             const auto observe = [weakThis = get_weak(), weakTerm, contentId, publication, manager = _manager](const bool attention, const uint64_t progressState = 0) {
                 if (const auto page = weakThis.get())
@@ -14138,6 +14601,20 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakTab{ hostingTab.get_weak() };
         auto weakThis{ get_weak() };
+        hostingTab.ProgramStatusAcknowledgeRequested([weakTab, weakThis]() {
+            const auto page = weakThis.get();
+            const auto tab = weakTab.get();
+            if (page && tab)
+            {
+                page->_AcknowledgeProgramStatusForTab(*tab);
+            }
+        });
+        hostingTab.NextProgramAttentionRequested([weakThis]() {
+            if (const auto page = weakThis.get())
+            {
+                page->_FocusNextProgramAttention();
+            }
+        });
         hostingTab.TabStatus().PropertyChanged([weakTab, weakThis](auto&&, const WUX::Data::PropertyChangedEventArgs& args) {
             if (args.PropertyName() == L"IsKeepRunning")
             {
@@ -15231,10 +15708,12 @@ namespace winrt::TerminalApp::implementation
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
+            itemImpl->ProgramStatusDetails(pane.Title);
             itemImpl->ProgressState(pane.ProgressState);
             itemImpl->IsProgressRingActive(pane.ProgressState != 0);
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
             itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
+            bool programObserved = false;
             std::wstring automationName{ pane.Title.c_str(), pane.Title.size() };
             if (pane.SessionId != winrt::guid{})
             {
@@ -15252,8 +15731,59 @@ namespace winrt::TerminalApp::implementation
                         appendAutomationSegment(automationName, value.accessibilityText);
                     }
                 }
+                if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+                {
+                    if (const auto control = sourcePane ? sourcePane->GetTerminalControl() : nullptr)
+                    {
+                        const auto snapshot = _ReadProgramStatus(control);
+                        auto status = _ProgramPaneStatus(snapshot, control);
+                        if (status.observed)
+                        {
+                            programObserved = true;
+                            const auto summary = ::Microsoft::Terminal::ProgramStatusPresentation::Reduce(std::span{ &status, 1 });
+                            const auto label = _ProgramSummaryText(summary);
+                            const auto current = _richTabPresentations.find(sessionId);
+                            const auto metadata = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::OverlayAgentStatus(
+                                current != _richTabPresentations.end() ? current->second.presentation : std::nullopt,
+                                _tabStrip.RichTabAgentStatusVisible() ? std::wstring_view{ label } : std::wstring_view{},
+                                ::Microsoft::Terminal::ProgramStatusPresentation::StatusId(summary.category));
+                            itemImpl->MetadataText(metadata ? winrt::hstring{ metadata->text } : winrt::hstring{});
+                            itemImpl->MetadataVisibility(metadata ? Visibility::Visible : Visibility::Collapsed);
+                            itemImpl->MetadataHighlightRanges(metadata ? TabHeaderControl::BuildMetadataHighlightRanges(*metadata) : nullptr);
+                            itemImpl->MetadataHighlightColor(metadata ? TabHeaderControl::AgentStatusHighlightColor(metadata->agentStatus) : TerminalApp::TextHighlightColor::None);
+                            if (metadata)
+                            {
+                                automationName = pane.Title;
+                                appendAutomationSegment(automationName, metadata->accessibilityText);
+                            }
+                            const auto details = _ProgramStatusDetails(snapshot, &status);
+                            if (!details.empty())
+                            {
+                                itemImpl->ProgramStatusDetails(winrt::hstring{ fmt::format(FMT_COMPILE(L"{}\n{}"), pane.Title, details) });
+                            }
+                            if (summary.progress)
+                            {
+                                itemImpl->ProgressState(1);
+                                itemImpl->ProgressValue(*summary.progress);
+                                itemImpl->IsProgressRingActive(true);
+                                itemImpl->IsProgressRingIndeterminate(false);
+                            }
+                            else if (summary.workingPanes != 0)
+                            {
+                                itemImpl->ProgressState(3);
+                                itemImpl->IsProgressRingActive(true);
+                                itemImpl->IsProgressRingIndeterminate(true);
+                            }
+                            else
+                            {
+                                itemImpl->ProgressState(0);
+                                itemImpl->IsProgressRingActive(false);
+                            }
+                        }
+                    }
+                }
             }
-            if (const auto progressText = progressAutomationText(pane); !progressText.empty())
+            if (const auto progressText = programObserved ? winrt::hstring{} : progressAutomationText(pane); !progressText.empty())
             {
                 appendAutomationSegment(automationName, std::wstring_view{ progressText.c_str(), progressText.size() });
             }

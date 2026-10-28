@@ -23,6 +23,7 @@
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="TerminalApiTest.cpp" />
+    <ClCompile Include="ProgramStatusTests.cpp" />
     <ClCompile Include="TerminalBufferTests.cpp" />
     <ClCompile Include="ScrollTest.cpp" />
     <ClCompile Include="ShellIntegrationTests.cpp" />

@@ -13,6 +13,7 @@ Abstract:
 */
 #pragma once
 #include "DispatchTypes.hpp"
+#include "ProgramStatus.hpp"
 #include "../buffer/out/LineRendition.hpp"
 
 namespace Microsoft::Console::VirtualTerminal
@@ -158,6 +159,7 @@ public:
     virtual void EndHyperlink() = 0;
 
     virtual void DoConEmuAction(const std::wstring_view string) = 0;
+    virtual void DoProgramStatus(const ProgramStatus::Command& command) = 0;
     virtual void DoITerm2Action(const std::wstring_view string) = 0;
     virtual void DoFinalTermAction(const std::wstring_view string) = 0;
     virtual void DoVsCodeAction(const std::wstring_view string) = 0;

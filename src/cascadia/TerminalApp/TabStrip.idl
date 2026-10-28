@@ -105,6 +105,7 @@ namespace TerminalApp
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
         Windows.UI.Xaml.Visibility CloseVisibility;
+        String ProgramStatusDetails;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

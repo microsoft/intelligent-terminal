@@ -108,11 +108,33 @@ namespace winrt::TerminalApp::implementation
         const auto status = Status();
         const auto liveIt = status == L"Idle" || status == L"Working" ||
                             status == L"Attention" || status == L"Error";
+        auto label = text;
+        DisplayStatus(status);
+        if (!liveIt)
+        {
+            ProgramStatus(std::nullopt);
+        }
+        else if (const auto program = ProgramStatus())
+        {
+            auto pane = *program;
+            pane.canonicalInput = pane.canonicalInput && status == L"Attention";
+            pane.canonicalAttention = status == L"Attention";
+            pane.connectionError = pane.connectionError && status == L"Error";
+            pane.canonicalWorking = pane.canonicalWorking && status == L"Working";
+            ProgramStatus(pane);
+            const auto summary = ::Microsoft::Terminal::ProgramStatusPresentation::Reduce(std::span{ &pane, 1 });
+            label = TerminalPage::_ProgramSummaryText(summary);
+            using Category = ::Microsoft::Terminal::ProgramStatusPresentation::Category;
+            DisplayStatus(summary.category >= Category::Blocked || summary.category == Category::Attention ? L"Attention" :
+                          summary.category == Category::Error                                              ? L"Error" :
+                          summary.category == Category::Working                                            ? L"Working" :
+                                                                                                             L"Idle");
+        }
         const auto hint = liveIt && OtherWindow() && !BackgroundTab() && !_locallyHeadless ?
                               winrt::hstring{ RS_fmt(L"VerticalTabsHistoryOtherWindowStatusFormat", L"") } :
                               winrt::hstring{};
-        StatusText(text + hint);
-        StatusLabelText(text);
+        StatusText(label + hint);
+        StatusLabelText(label);
         WindowHintText(hint);
     }
 
@@ -1007,6 +1029,7 @@ namespace winrt::TerminalApp::implementation
                 existing.Title(pane.Title());
                 existing.IsActive(pane.IsActive());
                 existing.MetadataText(pane.MetadataText());
+                existing.ProgramStatusDetails(pane.ProgramStatusDetails());
                 existing.MetadataHighlightColor(pane.MetadataHighlightColor());
                 existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
                 existing.MetadataVisibility(pane.MetadataVisibility());
@@ -1958,7 +1981,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto nativeItem = winrt::get_self<TabStripHistoryItem>(item);
         const auto changed = nativeItem->SetUnreadCompletion(_agentCompletionResolver && _agentCompletionResolver(item));
-        const auto style = _historyStatusTextStyle(nativeItem->StatusForPresentation());
+        const auto style = _historyStatusTextStyle(nativeItem->ProgramStatus() ? nativeItem->DisplayStatus() : nativeItem->StatusForPresentation());
         const auto styleChanged = item.StatusTextStyle() != style;
         item.StatusTextStyle(style);
         return changed || styleChanged;
@@ -2256,13 +2279,14 @@ namespace winrt::TerminalApp::implementation
                                 status == L"Attention" || status == L"Error";
             if (!liveIt || item.PaneSessionId() != paneSessionId)
             {
+                nativeItem->ProgramStatus(std::nullopt);
                 nativeItem->OtherWindow(false);
                 nativeItem->BackgroundTab(false);
             }
             item.PaneSessionId(paneSessionId);
             item.Status(status);
             nativeItem->UpdateStatusText(statusText);
-            item.StatusTextStyle(_historyStatusTextStyle(status));
+            item.StatusTextStyle(_historyStatusTextStyle(nativeItem->DisplayStatus()));
             item.IsLive(status == L"Idle" ||
                         status == L"Working" ||
                         status == L"Attention" ||
@@ -3245,6 +3269,7 @@ namespace winrt::TerminalApp::implementation
                   left.PaneSessionId() == right.PaneSessionId() &&
                   left.IsLive() == right.IsLive() &&
                   left.IsHistorical() == right.IsHistorical() &&
+                  winrt::get_self<TabStripHistoryItem>(left)->ProgramStatus() == winrt::get_self<TabStripHistoryItem>(right)->ProgramStatus() &&
                   winrt::get_self<TabStripHistoryItem>(left)->BackgroundTab() == winrt::get_self<TabStripHistoryItem>(right)->BackgroundTab() &&
                   winrt::get_self<TabStripHistoryItem>(left)->OtherWindow() == winrt::get_self<TabStripHistoryItem>(right)->OtherWindow() &&
                   left.StatusTextStyle() == right.StatusTextStyle())));
@@ -3420,6 +3445,7 @@ namespace winrt::TerminalApp::implementation
                             current.IsHistorical(incoming.IsHistorical());
                             nativeCurrent->BackgroundTab(nativeIncoming->BackgroundTab());
                             nativeCurrent->OtherWindow(nativeIncoming->OtherWindow());
+                            nativeCurrent->ProgramStatus(nativeIncoming->ProgramStatus());
                             nativeCurrent->SetUnreadCompletion(nativeIncoming->HasUnreadCompletion());
                             if (paneChanged)
                             {

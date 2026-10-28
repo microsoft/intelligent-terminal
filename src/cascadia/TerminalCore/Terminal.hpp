@@ -102,6 +102,15 @@ public:
     bool IsWorkingDirectoryReportedByShell() const noexcept;
     void SetInitialWorkingDirectory(std::wstring_view path);
     void ResetShellIntegrationState() noexcept;
+    // These snapshot/lifecycle operations acquire the terminal lock internally.
+    Microsoft::Console::VirtualTerminal::ProgramStatus::Snapshot GetProgramStatusSnapshot() const;
+    void SetProgramStatusEnabled(bool enabled);
+    // Invalidation only: invoked under the stream lock, never block or call UI here.
+    void ProgramStatusChangedCallback(std::function<void()> pfn) noexcept;
+    // Invoke after the connection has delivered its final output.
+    void ProgramStatusProcessExited();
+    void AcknowledgeProgramStatus(uint64_t observedRevision);
+    void ResetProgramStatusForConnection();
     std::wstring_view GetShellName() const noexcept;
     std::wstring_view GetShellVersion() const noexcept;
 
@@ -140,6 +149,10 @@ public:
     void UnknownSequence() noexcept override;
     void ReturnResponse(const std::wstring_view response) override;
     bool IsConPTY() const noexcept override;
+    bool SupportsProgramStatus() const noexcept override;
+    void ApplyProgramStatus(const Microsoft::Console::VirtualTerminal::ProgramStatus::Command& command) override;
+    void ProgramStatusPromptStarted() override;
+    void ResetProgramStatus() override;
     Microsoft::Console::VirtualTerminal::StateMachine& GetStateMachine() noexcept override;
     BufferState GetBufferAndViewport() noexcept override;
     void SetViewportPosition(const til::point position) noexcept override;
@@ -348,6 +361,9 @@ private:
 
     std::function<void(const int, const int, const int)> _pfnScrollPositionChanged;
     std::function<void()> _pfnTaskbarProgressChanged;
+    std::function<void()> _pfnProgramStatusChanged;
+    Microsoft::Console::VirtualTerminal::ProgramStatus::Store _programStatus;
+    bool _programStatusEnabled = false;
     std::function<void(bool)> _pfnShowWindowChanged;
     std::function<void(const int, const int, const std::chrono::microseconds)> _pfnPlayMidiNote;
     std::function<void(std::wstring_view, unsigned int)> _pfnCompletionsChanged;
