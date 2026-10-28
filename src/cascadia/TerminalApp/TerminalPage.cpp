@@ -16986,8 +16986,9 @@ namespace winrt::TerminalApp::implementation
             ::Microsoft::Terminal::AgentProfiles::CanPinNewSession(L"claude", profile.AgentProfileArguments()))
         {
             const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
-                restoredAgent.backend.empty() ? restoredAgent.agent : restoredAgent.backend);
-            if (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host)
+                restoredAgent.backend);
+            if (restoredAgent.backend.empty() ||
+                (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host))
             {
                 const auto available = ::Microsoft::Terminal::AgentProfiles::HasClaudeConversation(
                     ::Microsoft::Terminal::AgentProfiles::ClaudeProjectsDirectory(

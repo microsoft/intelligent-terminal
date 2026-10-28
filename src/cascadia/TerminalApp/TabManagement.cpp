@@ -817,8 +817,9 @@ namespace winrt::TerminalApp::implementation
             if (!resume.empty())
             {
                 const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
-                    std::wstring_view{ binding->second.backend.empty() ? binding->second.agent : binding->second.backend });
-                if (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host &&
+                    std::wstring_view{ binding->second.backend });
+                if ((binding->second.backend.empty() ||
+                     (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host)) &&
                     !binding->second.cwd.empty())
                 {
                     bool hasReportedCwd = false;
