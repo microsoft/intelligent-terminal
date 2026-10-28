@@ -116,6 +116,11 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         $script:profileName = 'ITE2E Global Agent'
         $script:fixedProfileGuid = '{42e4499d-63ee-48ce-9fe9-d8d72e0dfb99}'
         $script:fixedProfileName = 'ITE2E Fixed Agent'
+        $script:longLabelProfileGuid = '{42e4499d-63ee-48ce-9fe9-d8d72e0dfb9a}'
+        $script:longLabelProfileName = 'ITE2E Long Agent Labels'
+        # Spaces deliberately exercise the raw unknown-backend fallback; WslDistroName rejects them.
+        $script:spacedBackendLabel = 'ITE2E Long Backend Ubuntu Development Distribution For Header Wrapping Regression'
+        $script:unbrokenBackendLabel = 'ITE2E' + ('UbuntuDevelopmentDistribution' * 2) + 'HeaderWrappingRegression'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             language = 'en-US'
             acpAgent = 'copilot'
@@ -141,6 +146,14 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
                         agentPaneBackend = 'host:copilot'
                         commandPaletteAgent = 'host:claude'
                     }
+                    @{
+                        guid = $script:longLabelProfileGuid
+                        name = $script:longLabelProfileName
+                        commandline = 'cmd.exe'
+                        hidden = $true
+                        agentPaneBackend = "wsl:$($script:spacedBackendLabel):copilot"
+                        commandPaletteAgent = "wsl:$($script:unbrokenBackendLabel):claude"
+                    }
                 )
             }
         }
@@ -152,6 +165,31 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
                 [Windows.Automation.AutomationElement]::IsExpandCollapsePatternAvailableProperty, $true)
             $expander = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
                 Where-Object { $_.Current.Name.StartsWith($Header) } | Select-Object -First 1
+            $scroller = $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::AutomationIdProperty, 'SettingsMainPage_ScrollViewer'))
+            $viewport = if ($scroller) { $scroller.Current.BoundingRectangle } else { $null }
+            if (-not $expander -or $expander.Current.IsOffscreen -or
+                ($viewport -and ($expander.Current.BoundingRectangle.Top -lt $viewport.Top -or
+                    $expander.Current.BoundingRectangle.Bottom -gt $viewport.Bottom))) {
+                $scroller | Should -Not -BeNullOrEmpty
+                $scroll = $scroller.GetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern)
+                $scroll.Current.VerticallyScrollable | Should -BeTrue
+                $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+                Wait-Until -TimeoutSec 8 -Because "$Header must be reachable in the Settings scroll viewport" -Condition {
+                    $script:profileAgentVisibleExpander = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
+                        Where-Object { $_.Current.Name.StartsWith($Header) } | Select-Object -First 1
+                    if ($script:profileAgentVisibleExpander -and -not $script:profileAgentVisibleExpander.Current.IsOffscreen) {
+                        $bounds = $script:profileAgentVisibleExpander.Current.BoundingRectangle
+                        if ($bounds.Top -ge $viewport.Top -and $bounds.Bottom -le $viewport.Bottom) { return $true }
+                    }
+                    if ($scroll.Current.VerticalScrollPercent -lt 100) {
+                        $scroll.Scroll([Windows.Automation.ScrollAmount]::NoAmount, [Windows.Automation.ScrollAmount]::SmallIncrement)
+                    }
+                    $false
+                } | Out-Null
+                $expander = $script:profileAgentVisibleExpander
+            }
             $expander | Should -Not -BeNullOrEmpty
             $expander
         }
@@ -198,6 +236,24 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
             $labels = @($selected.FindAll([Windows.Automation.TreeScope]::Descendants, $textCondition))
             $labels.Count | Should -Be 1 -Because 'the selected agent must have one unambiguous provider label'
             $labels[0].Current.Name
+        }
+
+        function Get-ProfileAgentPreviewPeer {
+            param([string]$Header, [string]$ExpectedLabel)
+            Assert-ProfileAgentPreview -Header $Header -ExpectedLabel $ExpectedLabel
+            $expander = Get-ProfileAgentExpander -Header $Header
+            $condition = [Windows.Automation.AndCondition]::new(
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text),
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::NameProperty, $ExpectedLabel))
+            Wait-Until -TimeoutSec 8 -Because 'measure one settled collapsed-header Text, not its accessible expander name' -Condition {
+                $peers = @($expander.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
+                    Where-Object { -not $_.Current.IsOffscreen -and -not $_.Current.BoundingRectangle.IsEmpty }
+                $script:profileAgentPreviewPeer = $peers | Select-Object -First 1
+                @($peers).Count -eq 1
+            } | Out-Null
+            $script:profileAgentPreviewPeer
         }
 
         function Select-ProfileAgent {
@@ -401,6 +457,40 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         Open-ProfileAgentSettings
         Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel 'Use global setting (GitHub Copilot)'
         Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel 'Use global setting (Claude)'
+    }
+
+    It 'Profile agent headers wrap long selected labels' -Tag 'ProfileAgentWrapping' {
+        if (-not (Test-ProfileHostAgents)) { return }
+        Open-ProfileAgentSettings -Name $script:longLabelProfileName
+        try {
+            foreach ($case in @(
+                @{ Header = 'Agent pane agent'; Short = 'GitHub Copilot · Windows'; Seed = $script:spacedBackendLabel }
+                @{ Header = 'Command palette agent'; Short = 'Claude · Windows'; Seed = $script:unbrokenBackendLabel }
+            )) {
+                $combo = Get-ProfileAgentCombo -Header $case.Header
+                $longLabel = Get-ProfileAgentSelection $combo
+                $longLabel | Should -Match ([regex]::Escape($case.Seed))
+                # Keep the same list: navigation/rebuild would drop its now-unselected fallback row.
+                Select-ProfileAgent $combo $case.Short
+                $shortPeer = Get-ProfileAgentPreviewPeer -Header $case.Header -ExpectedLabel $case.Short
+                $shortHeight = $shortPeer.Current.BoundingRectangle.Height
+                $shortHeight | Should -BeGreaterThan 0
+                $combo = Get-ProfileAgentCombo -Header $case.Header
+                Select-ProfileAgent $combo $longLabel
+                (Get-ProfileAgentSelection $combo) | Should -BeExactly $longLabel
+                $wrapped = Test-Until -TimeoutSec 8 -Condition {
+                    $peer = Get-ProfileAgentPreviewPeer -Header $case.Header -ExpectedLabel $longLabel
+                    $peer.Current.BoundingRectangle.Height -gt (1.5 * $shortHeight)
+                }
+                $longPeer = Get-ProfileAgentPreviewPeer -Header $case.Header -ExpectedLabel $longLabel
+                Write-Host "$($case.Header): short Text height=$shortHeight; long Text height=$($longPeer.Current.BoundingRectangle.Height)"
+                $wrapped | Should -BeTrue -Because "$($case.Header) must render multiline text, not just expose the full UIA name"
+            }
+        }
+        finally {
+            # No Save, profile launch, WSL probe or agent invocation; discard only this Settings clone.
+            Close-ProfileAgentSettings
+        }
     }
 
     It 'Cached profile agent choices refresh after unsaved global edits' -Tag 'ProfileAgentRefresh' {
