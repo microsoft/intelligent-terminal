@@ -1947,6 +1947,15 @@ struct HistoryRefreshState {
 }
 
 impl HistoryRefreshState {
+    fn retry_paused_history(&mut self) -> bool {
+        if !self.query.retry_paused() {
+            return false;
+        }
+        self.failures = 0;
+        self.next_refresh_at = None;
+        true
+    }
+
     fn observe_retry_epoch(&mut self, epoch: u64) {
         if epoch > self.retry_epoch {
             self.retry_epoch = epoch;
@@ -8122,6 +8131,22 @@ fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentC
     let state = Arc::clone(state);
     tokio::task::spawn_local(async move {
         let discover = agent.is_none();
+        let mut reopened_gates = Vec::new();
+        if discover {
+            let gates: Vec<_> = state
+                .history_queries
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect();
+            for gate in gates {
+                let reopened = gate.lock().await.retry_paused_history();
+                if reopened {
+                    reopened_gates.push(gate);
+                }
+            }
+        }
         let agents = match agent {
             Some(agent) => vec![agent],
             None => state
@@ -8137,11 +8162,10 @@ fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentC
             if agent.history_refresh.retired.load(Ordering::Acquire) {
                 continue;
             }
-            let reopened = refresh.query.retry_paused();
-            if reopened {
-                refresh.failures = 0;
-                refresh.next_refresh_at = None;
-            }
+            let reopened = reopened_gates
+                .iter()
+                .any(|gate| Arc::ptr_eq(gate, &agent.history_refresh.gate))
+                || refresh.retry_paused_history();
             drop(refresh);
             if reopened {
                 tracing::info!(target: "master_history",

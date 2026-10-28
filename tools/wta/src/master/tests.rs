@@ -17550,6 +17550,115 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
 }
 
 #[tokio::test(start_paused = true)]
+async fn history_retry_reopens_retained_gate_after_chat_retirement_without_bypassing_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for cleanup_failed in [false, true] {
+                let mut state = make_state();
+                Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+                let (agent, mut requests) =
+                    controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                let key = agent.cmd_key.clone();
+                let gate = Arc::clone(&agent.history_refresh.gate);
+                let target = history::HistoryTarget {
+                    command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
+                    agent_id: "custom:retained-history".into(),
+                    source: crate::agent_source::AgentSource::Host,
+                    provider: ProviderBinding::Native,
+                };
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                {
+                    let mut refresh = gate.lock().await;
+                    let process = refresh.query.process.take();
+                    refresh.query = history::HistoryQuery::default();
+                    for _ in 0..3 {
+                        assert!(refresh
+                            .query
+                            .poll(Some(&target), &cancelled, false)
+                            .await
+                            .is_err());
+                    }
+                    assert!(refresh.query.recovery_paused());
+                    if cleanup_failed {
+                        refresh.query.process = process;
+                        refresh.query.reject_stop_for_test(true);
+                    }
+                    refresh.owner = Some(agent.instance_id);
+                    refresh.failures = 3;
+                    refresh.next_refresh_at =
+                        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(60));
+                }
+                state
+                    .history_queries
+                    .lock()
+                    .await
+                    .insert(key.clone(), Arc::clone(&gate));
+                add_test_agent_to_pool(&state, &agent).await;
+                let cell = state.agents.lock().await[&key].clone();
+                reap_agent(&state, &key, &cell, agent.instance_id).await;
+                assert!(!state.agents.lock().await.contains_key(&key));
+                assert!(gate.lock().await.query.recovery_paused());
+
+                handle_sessions_list(
+                    &state,
+                    None,
+                    &crate::session_registry::SessionsListParams {
+                        rescan: true,
+                        retry_history: true,
+                    },
+                )
+                .await
+                .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                    loop {
+                        if !gate.lock().await.query.recovery_paused() {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    }
+                })
+                .await
+                .expect("unbound history retry must reopen retained queries before rediscovery");
+
+                let retained = state.history_queries.lock().await[&key].clone();
+                assert!(Arc::ptr_eq(&retained, &gate));
+                let mut refresh = retained.lock().await;
+                assert_eq!(refresh.owner, Some(agent.instance_id));
+                assert_eq!(refresh.failures, 0);
+                assert!(refresh.next_refresh_at.is_none());
+                assert_eq!(refresh.query.process.is_some(), cleanup_failed);
+                if cleanup_failed {
+                    assert!(refresh
+                        .query
+                        .poll(Some(&target), &cancelled, false)
+                        .await
+                        .is_err());
+                    assert!(
+                        refresh.query.process.is_some(),
+                        "explicit retry must retain the unconfirmed old process"
+                    );
+                    assert!(
+                        requests.try_recv().is_err(),
+                        "retry must not issue another RPC before cleanup is confirmed"
+                    );
+                    refresh.query.reject_stop_for_test(false);
+                    refresh.query.stop().await.unwrap();
+                }
+                assert!(refresh
+                    .query
+                    .poll(Some(&target), &cancelled, false)
+                    .await
+                    .is_err());
+                assert!(
+                    !refresh.query.recovery_paused(),
+                    "the retained query can attempt a new cycle after confirmed cleanup"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn history_refresh_periodic_dispatch_jitter_does_not_skip_the_next_tick() {
     tokio::task::LocalSet::new()
         .run_until(async {
