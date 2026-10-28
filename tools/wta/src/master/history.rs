@@ -239,6 +239,56 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn history_transport_retirement_does_not_consume_a_new_query_cycle() {
+        LocalSet::new()
+            .run_until(async {
+                for cleanup_failed in [false, true] {
+                    let (mut query, mut requests) = controlled_query();
+                    for _ in 0..2 {
+                        assert!(complete_query(
+                            &mut query,
+                            &mut requests,
+                            Err(acp::Error::internal_error()),
+                        )
+                        .await
+                        .is_err());
+                    }
+                    let finished = tokio::task::spawn_local(async { Ok::<(), acp::Error>(()) });
+                    while !finished.is_finished() {
+                        tokio::task::yield_now().await;
+                    }
+                    let process = query.process.as_mut().unwrap();
+                    process.io = Some(finished);
+                    process.reject_stop = cleanup_failed;
+                    let target = fixture_target();
+                    let cancelled = tokio_util::sync::CancellationToken::new();
+                    if cleanup_failed {
+                        for _ in 0..3 {
+                            assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+                            assert!(!query.recovery_paused(),
+                                "retiring the already-failed transport is not another failed query");
+                            assert!(query.process.is_some());
+                        }
+                        query.process.as_mut().unwrap().reject_stop = false;
+                        query.stop().await.unwrap();
+                        assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+                        assert!(query.recovery_paused(),
+                            "only a new query cycle may consume the remaining failure budget");
+                    } else {
+                        let error = query.poll_inner(Some(&target), &cancelled, false)
+                            .await.unwrap_err();
+                        assert_eq!(
+                            error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+                            Some(&crate::agent_lifecycle::StartupPhase::Spawn),
+                            "confirmed retirement proceeds to a new attempt instead of reporting the old exit again"
+                        );
+                    }
+                }
+            })
+            .await;
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn history_inventory_retains_later_page_across_soft_timeouts() {
         LocalSet::new()
             .run_until(async {
@@ -1043,7 +1093,7 @@ impl HistoryQuery {
         if self.recovery_paused() {
             return Ok(Err(HistoryRefreshFailure::Other));
         }
-        self.cycle_in_progress = true;
+        // Cleanup alone must not charge an already-completed query cycle.
         if self
             .process
             .as_mut()
@@ -1051,9 +1101,13 @@ impl HistoryQuery {
             .transpose()?
             .unwrap_or(false)
         {
+            let interrupted = self.pending.is_some();
             self.stop().await?;
-            return Err(anyhow!("history ACP process or transport exited"));
+            if interrupted {
+                return Err(anyhow!("history ACP process or transport exited"));
+            }
         }
+        self.cycle_in_progress = true;
         if self.process.is_none() {
             self.process = Some(
                 await_history_startup(
