@@ -6760,6 +6760,9 @@ namespace winrt::TerminalApp::implementation
         const bool expanded = visible && !_isVerticalRailCollapsed;
         const auto width = visible ? (_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth) : 0.0;
         const auto actionMap = _settings.ActionMap();
+        const auto searchChord = _GetEffectiveKeyBindingForAction(actionMap, ShortcutAction::TabSearch);
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->SearchKeyChordText(
+            searchChord ? KeyChordSerialization::ToString(searchChord) : winrt::hstring{});
         for (const auto& [elementName, action] : {
                  std::pair{ L"AgentsOnlyFilterMenuItem", ShortcutAction::ToggleSidebarAgentsOnly },
                  std::pair{ L"RecentAgentSessionsFilterMenuItem", ShortcutAction::OpenAgentSessions } })

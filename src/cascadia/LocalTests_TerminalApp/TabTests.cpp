@@ -5669,6 +5669,9 @@ namespace TerminalAppLocalTests
             const auto initial = KeyChordSerialization::FromString(L"ctrl+shift+s");
             const auto rebound = KeyChordSerialization::FromString(L"ctrl+shift+y");
             actionMap.RegisterKeyBinding(initial, ActionAndArgs{ ShortcutAction::ToggleSidebar, nullptr });
+            const auto searchInitial = KeyChordSerialization::FromString(L"ctrl+f");
+            const auto searchRebound = KeyChordSerialization::FromString(L"ctrl+shift+f");
+            actionMap.RegisterKeyBinding(searchInitial, ActionAndArgs{ ShortcutAction::TabSearch, nullptr });
             page->_settings.GlobalSettings().TabLayout(TabLayout::Vertical);
             page->SetSettings(page->_settings, false);
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
@@ -5679,6 +5682,32 @@ namespace TerminalAppLocalTests
             const auto button = row->VerticalTitleBarContent().as<Grid>().Children().GetAt(0).as<Button>();
             const auto reference = ToolTipService::GetToolTip(page->AgentToggleButton()).as<ToolTip>().Content().as<StackPanel>();
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto verifySearchHint = [&](const winrt::hstring& chord) {
+                const auto search = strip->SearchTabsButton();
+                const auto label = strip->SearchTextBox().PlaceholderText();
+                const auto content = ToolTipService::GetToolTip(search).as<ToolTip>().Content().as<StackPanel>();
+                const auto railContent = ToolTipService::GetToolTip(button).as<ToolTip>().Content().as<StackPanel>();
+                VERIFY_ARE_EQUAL(2u, content.Children().Size());
+                VERIFY_ARE_EQUAL(railContent.Orientation(), content.Orientation());
+                VERIFY_ARE_EQUAL(railContent.Spacing(), content.Spacing());
+                for (uint32_t index = 0; index < 2; ++index)
+                {
+                    const auto actual = content.Children().GetAt(index).as<TextBlock>();
+                    const auto expected = railContent.Children().GetAt(index).as<TextBlock>();
+                    VERIFY_ARE_EQUAL(expected.FontFamily().Source(), actual.FontFamily().Source());
+                    VERIFY_ARE_EQUAL(expected.FontSize(), actual.FontSize());
+                    VERIFY_ARE_EQUAL(expected.FontWeight().Weight, actual.FontWeight().Weight);
+                    VERIFY_ARE_EQUAL(expected.LineHeight(), actual.LineHeight());
+                    VERIFY_ARE_EQUAL(expected.Opacity(), actual.Opacity());
+                    VERIFY_ARE_EQUAL(expected.Foreground(), actual.Foreground());
+                }
+                const auto shortcut = content.Children().GetAt(1).as<TextBlock>();
+                VERIFY_ARE_EQUAL(label, content.Children().GetAt(0).as<TextBlock>().Text());
+                VERIFY_ARE_EQUAL(chord, shortcut.Text());
+                VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
+                VERIFY_ARE_EQUAL(chord, Automation::AutomationProperties::GetAcceleratorKey(search));
+                VERIFY_ARE_EQUAL(label, Automation::AutomationProperties::GetName(search));
+            };
             const auto verifyFilterHints = [&](const winrt::hstring& agents, const winrt::hstring& recent) {
                 const auto verify = [](const ToggleMenuFlyoutItem& item, const winrt::hstring& expected) {
                     VERIFY_IS_NOT_NULL(item);
@@ -5712,7 +5741,27 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(chord.empty() ? Visibility::Collapsed : Visibility::Visible, shortcut.Visibility());
             };
             verifyHint(L"Ctrl+Shift+S");
+            verifySearchHint(L"Ctrl+F");
             verifyFilterHints(L"Ctrl+Shift+G", L"Ctrl+Shift+/");
+            actionMap.RebindKeys(searchInitial, searchRebound);
+            page->_RefreshUIForSettingsReload();
+            verifySearchHint(L"Ctrl+Shift+F");
+            strip->SearchActive(true);
+            strip->SearchQuery(L"search hint");
+            verifySearchHint(L"Ctrl+Shift+F");
+            strip->SearchActive(false);
+            actionMap.DeleteKeyBinding(searchRebound);
+            page->_RefreshUIForSettingsReload();
+            verifySearchHint({});
+            actionMap.RegisterKeyBinding(searchInitial, ActionAndArgs{ ShortcutAction::CopyText, nullptr });
+            page->_RefreshUIForSettingsReload();
+            verifySearchHint({});
+            const auto searchAlias = Command::NewUserCommand();
+            searchAlias.ActionAndArgs(ActionAndArgs{ ShortcutAction::TabSearch, nullptr });
+            searchAlias.GenerateID();
+            actionMap.AddAction(searchAlias, searchRebound);
+            page->_RefreshUIForSettingsReload();
+            verifySearchHint(L"Ctrl+Shift+F");
             const auto recentChord = KeyChordSerialization::FromString(L"ctrl+shift+/");
             const auto customRecentChord = KeyChordSerialization::FromString(L"ctrl+shift+r");
             actionMap.RegisterKeyBinding(customRecentChord, ActionAndArgs{ ShortcutAction::ToggleSidebarRecentAgentSessions, nullptr });
@@ -8747,7 +8796,7 @@ namespace TerminalAppLocalTests
             tabsPlaceholder = stripImpl->SearchTextBox().PlaceholderText();
             tabsSearchName = Automation::AutomationProperties::GetName(stripImpl->SearchTextBox());
             tabsButtonName = Automation::AutomationProperties::GetName(stripImpl->SearchTabsButton());
-            tabsTooltip = winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->SearchTabsButton()));
+            tabsTooltip = ToolTipService::GetToolTip(stripImpl->SearchTabsButton()).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(0).as<TextBlock>().Text();
             const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
                                        .MainResourceMap().GetSubtree(L"TerminalApp/Resources");
             const auto header = strip.FindName(L"VerticalTabsHeader").as<TextBlock>();
@@ -8846,7 +8895,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tabsPlaceholder, stripImpl->SearchTextBox().PlaceholderText());
             VERIFY_ARE_EQUAL(tabsSearchName, Automation::AutomationProperties::GetName(stripImpl->SearchTextBox()));
             VERIFY_ARE_EQUAL(tabsButtonName, Automation::AutomationProperties::GetName(stripImpl->SearchTabsButton()));
-            VERIFY_ARE_EQUAL(tabsTooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->SearchTabsButton())));
+            VERIFY_ARE_EQUAL(tabsTooltip, ToolTipService::GetToolTip(stripImpl->SearchTabsButton()).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(0).as<TextBlock>().Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, strip.SearchQuery());
             VERIFY_IS_TRUE(stripImpl->SearchTextBox().Focus(FocusState::Programmatic));
             strip.UpdateLayout();
@@ -8904,7 +8953,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tabsPlaceholder, stripImpl->SearchTextBox().PlaceholderText());
             VERIFY_ARE_EQUAL(tabsSearchName, Automation::AutomationProperties::GetName(stripImpl->SearchTextBox()));
             VERIFY_ARE_EQUAL(tabsButtonName, Automation::AutomationProperties::GetName(stripImpl->SearchTabsButton()));
-            VERIFY_ARE_EQUAL(tabsTooltip, winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(stripImpl->SearchTabsButton())));
+            VERIFY_ARE_EQUAL(tabsTooltip, ToolTipService::GetToolTip(stripImpl->SearchTabsButton()).as<ToolTip>().Content().as<StackPanel>().Children().GetAt(0).as<TextBlock>().Text());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->TabsToolbar().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent query" }, strip.SearchQuery());

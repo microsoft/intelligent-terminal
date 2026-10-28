@@ -688,6 +688,24 @@ namespace winrt::TerminalApp::implementation
         _viewportItems = single_threaded_observable_vector<IInspectable>();
 
         InitializeComponent();
+        _searchTooltipLabel = TextBlock{};
+        _searchTooltipShortcut = TextBlock{};
+        for (const auto& text : { _searchTooltipLabel, _searchTooltipShortcut })
+        {
+            text.FontFamily(WUX::Media::FontFamily{ L"Segoe UI Variable" });
+            text.FontSize(12);
+            text.FontWeight(Windows::UI::Text::FontWeights::Normal());
+            text.LineHeight(16);
+        }
+        _searchTooltipShortcut.Opacity(0.7);
+        StackPanel searchTooltipContent;
+        searchTooltipContent.Orientation(WUX::Controls::Orientation::Horizontal);
+        searchTooltipContent.Spacing(8);
+        searchTooltipContent.Children().Append(_searchTooltipLabel);
+        searchTooltipContent.Children().Append(_searchTooltipShortcut);
+        ToolTip searchTooltip;
+        searchTooltip.Content(searchTooltipContent);
+        ToolTipService::SetToolTip(SearchTabsButton(), searchTooltip);
         _sidebarFiltersChanged = _sidebarFilters.PropertyChanged(auto_revoke, { get_weak(), &TabStrip::_onSidebarFiltersChanged });
 
         // ItemsControl handles a UIElement item as its own content; it must not
@@ -3136,6 +3154,22 @@ namespace winrt::TerminalApp::implementation
         storyboard.Begin();
     }
 
+    void TabStrip::SearchKeyChordText(winrt::hstring const& value)
+    {
+        std::wstring display{ value };
+        bool keyStart = true;
+        for (auto& character : display)
+        {
+            if (keyStart)
+            {
+                character = til::toupper_ascii(character);
+            }
+            keyStart = character == L'+';
+        }
+        _searchKeyChordText = display;
+        _updateSearchVisualState();
+    }
+
     void TabStrip::_updateSearchVisualState()
     {
         const auto searchLabel = RS_(L"VerticalTabsAgentsSearch/Text");
@@ -3144,8 +3178,11 @@ namespace winrt::TerminalApp::implementation
             SearchTextBox(), searchLabel);
         WUX::Automation::AutomationProperties::SetName(
             SearchTabsButton(), searchLabel);
-        ToolTipService::SetToolTip(
-            SearchTabsButton(), box_value(searchLabel));
+        _searchTooltipLabel.Text(searchLabel);
+        _searchTooltipShortcut.Text(_searchKeyChordText);
+        _searchTooltipShortcut.Visibility(_searchKeyChordText.empty() ? Visibility::Collapsed : Visibility::Visible);
+        WUX::Automation::AutomationProperties::SetAcceleratorKey(
+            SearchTabsButton(), _searchKeyChordText);
         WUX::Automation::AutomationProperties::SetHelpText(
             SearchTabsButton(), searchLabel);
 
