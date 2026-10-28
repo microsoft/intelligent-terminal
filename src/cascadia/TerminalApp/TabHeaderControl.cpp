@@ -227,7 +227,7 @@ namespace winrt::TerminalApp::implementation
             const auto presenter = _nativeHeaderPresenter.get();
             const auto compact = presenter && presenter.Visibility() == Windows::UI::Xaml::Visibility::Collapsed;
             const auto unread = _presentation.HasUnreadActivity() &&
-                                (_paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible || !_presentation.UnreadActivityProjectedToPaneRows());
+                                _paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible;
             HeaderCompletionIndicator().Visibility(
                 unread && !compact ?
                     Windows::UI::Xaml::Visibility::Visible :

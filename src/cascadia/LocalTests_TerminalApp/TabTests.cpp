@@ -2465,7 +2465,11 @@ namespace TerminalAppLocalTests
             header.PaneRowsVisibility(Visibility::Visible);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             header.Presentation().UnreadActivityProjectedToPaneRows(false);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+            header.PaneRowsVisibility(Visibility::Collapsed);
             VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            header.PaneRowsVisibility(Visibility::Visible);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             header.Presentation().UnreadActivityProjectedToPaneRows(true);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
             header.PaneRowsVisibility(Visibility::Collapsed);
@@ -10479,14 +10483,19 @@ namespace TerminalAppLocalTests
             const auto root = _sidebarProgressRoot(strip, tab);
             const auto header = root.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
             const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
-            display.IsExpanded(true);
-            impl->SyncTabPresentation(display);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
-            display.IsExpanded(false);
-            impl->SyncTabPresentation(display);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            for (const auto projected : { false, true })
+            {
+                display.Presentation().UnreadActivityProjectedToPaneRows(projected);
+                display.IsExpanded(true);
+                impl->SyncTabPresentation(display);
+                strip.UpdateLayout();
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, indicator.Visibility());
+                VERIFY_IS_TRUE(display.PaneItems().GetAt(0).HasUnreadActivity());
+                display.IsExpanded(false);
+                impl->SyncTabPresentation(display);
+                strip.UpdateLayout();
+                VERIFY_ARE_EQUAL(Visibility::Visible, indicator.Visibility());
+            }
             display.SelectionVisibility(Visibility::Collapsed);
             nativeDisplay->SetPointerOver(false, false);
             strip.UpdateLayout();
