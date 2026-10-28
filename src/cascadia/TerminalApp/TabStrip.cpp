@@ -1849,6 +1849,14 @@ namespace winrt::TerminalApp::implementation
         header.RenameEnded({ get_weak(), &TabStrip::OnHeaderRenameEnded });
     }
 
+    void TabStrip::OnRowHeaderSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
+    {
+        if (const auto row = WUX::Media::VisualTreeHelper::GetParent(sender.as<DependencyObject>()).try_as<FrameworkElement>())
+        {
+            _updateSidebarActionLayout(row);
+        }
+    }
+
     void TabStrip::OnHeaderRenameEnded(IInspectable const& sender, IInspectable const&)
     {
         const auto view = sender.try_as<FrameworkElement>();

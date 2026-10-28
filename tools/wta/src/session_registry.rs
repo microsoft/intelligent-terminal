@@ -469,8 +469,6 @@ pub struct PaneAgentStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_activity_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attention_event_id: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SessionLocation>,
@@ -545,7 +543,6 @@ pub struct NativePaneObservation {
 
 struct NativePaneState {
     observation: NativePaneObservation,
-    attention_event_id: Option<u64>,
     bound_identity: Option<SessionIdentity>,
     inference_blocked: bool,
 }
@@ -1561,9 +1558,6 @@ pub struct SessionInfo {
     pub attention_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attention_timestamp_ms: Option<u64>,
-    /// Presentation revision, independent of tool-event timestamp ordering.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attention_event_id: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attention_cooldown_until_ms: Option<u64>,
     #[serde(default)]
@@ -1630,7 +1624,6 @@ impl PartialEq for SessionInfo {
             && self.current_tool == other.current_tool
             && self.attention_reason == other.attention_reason
             && self.attention_timestamp_ms == other.attention_timestamp_ms
-            && self.attention_event_id == other.attention_event_id
             && self.attention_cooldown_until_ms == other.attention_cooldown_until_ms
             && self.last_activity_at_ms == other.last_activity_at_ms
             && self.origin == other.origin
@@ -1679,7 +1672,6 @@ impl SessionInfo {
             current_tool: None,
             attention_reason: None,
             attention_timestamp_ms: None,
-            attention_event_id: None,
             attention_cooldown_until_ms: None,
             last_activity_at_ms: None,
             origin: None,
@@ -1741,7 +1733,6 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         current_tool: s.current_tool.clone(),
         attention_reason: s.attention_reason.clone(),
         attention_timestamp_ms: s.attention_timestamp_ms,
-        attention_event_id: None,
         attention_cooldown_until_ms: s.attention_cooldown_until_ms,
         last_activity_at_ms,
         origin: Some(s.origin.clone()),
@@ -2457,17 +2448,6 @@ impl SessionRegistry for InMemoryRegistry {
                         agent_session_id: row.agent_session_id.clone(),
                         inferred_history_key: row.inferred_history_key.clone(),
                         last_activity_at_ms: Some(row.last_activity_at_ms),
-                        attention_event_id: state
-                            .native_panes
-                            .get(&pane_key(&row.pane_id))
-                            .and_then(|native| {
-                                native
-                                    .bound_identity
-                                    .as_ref()
-                                    .and_then(|identity| state.sessions.get(identity))
-                                    .and_then(|session| session.attention_event_id)
-                                    .or(native.attention_event_id)
-                            }),
                         cwd: pane_status_cwd(&row.provider_id, None, row.cwd.as_ref()).or_else(
                             || {
                                 state
@@ -2535,7 +2515,6 @@ impl SessionRegistry for InMemoryRegistry {
                     agent_session_id: Some(row.session_id.to_string()),
                     inferred_history_key: None,
                     last_activity_at_ms: row.last_activity_at_ms,
-                    attention_event_id: row.attention_event_id,
                     cwd,
                     location: row.location.is_actionable().then(|| row.location.clone()),
                     mode_epoch: None,
@@ -3326,7 +3305,6 @@ fn apply_native_observation_locked(
                 progress_state: 0 | 1 | 3 | 4
             }
     );
-    let attention_event = matches!(event.event, NativeObservationKind::Bell);
     let (status, active, removed) = match event.event {
         NativeObservationKind::Reset { tracking_enabled } => {
             (AgentStatus::Idle, !tracking_enabled, false)
@@ -3433,17 +3411,6 @@ fn apply_native_observation_locked(
     }
     let inference_blocked =
         (!reset || continuation) && old.is_some_and(|old| old.inference_blocked);
-    let attention_event_id = if continuation {
-        old.and_then(|old| old.attention_event_id)
-    } else {
-        attention_event.then(|| {
-            observation.last_activity_at_ms.max(
-                old.and_then(|old| old.attention_event_id)
-                    .unwrap_or(0)
-                    .saturating_add(1),
-            )
-        })
-    };
     // Binding an unbound history row requires Terminal's exact resume identity
     // and backend. A provider-only new launch must never guess a history row.
     if reset
@@ -3505,7 +3472,6 @@ fn apply_native_observation_locked(
                         .is_some_and(crate::agent_sessions::is_user_input_tool));
             if !(generic_activity && canonical_attention) {
                 row.status = Some(status);
-                row.attention_event_id = attention_event_id;
                 row.current_tool = None;
                 row.attention_reason = None;
                 row.last_error = None;
@@ -3519,7 +3485,6 @@ fn apply_native_observation_locked(
             pane,
             NativePaneState {
                 observation,
-                attention_event_id,
                 bound_identity,
                 inference_blocked,
             },
@@ -3571,7 +3536,6 @@ fn upsert_locked(state: &mut RegistryState, mut info: SessionInfo) {
     state.known_raw_ids.insert(info.session_id.to_string());
     let identity = SessionIdentity::from_info(&info);
     if let Some(old) = state.sessions.get(&identity) {
-        info.attention_event_id = info.attention_event_id.or(old.attention_event_id);
         if let Some(native) = old
             .pane_session_id
             .as_deref()
@@ -4433,13 +4397,6 @@ fn apply_event_qualified_at_ms(
             ) {
                 return false;
             }
-            let fresh_attention = entry.status != Some(AgentStatus::Attention)
-                || timestamp_ms.is_none()
-                || timestamp_ms > entry.attention_timestamp_ms;
-            if fresh_attention {
-                entry.attention_event_id =
-                    Some(now.max(entry.attention_event_id.unwrap_or(0).saturating_add(1)));
-            }
             entry.attention_timestamp_ms = if entry.status == Some(AgentStatus::Attention) {
                 entry.attention_timestamp_ms.max(timestamp_ms)
             } else {
@@ -4746,67 +4703,6 @@ mod tests {
             0,
         );
         state
-    }
-
-    #[test]
-    fn attention_event_id_distinguishes_notifications_from_replays_and_metadata() {
-        let mut state = cooldown_state();
-        let notification = |timestamp_ms| SessionEvent::Notification {
-            key: "cooldown".into(),
-            message: "approve command".into(),
-            timestamp_ms,
-        };
-        assert!(apply_event_at_ms(
-            &mut state,
-            notification(Some(100)),
-            10_000
-        ));
-        let first = state.sessions.values().next().unwrap().attention_event_id;
-        assert!(first.is_some());
-        assert!(apply_event_at_ms(
-            &mut state,
-            notification(Some(100)),
-            11_000
-        ));
-        assert_eq!(
-            state.sessions.values().next().unwrap().attention_event_id,
-            first
-        );
-        assert!(apply_event_at_ms(
-            &mut state,
-            SessionEvent::WorkingDirectoryChanged {
-                key: "cooldown".into(),
-                pane_session_id: "owner".into(),
-                cwd: PathBuf::from("/other"),
-            },
-            12_000,
-        ));
-        assert_eq!(
-            state.sessions.values().next().unwrap().attention_event_id,
-            first
-        );
-        assert!(apply_event_at_ms(
-            &mut state,
-            notification(Some(101)),
-            13_000
-        ));
-        assert!(state.sessions.values().next().unwrap().attention_event_id > first);
-    }
-
-    #[test]
-    fn notifications_without_source_time_get_distinct_presentation_ids() {
-        let mut state = cooldown_state();
-        let notification = || SessionEvent::Notification {
-            key: "cooldown".into(),
-            message: "approve command".into(),
-            timestamp_ms: None,
-        };
-        assert!(apply_event_at_ms(&mut state, notification(), 10_000));
-        let first = state.sessions.values().next().unwrap().attention_event_id;
-        assert!(apply_event_at_ms(&mut state, notification(), 10_000));
-        let row = state.sessions.values().next().unwrap();
-        assert!(row.attention_event_id > first);
-        assert_eq!(row.attention_timestamp_ms, None);
     }
 
     #[test]
@@ -8794,7 +8690,6 @@ mod tests {
             current_tool: Some("ask_user".into()),
             attention_reason: Some("Need approval".into()),
             attention_timestamp_ms: None,
-            attention_event_id: None,
             attention_cooldown_until_ms: None,
             last_activity_at_ms: Some(1717012345678),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
@@ -8975,7 +8870,6 @@ mod tests {
             current_tool: None,
             attention_reason: None,
             attention_timestamp_ms: None,
-            attention_event_id: None,
             attention_cooldown_until_ms: None,
             last_activity_at_ms: Some(123),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
@@ -9343,7 +9237,6 @@ mod tests {
             current_tool: None,
             attention_reason: None,
             attention_timestamp_ms: None,
-            attention_event_id: None,
             attention_cooldown_until_ms: None,
             last_activity_at_ms: Some(1),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
@@ -11719,10 +11612,7 @@ mod tests {
                 .clone(),
         );
         let parsed = extract_wta_meta(&mut meta);
-        assert!(
-            meta.is_none(),
-            "private retry intent must not reach the agent"
-        );
+        assert!(meta.is_none(), "private retry intent must not reach the agent");
         inject_wta_meta(&mut meta, &parsed);
         assert_eq!(
             meta.as_ref().unwrap()["wta"]["startup_intent"],

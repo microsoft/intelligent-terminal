@@ -255,8 +255,7 @@ namespace winrt::TerminalApp::implementation
         const std::string_view sessionId,
         const std::string_view providerId,
         const std::string_view status,
-        const bool focused,
-        const std::optional<uint64_t> attentionEvent)
+        const bool focused)
     {
         _CheckThread();
         bool changed = false;
@@ -272,7 +271,7 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            changed = it->second.completion.Update(paneId, sessionId, providerId, status, focused, attentionEvent);
+            changed = it->second.completion.Update(paneId, sessionId, providerId, status, focused);
         }
         if (changed)
         {

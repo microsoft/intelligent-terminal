@@ -3678,7 +3678,7 @@ namespace winrt::TerminalApp::implementation
                                            params["pane_session_id"].asString() :
                                            std::string{};
             if (!sessionId.empty() && !status.empty() &&
-                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status, cwd, params["attention_event_id"].isUInt64() ? std::optional<uint64_t>{ params["attention_event_id"].asUInt64() } : std::nullopt))
+                _ApplyAgentSessionStatusDelta(sessionId, paneSessionId, providerId, lastActivityAtMs, status, cwd))
             {
                 if (_AreRecentAgentSessionsVisible())
                 {
@@ -3700,8 +3700,7 @@ namespace winrt::TerminalApp::implementation
                                                      const std::string_view providerId,
                                                      const std::optional<uint64_t> lastActivityAtMs,
                                                      const std::string_view status,
-                                                     std::optional<std::string> cwd,
-                                                     const std::optional<uint64_t> attentionEventId)
+                                                     std::optional<std::string> cwd)
     {
         if (sessionId.empty() ||
             (status != "Idle" &&
@@ -3724,8 +3723,7 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId, std::move(cwd) };
-        incoming.attentionEventId = attentionEventId;
+        const auto incoming = _RichTabAgentInfo{ sessionIdString, statusString, providerIdString, lastActivityAtMs, paneId, std::move(cwd) };
         const auto rejectsIncoming = [&](const auto& info) {
             return info.sessionId == sessionId && info.paneSessionId == paneId &&
                    !(info.providerId.empty() && !providerId.empty()) &&
@@ -3766,7 +3764,6 @@ namespace winrt::TerminalApp::implementation
                 info.providerId = report.providerId;
             }
             info.lastActivityAtMs = report.lastActivityAtMs;
-            info.attentionEventId = report.attentionEventId;
             info.cwd = report.cwd;
         };
         ++_agentSnapshotRequestGeneration;
@@ -13109,7 +13106,7 @@ namespace winrt::TerminalApp::implementation
                             if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId(), info->attentionEventId);
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId());
                             }
                         }
                         return false;
@@ -13398,10 +13395,6 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             _RichTabAgentInfo info{ row.get("agent_session_id", "").asString(), row["status"].asString(), provider, row["last_activity_at_ms"].isUInt64() ? std::optional<uint64_t>{ row["last_activity_at_ms"].asUInt64() } : std::nullopt, paneId };
-            if (row["attention_event_id"].isUInt64())
-            {
-                info.attentionEventId = row["attention_event_id"].asUInt64();
-            }
             if (row["cwd"].isString() && !row["cwd"].asString().empty())
             {
                 info.cwd = row["cwd"].asString();
@@ -15365,7 +15358,8 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             const auto sourcePane = tab->GetRootPane()->FindPaneByContentId(pane.ContentId);
-            const auto icon = _AgentIconForControl(sourcePane ? sourcePane->GetTerminalControl() : nullptr, pane.Icon);
+            const auto sourceControl = sourcePane ? sourcePane->GetTerminalControl() : nullptr;
+            const auto icon = _AgentIconForControl(sourceControl, pane.Icon);
             auto item = winrt::make<TabStripPaneItem>(
                 tab->TabViewItem(),
                 pane.ContentId,
@@ -15373,11 +15367,14 @@ namespace winrt::TerminalApp::implementation
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
-            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourcePane ? sourcePane->GetTerminalControl() : nullptr));
+            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourceControl));
             itemImpl->ProgressState(pane.ProgressState);
             itemImpl->IsProgressRingActive(pane.ProgressState != 0);
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
             itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
+            const auto agentInfo = itemImpl->HasUnreadActivity() ? _RichTabAgentInfoForControl(sourceControl) : std::nullopt;
+            const auto unreadStatus = agentInfo && agentInfo->status == "Attention" ? "Attention" : "Complete";
+            bool metadataIncludesUnreadStatus = false;
             std::wstring automationName{ pane.Title.c_str(), pane.Title.size() };
             if (pane.SessionId != winrt::guid{})
             {
@@ -15393,8 +15390,13 @@ namespace winrt::TerminalApp::implementation
                     if (!value.accessibilityText.empty())
                     {
                         appendAutomationSegment(automationName, value.accessibilityText);
+                        metadataIncludesUnreadStatus = value.agentStatus == unreadStatus;
                     }
                 }
+            }
+            if (itemImpl->HasUnreadActivity() && !metadataIncludesUnreadStatus)
+            {
+                appendAutomationSegment(automationName, _SidebarHistoryStatusText(unreadStatus));
             }
             if (const auto progressText = progressAutomationText(pane); !progressText.empty())
             {

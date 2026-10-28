@@ -537,7 +537,8 @@ namespace winrt::TerminalApp::implementation
         const auto source = _iconHidden ? IconSource{ nullptr } : _iconSource;
         const auto showStatusIcon = _tabStatus.BellIndicator() || _tabStatus.IsProgressRingActive();
         _headerControl.Presentation().IconSource(source);
-        TabViewItem().IconSource(showStatusIcon ? _progressIconSource : source);
+        const auto keepIconSlot = showStatusIcon || (!source && _headerControl.Presentation().HasUnreadActivity());
+        TabViewItem().IconSource(keepIconSlot ? _progressIconSource : source);
         if (Media::VisualTreeHelper::GetChildrenCount(TabViewItem()) > 0)
         {
             const auto root = Media::VisualTreeHelper::GetChild(TabViewItem(), 0).as<FrameworkElement>();
@@ -660,6 +661,7 @@ namespace winrt::TerminalApp::implementation
         ASSERT_UI_THREAD();
         _unreadAgentActivityNeedsAttention = unread && needsAttention;
         _headerControl.Presentation().HasUnreadActivity(unread);
+        _UpdateIconVisibility();
         _UpdateAutomationName();
     }
 

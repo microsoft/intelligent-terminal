@@ -31,6 +31,7 @@ namespace winrt::TerminalApp::implementation
     struct TabHeaderControl : TabHeaderControlT<TabHeaderControl>
     {
         TabHeaderControl();
+        ~TabHeaderControl();
         void BeginRename();
         void CancelRename();
 
@@ -84,11 +85,15 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _presentationChanged;
         // This view remains owned here when its visual parent is the native slot.
         winrt::Windows::UI::Xaml::Controls::Grid _progressRingPresenter{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::Grid _compactCompletionIndicator{ nullptr };
+        winrt::weak_ref<winrt::Windows::UI::Xaml::UIElement> _nativeHeaderPresenter;
+        int64_t _nativeHeaderVisibilityToken{ 0 };
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
         void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();
+        void _ClearNativeHeaderObserver();
     };
 }
 

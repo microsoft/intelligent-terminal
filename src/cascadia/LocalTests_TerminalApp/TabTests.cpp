@@ -10375,13 +10375,13 @@ namespace TerminalAppLocalTests
             const auto secondPane = tab->GetRootPane()->FindPaneByContentId(gsl::narrow<uint32_t>(secondControl.ContentId()));
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
             const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(second->SessionId()));
-            const auto report = [&](const uint64_t activity, const uint64_t notification) {
-                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", activity, "Attention", std::nullopt, notification));
+            const auto report = [&](const uint64_t activity) {
+                VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", activity, "Attention"));
                 VERIFY_ARE_EQUAL(std::string{ "Attention" }, page->_BuildRichTabFirstPartyFields(secondControl).at("agentStatusId"));
             };
             tab->SetVerticalTabLayout(false);
             firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
-            report(1000, 100);
+            report(1000);
             VERIFY_IS_TRUE(tab->IsFocused());
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             VERIFY_IS_TRUE(tab->_headerControl.Presentation().HasUnreadActivity());
@@ -10393,17 +10393,37 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             VERIFY_ARE_EQUAL(tab->Title(), Automation::AutomationProperties::GetName(tab->TabViewItem()));
             firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
-            report(2000, 100);
+            report(2000);
             VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
-            report(3000, 101);
+            report(3000);
+            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", 4000, "Working"));
+            report(5000);
             VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(second->SessionId(), "attention-pane", "copilot"));
             tab->SetVerticalTabLayout(true);
+            page->_tabStrip.RichTabAgentStatusVisible(false);
+            page->_richTabPresentations.clear();
+            page->_RefreshTabStripPaneItems(tab);
             const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tab->TabViewItem());
             VERIFY_ARE_EQUAL(2u, display.PaneItems().Size());
             for (const auto& pane : display.PaneItems())
             {
                 VERIFY_ARE_EQUAL(pane.ContentId() == secondControl.ContentId(), pane.HasUnreadActivity());
+                if (pane.HasUnreadActivity())
+                {
+                    VERIFY_IS_TRUE(std::wstring_view{ pane.AutomationName() }.find(RS_(L"VerticalTabsHistoryStatusAttention")) != std::wstring_view::npos);
+                }
             }
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", 6000, "Working"));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", 7000, "Idle"));
+            const auto unreadPane = display.PaneItems().GetAt(1);
+            VERIFY_IS_TRUE(std::wstring_view{ unreadPane.AutomationName() }.find(RS_(L"VerticalTabsHistoryStatusComplete")) != std::wstring_view::npos);
+            secondPane->GotFocus.raise(secondPane, FocusState::Pointer);
+            VERIFY_IS_FALSE(unreadPane.HasUnreadActivity());
+            VERIFY_ARE_EQUAL(unreadPane.Title(), unreadPane.AutomationName());
+            firstPane->GotFocus.raise(firstPane, FocusState::Pointer);
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("attention-pane", paneId, "copilot", 8000, "Working"));
+            report(9000);
             VERIFY_IS_TRUE(display.Presentation().UnreadActivityProjectedToPaneRows());
             tab->GetRootPane()->HidePane(secondPane);
             tab->PaneProjectionChanged.raise();
@@ -10501,6 +10521,23 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(Visibility::Collapsed, close.Visibility());
                     VERIFY_IS_TRUE(std::abs(before.X - indicator.TransformToVisual(strip).TransformPoint({ 0, 0 }).X) <= 0.5);
                 }
+            }
+            display.IsGroup(false);
+            display.Presentation().HasUnreadActivity(false);
+            display.Presentation().MetadataText(L"");
+            impl->SyncTabPresentation(display);
+            strip.UpdateLayout();
+            const auto row = root.FindName(L"TabHeaderGrid").as<FrameworkElement>();
+            const auto rowHeight = row.ActualHeight();
+            for (const auto text : { L"main", L"" })
+            {
+                display.Presentation().MetadataText(text);
+                impl->SyncTabPresentation(display);
+                strip.UpdateLayout();
+                VERIFY_ARE_EQUAL(rowHeight, row.ActualHeight());
+                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto closePosition = closeSlot.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
             }
         });
     }
@@ -18353,6 +18390,37 @@ namespace TerminalAppLocalTests
                 page->_tabView.TabWidthMode(widthMode);
                 page->_tabView.SelectedItem(tab->TabViewItem());
                 tab->UpdateIcon(L"ms-appx:///AgentIcons/copilot.svg", IconStyle::Monochrome);
+                host.UpdateLayout();
+            });
+            TestOnUIThread([&]() {
+                page->_tabView.SelectedItem(sibling.TabViewItem());
+                tab->SetUnreadAgentActivity(true);
+                tab->HideIcon(true);
+                const auto controlTemplate = tab->TabViewItem().Template();
+                tab->TabViewItem().Template(nullptr);
+                tab->TabViewItem().Template(controlTemplate);
+                tab->TabViewItem().ApplyTemplate();
+                host.UpdateLayout();
+            });
+            _waitForContentTransferReviewUI([&]() {
+                host.UpdateLayout();
+                const auto item = tab->TabViewItem();
+                const auto root = Media::VisualTreeHelper::GetChild(item, 0).as<FrameworkElement>();
+                const auto header = item.Header().as<winrt::TerminalApp::TabHeaderControl>();
+                const auto nativeDot = _findProgressElement(header, L"HeaderCompactCompletionIndicator");
+                const auto titleDot = header.FindName(L"HeaderCompletionIndicator").as<FrameworkElement>();
+                const auto compact = widthMode == winrt::MUX::Controls::TabViewWidthMode::Compact;
+                return nativeDot && nativeDot.Visibility() == (compact ? Visibility::Visible : Visibility::Collapsed) &&
+                       titleDot.Visibility() == (compact ? Visibility::Collapsed : Visibility::Visible) &&
+                       visible(compact ? nativeDot : titleDot) &&
+                       Media::VisualTreeHelper::GetParent(Media::VisualTreeHelper::GetParent(nativeDot)) == root.FindName(L"IconBox").as<Viewbox>().Child();
+            });
+            TestOnUIThread([&]() {
+                tab->SetUnreadAgentActivity(false);
+                const auto header = tab->TabViewItem().Header().as<winrt::TerminalApp::TabHeaderControl>();
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, _findProgressElement(header, L"HeaderCompactCompletionIndicator").Visibility());
+                tab->HideIcon(false);
+                page->_tabView.SelectedItem(tab->TabViewItem());
                 host.UpdateLayout();
             });
             _emitOsc(connection, u"\x1b]9;4;3;0\a");

@@ -7066,7 +7066,6 @@ async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str
         status,
         row.cwd.to_str().filter(|cwd| !cwd.is_empty()),
         row.origin.as_ref(),
-        row.attention_event_id,
     ));
     true
 }

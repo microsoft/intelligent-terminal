@@ -81,6 +81,17 @@
                           FontSize="12"
                           Glyph="&#xEA8F;"
                           Visibility="{x:Bind TabStatus.BellIndicator, Mode=OneWay}" />
+                <Grid x:Name="HeaderCompactCompletionIndicator"
+                      Width="16"
+                      Height="16"
+                      AutomationProperties.AccessibilityView="Raw"
+                      IsHitTestVisible="False"
+                      Visibility="Collapsed">
+                    <Ellipse Width="4"
+                             Height="4"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top" />
+                </Grid>
             </Grid>
             <FontIcon x:Name="HeaderZoomIcon"
                       Margin="0,0,8,0"
@@ -169,7 +180,8 @@
               AutomationProperties.AccessibilityView="Raw"
               IsHitTestVisible="False"
               Visibility="Collapsed">
-            <Ellipse Width="4"
+            <Ellipse x:Name="HeaderCompletionDot"
+                     Width="4"
                      Height="4"
                      Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
         </Grid>

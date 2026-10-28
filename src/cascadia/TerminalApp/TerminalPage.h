@@ -1052,7 +1052,6 @@ namespace winrt::TerminalApp::implementation
             std::string tabId;
             Json::Value location;
             Json::Value inferredHistoryKey;
-            std::optional<uint64_t> attentionEventId;
             bool launchMetadata{ false };
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
@@ -1151,8 +1150,7 @@ namespace winrt::TerminalApp::implementation
                                            std::string_view providerId,
                                            std::optional<uint64_t> lastActivityAtMs,
                                            std::string_view status,
-                                           std::optional<std::string> cwd = std::nullopt,
-                                           std::optional<uint64_t> attentionEventId = std::nullopt);
+                                           std::optional<std::string> cwd = std::nullopt);
         void _RaiseAgentAttentionBell(const winrt::guid& paneSessionId);
         static winrt::hstring _SidebarHistoryAgeText(std::optional<uint64_t> lastActivityAtMs, uint64_t nowMs, std::wstring_view languageTag = {});
         friend struct TabStripHistoryItem;

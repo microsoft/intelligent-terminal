@@ -521,6 +521,8 @@ namespace winrt::TerminalApp::implementation
                                        winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRowHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRowHeaderSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
         void OnHeaderRenameEnded(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::Foundation::IInspectable const& args);
         void OnPaneRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,

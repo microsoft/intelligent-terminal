@@ -107,7 +107,6 @@ pub(crate) fn session_status_changed_event(
     status: &crate::agent_sessions::AgentStatus,
     cwd: Option<&str>,
     origin: Option<&crate::agent_sessions::SessionOrigin>,
-    attention_event_id: Option<u64>,
 ) -> String {
     serde_json::json!({
         "type": "event",
@@ -117,7 +116,6 @@ pub(crate) fn session_status_changed_event(
             "pane_session_id": pane_session_id,
             "provider_id": provider_id,
             "last_activity_at_ms": last_activity_at_ms,
-            "attention_event_id": attention_event_id,
             "status": status,
             "cwd": cwd,
             "origin": origin,
@@ -394,7 +392,6 @@ mod tests {
             &crate::agent_sessions::AgentStatus::Attention,
             Some("C:\\workspace"),
             Some(&crate::agent_sessions::SessionOrigin::AgentPane),
-            Some(40),
         ))
         .unwrap();
 
@@ -403,7 +400,6 @@ mod tests {
         assert_eq!(event["params"]["pane_session_id"], "pane-a");
         assert_eq!(event["params"]["provider_id"], "claude");
         assert_eq!(event["params"]["last_activity_at_ms"], 42);
-        assert_eq!(event["params"]["attention_event_id"], 40);
         assert_eq!(event["params"]["status"], "Attention");
         assert_eq!(event["params"]["cwd"], "C:\\workspace");
         assert_eq!(event["params"]["origin"], "AgentPane");

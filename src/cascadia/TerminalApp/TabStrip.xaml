@@ -703,6 +703,7 @@
                                                     PaneRowsVisibility="{x:Bind ChildrenVisibility, Mode=OneWay}"
                                                     Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     ShowProgressRing="False"
+                                                    SizeChanged="OnRowHeaderSizeChanged"
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Grid x:Name="TabCloseButtonSlot"
                                   Grid.Column="2"

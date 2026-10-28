@@ -17,6 +17,13 @@ namespace winrt::TerminalApp::implementation
         Presentation(winrt::make<TabHeaderPresentation>());
         InitializeComponent();
         _progressRingPresenter = HeaderProgressRingPresenter();
+        _compactCompletionIndicator = HeaderCompactCompletionIndicator();
+        Windows::UI::Xaml::Data::Binding completionBrush;
+        completionBrush.Source(HeaderCompletionDot());
+        completionBrush.Path(Windows::UI::Xaml::PropertyPath{ L"Fill" });
+        completionBrush.Mode(Windows::UI::Xaml::Data::BindingMode::OneWay);
+        _compactCompletionIndicator.Children().GetAt(0).as<Windows::UI::Xaml::Shapes::Ellipse>().SetBinding(
+            Windows::UI::Xaml::Shapes::Shape::FillProperty(), completionBrush);
         _initialized = true;
         _UpdateUnreadActivityVisibility();
 
@@ -24,6 +31,12 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->_AttachProgressToNativeIconSlot();
+            }
+        });
+        Unloaded([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_ClearNativeHeaderObserver();
             }
         });
 
@@ -79,6 +92,24 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
+    TabHeaderControl::~TabHeaderControl()
+    {
+        try
+        {
+            _ClearNativeHeaderObserver();
+        }
+        CATCH_LOG()
+    }
+
+    void TabHeaderControl::_ClearNativeHeaderObserver()
+    {
+        if (const auto presenter = _nativeHeaderPresenter.get())
+        {
+            presenter.UnregisterPropertyChangedCallback(Windows::UI::Xaml::UIElement::VisibilityProperty(), _nativeHeaderVisibilityToken);
+        }
+        _nativeHeaderPresenter = nullptr;
+    }
+
     void TabHeaderControl::_AttachProgressToNativeIconSlot()
     {
         // WinUI Compact hides the unselected tab's entire header. Move this
@@ -105,6 +136,18 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        _ClearNativeHeaderObserver();
+        if (const auto presenter = root.FindName(L"ContentPresenter").try_as<UIElement>())
+        {
+            _nativeHeaderPresenter = winrt::make_weak(presenter);
+            _nativeHeaderVisibilityToken = presenter.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [weakThis = get_weak()](auto&&, auto&&) {
+                if (const auto self = weakThis.get())
+                {
+                    self->_UpdateUnreadActivityVisibility();
+                }
+            });
+        }
+        _UpdateUnreadActivityVisibility();
         const auto progress = _progressRingPresenter;
         const auto previousProgressParent = Media::VisualTreeHelper::GetParent(progress);
         if (previousProgressParent == box.Child() && Media::VisualTreeHelper::GetParent(icon) == box.Child())
@@ -181,9 +224,16 @@ namespace winrt::TerminalApp::implementation
     {
         if (_initialized)
         {
+            const auto presenter = _nativeHeaderPresenter.get();
+            const auto compact = presenter && presenter.Visibility() == Windows::UI::Xaml::Visibility::Collapsed;
+            const auto unread = _presentation.HasUnreadActivity() &&
+                                (_paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible || !_presentation.UnreadActivityProjectedToPaneRows());
             HeaderCompletionIndicator().Visibility(
-                _presentation.HasUnreadActivity() &&
-                        (_paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible || !_presentation.UnreadActivityProjectedToPaneRows()) ?
+                unread && !compact ?
+                    Windows::UI::Xaml::Visibility::Visible :
+                    Windows::UI::Xaml::Visibility::Collapsed);
+            _compactCompletionIndicator.Visibility(
+                unread && compact ?
                     Windows::UI::Xaml::Visibility::Visible :
                     Windows::UI::Xaml::Visibility::Collapsed);
         }
