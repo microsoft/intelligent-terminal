@@ -92,6 +92,7 @@ namespace winrt::TerminalApp::implementation
         void UpdateZoom(std::shared_ptr<Pane> newFocus);
         void ToggleZoom();
         bool IsZoomed();
+        std::shared_ptr<Pane> GetZoomedPane() const { return _zoomedPane; }
         void EnterZoom();
         void ExitZoom();
 

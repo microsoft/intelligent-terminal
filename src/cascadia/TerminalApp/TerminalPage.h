@@ -1367,7 +1367,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _GetTabIndex(const TerminalApp::Tab& tab) const noexcept;
         TerminalApp::Tab _GetFocusedTab() const noexcept;
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
-        static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab);
+        static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab, bool requireVisible = false);
         winrt::Microsoft::Terminal::Settings::Model::INewContentArgs _PrepareSplitDirectory(
             const winrt::com_ptr<Tab>& tab,
             const winrt::Microsoft::Terminal::Settings::Model::INewContentArgs& content,

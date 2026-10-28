@@ -1775,12 +1775,14 @@ namespace winrt::TerminalApp::implementation
     // Order: the active pane when it is an ordinary terminal pane, then the
     // pane the agent pane was opened from, then any other terminal pane on the
     // tab. Returns nullptr when the tab has no terminal pane at all.
+    // Insertion destinations require visible panes, including their ancestors;
+    // profile/session lookups deliberately keep considering hidden terminals.
     //
     // Deliberately does NOT go through `Pane::GetFocusedProfile()`: that
     // resolves through `GetActivePane()` (`_lastActive`), and the pane we want
     // here is by definition *not* the active one, so it would always come back
     // empty in exactly the case this helper exists for.
-    std::shared_ptr<Pane> TerminalPage::_SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab)
+    std::shared_ptr<Pane> TerminalPage::_SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab, const bool requireVisible)
     {
         if (!tab)
         {
@@ -1796,7 +1798,8 @@ namespace winrt::TerminalApp::implementation
                    pane->GetContent().try_as<TerminalApp::TerminalPaneContent>() != nullptr;
         };
 
-        if (const auto activePane = tab->GetActivePane(); isSourceCandidate(activePane))
+        const auto activePane = tab->GetActivePane();
+        if (!requireVisible && isSourceCandidate(activePane))
         {
             return activePane;
         }
@@ -1811,7 +1814,12 @@ namespace winrt::TerminalApp::implementation
         rootPane->WalkTree([&](const auto& pane) {
             if (!isSourceCandidate(pane))
             {
-                return;
+                return false;
+            }
+            if (pane == activePane)
+            {
+                sourcePane = pane;
+                return true;
             }
             // `IsSourceOfAgentPane` records the pane the user was working in
             // when the agent pane took focus, so it is the precise answer;
@@ -1820,7 +1828,9 @@ namespace winrt::TerminalApp::implementation
             {
                 sourcePane = pane;
             }
-        });
+            return false;
+        },
+                           requireVisible);
         return sourcePane;
     }
 
@@ -14794,6 +14804,7 @@ namespace winrt::TerminalApp::implementation
     //   the specified tab is not a host of terminals (such as the settings tab).
     // - If the Window is specified, the pane will instead be detached and moved
     //   to the window with the given name/id.
+    // - Agent panes belong to their owning tab and cannot be moved independently.
     // Return Value:
     // - true if the pane was moved locally or a cross-window request was sent.
     bool TerminalPage::_MovePane(MovePaneArgs args)
@@ -14805,6 +14816,11 @@ namespace winrt::TerminalApp::implementation
         auto focusedTab{ _GetFocusedTabImpl() };
 
         if (!focusedTab)
+        {
+            return false;
+        }
+
+        if (const auto pane = focusedTab->GetActivePane(); pane && pane->ContainsAgentPane())
         {
             return false;
         }
@@ -14839,6 +14855,19 @@ namespace winrt::TerminalApp::implementation
             if (!targetTab)
             {
                 return false;
+            }
+            if (const auto activePane = targetTab->GetActivePane(); activePane && activePane->ContainsAgentPane())
+            {
+                const auto source = _SourceTerminalPaneForTab(targetTab, true);
+                if (!source || !source->Id())
+                {
+                    return false;
+                }
+                if (targetTab->IsZoomed())
+                {
+                    targetTab->ExitZoom();
+                }
+                targetTab->PreparePaneFocus(*source->Id());
             }
             auto pane = focusedTab->DetachPane();
             targetTab->AttachPane(pane);
@@ -15489,7 +15518,7 @@ namespace winrt::TerminalApp::implementation
         std::vector<Json::Value> routingEvents;
         const auto targetActive = targetTab ? targetTab->GetActivePane() : nullptr;
         const auto targetActiveId = targetActive ? targetActive->Id() : std::nullopt;
-        const auto targetWasZoomed = targetTab && targetTab->IsZoomed();
+        const auto targetZoomedPane = targetTab ? targetTab->GetZoomedPane() : nullptr;
         try
         {
             for (const auto& control : sourceControls)
@@ -15604,9 +15633,11 @@ namespace winrt::TerminalApp::implementation
                     {
                         targetTab->FocusPane(*targetActiveId);
                     }
-                    if (targetWasZoomed && !targetTab->IsZoomed())
+                    if (targetZoomedPane && targetTab->GetZoomedPane() != targetZoomedPane)
                     {
-                        targetTab->ToggleZoom();
+                        // Navigation can zoom an agent even though EnterZoom
+                        // deliberately rejects a direct user zoom on it.
+                        targetTab->UpdateZoom(targetZoomedPane);
                     }
                 }
                 CATCH_LOG()
@@ -15858,7 +15889,7 @@ namespace winrt::TerminalApp::implementation
         // Content transfers still use the existing fixed-panel completion path.
         if (const auto activePane = activeTab->GetActivePane())
         {
-            if (activePane->IsAgentPane())
+            if (activePane->ContainsAgentPane())
             {
                 const auto content = activePane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
                 const bool completingTransfer = content &&
@@ -15869,8 +15900,8 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (!completingTransfer)
                 {
-                    const auto source = _SourceTerminalPaneForTab(activeTab);
-                    if (_receivingContentTransfer || !source || !source->Id())
+                    const auto source = _SourceTerminalPaneForTab(activeTab, true);
+                    if (!source || !source->Id())
                     {
                         return false;
                     }

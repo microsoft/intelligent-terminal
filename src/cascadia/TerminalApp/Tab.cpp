@@ -2676,6 +2676,7 @@ namespace winrt::TerminalApp::implementation
         _rootPane->Restore(_zoomedPane);
         _zoomedPane = newFocus;
         _rootPane->Maximize(_zoomedPane);
+        _tabStatus.IsPaneZoomed(true);
         Content(_zoomedPane->GetRootElement());
     }
 
