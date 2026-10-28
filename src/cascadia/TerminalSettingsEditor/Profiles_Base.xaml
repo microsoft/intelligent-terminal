@@ -141,7 +141,7 @@
                                     CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
                 <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
                           ItemsSource="{x:Bind Profile.AgentPaneBackendList, Mode=OneWay}"
                           SelectedItem="{x:Bind Profile.CurrentAgentPaneBackend, Mode=TwoWay}"
@@ -158,7 +158,7 @@
                                     CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
                 <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
                           ItemsSource="{x:Bind Profile.CommandPaletteAgentList, Mode=OneWay}"
                           SelectedItem="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=TwoWay}"

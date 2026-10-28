@@ -145,7 +145,7 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
             }
         }
 
-        function Get-ProfileAgentCombo {
+        function Get-ProfileAgentExpander {
             param([string]$Header)
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
             $condition = [Windows.Automation.PropertyCondition]::new(
@@ -153,6 +153,13 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
             $expander = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
                 Where-Object { $_.Current.Name.StartsWith($Header) } | Select-Object -First 1
             $expander | Should -Not -BeNullOrEmpty
+            $expander
+        }
+
+        function Get-ProfileAgentCombo {
+            param([string]$Header)
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $expander = Get-ProfileAgentExpander -Header $Header
             $expander.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
             $condition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ComboBox)
@@ -162,6 +169,23 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
                 $null -ne $script:profileAgentCombo
             } | Out-Null
             $script:profileAgentCombo
+        }
+
+        function Assert-ProfileAgentPreview {
+            param([string]$Header, [string]$ExpectedLabel)
+            $expander = Get-ProfileAgentExpander -Header $Header
+            $expander.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+            $condition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)
+            # The separately bound accessible name can be correct while the visible preview is broken.
+            $shown = Test-Until -TimeoutSec 8 -Condition {
+                $script:profileAgentPreviewNames = @($expander.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) |
+                    Where-Object { -not $_.Current.IsOffscreen -and -not $_.Current.BoundingRectangle.IsEmpty } |
+                    ForEach-Object { $_.Current.Name }
+                $script:profileAgentPreviewNames -contains $ExpectedLabel -and
+                    -not ($script:profileAgentPreviewNames -match 'Microsoft\.Terminal\.Settings\.Editor\.AgentEntry')
+            }
+            $shown | Should -BeTrue -Because "$Header must visibly preview '$ExpectedLabel', not [$($script:profileAgentPreviewNames -join '; ')]"
         }
 
         function Get-ProfileAgentSelection {
@@ -276,6 +300,25 @@ Describe 'Feature profile global agent selection' -Tag 'Feature', 'ProfileGlobal
         (Get-ProfileAgentSelection $pane) | Should -Be 'Use global setting (GitHub Copilot)'
         (Get-ProfileAgentSelection $palette) | Should -Be 'Use global setting (Claude)'
         Save-ProfileAgents -Pane '' -Palette ''
+    }
+
+    It 'Profile agent picker previews show selected labels' -Tag 'ProfileAgentPreview' {
+        Open-ProfileAgentSettings -Name $script:fixedProfileName
+        $fixedPane = Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Agent pane agent')
+        $fixedPalette = Get-ProfileAgentSelection (Get-ProfileAgentCombo -Header 'Command palette agent')
+        Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel $fixedPane
+        Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel $fixedPalette
+
+        Open-ProfileAgentSettings
+        $pane = Get-ProfileAgentCombo -Header 'Agent pane agent'
+        $palette = Get-ProfileAgentCombo -Header 'Command palette agent'
+        Select-ProfileAgent $pane 'Use global setting (GitHub Copilot)'
+        Select-ProfileAgent $palette 'Use global setting (Claude)'
+        Save-ProfileAgents -Pane '' -Palette ''
+        Invoke-SettingsNav -App $script:app -NavItem LaunchNavItem | Out-Null
+        Open-ProfileAgentSettings
+        Assert-ProfileAgentPreview -Header 'Agent pane agent' -ExpectedLabel 'Use global setting (GitHub Copilot)'
+        Assert-ProfileAgentPreview -Header 'Command palette agent' -ExpectedLabel 'Use global setting (Claude)'
     }
 }
 
