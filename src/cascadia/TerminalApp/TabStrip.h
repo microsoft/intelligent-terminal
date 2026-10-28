@@ -711,6 +711,7 @@ namespace winrt::TerminalApp::implementation
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         winrt::Windows::UI::Xaml::Style _historyStatusTextStyle(winrt::hstring const& status);
         bool _updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item);
+        void _updateSidebarActionLayout(const winrt::Windows::UI::Xaml::FrameworkElement& row);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();

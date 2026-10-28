@@ -9985,17 +9985,38 @@ namespace TerminalAppLocalTests
             display.SelectionVisibility(Visibility::Collapsed);
             nativeDisplay->SetPointerOver(false, false);
             strip.UpdateLayout();
-            const auto before = indicator.TransformToVisual(root).TransformPoint({ 0, 0 });
-            VERIFY_IS_TRUE(root.ActualWidth() - before.X - indicator.ActualWidth() >= 31);
-            nativeDisplay->SetPointerOver(true, false);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Visible, root.FindName(L"TabCloseButton").as<Button>().Visibility());
-            const auto hovered = indicator.TransformToVisual(root).TransformPoint({ 0, 0 });
-            VERIFY_IS_TRUE(std::abs(before.X - hovered.X) <= 0.5);
-            nativeDisplay->SetPointerOver(false, false);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, root.FindName(L"TabCloseButton").as<Button>().Visibility());
-            VERIFY_IS_TRUE(std::abs(before.X - indicator.TransformToVisual(root).TransformPoint({ 0, 0 }).X) <= 0.5);
+            const auto closeSlot = root.FindName(L"TabCloseButtonSlot").as<Grid>();
+            const auto close = root.FindName(L"TabCloseButton").as<Button>();
+            const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+            for (const auto width : { 220.0, 272.0, 400.0 })
+            {
+                strip.Width(width);
+                for (const auto& text : { winrt::hstring{ L"Tab" }, winrt::hstring{ std::wstring(240, L'W') } })
+                {
+                    display.Presentation().Title(text);
+                    strip.UpdateLayout();
+                    _verifyCompletionIndicatorLayout(indicator);
+                    const auto before = indicator.TransformToVisual(strip).TransformPoint({ 0, 0 });
+                    const auto slotPosition = closeSlot.TransformToVisual(strip).TransformPoint({ 0, 0 });
+                    const auto titlePosition = title.TransformToVisual(strip).TransformPoint({ 0, 0 });
+                    VERIFY_ARE_EQUAL(24.0, closeSlot.ActualWidth());
+                    VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
+                    VERIFY_IS_TRUE(std::abs(before.X - (width * 257.0 / 272.0 - 48.0)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(slotPosition.X - before.X - 24.0) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(slotPosition.Y - before.Y) <= 1.0);
+                    VERIFY_IS_TRUE(titlePosition.X + title.ActualWidth() <= before.X + 1.0);
+                    nativeDisplay->SetPointerOver(true, false);
+                    strip.UpdateLayout();
+                    VERIFY_ARE_EQUAL(Visibility::Visible, close.Visibility());
+                    VERIFY_ARE_EQUAL(24.0, close.ActualWidth());
+                    VERIFY_ARE_EQUAL(24.0, close.ActualHeight());
+                    VERIFY_IS_TRUE(std::abs(before.X - indicator.TransformToVisual(strip).TransformPoint({ 0, 0 }).X) <= 0.5);
+                    nativeDisplay->SetPointerOver(false, false);
+                    strip.UpdateLayout();
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, close.Visibility());
+                    VERIFY_IS_TRUE(std::abs(before.X - indicator.TransformToVisual(strip).TransformPoint({ 0, 0 }).X) <= 0.5);
+                }
+            }
         });
     }
 
@@ -10123,6 +10144,7 @@ namespace TerminalAppLocalTests
             const auto title = row.FindName(L"HistoryTitleText").as<FrameworkElement>();
             const auto indicatorPosition = indicator.TransformToVisual(row).TransformPoint({ 0, 0 });
             const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(std::abs(indicatorPosition.X - (row.ActualWidth() * 257.0 / 272.0 - 48.0)) <= 1.0);
             VERIFY_IS_TRUE(std::abs(indicatorPosition.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Idle" }, visible.Status());
             VERIFY_ARE_EQUAL(Page::_SidebarHistoryStatusText("Complete"), visible.StatusLabelText());
@@ -25172,6 +25194,12 @@ namespace TerminalAppLocalTests
                         _verifyCompletionIndicatorLayout(indicator);
                         const auto indicatorPosition = indicator.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
                         const auto titlePosition = title.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
+                        const auto closeSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
+                        const auto closePosition = closeSlot.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
+                        VERIFY_ARE_EQUAL(24.0, closeSlot.ActualWidth());
+                        VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
+                        VERIFY_IS_TRUE(std::abs(closePosition.X - indicatorPosition.X - 24.0) <= 1.0);
+                        VERIFY_IS_TRUE(std::abs(closePosition.Y - indicatorPosition.Y) <= 1.0);
                         VERIFY_IS_TRUE(std::abs(indicatorPosition.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
                     }
                     VERIFY_ARE_EQUAL(1.0, title.Opacity());

@@ -307,7 +307,7 @@
                           Grid.Column="2"
                           Width="24"
                           Height="24"
-                          Margin="0,0,32,0"
+                          Margin="0,0,24,0"
                           VerticalAlignment="Center"
                           AutomationProperties.AccessibilityView="Raw"
                           IsHitTestVisible="False"
@@ -706,14 +706,15 @@
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Grid x:Name="TabCloseButtonSlot"
                                   Grid.Column="2"
-                                  Width="32"
+                                  Width="24"
+                                  Height="24"
+                                  VerticalAlignment="Top"
                                   Visibility="{x:Bind HeaderVisibility, Mode=OneWay}">
                                 <Button x:Name="TabCloseButton"
-                                        Width="28"
-                                        Height="28"
+                                        Width="24"
+                                        Height="24"
                                         MinWidth="0"
                                         MinHeight="0"
-                                        Margin="0,4,4,0"
                                         Padding="0"
                                         VerticalAlignment="Top"
                                         Background="Transparent"
@@ -758,10 +759,10 @@
                                           PointerExited="OnPanePointerExited"
                                           PointerPressed="OnPanePointerPressed"
                                           RightTapped="OnPaneRightTapped"
+                                          SizeChanged="OnSidebarRowSizeChanged"
                                           Unloaded="OnPaneRowUnloaded">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <!-- The pane dismiss button remains wired below; its collapsed state makes this Auto column zero-width. -->
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <Border x:Name="PaneActiveBackground"
@@ -905,13 +906,14 @@
                                         </Button>
                                         <Grid x:Name="PaneCloseButtonSlot"
                                               Grid.Column="1"
-                                              Width="32">
+                                              Width="24"
+                                              Height="24"
+                                              VerticalAlignment="Top">
                                             <Button x:Name="PaneCloseButton"
-                                                    Width="26"
-                                                    Height="26"
+                                                    Width="24"
+                                                    Height="24"
                                                     MinWidth="0"
                                                     MinHeight="0"
-                                                    Margin="0,4,4,0"
                                                     Padding="0"
                                                     VerticalAlignment="Top"
                                                     Background="Transparent"

@@ -1639,6 +1639,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1664,10 +1665,66 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::_updateSidebarActionLayout(const FrameworkElement& row)
+    {
+        ListViewItem container{ nullptr };
+        for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
+        {
+            container = current.try_as<ListViewItem>();
+        }
+        if (!container || container.ActualWidth() <= 0)
+        {
+            return;
+        }
+
+        const auto rowMargin = container.Margin();
+        const auto width = container.ActualWidth() + rowMargin.Left + rowMargin.Right;
+        // Figma's 272-DIP row has a 48-DIP hug-content action group and a
+        // 15-DIP trailing inset. Scale the group's outer edge, not its controls.
+        const auto inset = std::max(0.0, width * 15.0 / 272.0 - rowMargin.Right);
+        for (const auto name : { L"TabCloseButtonSlot", L"PaneCloseButtonSlot" })
+        {
+            if (const auto slot = row.FindName(name).try_as<FrameworkElement>())
+            {
+                FrameworkElement title{ nullptr };
+                if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
+                {
+                    title = header.FindName(L"HeaderTextBlock").try_as<FrameworkElement>();
+                }
+                else
+                {
+                    title = row.FindName(L"PaneTitleText").try_as<FrameworkElement>();
+                }
+                auto margin = slot.Margin();
+                margin.Right = inset;
+                if (title && title.ActualHeight() > 0)
+                {
+                    const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                    margin.Top = std::max(0.0, position.Y + title.ActualHeight() / 2.0 - 12.0);
+                }
+                if (slot.Margin() != margin)
+                {
+                    slot.Margin(margin);
+                }
+                return;
+            }
+        }
+        if (const auto indicator = row.FindName(L"HistoryCompletionIndicator").try_as<FrameworkElement>())
+        {
+            auto margin = indicator.Margin();
+            margin.Right = 24.0 + inset - row.as<Grid>().Padding().Right;
+            if (indicator.Margin() != margin)
+            {
+                indicator.Margin(margin);
+            }
+        }
+    }
+
     void TabStrip::OnSidebarRowSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
         }
     }
@@ -1787,6 +1844,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);
@@ -2810,6 +2868,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnHistoryRowLoaded(IInspectable const& sender, RoutedEventArgs const&)
     {
         const auto root = sender.as<FrameworkElement>();
+        _updateSidebarActionLayout(root);
         _updateSidebarRowToolTipPlacement(root);
         const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
         if (const auto icon = root.FindName(L"HistoryKeepRunningIcon").try_as<FontIcon>())
