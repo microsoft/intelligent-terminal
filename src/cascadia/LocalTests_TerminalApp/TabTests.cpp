@@ -24132,6 +24132,57 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0.3, inactiveBorder.Background().as<Media::SolidColorBrush>().Opacity());
             VERIFY_IS_TRUE(strip.ContainerFromIndex(0) == selectedContainer);
             VERIFY_IS_TRUE(strip.ContainerFromIndex(1) == inactiveContainer);
+
+            const Media::SolidColorBrush normalForeground{ winrt::Windows::UI::Colors::Black() };
+            const Media::SolidColorBrush hoverForeground{ winrt::Windows::UI::Colors::White() };
+            impl->ItemsList().Foreground(normalForeground);
+            const auto palette = Media::VisualTreeHelper::GetChild(selectedContainer, 0).as<Primitives::ListViewItemPresenter>();
+            palette.PointerOverForeground(hoverForeground);
+            impl->_setHighContrastMode(true);
+            VERIFY_IS_TRUE(impl->FocusTabSearch());
+            const auto header = selectedContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto title = header.FindName(L"TabHeaderPresenter").as<Control>();
+            const auto display = impl->DisplayItemForTab(selectedTab);
+            const auto displayImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(display);
+            displayImpl->SetPointerOver(false, false);
+            impl->RefreshTabColor(selectedTab);
+            VERIFY_IS_TRUE(title.Foreground() == normalForeground);
+            impl->OnSidebarRowPointerEntered(header, nullptr);
+            VERIFY_IS_TRUE(title.Foreground() == hoverForeground);
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, selectedBorder.Background().as<Media::SolidColorBrush>().Color().A);
+            VERIFY_IS_TRUE(selectedContainer.IsSelected());
+            displayImpl->SetPointerOver(false, false);
+            impl->RefreshTabColor(selectedTab);
+            VERIFY_IS_TRUE(title.Foreground() == normalForeground);
+
+            selectedTab.Background(nullptr);
+            const auto activePane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(
+                selectedTab, 11, L"", L"Active pane", true);
+            const auto activePaneImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(activePane);
+            activePaneImpl->MetadataText(L"Pane metadata");
+            activePaneImpl->MetadataVisibility(Visibility::Visible);
+            strip.SetPaneItems(selectedTab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ activePane, winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(selectedTab, 12, L"", L"Other pane", false) }), true);
+            strip.UpdateLayout();
+            const auto panes = selectedContainer.ContentTemplateRoot().as<StackPanel>().Children().GetAt(1).as<ItemsControl>();
+            const auto paneRoot = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(0), 0).as<Grid>();
+            const auto otherRoot = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(1), 0).as<Grid>();
+            const auto otherTitle = otherRoot.FindName(L"PaneTitleText").as<Control>();
+            impl->OnPanePointerEntered(paneRoot, nullptr);
+            for (const auto name : { L"PaneActivateButton", L"PaneCloseButton", L"PaneTitleText", L"PaneMetadataText" })
+            {
+                VERIFY_IS_TRUE(paneRoot.FindName(name).as<Control>().Foreground() == hoverForeground);
+            }
+            VERIFY_IS_TRUE(title.Foreground() == normalForeground);
+            VERIFY_IS_TRUE(otherTitle.Foreground() == normalForeground);
+            VERIFY_ARE_EQUAL(uint8_t{ 0 }, palette.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, paneRoot.FindName(L"PaneActiveBackground").as<Border>().Visibility());
+            VERIFY_IS_TRUE(selectedContainer.IsSelected());
+            impl->OnPanePointerExited(paneRoot, nullptr);
+            VERIFY_IS_TRUE(paneRoot.FindName(L"PaneTitleText").as<Control>().Foreground() == normalForeground);
+            VERIFY_IS_TRUE(paneRoot.FindName(L"PaneMetadataText").as<Control>().Foreground() == normalForeground);
+            VERIFY_IS_TRUE(impl->SearchTabsButton().Focus(FocusState::Keyboard));
+            VERIFY_ARE_EQUAL(Visibility::Visible, paneRoot.FindName(L"PaneActiveBackground").as<Border>().Visibility());
+            VERIFY_IS_TRUE(selectedContainer.IsSelected());
         });
     }
 

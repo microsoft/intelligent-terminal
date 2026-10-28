@@ -1393,17 +1393,19 @@ namespace winrt::TerminalApp::implementation
             }
             const auto groupIndicatorVisible = isGroup && display.ChildrenVisibility() == Visibility::Visible;
             const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
+            const auto customHover = !_highContrast || (searchFocused && isGroup);
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
-                hoverBackground.Opacity(!_highContrast && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
+                hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
                 colorHover.Background(hoverBrush);
                 colorHover.Opacity(!_highContrast && !selected && pointerOver && hoverBrush ? 1.0 : 0.0);
             }
+            auto searchForeground = searchFocused ? ItemsList().Foreground() : nullptr;
             if (const auto container = ItemsList().ContainerFromItem(display);
                 container)
             {
@@ -1415,7 +1417,7 @@ namespace winrt::TerminalApp::implementation
                         presenter.SelectionIndicatorVisualEnabled(!groupIndicatorVisible && !searchFocused);
                     }
                     const auto marker = box_value(L"SidebarThemedHover");
-                    if (!_highContrast)
+                    if (customHover)
                     {
                         presenter.PointerOverBackground(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
                         if (!presenter.Resources().HasKey(marker))
@@ -1430,6 +1432,10 @@ namespace winrt::TerminalApp::implementation
                         {
                             presenter.Resources().Remove(marker);
                         }
+                    }
+                    if (_highContrast && searchFocused && pointerOver)
+                    {
+                        searchForeground = presenter.PointerOverForeground();
                     }
                 }
             }
@@ -1489,7 +1495,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (searchFocused)
                         {
-                            control.Foreground(ItemsList().Foreground());
+                            control.Foreground(searchForeground);
                         }
                         else
                         {
@@ -1522,7 +1528,8 @@ namespace winrt::TerminalApp::implementation
         const auto active = pane.ActiveIndicatorVisibility() == Visibility::Visible && !searchFocused;
         const auto color = active ? _tabSelectionBrush(pane.Tab(), true) : nullptr;
         const auto hoverBrush = !active && !highContrastActive ? _tabHoverBrush(pane.Tab()) : nullptr;
-        const auto hovered = hoverBrush && winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+        const auto pointerOver = winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+        const auto hovered = hoverBrush && pointerOver;
         if (const auto background = root.FindName(L"PaneColorSelectionBackground").try_as<WUX::Controls::Border>())
         {
             WUX::Media::SolidColorBrush brush{ color ? color.Color() : Windows::UI::Colors::Transparent() };
@@ -1537,9 +1544,23 @@ namespace winrt::TerminalApp::implementation
             nativeSelection.Visibility(active && !color ? Visibility::Visible : Visibility::Collapsed);
         }
         const auto foregroundBrush = color ? color : hovered ? hoverBrush : nullptr;
-        const auto foreground = foregroundBrush ?
-                                    WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, _sidebarBackdropColor(Background(), root.ActualTheme())) } :
-                                    nullptr;
+        WUX::Media::Brush foreground = foregroundBrush ?
+                                           WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, _sidebarBackdropColor(Background(), root.ActualTheme())) } :
+                                           nullptr;
+        if (!foreground && searchFocused)
+        {
+            foreground = ItemsList().Foreground();
+            if (highContrastActive && pointerOver)
+            {
+                if (const auto container = ItemsList().ContainerFromItem(_displayItemForTab(pane.Tab())))
+                {
+                    if (const auto palette = _findNamedElement(container, L"SidebarItemPresenter").try_as<Primitives::ListViewItemPresenter>())
+                    {
+                        foreground = palette.PointerOverForeground();
+                    }
+                }
+            }
+        }
         for (const auto name : { L"PaneActivateButton", L"PaneCloseButton", L"PaneTitleText", L"PaneMetadataText" })
         {
             if (const auto control = root.FindName(name).try_as<WUX::Controls::Control>())
@@ -1547,10 +1568,6 @@ namespace winrt::TerminalApp::implementation
                 if (foreground)
                 {
                     control.Foreground(foreground);
-                }
-                else if (searchFocused)
-                {
-                    control.Foreground(ItemsList().Foreground());
                 }
                 else
                 {
@@ -1562,7 +1579,7 @@ namespace winrt::TerminalApp::implementation
         _bindMonochromeIconForeground(presenter, button);
         if (const auto hover = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
         {
-            const auto showHover = !active && winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+            const auto showHover = !active && pointerOver;
             hover.Opacity(showHover && !hoverBrush ? 1.0 : 0.0);
             if (const auto colorHover = root.FindName(L"PaneColorHoverBackground").try_as<WUX::Controls::Border>())
             {
