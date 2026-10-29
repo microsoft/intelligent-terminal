@@ -48,7 +48,7 @@ $publicFns = @(
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Get-ClipboardSnapshot', 'Restore-ClipboardSnapshot', 'Set-ClipboardImage',
-    'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
+    'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Get-WtaMasterPipe', 'Invoke-Wta',
     'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionViewRenderRegex', 'Get-SessionRows',
     'Get-SessionListSelection', 'Select-SessionRow', 'Resume-Session', 'Get-SessionListJson',
     # Verify

@@ -2,7 +2,7 @@ name: Intelligent Terminal Security Review
 run-name: Security Review for PR #${{ github.event.pull_request.number }}
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'AGENTS.md'
@@ -27,6 +27,7 @@ env:
 
 jobs:
   security-review:
+    if: github.event.pull_request.head.repo.id == github.repository_id
     name: Intelligent Terminal security review
     runs-on: ubuntu-latest
     timeout-minutes: 210
@@ -39,11 +40,11 @@ jobs:
       patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
       detector_attested: ${{ steps.canonical.outputs.detector_attested }}
     steps:
-      - name: Checkout trusted base
+      - name: Checkout trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -70,17 +71,18 @@ jobs:
             exit 1
           }
           comparison_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          worker=ghaw-pr-security-guide-fork.lock.yml
-          if [ "$SAME_REPO" = true ]; then
-            worker=ghaw-pr-security.lock.yml
-          fi
+          [ "$SAME_REPO" = true ] || {
+            echo "::error::Security review requires a same-repository PR."
+            exit 1
+          }
+          worker=ghaw-pr-security.lock.yml
           scope_file="$RUNNER_TEMP/security-scope.json"
           node .github/skills/ghaw-pr-security/scripts/security-review.mjs scope \
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
             --pr "$PR_NUMBER" \
-            --relation "$([ "$SAME_REPO" = true ] && echo same-repo || echo fork)" \
-            --mode "$([ "$SAME_REPO" = true ] && echo repair || echo guide)" \
+            --relation same-repo \
+            --mode repair \
             --output "$scope_file"
           applicable="$(node -p "JSON.parse(require('fs').readFileSync('$scope_file','utf8')).applicable")"
           {
@@ -263,11 +265,11 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      - name: Checkout trusted base only
+      - name: Checkout trusted workflow revision for publication
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Download canonical handoff from this controller run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -346,7 +348,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Download canonical handoff from this controller run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c

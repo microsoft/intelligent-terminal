@@ -50,11 +50,13 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 vec![SessionEvent::Notification {
                     key: key.clone(),
                     message: reason,
+                    timestamp_ms: None,
                 }]
             } else if is_user_input_tool(&tool) {
                 vec![SessionEvent::Notification {
                     key: key.clone(),
                     message: tool,
+                    timestamp_ms: None,
                 }]
             } else {
                 vec![SessionEvent::ToolStarting {
@@ -150,7 +152,8 @@ mod tests {
             classify(&r, &"k".to_string()),
             vec![SessionEvent::Notification {
                 key: "k".to_string(),
-                message: "Allow listing System32?".to_string()
+                message: "Allow listing System32?".to_string(),
+                timestamp_ms: None,
             }]
         );
     }

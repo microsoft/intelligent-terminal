@@ -27,6 +27,12 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::string standardOutput;
         std::string standardError;
         uint32_t win32Error{ 0 };
+        bool processStarted{ false };
+        bool exitCodeValid{ false };
+        bool win32ErrorValid{ false };
+        bool outputLimitObserved{ false };
+        bool standardOutputExceeded{ false };
+        bool standardErrorExceeded{ false };
     };
 
     class CommandRunner

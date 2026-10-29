@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} ఇన్‌స్టాల్ చేయబడ�
 agents.loading: "లోడ్ అవుతోంది..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - కీ కాంబినేషన్‌లు, అనువదించవద్దు
 agents.footer_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter సెషన్ ప్రారంభించండి • Esc నిష్క్రమించండి • F5 రిఫ్రెష్ చేయండి • / వెతకండి)"
-agents.status.active: "సక్రియం"
+agents.status.active: "పని చేస్తోంది"
 agents.status.waiting_for_input: "ఇన్‌పుట్ కోసం వేచి ఉంది"
 agents.status.error: "ఎర్రర్"
 agents.status.idle: "నిష్క్రియం"

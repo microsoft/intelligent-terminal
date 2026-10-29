@@ -1230,6 +1230,10 @@ void AppHost::_WindowMoved()
                 // There isn't a good place that's shared between these two files, but
                 // it's only 5 LOC so whatever.
                 const auto popups{ Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root.XamlRoot()) };
+                if (popups.Size() > 0)
+                {
+                    _windowLogic.WindowMoved();
+                }
                 for (const auto& p : popups)
                 {
                     p.IsOpen(false);

@@ -1253,6 +1253,10 @@
     <value>Escolha o agente usado para delegação pela paleta de comandos neste perfil. Esta seleção tem precedência sobre a configuração global do agente delegado.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Usar configuração global ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2852,6 +2856,10 @@
     <value>Escolha o modelo usado por este agente.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data>
+  <data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+    <value>Detalhes do erro</value>
+    <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>CLI do agente</value>
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
@@ -3083,15 +3091,23 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>Instalando o servidor ACP do agente...</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>Preparando e verificando a conexão ACP...</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>Não foi possível instalar o servidor ACP do agente. Verifique a rede e a instalação e tente novamente.</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>Não foi possível instalar o servidor ACP do agente.</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>Não foi possível iniciar a conexão ACP.</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>Não foi possível confirmar o encerramento dos processos ACP. A inicialização automática foi interrompida.</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Tentar novamente</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
 </root>

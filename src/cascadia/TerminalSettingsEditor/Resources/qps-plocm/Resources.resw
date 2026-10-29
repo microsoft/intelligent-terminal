@@ -1255,6 +1255,10 @@
     <value>Ĉћõоšė τћε αģėňţ ůšěð ƒòґ čσммąиď ρåłєтťē δеľєġâťìбπ ìŋ ţнïѕ рŗóƒιĺέ. Ţħĩŝ śëĺéċŧіőл ţâķ℮ŝ рґēčёδёпсз ονέґ тĥę ğľǿваℓ ďęľĕĝàŧέ ªğĕñť ŝĕŧŧίňğ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>Description for the per-profile command palette agent setting.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>[!! Ųŝè ġļσьàĺ ѕęтŧìпğ ({0}) !!! !! !!]</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2826,6 +2830,10 @@
     <value>Тĥїś ťэхť ẃĭŀł вё îⁿŝέŗŧеď вēťщ℮ěπ τĥę ρªτħѕ óƒ мџĺţīрℓé ƒĭļèś đяǿρрεδ ιйţθ ţħê ţèřмĭлªŀ. !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
+<data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+  <value>[!! ‮Error details‬ !!]</value>
+  <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
+</data>
 <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent CLI</value><comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment></data><data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Agent pane</value><comment>Section header for the agent pane settings group.</comment></data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Automatic approval</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
 <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Your agent in the agent pane runs with full permissions provided by the agent CLI</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
 <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Model</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Create a new tab with your preferred agent CLI, optionally including a prompt and context from the active pane.
@@ -3040,15 +3048,23 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>[!! &#x202E;Installing the agent's &#x202D;ACP&#x202C; server...&#x202C; !!]</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>[!! ‮Preparing and checking the ‪ACP‬ connection...‬ !!]</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>[!! &#x202E;The agent's &#x202D;ACP&#x202C; server could not be installed. Check your network and installation, then try again.&#x202C; !!]</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>[!! ‮The agent's ‭ACP‬ server could not be installed.‬ !!]</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>[!! ‮The ‪ACP‬ connection could not start.‬ !!]</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>[!! ‮‪ACP‬ process cleanup could not be confirmed. Automatic startup has stopped.‬ !!]</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>[!! &#x202E;Try again&#x202C; !!]</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
 </root>

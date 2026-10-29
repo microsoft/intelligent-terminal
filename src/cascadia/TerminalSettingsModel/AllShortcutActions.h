@@ -127,10 +127,12 @@
 
 // Append new public actions here so existing enum values and dispatch ABI slots
 // remain ahead of them, including the original internal actions.
-#define ADDITIONAL_SHORTCUT_ACTIONS \
-    ON_ALL_ACTIONS(ToggleSidebar)              \
-    ON_ALL_ACTIONS(ToggleSidebarAgentsOnly)    \
-    ON_ALL_ACTIONS(ToggleSidebarRecentAgentSessions)
+#define ADDITIONAL_SHORTCUT_ACTIONS                  \
+    ON_ALL_ACTIONS(ToggleSidebar)                    \
+    ON_ALL_ACTIONS(ToggleSidebarAgentsOnly)          \
+    ON_ALL_ACTIONS(ToggleSidebarRecentAgentSessions) \
+    ON_ALL_ACTIONS(NextSidebarTab)                   \
+    ON_ALL_ACTIONS(PrevSidebarTab)
 
 #define ALL_SHORTCUT_ACTIONS \
     LEGACY_SHORTCUT_ACTIONS  \

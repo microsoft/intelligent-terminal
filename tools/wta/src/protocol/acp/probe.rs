@@ -19,19 +19,17 @@
 //! On error: non-zero exit, message on stderr, no JSON on stdout.
 
 use agent_client_protocol as acp;
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use serde::Serialize;
 use std::future::Future;
 use std::time::Duration;
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app_contracts::AcpModelInfo;
-use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog, ChildEnvironmentPolicy};
+use crate::protocol::acp::spawn::ChildEnvironmentPolicy;
 
 const MODEL_PROBE_ENVIRONMENT_POLICY: ChildEnvironmentPolicy =
     ChildEnvironmentPolicy::CleanCloudDiscovery;
-const MODEL_PROBE_MAX_ATTEMPTS: usize = 3;
+const MODEL_PROBE_MAX_ATTEMPTS: usize = crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS;
 const MODEL_PROBE_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Serialize)]
@@ -51,10 +49,49 @@ pub async fn probe_models_for_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
 ) -> Result<ProbeResult> {
-    crate::antigravity_acp::prepare(agent_cmd, agent_id, &crate::agent_source::AgentSource::Host)
-        .await?;
+    probe_models_with_intent(agent_cmd, agent_id, false).await
+}
+
+pub(crate) async fn probe_models_with_intent(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    retry_startup: bool,
+) -> Result<ProbeResult> {
+    let agent_id = agent_id.or_else(|| {
+        let inferred = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
+        crate::agent_registry::is_known_id(inferred).then_some(inferred)
+    });
+    let registry = crate::agent_lifecycle::StartupRegistry::runtime()?;
+    let key = crate::agent_lifecycle::agent_key(
+        agent_cmd,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+        "native",
+        false,
+    );
+    if retry_startup {
+        registry.retry(&key).await?;
+    }
     retry_model_probe(
-        || probe_models_impl(agent_cmd, agent_id, MODEL_PROBE_ENVIRONMENT_POLICY),
+        || async {
+            let mut startup = registry.lock(&key).await?;
+            startup.begin()?;
+            let result = probe_models_impl(
+                agent_cmd,
+                agent_id,
+                MODEL_PROBE_ENVIRONMENT_POLICY,
+                &mut startup,
+            )
+            .await;
+            result.map_err(|error| {
+                let error = if startup.dependency_present() && !startup.verified() {
+                    error.context(crate::agent_lifecycle::InstallationStartupCheckFailed)
+                } else {
+                    error
+                };
+                startup.failed(error)
+            })
+        },
         MODEL_PROBE_RETRY_DELAY,
     )
     .await
@@ -79,7 +116,18 @@ where
                     "model probe returned an empty catalog; retrying"
                 );
             }
-            Err(error) if attempt == MODEL_PROBE_MAX_ATTEMPTS => return Err(error),
+            Err(error)
+                if attempt == MODEL_PROBE_MAX_ATTEMPTS
+                    || error.is::<crate::agent_lifecycle::StartupLimitReached>()
+                    || error.is::<crate::agent_lifecycle::InstallationStartupCheckFailed>()
+                    || error.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>()
+                    || error.downcast_ref::<crate::agent_lifecycle::StartupPhase>()
+                        == Some(&crate::agent_lifecycle::StartupPhase::Cleanup)
+                    || error.downcast_ref::<crate::agent_lifecycle::StartupPhase>()
+                        == Some(&crate::agent_lifecycle::StartupPhase::Preparation) =>
+            {
+                return Err(error);
+            }
             Err(error) => {
                 tracing::warn!(
                     attempt,
@@ -98,131 +146,54 @@ async fn probe_models_impl(
     agent_cmd: &str,
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
+    startup: &mut crate::agent_lifecycle::StartupLease,
 ) -> Result<ProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None, agent_id, environment_policy)?;
-    tracing::debug!(
-        "probe spawned: program={} is_npx={} pid={:?}",
-        spawned.resolved_program,
-        spawned.is_npx,
-        spawned.child.id()
-    );
-
-    let outgoing = spawned
-        .child
-        .stdin
-        .take()
-        .expect("stdin piped")
-        .compat_write();
-    let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
-    let stderr_log = AgentStderrLog::new(spawned.label().to_string());
-    let stderr_task = spawned
-        .child
-        .stderr
-        .take()
-        .map(|stderr| stderr_log.drain(stderr));
-
-    let (conn, handle_io) = conn::spawn_client(
-        acp::Client.builder().name("wta-probe"),
-        conn::byte_streams(outgoing, incoming),
-    );
-
-    tokio::task::spawn_local(async move {
-        if let Err(e) = handle_io.await {
-            tracing::warn!("probe handle_io failed: {:#}", e);
-        }
-    });
-
-    // Tighter than the full client's timeouts so a failed attempt can retry
-    // promptly. Cached adapters complete in <2s.
-    let init_timeout_secs: u64 = if spawned.is_npx { 25 } else { 10 };
-
-    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-        .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
-        .client_info(
-            acp::schema::v1::Implementation::new("wta-probe", env!("CARGO_PKG_VERSION"))
-                .title("WTA Model Probe"),
+    let mut probe = super::startup::start_probe(
+        agent_cmd,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+        environment_policy,
+        startup,
+    )
+    .await?;
+    let result = async {
+        let cwd = std::env::current_dir().context("read model probe working directory")?;
+        let session_started = std::time::Instant::now();
+        let session_result = tokio::time::timeout(
+            Duration::from_secs(20),
+            probe.connection.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
+        )
+        .await;
+        crate::telemetry::log_acp_new_session_complete(
+            session_started.elapsed().as_secs_f64() * 1000.0,
+            matches!(session_result, Ok(Ok(_))),
+            "Probe",
+            match &session_result {
+                Ok(Ok(_)) => "",
+                Ok(Err(_)) => "AcpError",
+                Err(_) => "Timeout",
+            },
+            match &session_result {
+                Ok(Err(e)) => e.code.into(),
+                _ => 0,
+            },
         );
-    let init_started = std::time::Instant::now();
-    let init_result = tokio::time::timeout(
-        Duration::from_secs(init_timeout_secs),
-        conn.initialize(init_req),
-    )
-    .await;
-    if matches!(init_result, Ok(Ok(_))) {
-        stderr_log.mark_initialized();
-    } else {
-        stderr_log
-            .finish_failed_startup(&mut spawned.child, stderr_task)
-            .await;
+        let session_resp = session_result
+            .context(crate::agent_lifecycle::StartupPhase::Session)?
+            .map_err(anyhow::Error::new)
+            .context(crate::agent_lifecycle::StartupPhase::Session)?;
+
+        let (available_models, current_model_id) =
+            crate::protocol::acp::model_select::models_from_new_session(&session_resp);
+
+        Ok(ProbeResult {
+            available_models,
+            current_model_id,
+        })
     }
-    crate::telemetry::log_acp_initialize_complete(
-        init_started.elapsed().as_secs_f64() * 1000.0,
-        matches!(init_result, Ok(Ok(_))),
-        "Probe",
-        match &init_result {
-            Ok(Ok(_)) => "",
-            Ok(Err(_)) => "AcpError",
-            Err(_) => "Timeout",
-        },
-        match &init_result {
-            Ok(Err(e)) => e.code.into(),
-            _ => 0,
-        },
-    );
-    let _init_resp = init_result
-        .map_err(|_| {
-            anyhow!(
-                "ACP initialize timed out after {}s during probe (agent={})",
-                init_timeout_secs,
-                spawned.label()
-            )
-        })?
-        .map_err(|e| anyhow!("initialize failed: {}", e))?;
-
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let session_started = std::time::Instant::now();
-    // Native CLIs may fetch their cloud model catalog during session/new.
-    // Copilot can legitimately take longer than 10 seconds under load, while
-    // adapter probes already receive a larger initialize budget and must keep
-    // the full three-attempt probe within the Settings caller's 120s ceiling.
-    let session_timeout_secs = if spawned.is_npx { 10 } else { 20 };
-    let session_result = tokio::time::timeout(
-        Duration::from_secs(session_timeout_secs),
-        conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
-    )
     .await;
-    crate::telemetry::log_acp_new_session_complete(
-        session_started.elapsed().as_secs_f64() * 1000.0,
-        matches!(session_result, Ok(Ok(_))),
-        "Probe",
-        match &session_result {
-            Ok(Ok(_)) => "",
-            Ok(Err(_)) => "AcpError",
-            Err(_) => "Timeout",
-        },
-        match &session_result {
-            Ok(Err(e)) => e.code.into(),
-            _ => 0,
-        },
-    );
-    let session_resp = session_result
-        .map_err(|_| {
-            anyhow!(
-                "new_session timed out after {}s during probe",
-                session_timeout_secs
-            )
-        })?
-        .map_err(|e| anyhow!("new_session failed: {}", e))?;
-
-    let (available_models, current_model_id) =
-        crate::protocol::acp::model_select::models_from_new_session(&session_resp);
-
-    drop(spawned.child);
-
-    Ok(ProbeResult {
-        available_models,
-        current_model_id,
-    })
+    probe.close().await?;
+    result
 }
 
 /// One row from an agent CLI's `session/list` (ACP `list_sessions`) response.
@@ -257,112 +228,28 @@ pub struct SessionProbeResult {
 }
 
 /// Spawn `agent_cmd`, run ACP `initialize`, then call `list_sessions`
-/// and capture the outcome. Mirrors [`probe_models`]'s spawn/initialize
-/// preamble (kept inline rather than shared so the probe stays a
-/// self-contained diagnostic).
-pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
-    crate::antigravity_acp::prepare(agent_cmd, None, &crate::agent_source::AgentSource::Host)
-        .await?;
-    let mut spawned = spawn_agent_process(
-        agent_cmd,
-        None,
-        None,
-        ChildEnvironmentPolicy::ApplySharedProvider,
-    )?;
-    tracing::debug!(
-        "session probe spawned: program={} is_npx={} pid={:?}",
-        spawned.resolved_program,
-        spawned.is_npx,
-        spawned.child.id()
-    );
-
-    let outgoing = spawned
-        .child
-        .stdin
-        .take()
-        .expect("stdin piped")
-        .compat_write();
-    let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
-    let stderr_log = AgentStderrLog::new(spawned.label().to_string());
-    let stderr_task = spawned
-        .child
-        .stderr
-        .take()
-        .map(|stderr| stderr_log.drain(stderr));
-
-    let (conn, handle_io) = conn::spawn_client(
-        acp::Client.builder().name("wta-probe-sessions"),
-        conn::byte_streams(outgoing, incoming),
-    );
-    tokio::task::spawn_local(async move {
-        if let Err(e) = handle_io.await {
-            tracing::warn!("session probe handle_io failed: {:#}", e);
-        }
-    });
-
-    let init_timeout_secs: u64 = if spawned.is_npx { 25 } else { 10 };
-    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-        .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
-        .client_info(
-            acp::schema::v1::Implementation::new("wta-probe-sessions", env!("CARGO_PKG_VERSION"))
-                .title("WTA Session Probe"),
-        );
-    let init_result = tokio::time::timeout(
-        Duration::from_secs(init_timeout_secs),
-        conn.initialize(init_req),
-    )
-    .await;
-    if matches!(init_result, Ok(Ok(_))) {
-        stderr_log.mark_initialized();
-    } else {
-        stderr_log
-            .finish_failed_startup(&mut spawned.child, stderr_task)
-            .await;
-    }
-    let init_resp = init_result
-        .map_err(|_| {
-            anyhow!(
-                "ACP initialize timed out after {}s during session probe (agent={})",
-                init_timeout_secs,
-                spawned.label()
-            )
-        })?
-        .map_err(|e| anyhow!("initialize failed: {}", e))?;
-
-    let initialize_dump = format!("{init_resp:#?}");
-
-    let list_result = tokio::time::timeout(
-        Duration::from_secs(10),
-        conn.list_sessions(acp::schema::v1::ListSessionsRequest::new()),
-    )
-    .await;
-
-    let (list_sessions_ok, list_sessions_error, sessions) = match list_result {
-        Err(_) => (
-            false,
-            Some("list_sessions timed out after 10s".to_string()),
-            Vec::new(),
-        ),
-        Ok(Err(e)) => (false, Some(format!("{e}")), Vec::new()),
-        Ok(Ok(resp)) => {
-            let sessions = resp
-                .sessions
-                .iter()
-                .map(|s| ProbedSession {
-                    session_id: s.session_id.to_string(),
-                    cwd: format!("{:?}", s.cwd),
-                    title: s.title.clone(),
-                    updated_at: s.updated_at.clone(),
+/// and capture the outcome through the shared startup/cleanup lifecycle.
+pub async fn probe_sessions(agent_cmd: &str, retry_startup: bool) -> Result<SessionProbeResult> {
+    let (initialize, listed) =
+        super::session_list::fetch_session_list(agent_cmd, retry_startup).await?;
+    let (list_sessions_ok, list_sessions_error, sessions) = match listed {
+        Ok(sessions) => (
+            true,
+            None,
+            sessions
+                .into_iter()
+                .map(|session| ProbedSession {
+                    session_id: session.session_id.to_string(),
+                    cwd: format!("{:?}", session.cwd),
+                    title: session.title,
+                    updated_at: session.updated_at,
                 })
-                .collect();
-            (true, None, sessions)
-        }
+                .collect(),
+        ),
+        Err(error) => (false, Some(error), Vec::new()),
     };
-
-    drop(spawned.child);
-
     Ok(SessionProbeResult {
-        initialize_dump,
+        initialize_dump: format!("{initialize:#?}"),
         list_sessions_ok,
         list_sessions_error,
         sessions,
@@ -372,6 +259,7 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::anyhow;
     use std::cell::Cell;
     use std::rc::Rc;
 

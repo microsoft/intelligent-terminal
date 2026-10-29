@@ -14,6 +14,7 @@
 #include "../inc/CustomAgentId.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/WtaProcess.h"
+#include <til/commandline.h>
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
@@ -1792,12 +1793,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         const auto acpModel = _GlobalSettings.AcpModel();
-        return ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+        return ::Microsoft::Terminal::AcpModels::BuildProbeCommandLine(
             std::wstring_view{ acpAgent },
             std::wstring_view{ acpModel });
     }
 
-    void AIAgentsViewModel::_TriggerAcpModelProbe()
+    void AIAgentsViewModel::_TriggerAcpModelProbe(const bool retryStartup)
     {
         const auto agentId = _GlobalSettings.EffectiveAcpAgent();
         const auto cmdline = _ResolveEffectiveAcpAgentCmdline();
@@ -1807,7 +1808,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _acpProbing = false;
             _acpPreparing = false;
             _acpPreparationFailed = false;
-            _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationFailed");
+            _acpPreparationErrorText = {};
+            _acpPreparationErrorDetails = {};
+            _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationFailed", L"AcpPreparationErrorText", L"AcpPreparationErrorDetails", L"HasAcpPreparationErrorDetails");
             return;
         }
 
@@ -1816,10 +1819,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // the generation check.
         ++_acpProbeGeneration;
         _acpProbing = true;
-        _acpPreparing = ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
-            std::wstring_view{ agentId }, L"antigravity");
+        _acpPreparing = true;
         _acpPreparationFailed = false;
-        _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationFailed");
+        _acpPreparationErrorText = {};
+        _acpPreparationErrorDetails = {};
+        _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationFailed", L"AcpPreparationErrorText", L"AcpPreparationErrorDetails", L"HasAcpPreparationErrorDetails");
         _RebuildAcpModelListFromCache();
         const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
         const auto telemetryAgentId = _StartsWithCustom(agentId) ? winrt::hstring{ L"custom" } : agentId;
@@ -1831,14 +1835,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             TraceLoggingWideString(telemetryAgentId.c_str(), "AgentId"),
             TraceLoggingUInt64(cacheRevision, "CacheRevision"),
             TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance));
-        _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
+        _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision, retryStartup);
     }
 
     winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(
         winrt::hstring agentId,
         std::wstring agentCmdline,
         uint64_t generation,
-        uint64_t cacheRevision)
+        uint64_t cacheRevision,
+        bool retryStartup)
     {
         auto strongThis = get_strong();
         auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
@@ -1846,56 +1851,33 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         co_await winrt::resume_background();
 
         const auto wtaPath = ::Microsoft::Terminal::WtaProcess::ResolveWtaExePath();
-        if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
-                std::wstring_view{ agentId }, L"antigravity"))
-        {
-            ::Microsoft::Terminal::WtaProcess::CaptureResult preparation;
-            if (!wtaPath.empty())
-            {
-                preparation = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(
-                    wtaPath, L"install-acp --agent-id antigravity", 600'000);
-            }
-            co_await wil::resume_foreground(dispatcher);
-            if (generation != _acpProbeGeneration)
-            {
-                co_return;
-            }
-            _acpPreparing = false;
-            _acpPreparationFailed = !preparation.completed || preparation.exitCode != 0;
-            _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationFailed");
-            if (_acpPreparationFailed)
-            {
-                _acpProbing = false;
-                LOG_HR_MSG(E_FAIL, "Antigravity ACP preparation failed (completed=%d, exit=%lu)", preparation.completed, preparation.exitCode);
-                _RebuildAcpModelListFromCache();
-                co_return;
-            }
-            co_await winrt::resume_background();
-        }
-        std::string stdoutText;
+        ::Microsoft::Terminal::WtaProcess::CaptureResult probe;
         if (!wtaPath.empty())
         {
-            // Quote-escape internal `"` per Windows CRT rules.
-            std::wstring escaped = agentCmdline;
-            for (size_t pos = 0; (pos = escaped.find(L'"', pos)) != std::wstring::npos; pos += 2)
-            {
-                escaped.replace(pos, 1, L"\"\"");
-            }
             const auto canonicalProbeId =
                 ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
                     std::wstring_view{ agentId });
-            const auto probeAgentId = canonicalProbeId.empty() || canonicalProbeId.starts_with(L"custom:") ?
-                                          std::wstring_view{ L"custom" } :
+            const auto probeAgentId = canonicalProbeId.empty() ?
+                                          std::wstring_view{ agentId } :
                                           canonicalProbeId;
-            const std::wstring args = L"probe-models --agent \"" + escaped + L"\" --agent-id \"" +
-                                      std::wstring{ probeAgentId } + L"\"";
-            // WTA owns the shared three-attempt policy. The ceiling covers
-            // three cold npx attempts (25s initialize + 10s session each)
-            // plus retry delays and process startup slack.
-            stdoutText = ::Microsoft::Terminal::WtaProcess::RunWtaCaptureStdout(wtaPath, args, 120'000);
+            std::wstring args{ L"probe-models --agent " };
+            til::append_quoted_argument(args, agentCmdline);
+            args.append(L" --agent-id ");
+            til::append_quoted_argument(args, probeAgentId);
+            if (retryStartup)
+            {
+                args.append(L" --retry-startup");
+            }
+            // One provider-neutral operation prepares and initializes the same
+            // process used for model discovery. WTA owns the shared retry budget.
+            probe = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wtaPath, args, 600'000);
         }
 
-        const auto catalog = ::Microsoft::Terminal::AcpModels::ParseModelCatalog(std::string_view{ stdoutText });
+        const auto catalog = probe.completed && probe.exitCode == 0 ?
+                                 ::Microsoft::Terminal::AcpModels::ParseModelCatalog(std::string_view{ probe.output }) :
+                                 std::nullopt;
+        const auto startupFailure =
+            ::Microsoft::Terminal::AcpModels::ParseStartupFailure(std::string_view{ probe.output });
         std::vector<Model::AcpModelInfo> parsed;
         winrt::hstring currentId;
         if (catalog)
@@ -1933,6 +1915,38 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         _acpProbing = false;
+        _acpPreparing = false;
+        _acpPreparationFailed = !catalog &&
+                                (!startupFailure || !startupFailure->startupVerified ||
+                                 startupFailure->phase == "cleanup");
+        if (_acpPreparationFailed)
+        {
+            const auto resource = startupFailure && startupFailure->phase == "preparation" ?
+                                      L"AIAgents_AcpPreparationFailed/Text" :
+                                  startupFailure && startupFailure->phase == "cleanup" ?
+                                      L"AIAgents_AcpCleanupFailed/Text" :
+                                      L"AIAgents_AcpStartupFailed/Text";
+            _acpPreparationErrorText = GetLibraryResourceString(resource);
+            _acpPreparationErrorDetails = startupFailure ? winrt::to_hstring(startupFailure->details) : winrt::hstring{};
+            if (startupFailure)
+            {
+                LOG_HR_MSG(E_FAIL,
+                           "ACP setup failed (completed=%d, exit=%lu, phase=%hs, reason=%hs, attempts=%u/%u, diagnosticId=%hs)",
+                           probe.completed,
+                           probe.exitCode,
+                           startupFailure->phase.c_str(),
+                           startupFailure->reason.c_str(),
+                           startupFailure->attempts,
+                           startupFailure->maxAttempts,
+                           startupFailure->diagnosticId.c_str());
+            }
+            else
+            {
+                LOG_HR_MSG(E_FAIL, "ACP setup failed (completed=%d, exit=%lu)", probe.completed, probe.exitCode);
+            }
+        }
+        // InfoBar announces its message when it opens, not when the message changes.
+        _NotifyChanges(L"IsAcpPreparing", L"AcpPreparationErrorText", L"AcpPreparationErrorDetails", L"HasAcpPreparationErrorDetails", L"AcpPreparationFailed");
         const auto probeSucceeded = catalog && !parsed.empty();
         TraceLoggingWrite(
             g_hTerminalSettingsEditorProvider,

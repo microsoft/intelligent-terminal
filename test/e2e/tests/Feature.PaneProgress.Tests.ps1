@@ -524,7 +524,7 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         }
         function Assert-NativeStatus {
             param([string]$Session, [string]$Status)
-            $pipe = (Get-Content -Raw -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt')).Trim()
+            $pipe = Get-WtaMasterPipe -App $script:app
             $expectedPane = if ($Status -eq 'Ended') { $null } else { $script:a.session_id }
             $row = Wait-Until -TimeoutSec 30 -Because "owned native session reaches $Status" -Condition {
                 $result = Invoke-Wta -App $script:app -Arguments @('sessions', 'list', '--master', $pipe, '--json', '--include-status') -Raw

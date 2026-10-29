@@ -26,7 +26,11 @@ test('native trusted guidance exclusions are exactly the four setup roots', () =
     assert.equal(isTrustedGuidancePath(path), false);
   }
 });
-const tmpdir = () => process.cwd();
+const tmpdir = () => {
+  const directory = join(process.cwd(), 'Generated Files');
+  mkdirSync(directory, { recursive: true });
+  return directory;
+};
 const HEAD = '2'.repeat(40);
 const PATCH_TEXT = 'diff --git a/tools/wta/src/master/mod.rs b/tools/wta/src/master/mod.rs\n--- a/tools/wta/src/master/mod.rs\n+++ b/tools/wta/src/master/mod.rs\n@@ -20 +20 @@\n-Changed source.\n+Bound owner.\n';
 const PATCH_SHA256 = createHash('sha256').update(PATCH_TEXT).digest('hex');
@@ -101,7 +105,7 @@ test('controller separates repair writes from PR reporting after canonical valid
   assert(repair.includes('contents: write'));
   assert(!repair.includes('issues: write'));
   assert(!repair.includes('actions: write'));
-  assert(repair.includes('ref: ${{ github.event.pull_request.base.sha }}'));
+  assert(repair.includes('ref: ${{ github.workflow_sha }}'));
   assert(repair.includes('commit-repairs'));
   assert(repair.includes('--scope "$canonical/security-scope.json"'));
   assert(repair.includes('--report "$canonical/security-findings.json"'));
@@ -138,8 +142,58 @@ test('controller separates repair writes from PR reporting after canonical valid
     [...controller.matchAll(/        run: \|\r?\n([\s\S]*?)(?=\r?\n      -|\r?\n  [a-z-]+:|$)/g)].map(m => m[1]).join('\n')));
 });
 
-test('both compiled workers attest generated detector outputs only after detection in a native job', () => {
-  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+test('all controller stages load workflow code when the PR base predates the reviewer', t => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const root = mkdtempSync(join(tmpdir(), 'security-controller-checkout-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 15000 }).trim();
+  const commit = subject => {
+    git(['add', '--all']);
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', subject]);
+    return git(['rev-parse', 'HEAD']);
+  };
+  git(['init', '--quiet', '--initial-branch=main']);
+  const source = join(root, 'tools', 'wta', 'src', 'main.rs');
+  mkdirSync(join(root, 'tools', 'wta', 'src'), { recursive: true });
+  writeFileSync(source, 'fn value() -> usize { 1 }\n');
+  const base = commit('PR base before the reviewer existed');
+  git(['checkout', '--quiet', '-b', 'topic']);
+  writeFileSync(source, 'fn value() -> usize { 2 }\n');
+  const head = commit('Reviewed source change');
+  git(['checkout', '--quiet', 'main']);
+  const scripts = join(root, '.github', 'skills', 'ghaw-pr-security', 'scripts');
+  mkdirSync(scripts, { recursive: true });
+  const helper = join(scripts, 'security-review.mjs');
+  writeFileSync(helper, readFileSync(new URL('./security-review.mjs', import.meta.url)));
+  mkdirSync(join(root, '.github', 'workflows'));
+  writeFileSync(join(root, '.github', 'workflows', 'ghaw-pr-security-controller.yml'), controller);
+  commit('Install trusted controller and helper');
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    'merge', '--quiet', '--no-ff', '-m', 'Workflow merge revision', 'topic']);
+  const trusted = git(['rev-parse', 'HEAD']);
+  assert.equal(git(['merge-base', trusted, head]), head);
+  const context = { 'github.workflow_sha': trusted, 'github.event.pull_request.base.sha': base };
+  const refs = [...controller.matchAll(/ref: \$\{\{\s*([^}]+?)\s*\}\}/g)];
+  assert.equal(refs.length, 3, 'exercise scope resolution, repair publication and report publication');
+  for (const [index, match] of refs.entries()) {
+    assert(Object.hasOwn(context, match[1]));
+    git(['checkout', '--quiet', '--detach', context[match[1]]]);
+    const output = join(root, '.git', `scope-${index}.json`);
+    execFileSync(process.execPath, [helper, 'scope', '--base', base, '--head', head,
+      '--pr', '42', '--relation', 'same-repo', '--mode', 'repair', '--output', output],
+    { cwd: root, timeout: 15000, stdio: 'pipe' });
+    const scope = JSON.parse(readFileSync(output, 'utf8'));
+    assert.equal(scope.baseSha, base);
+    assert.equal(scope.observedBaseSha, base);
+    assert.equal(scope.headSha, head);
+    assert.equal(git(['rev-parse', 'HEAD']), trusted);
+  }
+  assert(controller.includes('BASE_SHA: ${{ github.event.pull_request.base.sha }}'));
+  assert(controller.includes('EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}'));
+});
+
+test('compiled repair worker attests generated detector outputs only after detection in a native job', () => {
+  for (const name of ['ghaw-pr-security']) {
     const markdown = readFileSync(new URL(`../../../workflows/${name}.md`, import.meta.url), 'utf8');
     const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
     for (const source of [markdown, lock]) {
@@ -166,7 +220,7 @@ test('both compiled workers attest generated detector outputs only after detecti
 });
 
 test('worker trusted revision metadata identifies workflow source, not candidate head', () => {
-  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+  for (const name of ['ghaw-pr-security']) {
     for (const suffix of ['md', 'lock.yml']) {
       const worker = readFileSync(new URL(`../../../workflows/${name}.${suffix}`, import.meta.url), 'utf8');
       assert(worker.includes('trusted_code_revision=$TRUSTED_WORKFLOW_SHA'));
@@ -187,7 +241,7 @@ test('controller rejects stale or unresolved exact base refs before dispatch wit
     const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
       payload: { pull_request: { number: 17, base: { ref: 'release/nested' } } } };
     const env = { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
-      WORKER: 'ghaw-pr-security-guide-fork.lock.yml' };
+      WORKER: 'ghaw-pr-security.lock.yml' };
     const github = {
       rest: {
         git: { getRef: async args => {
@@ -245,7 +299,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
     request: async () => ({ data: {} }),
     paginate: async (endpoint, args) => {
       assert.equal(endpoint, github.rest.actions.listWorkflowRuns);
-      assert.equal(args.workflow_id, 'ghaw-pr-security-guide-fork.lock.yml');
+      assert.equal(args.workflow_id, 'ghaw-pr-security.lock.yml');
       assert.equal(args.branch, 'release/nested');
       assert.equal(args.event, 'workflow_dispatch');
       assert.equal(args.per_page, 100);
@@ -259,7 +313,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
   };
   await execute(github, context, { setOutput: (key, value) => { outputs[key] = value; } },
     { env: { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
-      WORKER: 'ghaw-pr-security-guide-fork.lock.yml' } }, resolve => resolve());
+      WORKER: 'ghaw-pr-security.lock.yml' } }, resolve => resolve());
   assert.equal(listed, true);
   assert.equal(outputs.run_id, '321');
   assert.equal(outputs.conclusion, 'success');
@@ -408,7 +462,7 @@ test('actual PR report publisher verifies per-finding parent chains, idempotence
 });
 
 test('native staging consumes exact final bytes and rejects missing or subsequently changed inputs', () => {
-  const root = mkdtempSync(join(process.cwd(), '.detector-cli-'));
+  const root = mkdtempSync(join(tmpdir(), '.detector-cli-'));
   try {
     const current = buildScope(BASE, HEAD, 17, 'fork', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'guide');
     const candidate = { ...createReportTemplate(current), summary: 'Native detector CLI fixture.' };
@@ -446,7 +500,7 @@ test('native staging consumes exact final bytes and rejects missing or subsequen
 });
 
 test('repair detector stages the actual patch bytes under the pinned aw patch consumer name', () => {
-  const root = mkdtempSync(join(process.cwd(), '.detector-patch-'));
+  const root = mkdtempSync(join(tmpdir(), '.detector-patch-'));
   try {
     const current = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'repair');
     const candidate = { ...createReportTemplate(current), summary: 'Exact finalized patch binding.' };
@@ -477,7 +531,7 @@ test('repair detector stages the actual patch bytes under the pinned aw patch co
 });
 
 test('analysis workers do not request unused check or security-event read scopes', () => {
-  for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+  for (const name of ['ghaw-pr-security']) {
     for (const extension of ['md', 'lock.yml']) {
       const text = readFileSync(new URL(`../../../workflows/${name}.${extension}`, import.meta.url), 'utf8');
       if (extension === 'md') {
@@ -497,8 +551,8 @@ test('analysis workers do not request unused check or security-event read scopes
 
 test('all trusted materialization and reconstruction workflows disable ambient replacement refs', () => {
   for (const name of [
-    'ghaw-pr-security.md', 'ghaw-pr-security-guide-fork.md',
-    'ghaw-pr-security.lock.yml', 'ghaw-pr-security-guide-fork.lock.yml',
+    'ghaw-pr-security.md',
+    'ghaw-pr-security.lock.yml',
     'ghaw-pr-security-controller.yml',
   ]) {
     const text = readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
@@ -515,7 +569,7 @@ test('pinned actual preparation and installer assets match the trusted detector 
     const prepare = readFileSync(join(source, 'setup', 'sh', 'prepare_threat_detection_files.sh'), 'utf8');
     assert(prepare.includes('copy_optional_file "${SOURCE_DIR}/agent_output.json"'));
     assert(prepare.includes('for artifact_pattern in aw-*.patch aw-*.bundle'));
-    for (const name of ['ghaw-pr-security', 'ghaw-pr-security-guide-fork']) {
+    for (const name of ['ghaw-pr-security']) {
       const lock = readFileSync(new URL(`../../../workflows/${name}.lock.yml`, import.meta.url), 'utf8');
       const detection = lock.split('  detection:')[1].split(/\r?\n  [a-z_]+:/)[0];
       assert(detection.indexOf('id: setup') < detection.indexOf('Install trusted exact-input detector binding'));
@@ -576,7 +630,7 @@ test('native host conclusion rejects exit-zero skip or warning instead of attest
 });
 
 test('runner original failure rejects clean verdict despite post-continue-on-error REST success and forged sandbox evidence', () => {
-  const root = mkdtempSync(join(process.cwd(), '.detector-host-outcomes-'));
+  const root = mkdtempSync(join(tmpdir(), '.detector-host-outcomes-'));
   try {
     const host = join(root, 'host');
     const sandbox = join(root, 'sandbox');
@@ -615,7 +669,7 @@ test('runner original failure rejects clean verdict despite post-continue-on-err
 
 test('pinned native hooks install before inference and reject changed assets before mutation',
   { skip: !process.env.SECURITY_PINNED_GHAW_RUNTIME }, () => {
-    const root = mkdtempSync(join(process.cwd(), '.detector-native-'));
+    const root = mkdtempSync(join(tmpdir(), '.detector-native-'));
     try {
       const actions = join(root, 'gh-aw', 'actions');
       const payload = join(root, 'security-payload');
@@ -671,16 +725,19 @@ test('publication branches preserve fork guidance, same-repo repairs and no-patc
 });
 
 test('publication rejects wrong run, revision, source job, attempt and detector without requiring a runtime job', () => {
-  for (const sameRepo of [true, false]) {
+  for (const sameRepo of [true]) {
     const identity = { repository: 'owner/repo', runId: '123', baseSha: BASE, sameRepo, dispatchId: 'fixed-dispatch' };
     const run = {
       id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
-      path: `.github/workflows/${sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml'}`,
-      event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
+      path: '.github/workflows/ghaw-pr-security.lock.yml',
+      event: 'workflow_dispatch', display_title: 'Security Repair fixed-dispatch',
       status: 'completed', conclusion: 'success',
     };
     const jobs = publicationJobs(sameRepo);
     assert.doesNotThrow(() => validatePublicationRun(run, jobs, identity));
+    for (const sameRepo of [false, undefined, 'true']) {
+      assert.throws(() => validatePublicationRun(run, jobs, { ...identity, sameRepo }), /same-repository PR/);
+    }
     for (const [key, value] of Object.entries({
       id: 124, head_sha: HEAD, path: '.github/workflows/other.yml', event: 'push',
       display_title: 'forged fixed-dispatch', conclusion: 'failure', status: 'in_progress',
@@ -701,24 +758,16 @@ test('publication rejects wrong run, revision, source job, attempt and detector 
   }
 });
 
-test('canonical handoff rematerializes fork and no-patch reports and fails closed before outputs', () => {
-  const root = mkdtempSync(join(process.cwd(), '.canonical-publication-'));
+test('canonical handoff rematerializes no-patch reports and fails closed before outputs', () => {
+  const root = mkdtempSync(join(tmpdir(), '.canonical-publication-'));
   try {
-    for (const sameRepo of [true, false]) {
+    for (const sameRepo of [true]) {
       const directory = join(root, String(sameRepo));
       const artifacts = join(directory, 'artifacts');
       mkdirSync(artifacts, { recursive: true });
       const current = buildScope(BASE, HEAD, 17, sameRepo ? 'same-repo' : 'fork',
         'M\0tools/wta/src/master/mod.rs\0', BASE, sameRepo ? 'repair' : 'guide');
       const candidate = { ...createReportTemplate(current), summary: 'Agent-authored review.', summaryMarkdown: SUMMARY_MD };
-      if (!sameRepo) candidate.findings = [{
-        rule: 'session-route-target-binding', severity: 'high', confidence: 'high', category: 'session-routing',
-        file: 'tools/wta/src/master/mod.rs', startLine: 20, endLine: 24,
-        observed: 'Changed routing bypasses owner binding.', expected: 'Bind the owner.', impact: 'Wrong-pane mutation.',
-        evidence: [{ kind: 'source-trace', reference: 'routing:20', detail: 'Owner bypass.' }],
-        proposedFix: 'Restore lookup.', validation: 'Focused tests.',
-        fixDisposition: { state: 'blocked', reason: 'Read-only fork guidance.' },
-      }];
       const scopePath = join(directory, 'scope.json');
       writeFileSync(scopePath, JSON.stringify(current));
       writeFileSync(join(artifacts, 'security-findings.validated.json'), JSON.stringify(candidate));
@@ -734,8 +783,8 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
       };
       const run = {
         id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
-        path: `.github/workflows/${sameRepo ? 'ghaw-pr-security.lock.yml' : 'ghaw-pr-security-guide-fork.lock.yml'}`,
-        event: 'workflow_dispatch', display_title: `${sameRepo ? 'Security Repair' : 'Security Guide'} fixed-dispatch`,
+        path: '.github/workflows/ghaw-pr-security.lock.yml',
+        event: 'workflow_dispatch', display_title: 'Security Repair fixed-dispatch',
         status: 'completed', conclusion: 'success',
       };
       const jobs = publicationJobs(sameRepo);
@@ -837,7 +886,7 @@ test('canonical handoff rematerializes fork and no-patch reports and fails close
 });
 
 test('full-index repair digests survive differing repository abbreviations and keep approval strict', () => {
-  const root = mkdtempSync(join(process.cwd(), '.repair-diff-index-'));
+  const root = mkdtempSync(join(tmpdir(), '.repair-diff-index-'));
   const path = 'tools/wta/src/routing.rs';
   const source = join(root, path);
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 30_000 }).trim();
@@ -872,7 +921,7 @@ test('full-index repair digests survive differing repository abbreviations and k
       const inspected = inspectSecurityRepair(scope, root);
       assert.equal(inspected.patch, approved.patch);
       assert.equal(inspected.patchSha256, approved.patchSha256);
-      const owned = mkdtempSync(join(process.cwd(), '.repair-diff-inputs-'));
+      const owned = mkdtempSync(join(tmpdir(), '.repair-diff-inputs-'));
       try {
         const externalScope = join(owned, 'scope.json');
         const externalReport = join(owned, 'report.json');
@@ -907,7 +956,7 @@ test('compiled parity preparation retains exact approved bytes and source hashes
   const block = worker.match(/node --input-type=module - "\$source_workspace" "\$trusted_workspace" "\$parity" <<'NODE'\r?\n([\s\S]*?)\r?\n      NODE/);
   assert(block, 'Production parity preparation must be executable before validation');
   const script = block[1].replace(/^      /gm, '').replace("'/tmp/gh-aw/agent/security-findings.json'", 'process.argv[5]');
-  const root = mkdtempSync(join(process.cwd(), '.repair-parity-'));
+  const root = mkdtempSync(join(tmpdir(), '.repair-parity-'));
   try {
     const source = join(root, 'source');
     const target = join(root, 'target');
@@ -942,7 +991,7 @@ test('compiled parity preparation retains exact approved bytes and source hashes
 });
 
 test('canonical repair publishes an unbuilt untested source-approved proposal using only an isolated index', () => {
-  const root = mkdtempSync(join(process.cwd(), '.canonical-repair-'));
+  const root = mkdtempSync(join(tmpdir(), '.canonical-repair-'));
   const workspace = join(root, 'checkout');
   const artifacts = join(root, 'artifacts');
   const output = join(root, 'canonical');
@@ -1149,7 +1198,7 @@ test('test target guard applies to candidate, proposal, final and actual patch, 
 });
 
 test('native writes and staging reject test targets without changing bytes or index; mixed production repair remains eligible', () => {
-  const root = mkdtempSync(join(process.cwd(), '.test-target-policy-'));
+  const root = mkdtempSync(join(tmpdir(), '.test-target-policy-'));
   const workspace = join(root, 'source');
   const target = join(root, 'target');
   mkdirSync(workspace);
@@ -1285,7 +1334,7 @@ test('unrelated unchanged line cannot authorize an automatic repair', () => {
   blocked.review = { status: 'not-required', reviewer: 'none', evidence: 'Guidance only.' };
   blocked.patch = [];
   assert.doesNotThrow(() => validateCandidate(blocked, current));
-  const root = mkdtempSync(join(process.cwd(), '.hunk-submission-'));
+  const root = mkdtempSync(join(tmpdir(), '.hunk-submission-'));
   try {
     const path = join(root, 'report.json');
     writeFileSync(path, 'original');
@@ -1386,7 +1435,7 @@ test('nonempty patch API requires explicit immutable authority even with a match
 });
 
 test('native writer rejects same-file extra edits and formatter rewrites before touching bytes or index', () => {
-  const root = mkdtempSync(join(process.cwd(), '.actual-repair-bounds-'));
+  const root = mkdtempSync(join(tmpdir(), '.actual-repair-bounds-'));
   const path = 'tools/wta/src/master/mod.rs';
   const other = 'tools/wta/src/logging.rs';
   const source = join(root, path);
@@ -1459,7 +1508,7 @@ test('native writer rejects same-file extra edits and formatter rewrites before 
 });
 
 test('trusted Git scope binds exact changes, deletion mapping, renames, modes and empty HEAD', () => {
-  const root = mkdtempSync(join(process.cwd(), '.immutable-hunks-'));
+  const root = mkdtempSync(join(tmpdir(), '.immutable-hunks-'));
   const path = 'tools/wta/src/routing.rs';
   const validator = fileURLToPath(new URL('./security-review.mjs', import.meta.url));
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 30_000 }).trim();
@@ -1658,7 +1707,7 @@ test('loaded instruction roots have coherent triggers and classification without
   ]);
   const triggered = path => triggers.some(pattern =>
     pattern.endsWith('/**') ? path.startsWith(pattern.slice(0, -2)) : path === pattern);
-  for (const name of ['ghaw-pr-security.lock.yml', 'ghaw-pr-security-guide-fork.lock.yml']) {
+  for (const name of ['ghaw-pr-security.lock.yml']) {
     const worker = workflow(name);
     assert(worker.includes('GH_AW_AGENT_FILES: "AGENTS.md"'));
     assert(worker.includes('GH_AW_AGENT_FOLDERS: ".agents .github"'));
@@ -1683,10 +1732,8 @@ test('loaded instruction roots have coherent triggers and classification without
   }
 });
 
-test('guide cannot delegate and repair uses trusted fixed reviewer orchestration', () => {
+test('repair uses trusted fixed reviewer orchestration', () => {
   const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
-  const guide = workflow('ghaw-pr-security-guide-fork.md');
-  assert(guide.includes("args: ['--excluded-tools', 'task', 'read_agent', 'write_agent', 'list_agents']"));
   const repair = workflow('ghaw-pr-security.md');
   assert(repair.includes('security-review-native/security-review-driver.mjs'));
   assert(repair.includes('watchdog-timeout: 600'));
@@ -1700,23 +1747,6 @@ test('guide cannot delegate and repair uses trusted fixed reviewer orchestration
     assert(header.includes('tools:'));
     assert(!/^\s*-\s*['"]?(?:agent|custom-agent|Task|execute|shell|bash|powershell|edit|\*)['"]?\s*$/im.test(header));
   }
-});
-
-test('fork fetch credential header is scoped to the configured GitHub host', () => {
-  const source = readFileSync(new URL('../../../workflows/ghaw-pr-security-guide-fork.md', import.meta.url), 'utf8');
-  const lock = readFileSync(new URL('../../../workflows/ghaw-pr-security-guide-fork.lock.yml', import.meta.url), 'utf8');
-  assert(source.includes('GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL}/.extraheader"'));
-  assert(lock.includes('GIT_CONFIG_KEY_0=\\"http.${GITHUB_SERVER_URL}/.extraheader\\"'));
-  const environment = { ...process.env, GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader', GIT_CONFIG_VALUE_0: 'DUMMY_HEADER' };
-  const matching = spawnSync('git', ['config', '--get-urlmatch', 'http.extraheader', 'https://github.com/owner/repo.git'],
-    { encoding: 'utf8', env: environment, timeout: 30_000 });
-  assert.equal(matching.status, 0, matching.stderr);
-  assert.equal(matching.stdout.trim(), 'DUMMY_HEADER');
-  const unrelated = spawnSync('git', ['config', '--get-urlmatch', 'http.extraheader', 'https://example.invalid/owner/repo.git'],
-    { encoding: 'utf8', env: environment, timeout: 30_000 });
-  assert.equal(unrelated.status, 1);
-  assert.equal(unrelated.stdout, '');
 });
 
 test('credential postcondition rejects retained helpers and headers rather than trusting cleanup exit', () => {
@@ -1988,7 +2018,7 @@ test('report envelope rejects unknown JSON fields before text validation without
 });
 
 test('native submission leaves destination bytes unchanged on rejected report envelopes', () => {
-  const root = mkdtempSync(join(process.cwd(), '.security-report-envelope-'));
+  const root = mkdtempSync(join(tmpdir(), '.security-report-envelope-'));
   try {
     const path = join(root, 'report.json');
     for (const current of [scope('fork'), repairScope()]) {
@@ -2091,7 +2121,7 @@ test('whole repair scope rejects missing, duplicate and non-regular immutable tr
 });
 
 test('real Git mode-only and existing symlink/executable modifications block unrelated production repair before writes', () => {
-  const root = mkdtempSync(join(process.cwd(), '.scope-tree-modes-'));
+  const root = mkdtempSync(join(tmpdir(), '.scope-tree-modes-'));
   const production = 'tools/wta/src/master/mod.rs';
   const unrelated = 'tools/wta/src/logging.rs';
   const git = (args, input) => execFileSync('git', args, { cwd: root, encoding: 'utf8', input, timeout: 30_000 }).trim();
@@ -2349,7 +2379,7 @@ test('authored proposal Markdown requires exactly one known token for each propo
 });
 
 test('native report submission requires authored Markdown and preserves its bytes atomically', () => {
-  const root = mkdtempSync(join(process.cwd(), '.authored-markdown-'));
+  const root = mkdtempSync(join(tmpdir(), '.authored-markdown-'));
   const path = join(root, 'report.json');
   const input = report();
   delete input.summaryMarkdown;

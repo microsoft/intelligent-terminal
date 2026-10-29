@@ -16,6 +16,7 @@
   <ItemGroup>
     <ClInclude Include="BuiltInProviderCatalog.h" />
     <ClInclude Include="CommandRunner.h" />
+    <ClInclude Include="ProviderDiagnosticLog.h" />
     <ClInclude Include="ProviderBroker.h" />
     <ClInclude Include="ProviderContracts.h" />
     <ClInclude Include="ProviderRegistry.h" />
@@ -23,6 +24,7 @@
   <ItemGroup>
     <ClCompile Include="BuiltInProviderCatalog.cpp" />
     <ClCompile Include="CommandRunner.cpp" />
+    <ClCompile Include="ProviderDiagnosticLog.cpp" />
     <ClCompile Include="ProviderBroker.cpp" />
     <ClCompile Include="ProviderContracts.cpp" />
   </ItemGroup>

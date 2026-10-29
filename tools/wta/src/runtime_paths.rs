@@ -4,9 +4,9 @@ use std::sync::OnceLock;
 // WTA runtime data lives under two package-private roots, split by lifetime:
 //
 //   * **State** (`intelligent_terminal_root`) — persistent data that must
-//     survive and stay private to the package: the prompt-override directory,
-//     the agent-pane session index (`agent-pane-sessions.jsonl`), and the
-//     master-pipe rendezvous file. Stored in the package's `LocalState`,
+//     survive and stay private to the package: the prompt-override directory
+//     and agent-pane session index (`agent-pane-sessions.jsonl`).
+//     Stored in the package's `LocalState`,
 //     alongside the WT app's own `settings.json` / `state.json`.
 //
 //   * **Local / cache** (`intelligent_terminal_local_root`) — transient,
@@ -24,7 +24,7 @@ use std::sync::OnceLock;
 
 /// Persistent, package-private **state** root: `…\LocalState\IntelligentTerminal\`
 /// (or bare `%LOCALAPPDATA%\IntelligentTerminal\` when unpackaged). Backs
-/// prompts, the agent-pane session index, and the master-pipe file.
+/// prompts and the agent-pane session index.
 ///
 /// Cached: queried on the hot path and package-identity lookup is a syscall.
 pub fn intelligent_terminal_root() -> Option<PathBuf> {
@@ -112,10 +112,6 @@ pub fn runtime_log_path(file_name: &str) -> PathBuf {
     }
 
     PathBuf::from(file_name)
-}
-
-pub fn master_pipe_file_path() -> Option<PathBuf> {
-    intelligent_terminal_root().map(|root| root.join("master-pipe.txt"))
 }
 
 /// Resolve the C++ Windows Terminal app's `state.json`.

@@ -97,7 +97,7 @@ export default {
       owner.title = snapshot.title || owner.title;
       if (snapshot.status === "working" && !initial) {
         await bridge("agent.prompt.submit", owner.sessionID, { pane_owner: false });
-      } else if (snapshot.status === "idle" && !initial) {
+      } else if (snapshot.status === "idle") {
         await bridge("agent.stop", owner.sessionID, { pane_owner: false });
       } else if (snapshot.status === "attention") {
         await bridge("agent.notification", owner.sessionID, {
@@ -118,7 +118,6 @@ export default {
       }
       if (evictedSessionID === desired.sessionID) return;
       if (bound?.sessionID === desired.sessionID && !reclaim) return;
-      const recovering = bound?.sessionID === desired.sessionID;
       if (bound && bound.sessionID !== desired.sessionID) await release();
       if (disposed || expected !== intent) return;
       const owner = {
@@ -155,9 +154,6 @@ export default {
       bound = owner;
       observed.set(owner.sessionID, owner);
       await reconcile(snapshot, owner, true);
-      if (recovering && snapshot.status === "idle") {
-        await bridge("agent.stop", owner.sessionID, { pane_owner: false });
-      }
       const buffered = pending;
       pending = [];
       for (const signal of buffered) {

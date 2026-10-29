@@ -29,6 +29,7 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::IPaneContent GetActiveContent() const;
 
         void Focus(winrt::Windows::UI::Xaml::FocusState focusState);
+        bool IsFocused() const noexcept { return _focused(); }
 
         void Scroll(const int delta);
 
@@ -46,13 +47,15 @@ namespace winrt::TerminalApp::implementation
 
         std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> SplitPaneAtRoot(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
                                                                                 std::shared_ptr<Pane> newPane,
-                                                                                float splitSize = 0.5f);
+                                                                                float splitSize = 0.5f,
+                                                                                bool animate = true);
 
         void ToggleSplitOrientation();
         void UpdateIcon(const winrt::hstring& iconPath, const winrt::Microsoft::Terminal::Settings::Model::IconStyle iconStyle);
         void HideIcon(const bool hide);
 
         void ShowBellIndicator(const bool show);
+        void RaiseBellIndicator();
         void ActivateBellIndicatorTimer();
 
         float CalcSnappedDimension(const bool widthOrHeight, const float dimension) const;
@@ -69,6 +72,7 @@ namespace winrt::TerminalApp::implementation
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
         void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
+        void SetUnreadAgentActivity(bool unread, bool needsAttention = false);
 
         void Close();
         void Shutdown();
@@ -89,6 +93,7 @@ namespace winrt::TerminalApp::implementation
         void UpdateZoom(std::shared_ptr<Pane> newFocus);
         void ToggleZoom();
         bool IsZoomed();
+        std::shared_ptr<Pane> GetZoomedPane() const { return _zoomedPane; }
         void EnterZoom();
         void ExitZoom();
 
@@ -97,7 +102,7 @@ namespace winrt::TerminalApp::implementation
         void ShowPane();
         bool HasHiddenPane();
 
-        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildStartupActions(BuildStartupKind kind) const;
+        std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> BuildStartupActions(BuildStartupKind kind, bool persistAgentPanes = true) const;
 
         int GetLeafPaneCount() const noexcept;
 
@@ -261,6 +266,7 @@ namespace winrt::TerminalApp::implementation
         void CloseButtonVisibility(Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility visible);
 
         til::event<winrt::delegate<void()>> RequestFocusActiveControl;
+        til::event<winrt::delegate<>> Focused;
         til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
         til::event<winrt::delegate<>> KeepRunningEnabledByUser;
         til::event<winrt::delegate<bool>> PinRequested;
@@ -406,12 +412,14 @@ namespace winrt::TerminalApp::implementation
         std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
         winrt::hstring _richTabTooltipText{};
         winrt::hstring _richTabAccessibilityText{};
+        bool _unreadAgentActivityNeedsAttention{ false };
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
         void _Setup();
 
         SafeDispatcherTimer _bellIndicatorTimer;
+        bool _terminalBellActive{ false };
         void _BellIndicatorTimerTick(const Windows::Foundation::IInspectable& sender, const Windows::Foundation::IInspectable& e);
 
         void _UpdateHeaderControlMaxWidth();

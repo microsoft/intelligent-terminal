@@ -37,8 +37,10 @@
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/ProfileSplitPolicy.h"
 #include "JsonTestClass.h"
+#include <cstring>
 #include <fstream>
 #include <tuple>
+#include <winioctl.h>
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -59,8 +61,10 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileAntigravitySettingsRoundtrip);
         TEST_METHOD(AgentProfileCommandQuoting);
         TEST_METHOD(AgentProfileNativeCommands);
+        TEST_METHOD(AgentProfileSessionIdCommands);
         TEST_METHOD(AgentProfileArgumentValidation);
         TEST_METHOD(AgentProfileDiscoveryLifecycle);
+        TEST_METHOD(AgentProfileDiscoveryExecutionAliases);
         TEST_METHOD(AgentProfileDiscoveryCacheLifecycle);
         TEST_METHOD(AgentProfileDiscoveryCacheFirstFailure);
         TEST_METHOD(AgentProfileNativeAllowlist);
@@ -496,6 +500,40 @@ namespace SettingsModelUnitTests
         }
     }
 
+    void CustomAgentAndPolicyTests::AgentProfileSessionIdCommands()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const std::wstring sessionId{ L"11111111-2222-4333-8444-555555555555" };
+        for (const auto id : { L"copilot", L"claude", L"gemini" })
+        {
+            const auto argumentFlag = std::wstring_view{ id } == L"gemini" ? L"--prompt-interactive" : L"--add-dir";
+            const auto arguments = std::wstring{ argumentFlag } + LR"( "C:\source tree")";
+            VERIFY_IS_TRUE(Agents::CanPinNewSession(id, arguments));
+            const auto args = Agents::ParseArguments(Agents::BuildCommand(
+                L"C:\\agent.exe", id, L"chosen-model", {}, arguments, true, sessionId));
+            VERIFY_ARE_EQUAL(size_t{ 7 }, args.size());
+            VERIFY_ARE_EQUAL(std::wstring{ L"--session-id" }, args[3]);
+            VERIFY_ARE_EQUAL(sessionId, args[4]);
+            VERIFY_ARE_EQUAL(std::wstring{ argumentFlag }, args[5]);
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\source tree" }, args[6]);
+            const auto batch = Agents::BuildCommand(L"C:\\agent.cmd", id, {}, {}, {}, true, sessionId);
+            VERIFY_IS_TRUE(batch.ends_with(L"\"--session-id\" \"" + sessionId + L"\"\""));
+            const auto preview = Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, {});
+            VERIFY_IS_TRUE(preview.find(L"--session-id") == std::wstring::npos);
+            for (const auto argument : { L"--resume", L"--resume=existing", L"--resume existing", L"--continue", L"--help", L"--version" })
+            {
+                VERIFY_IS_FALSE(Agents::CanPinNewSession(id, argument));
+                VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, argument, true, sessionId), wil::ResultException);
+            }
+        }
+        VERIFY_IS_TRUE(Agents::CanPinNewSession(L"claude", LR"(--add-dir "C:\--resume")"));
+        for (const auto id : { L"codex", L"opencode", L"antigravity", L"custom:agent" })
+        {
+            VERIFY_IS_FALSE(Agents::CanPinNewSession(id, {}));
+            VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", id, {}, {}, {}, true, sessionId), wil::ResultException);
+        }
+    }
+
     void CustomAgentAndPolicyTests::AgentProfileArgumentValidation()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
@@ -543,6 +581,7 @@ namespace SettingsModelUnitTests
         const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
         const auto shim = early / L"claude.cmd";
         const auto exe = late / L"claude.exe";
+        std::filesystem::create_directory(early / L"claude.exe");
         std::ofstream{ shim }.put('\n');
         std::ofstream{ exe }.put('\n');
         std::ofstream{ early / L"antigravity.exe" }.put('\n');
@@ -564,6 +603,55 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(Agents::Discover(L"").empty());
         std::ofstream{ late / L"agy.exe" }.put('\n');
         VERIFY_ARE_EQUAL((late / L"agy.exe").native(), Agents::Discover(path).at(L"antigravity").native());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileDiscoveryExecutionAliases()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::current_path() / (L"Native Agent Alias " + Utils::GuidToString(guid));
+        const auto alias = root / L"copilot.exe";
+        std::filesystem::create_directory(root);
+        const auto cleanup = wil::scope_exit([&]() {
+            LOG_IF_WIN32_BOOL_FALSE(DeleteFileW(alias.c_str()));
+            std::filesystem::remove_all(root);
+        });
+        const auto target = root / L"real-copilot.exe";
+        std::ofstream{ target }.put('\n');
+        std::ofstream{ root / L"claude.exe" }.put('\n');
+
+        // Reproduce an app execution alias without registering a package or requiring symlink privileges.
+        std::wstring strings;
+        for (const auto& value : { std::wstring{ L"NativeAgentFixture" }, std::wstring{ L"NativeAgentFixture!App" }, target.native(), std::wstring{ L"0" } })
+        {
+            strings.append(value);
+            strings.push_back(L'\0');
+        }
+        struct AliasHeader
+        {
+            DWORD reparseTag;
+            USHORT dataLength;
+            USHORT reserved;
+            DWORD version;
+        };
+        const AliasHeader header{ IO_REPARSE_TAG_APPEXECLINK, gsl::narrow<USHORT>(sizeof(DWORD) + strings.size() * sizeof(wchar_t)), 0, 3 };
+        std::vector<std::byte> buffer(sizeof(header) + strings.size() * sizeof(wchar_t));
+        std::memcpy(buffer.data(), &header, sizeof(header));
+        std::memcpy(buffer.data() + sizeof(header), strings.data(), strings.size() * sizeof(wchar_t));
+        wil::unique_hfile file{ CreateFileW(alias.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_FLAG_OPEN_REPARSE_POINT, nullptr) };
+        THROW_LAST_ERROR_IF(!file);
+        DWORD returned;
+        THROW_IF_WIN32_BOOL_FALSE(DeviceIoControl(file.get(), FSCTL_SET_REPARSE_POINT, buffer.data(), gsl::narrow<DWORD>(buffer.size()), nullptr, 0, &returned, nullptr));
+        file.reset();
+
+        const auto discovered = Agents::Discover(L"\"" + root.native() + L"\"");
+        VERIFY_ARE_EQUAL(size_t{ 2 }, discovered.size());
+        VERIFY_ARE_EQUAL(alias.native(), discovered.at(L"copilot").native());
+        VERIFY_ARE_EQUAL((root / L"claude.exe").native(), discovered.at(L"claude").native());
+        auto profile = winrt::make_self<implementation::Profile>();
+        profile->AgentProfileId(L"copilot");
+        VERIFY_ARE_EQUAL(Agents::BuildCommand(alias.native(), L"copilot", {}, {}, {}), Agents::Command(*profile, true, root.native()));
     }
 
     void CustomAgentAndPolicyTests::AgentProfileDiscoveryCacheLifecycle()

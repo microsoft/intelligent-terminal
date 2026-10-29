@@ -67,6 +67,24 @@ void FormatPanesHuman(const Json::Value& panes)
     }
 }
 
+void FormatProfilesHuman(const Json::Value& profiles)
+{
+    if (profiles.empty())
+    {
+        printf("No profiles found.\n");
+        return;
+    }
+    printf("%-38s %-30s %-12s %s\n", "PROFILE_ID", "NAME", "AGENT", "DEFAULT");
+    for (const auto& profile : profiles)
+    {
+        printf("%-38s %-30s %-12s %s\n",
+               profile["id"].asString().c_str(),
+               profile["name"].asString().c_str(),
+               profile.get("agent_id", "").asString().c_str(),
+               profile["is_default"].asBool() ? "*" : "");
+    }
+}
+
 void FormatActivePaneHuman(const Json::Value& info)
 {
     printf("Active pane: %s (tab: %u, window: %llu)\n",

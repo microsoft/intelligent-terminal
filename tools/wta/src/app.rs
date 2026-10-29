@@ -504,6 +504,7 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
     "message",
     "notification_type",
     "notificationType",
+    "timestamp",
     "reason",
     "error",
     "pane_owner",
@@ -518,6 +519,31 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
 /// `src/tools/wtcli/wtcli_functions.h`), so a name missing here is dropped
 /// from the degraded payload and the notification loses its question text.
 pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
+
+fn hook_timestamp_ms(payload: &serde_json::Value) -> Option<u64> {
+    let timestamp = payload.get("timestamp")?;
+    if timestamp.is_null() {
+        return None;
+    }
+    // FormatListenEvent accepts numeric dates only before year 10000, but
+    // forwards unsupported values and existing strings unchanged.
+    const MAX_HOOK_TIMESTAMP_MS: u64 = 253_402_300_799_999;
+    let parsed = timestamp
+        .as_u64()
+        .or_else(|| {
+            crate::session_history::parse_iso_to_system_time(timestamp.as_str()?)?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_millis()
+                .try_into()
+                .ok()
+        })
+        .filter(|timestamp| *timestamp <= MAX_HOOK_TIMESTAMP_MS);
+    if parsed.is_none() {
+        tracing::warn!(target: "agent_route", "invalid hook timestamp; retaining arrival-order activity recovery");
+    }
+    parsed
+}
 
 /// Registry facts the `agent_event` decision needs.
 ///
@@ -719,7 +745,11 @@ pub fn plan_agent_event(
                     .and_then(|v| v.as_str())
                     .unwrap_or("waiting for user input")
                     .to_string();
-                SessionEvent::Notification { key, message }
+                SessionEvent::Notification {
+                    key,
+                    message,
+                    timestamp_ms: None,
+                }
             } else {
                 SessionEvent::ToolStarting { key, tool_name }
             }
@@ -732,7 +762,10 @@ pub fn plan_agent_event(
         // retain the legacy no-op; agent.stop still owns the turn-end transition.
         "agent.tool.completed" | "agent.tool.finished" => {
             if *cli_source == crate::agent_sessions::CliSource::Copilot {
-                SessionEvent::ToolReturned { key }
+                SessionEvent::ToolReturned {
+                    key,
+                    timestamp_ms: hook_timestamp_ms(payload),
+                }
             } else {
                 plan.events.clear();
                 return plan;
@@ -769,6 +802,9 @@ pub fn plan_agent_event(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
+                timestamp_ms: (*cli_source == crate::agent_sessions::CliSource::Copilot)
+                    .then(|| hook_timestamp_ms(payload))
+                    .flatten(),
             }
         }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
@@ -1343,6 +1379,7 @@ pub struct App {
     next_agent_install_request_id: u64,
     pending_agent_install: Option<PendingAgentInstall>,
     agent_binding_generation: u64,
+    pending_startup_retry: Option<u64>,
     pub(crate) auto_install_selected_agent: bool,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
@@ -1727,6 +1764,8 @@ pub(crate) fn session_info_to_agent_session(
         last_error: info.last_error.clone(),
         current_tool: info.current_tool.clone(),
         attention_reason: info.attention_reason.clone(),
+        attention_timestamp_ms: info.attention_timestamp_ms,
+        attention_cooldown_until_ms: info.attention_cooldown_until_ms,
         log_path: None,
         origin,
         location: info.location.clone(),
@@ -1761,6 +1800,7 @@ impl App {
             next_agent_install_request_id: 0,
             pending_agent_install: None,
             agent_binding_generation: 0,
+            pending_startup_retry: None,
             auto_install_selected_agent: false,
             needs_post_login_authenticate: false,
             acp_auth_methods: Vec::new(),
@@ -1969,6 +2009,8 @@ impl App {
             return;
         }
         self.pending_acp_start = false;
+        let retry_startup = self.pending_startup_retry.take()
+            == Some(self.agent_binding_generation);
         let post_login_auth = self.needs_post_login_authenticate;
         self.needs_post_login_authenticate = false;
         let requested_auth = self
@@ -2117,6 +2159,7 @@ impl App {
                             shell_mgr,
                             wt_connected,
                             post_login_auth, // only true on genuine LoginComplete reconnects
+                            retry_startup,
                             requested_auth,
                             proposal_channels,
                         )
@@ -3169,6 +3212,8 @@ impl App {
     }
 
     fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
+        // ResumeDispatched uses only this route: a second dispatch RPC could
+        // arrive after startup-failure recovery and revive an unbound row.
         if let Some(tx) = &self.session_hook_tx {
             if let Err(err) = tx.send(event) {
                 tracing::warn!(
@@ -3636,7 +3681,6 @@ impl App {
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
         // transition the row to Ended; harmless duplicate work for
         // Claude/Copilot whose hooks beat us to the same binding.
@@ -3806,7 +3850,6 @@ impl App {
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
-        self.dispatch_session_resume_dispatched_rpc(&key);
 
         let mut params = serde_json::Map::new();
         params.insert(
@@ -3914,17 +3957,6 @@ impl App {
                 ],
             });
         }
-    }
-
-    fn dispatch_session_resume_dispatched_rpc(&mut self, sid: &str) {
-        let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
-        let _ = self.master_request_tx.send(
-            crate::protocol::acp::client::MasterExtRequest::SessionResumeDispatched {
-                request_id,
-                sid,
-            },
-        );
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
@@ -5142,6 +5174,7 @@ impl App {
                     if !agent_id.is_empty() {
                         if agent_id.starts_with("custom:") {
                             self.reconnect_confirmed_available_agent(&agent_id);
+                            self.pending_startup_retry = Some(self.agent_binding_generation);
                             return;
                         }
                         if matches!(
@@ -5159,6 +5192,7 @@ impl App {
                             if self.deferred_acp.is_some() {
                                 self.pending_acp_start = true;
                             }
+                            self.pending_startup_retry = Some(self.agent_binding_generation);
                             return;
                         }
                         let status = crate::agent_check::recheck_agent(&agent_id);
@@ -5167,6 +5201,7 @@ impl App {
                             // Stay in Setup mode with "Connecting..." to avoid a flash
                             // of red error text in Chat if ACP fails immediately.
                             self.reconnect_confirmed_available_agent(&agent_id);
+                            self.pending_startup_retry = Some(self.agent_binding_generation);
                             // Don't clear setup yet — AgentConnected will transition to Chat,
                             // AgentError will update the Setup screen.
                         } else if let Some(setup) = self.setup.as_mut() {
@@ -7656,6 +7691,13 @@ impl App {
         };
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("delegate").arg(prompt);
+        if let Some(pipe) = self
+            .deferred_acp
+            .as_ref()
+            .and_then(|params| params.master_pipe_name.as_deref())
+        {
+            cmd.arg("--master").arg(pipe);
+        }
         // The delegate child inherits WT_COM_CLSID from our env; no explicit pass needed.
 
         // Fire-and-forget: spawn hidden, don't wait.

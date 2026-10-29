@@ -143,7 +143,7 @@ agent.custom.auth_hint: "Уверете се, че %{name} е инсталира
 agents.loading: "Зареждане..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ за навигация • Enter за стартиране на сесия • Esc за изход • F5 за обновяване • / за търсене)"
-agents.status.active: "Активен"
+agents.status.active: "Работи"
 agents.status.waiting_for_input: "Очаква въвеждане"
 agents.status.error: "Грешка"
 agents.status.idle: "Неактивен"

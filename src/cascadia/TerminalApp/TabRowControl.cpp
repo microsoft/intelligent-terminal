@@ -178,7 +178,6 @@ namespace winrt::TerminalApp::implementation
 
         WUX::Controls::Grid topChromeContainer;
         topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
-        topChromeContainer.Margin(WUX::Thickness{ 0, 0, 4, 0 });
         WUX::Controls::Grid::SetColumn(topChromeContainer, 2);
         expandedChrome.Children().Append(topChromeContainer);
 
@@ -186,7 +185,7 @@ namespace winrt::TerminalApp::implementation
         // the horizontal button leaves its automation peer attached to the
         // old subtree and hides the client UIA tree after a layout round trip.
         _verticalNewTabButton = MUX::Controls::SplitButton{};
-        _verticalNewTabButton.Width(64);
+        _verticalNewTabButton.Width(71);
         _verticalNewTabButton.Height(32);
         _verticalNewTabButton.Padding(WUX::Thickness{});
         _verticalNewTabButton.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
@@ -204,6 +203,29 @@ namespace winrt::TerminalApp::implementation
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
+        _verticalNewTabButton.Loaded([](const auto& sender, const auto&) {
+            const auto button = sender.template as<MUX::Controls::SplitButton>();
+            button.ApplyTemplate();
+            if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
+            {
+                for (const auto name : { L"PrimaryBackgroundGrid", L"SecondaryBackgroundGrid" })
+                {
+                    if (const auto background = root.FindName(name).template try_as<WUX::Controls::Grid>())
+                    {
+                        background.CornerRadius(button.CornerRadius());
+                    }
+                }
+                if (const auto secondary = root.FindName(L"SecondaryButton").template try_as<WUX::Controls::Button>())
+                {
+                    secondary.Padding(WUX::Thickness{});
+                    secondary.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
+                    if (const auto icon = secondary.Content().template try_as<WUX::FrameworkElement>())
+                    {
+                        icon.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                    }
+                }
+            }
+        });
         topChromeContainer.Children().Append(_verticalNewTabButton);
 
         titlebarGrid.Children().Append(expandedChrome);

@@ -1253,6 +1253,10 @@
     <value>이 프로필에서 명령 팔레트 위임에 사용할 에이전트를 선택합니다. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>전역 설정 사용 ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2852,6 +2856,10 @@
     <value>이 에이전트에 사용할 모델을 선택하세요.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data>
+  <data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+    <value>오류 세부 사항</value>
+    <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>에이전트 CLI</value>
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
@@ -3083,15 +3091,23 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>에이전트의 ACP 서버 설치 중...</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>ACP 연결을 준비하고 확인하는 중...</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>에이전트의 ACP 서버를 설치하지 못했습니다. 네트워크 및 설치 상태를 확인한 후 다시 시도하세요.</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>에이전트의 ACP 서버를 설치하지 못했습니다.</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>ACP 연결을 시작할 수 없습니다.</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>ACP 프로세스가 종료되었는지 확인할 수 없습니다. 자동 시작이 중지되었습니다.</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>다시 시도</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
 </root>

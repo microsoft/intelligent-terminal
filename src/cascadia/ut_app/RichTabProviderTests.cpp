@@ -46,9 +46,17 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(PowerShellProviderPreservesUnicodeAcrossProcessBoundary);
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
+        TEST_METHOD(ProviderDiagnosticVersionRejectsUntrustedText);
+        TEST_METHOD(ProviderDiagnosticLogWritesContentMinimizedRecord);
+        TEST_METHOD(ProviderDiagnosticLogCleanupSkipsUnrelatedFiles);
+        TEST_METHOD(ProviderDiagnosticLogDropsOnContention);
+        TEST_METHOD(CommandRunnerMarksLaunchFailureObservations);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(BrokerKeepsAgentStatusPairedWithSnapshotDuringRefresh);
+        TEST_METHOD(BrokerKeepsBuiltInStatusWhileMetadataRefreshes);
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
+        TEST_METHOD(BrokerKeepsVisibleFieldsIndependentAcrossWindows);
+        TEST_METHOD(BrokerCollectsSharedSessionFieldsForBothWindows);
         TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderUsesDisplayedDirectoryForGit);
@@ -62,6 +70,193 @@ namespace TerminalAppUnitTests
         TEST_METHOD(DetachedSessionDoesNotReuseOldGitMetadata);
     };
 
+    void RichTabProviderTests::ProviderDiagnosticVersionRejectsUntrustedText()
+    {
+        const auto version = ParseProviderDiagnosticVersion("1.2.3");
+        VERIFY_IS_TRUE(version.valid);
+        VERIFY_ARE_EQUAL(uint16_t{ 1 }, version.major);
+        VERIFY_ARE_EQUAL(uint16_t{ 2 }, version.minor);
+        VERIFY_ARE_EQUAL(uint16_t{ 3 }, version.patch);
+        VERIFY_ARE_EQUAL(uint8_t{ 3 }, version.componentCount);
+
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3-canary").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1..3").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3.").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("1.2.3.4.5").valid);
+        VERIFY_IS_FALSE(ParseProviderDiagnosticVersion("70000").valid);
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogWritesContentMinimizedRecord()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabProviderLog-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        {
+            auto logger = ProviderDiagnosticLog::CreateForTests(42, logRoot);
+            VERIFY_IS_NOT_NULL(logger.get());
+
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Invocation;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = 42;
+            record.hostRequestId = 7;
+            record.generation = 8;
+            record.contextRevision = 9;
+            record.durationMicroseconds = 10;
+            record.providerVersion = ParseProviderDiagnosticVersion("1.2.3");
+            record.activationReason = ActivationEvent::CommandFinished;
+            record.runnerStatus = CommandResult::Status::Completed;
+            record.parseOutcome = ProviderParseOutcome::Valid;
+            record.brokerDisposition = ProviderBrokerDisposition::Accepted;
+            record.selectedFields = ProviderFieldBranch | ProviderFieldChanges;
+            record.returnedFields = ProviderFieldBranch;
+            record.catalogOrigin = true;
+            record.runnerAttempted = true;
+            record.processStarted = true;
+            record.exitCodeValid = true;
+            record.outputLimitObserved = true;
+            logger->TryLog(record);
+            record.hostRequestId = 8;
+            record.providerVersion = ParseProviderDiagnosticVersion("repository-value-canary");
+            logger->TryLog(record);
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, logger->DroppedRecords());
+        }
+
+        std::vector<std::filesystem::path> logs;
+        for (const auto& entry : std::filesystem::directory_iterator{ logRoot })
+        {
+            if (entry.is_regular_file())
+            {
+                logs.emplace_back(entry.path());
+            }
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, logs.size());
+        std::ifstream stream{ logs.front(), std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        const std::string contents{
+            std::istreambuf_iterator<char>{ stream },
+            std::istreambuf_iterator<char>{}
+        };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("event":"invocation")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("activation":"command-finished")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("providerVersion":"1.2.3")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("providerVersion":null)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("selectedFields":["branch","changes"])"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("brokerDisposition":"accepted")"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("repository-value-canary"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("stderr-value-canary"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogCleanupSkipsUnrelatedFiles()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabProviderCleanup-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        for (size_t index = 0; index < 128; ++index)
+        {
+            std::ofstream{ logRoot / (L"unrelated-" + std::to_wstring(index) + L".log"), std::ios::binary } << "unrelated";
+        }
+        const auto oldLog = logRoot / L"rich-tab-provider-20200101-1-0000000000000001.jsonl";
+        const auto currentLog = logRoot / L"rich-tab-provider-20990101-1-0000000000000002.jsonl";
+        _WriteFile(oldLog, "{}\n");
+        _WriteFile(currentLog, "{}\n");
+        std::error_code timeError;
+        std::filesystem::last_write_time(
+            oldLog,
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours{ 24 * 8 },
+            timeError);
+        VERIFY_IS_FALSE(static_cast<bool>(timeError));
+
+        {
+            auto logger = ProviderDiagnosticLog::CreateForTests(45, logRoot);
+            VERIFY_IS_NOT_NULL(logger.get());
+        }
+
+        VERIFY_IS_FALSE(std::filesystem::exists(oldLog));
+        VERIFY_IS_TRUE(std::filesystem::exists(currentLog));
+        VERIFY_IS_TRUE(std::filesystem::exists(logRoot / L"unrelated-0.log"));
+        VERIFY_IS_TRUE(std::filesystem::exists(logRoot / L"unrelated-127.log"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogDropsOnContention()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabProviderContention-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+        auto logger = ProviderDiagnosticLog::CreateForTests(46, logRoot, true);
+        VERIFY_IS_NOT_NULL(logger.get());
+
+        wil::unique_handle started{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+        wil::unique_handle completed{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+        VERIFY_IS_NOT_NULL(started.get());
+        VERIFY_IS_NOT_NULL(completed.get());
+
+        AcquireSRWLockExclusive(&logger->_queueLock);
+        auto releaseQueueLock = wil::scope_exit([&]() noexcept {
+            ReleaseSRWLockExclusive(&logger->_queueLock);
+        });
+        std::thread producer{ [&]() {
+            SetEvent(started.get());
+            logger->TryLog({});
+            SetEvent(completed.get());
+        } };
+        const auto startedResult = WaitForSingleObject(started.get(), 1000);
+        const auto completedResult = startedResult == WAIT_OBJECT_0 ?
+                                         WaitForSingleObject(completed.get(), 1000) :
+                                         WAIT_TIMEOUT;
+        ReleaseSRWLockExclusive(&logger->_queueLock);
+        releaseQueueLock.release();
+        producer.join();
+
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, startedResult);
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, completedResult);
+        VERIFY_ARE_EQUAL(uint64_t{ 1 }, logger->DroppedRecords());
+    }
+
+    void RichTabProviderTests::CommandRunnerMarksLaunchFailureObservations()
+    {
+        const auto providerRoot = std::filesystem::temp_directory_path() /
+                                  (L"RichTabMissingEntrypoint-" + std::to_wstring(GetCurrentProcessId()) +
+                                   L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(providerRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(providerRoot, error);
+        });
+
+        Manifest manifest;
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"missing-provider.ps1";
+        manifest.extensionRoot = providerRoot;
+
+        const auto result = CommandRunner{}.Run(manifest, "{}", std::chrono::seconds{ 1 });
+        VERIFY_IS_TRUE(result.status == CommandResult::Status::LaunchFailed);
+        VERIFY_IS_FALSE(result.processStarted);
+        VERIFY_IS_FALSE(result.exitCodeValid);
+        VERIFY_IS_TRUE(result.win32ErrorValid);
+        VERIFY_IS_FALSE(result.outputLimitObserved);
+    }
+
     void RichTabProviderTests::AgentCwdInvalidatesOnlyTrustedGitStatusField()
     {
         ProviderBroker broker{ std::nullopt };
@@ -71,6 +266,7 @@ namespace TerminalAppUnitTests
         trusted.manifest.fields = { FieldDeclaration{ "workingDirectory", "Directory" },
                                     FieldDeclaration{ "branch", "Branch" } };
         trusted.kind = RegistrationKind::Managed;
+        trusted.origin = RegistrationOrigin::BuiltInCatalog;
         trusted.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
         trusted.enabled = true;
         trusted.integrityValid = true;
@@ -174,6 +370,7 @@ namespace TerminalAppUnitTests
                                         FieldDeclaration{ "branch", "Branch" },
                                         FieldDeclaration{ "changes", "Changes" } };
         gitProvider.kind = RegistrationKind::Managed;
+        gitProvider.origin = RegistrationOrigin::BuiltInCatalog;
         gitProvider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
         gitProvider.enabled = true;
         gitProvider.integrityValid = true;
@@ -182,6 +379,7 @@ namespace TerminalAppUnitTests
         auto& session = broker._sessions["detached-git"];
         session.context.sessionId = "detached-git";
         session.context.workingDirectory = L"C:\\shell";
+        session.context.firstPartyFields = { { "agentStatus", "Idle" }, { "agentStatusId", "Idle" } };
         session.sessionIncarnation = 1;
         session.callbacks.emplace(1, [](const auto&) {});
         broker._attachmentSessions.emplace(1, session.context.sessionId);
@@ -313,6 +511,12 @@ namespace TerminalAppUnitTests
             CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
         VERIFY_IS_TRUE(command.status == CommandResult::Status::Completed);
         VERIFY_ARE_EQUAL(0u, command.exitCode);
+        VERIFY_IS_TRUE(command.processStarted);
+        VERIFY_IS_TRUE(command.exitCodeValid);
+        VERIFY_IS_FALSE(command.win32ErrorValid);
+        VERIFY_IS_TRUE(command.outputLimitObserved);
+        VERIFY_IS_FALSE(command.standardOutputExceeded);
+        VERIFY_IS_FALSE(command.standardErrorExceeded);
 
         const auto parsed = ParseSnapshot(command.standardOutput, manifest, request.requestId);
         VERIFY_IS_TRUE(static_cast<bool>(parsed));
@@ -390,6 +594,116 @@ namespace TerminalAppUnitTests
             presentation->accessibilityText);
     }
 
+    void RichTabProviderTests::BrokerKeepsVisibleFieldsIndependentAcrossWindows()
+    {
+        Registration provider;
+        provider.manifest.id = "test.window-fields";
+        provider.manifest.fields = {
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+        };
+        provider.enabled = true;
+
+        ProviderBroker broker{ std::nullopt };
+        broker._providers = { provider };
+        std::vector<std::wstring> firstWindow;
+        std::vector<std::wstring> secondWindow;
+        for (const auto& [attachment, sessionId, updates] :
+             { std::tuple<ProviderBroker::AttachmentId, std::string, std::vector<std::wstring>*>{
+                   1, "window-one", &firstWindow },
+               { 2, "window-two", &secondWindow } })
+        {
+            auto& session = broker._sessions[sessionId];
+            session.context.sessionId = sessionId;
+            session.sessionIncarnation = attachment;
+            Snapshot snapshot;
+            snapshot.fields.emplace("repository", std::string{ "project" });
+            snapshot.fields.emplace("branch", std::string{ "main" });
+            session.providers[provider.manifest.id].snapshot = std::move(snapshot);
+            session.callbacks.emplace(attachment, [updates](const BrokerUpdate& update) {
+                updates->emplace_back(update.presentation ? update.presentation->text : L"");
+            });
+            broker._attachmentSessions.emplace(attachment, sessionId);
+        }
+        broker._nextAttachment = 3;
+
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "branch" });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, firstWindow.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+
+        broker.SetVisibleFields(1, provider.manifest.id, {});
+        VERIFY_IS_TRUE(firstWindow.back().empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+
+        std::vector<std::wstring> newTab;
+        const auto newAttachment = broker.Attach(
+            { "window-one-new-tab" },
+            [&](const BrokerUpdate& update) {
+                newTab.emplace_back(update.presentation ? update.presentation->text : L"");
+            },
+            { { provider.manifest.id, { "repository" } } });
+        VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 3 }, newAttachment);
+        Snapshot newSnapshot;
+        newSnapshot.fields.emplace("repository", std::string{ "project" });
+        newSnapshot.fields.emplace("branch", std::string{ "main" });
+        broker._sessions.at("window-one-new-tab").providers[provider.manifest.id].snapshot = std::move(newSnapshot);
+        broker.SetFieldDisplayNames(provider.manifest.id, { { "repository", "Repository" } });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, newTab.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+        broker.Detach(newAttachment);
+        VERIFY_IS_TRUE(broker._attachmentSessions.contains(1));
+        VERIFY_IS_FALSE(broker._attachmentSessions.contains(newAttachment));
+        VERIFY_IS_TRUE(broker._sessions.at("window-one").callbacks.contains(1));
+    }
+
+    void RichTabProviderTests::BrokerCollectsSharedSessionFieldsForBothWindows()
+    {
+        Registration provider;
+        provider.manifest.id = "test.shared-session";
+        provider.manifest.fields = {
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+        };
+        provider.enabled = true;
+
+        ProviderBroker broker{ std::nullopt };
+        broker._providers = { provider };
+        auto& session = broker._sessions["shared-session"];
+        session.context.sessionId = "shared-session";
+        session.sessionIncarnation = 1;
+        Snapshot snapshot;
+        snapshot.fields.emplace("repository", std::string{ "project" });
+        snapshot.fields.emplace("branch", std::string{ "main" });
+        session.providers[provider.manifest.id].snapshot = std::move(snapshot);
+        std::vector<std::wstring> firstWindow;
+        std::vector<std::wstring> secondWindow;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            firstWindow.emplace_back(update.presentation ? update.presentation->text : L"");
+        });
+        session.callbacks.emplace(2, [&](const BrokerUpdate& update) {
+            secondWindow.emplace_back(update.presentation ? update.presentation->text : L"");
+        });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        broker._attachmentSessions.emplace(2, session.context.sessionId);
+
+        broker.SetVisibleFields(1, provider.manifest.id, {});
+        VERIFY_IS_TRUE(firstWindow.back().empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" } + L'\n' + L"main", secondWindow.back());
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "branch" });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, firstWindow.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+        const auto bothFields = broker._VisibleFieldsForSession(session, provider);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, bothFields.size());
+
+        broker.Detach(1);
+        const auto remainingFields = broker._VisibleFieldsForSession(session, provider);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, remainingFields.size());
+        VERIFY_ARE_EQUAL(std::string{ "branch" }, remainingFields.front());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+    }
+
     void RichTabProviderTests::BrokerClearsSuccessfulSnapshotAfterProviderFailure()
     {
         const auto providerRoot = std::filesystem::temp_directory_path() /
@@ -420,7 +734,7 @@ namespace TerminalAppUnitTests
         provider.integrityValid = true;
 
         std::vector<BrokerUpdate> updates;
-        ProviderBroker broker;
+        ProviderBroker broker{ CommandRunner::ResolveGit() };
         broker._providers = { provider };
         auto& session = broker._sessions["broker-failure-session"];
         session.context.sessionId = "broker-failure-session";
@@ -523,7 +837,7 @@ namespace TerminalAppUnitTests
         provider.integrityValid = true;
 
         std::vector<BrokerUpdate> updates;
-        ProviderBroker broker;
+        ProviderBroker broker{ CommandRunner::ResolveGit() };
         broker._providers = { provider };
         auto& session = broker._sessions["status-revision-session"];
         session.context.sessionId = "status-revision-session";
@@ -594,6 +908,96 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(updates.back().diagnostics.empty());
     }
 
+    void RichTabProviderTests::BrokerKeepsBuiltInStatusWhileMetadataRefreshes()
+    {
+        ProviderBroker broker{ std::nullopt };
+        Registration provider;
+        provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "agentStatus", "Status", FieldType::String, true },
+                                     { "workingDirectory", "Directory", FieldType::String, true },
+                                     { "repository", "Repository", FieldType::String, false } };
+        provider.kind = RegistrationKind::Managed;
+        provider.origin = RegistrationOrigin::BuiltInCatalog;
+        provider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        provider.enabled = true;
+        provider.integrityValid = true;
+        broker._providers = { provider };
+
+        auto& session = broker._sessions["metadata-refresh"];
+        session.context.sessionId = "metadata-refresh";
+        session.context.firstPartyFields = { { "agentStatus", "Active" }, { "agentStatusId", "Working" } };
+        session.sessionIncarnation = 1;
+        std::vector<BrokerUpdate> updates;
+        session.callbacks.emplace(1, [&](const auto& update) { updates.emplace_back(update); });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        auto& state = session.providers[provider.manifest.id];
+        state.snapshot.emplace();
+        state.snapshot->fields = { { "agentStatus", std::string{ "Active" } },
+                                   { "workingDirectory", std::string{ "C:\\src" } } };
+        state.snapshot->agentStatus = "Working";
+        // Hold provider execution so assertions cover the interval before Git returns.
+        state.running = true;
+
+        broker.SetVisibleFields(provider.manifest.id, { "agentStatus", "repository" });
+        VERIFY_IS_TRUE(state.pending.has_value());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active" }, updates.back().presentation->text);
+
+        // A failed Git invocation must not remove the independently known status.
+        state.snapshot.reset();
+        const auto withoutGit = broker._UpdateFor(session.context.sessionId, session);
+        VERIFY_IS_TRUE(withoutGit.presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active" }, withoutGit.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Working" }, withoutGit.presentation->agentStatus);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, withoutGit.presentation->agentStatusRanges.size());
+
+        broker.UpdateFirstPartyFields(1, { { "agentStatus", "Failed" }, { "agentStatusId", "Error" } });
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Failed" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Error" }, updates.back().presentation->agentStatus);
+
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        broker.SetVisibleFields(provider.manifest.id, { "repository" });
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        broker.SetVisibleFields(provider.manifest.id, { "agentStatus", "repository" });
+
+        state.snapshot.emplace();
+        state.snapshot->fields = { { "agentStatus", std::string{ "Active" } },
+                                   { "repository", std::string{ "terminal" } } };
+        state.snapshot->agentStatus = "Working";
+        const auto refreshed = broker._UpdateFor(session.context.sessionId, session);
+        VERIFY_IS_TRUE(refreshed.presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Failed\n"
+                                       L"terminal" },
+                         refreshed.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Error" }, refreshed.presentation->agentStatus);
+
+        broker.UpdateFirstPartyFields(1, {});
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"terminal" }, updates.back().presentation->text);
+        VERIFY_IS_TRUE(updates.back().presentation->agentStatus.empty());
+        VERIFY_IS_TRUE(updates.back().presentation->agentStatusRanges.empty());
+
+        session.callbacks.emplace(2, [](const auto&) {});
+        broker._attachmentSessions.emplace(2, session.context.sessionId);
+        session.context.firstPartyFields = { { "agentStatus", "Restored" }, { "agentStatusId", "Working" } };
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "agentStatus" });
+        const auto firstWindow = broker._UpdateFor(session.context.sessionId, session, {}, 1);
+        const auto secondWindow = broker._UpdateFor(session.context.sessionId, session, {}, 2);
+        VERIFY_ARE_EQUAL(std::wstring{ L"terminal" }, firstWindow.presentation->text);
+        VERIFY_IS_TRUE(firstWindow.presentation->agentStatus.empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Restored" }, secondWindow.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Working" }, secondWindow.presentation->agentStatus);
+
+        state.snapshot.reset();
+        VERIFY_IS_FALSE(broker._UpdateFor(session.context.sessionId, session, {}, 1).presentation.has_value());
+        const auto statusWithoutGit = broker._UpdateFor(session.context.sessionId, session, {}, 2);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Restored" }, statusWithoutGit.presentation->text);
+    }
+
     void RichTabProviderTests::BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected()
     {
         const auto providerRoot = std::filesystem::temp_directory_path() /
@@ -629,7 +1033,7 @@ namespace TerminalAppUnitTests
         provider.integrityValid = true;
 
         std::vector<BrokerUpdate> updates;
-        ProviderBroker broker;
+        ProviderBroker broker{ CommandRunner::ResolveGit() };
         // Stop idle workers before scheduling anything; drain actual broker work synchronously.
         {
             std::lock_guard lock{ broker._executorMutex };
@@ -758,6 +1162,7 @@ namespace TerminalAppUnitTests
         Registration provider;
         provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
         provider.kind = RegistrationKind::Managed;
+        provider.origin = RegistrationOrigin::BuiltInCatalog;
         provider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
         provider.manifest.runtime.kind = RuntimeKind::PowerShellV1;
         provider.manifest.runtime.entrypoint = L"provider.ps1";
@@ -766,11 +1171,22 @@ namespace TerminalAppUnitTests
         provider.manifest.fields = { { "branch", "Git branch", FieldType::String, true } };
         provider.enabled = true;
         provider.integrityValid = true;
+        provider.manifest.version = "1.0.0";
 
+        const auto blockedLogDirectory = providerRoot / L"blocked-log-directory";
+        _WriteFile(blockedLogDirectory, "not a directory");
+        auto failedLogger = ProviderDiagnosticLog::CreateForTests(43, blockedLogDirectory);
+        VERIFY_IS_NOT_NULL(failedLogger.get());
+        const auto successfulLogDirectory = providerRoot / L"provider-logs";
+        auto successfulLogger = ProviderDiagnosticLog::CreateForTests(44, successfulLogDirectory);
+        VERIFY_IS_NOT_NULL(successfulLogger.get());
+
+        size_t binaryIndex = 0;
         for (const auto& binary : { std::optional<std::filesystem::path>{}, std::optional<std::filesystem::path>{ gitBinary } })
         {
             std::vector<BrokerUpdate> updates;
             ProviderBroker broker{ binary };
+            broker._diagnosticLog = binaryIndex++ == 0 ? failedLogger.get() : successfulLogger.get();
             VERIFY_ARE_EQUAL(binary.has_value(), broker.GitAvailable());
             const auto utf8 = binary ? binary->u8string() : std::u8string{};
             const std::string expected{ utf8.begin(), utf8.end() };
@@ -812,6 +1228,31 @@ namespace TerminalAppUnitTests
             }
             VERIFY_ARE_EQUAL(size_t{ 2 }, updates.size());
         }
+
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, successfulLogger->DroppedRecords());
+        successfulLogger.reset();
+        std::vector<std::filesystem::path> logFiles;
+        for (const auto& entry : std::filesystem::directory_iterator{ successfulLogDirectory })
+        {
+            if (entry.is_regular_file())
+            {
+                logFiles.emplace_back(entry.path());
+            }
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, logFiles.size());
+        std::ifstream logStream{ logFiles.front(), std::ios::binary };
+        const std::string logContents{
+            std::istreambuf_iterator<char>{ logStream },
+            std::istreambuf_iterator<char>{}
+        };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, logContents.find(R"("brokerDisposition":"accepted")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, logContents.find(R"("returnedFields":["branch"])"));
+        const auto providerRootUtf8 = providerRoot.u8string();
+        VERIFY_ARE_EQUAL(
+            std::string::npos,
+            logContents.find(std::string{ providerRootUtf8.begin(), providerRootUtf8.end() }));
+        VERIFY_ARE_EQUAL(std::string::npos, logContents.find("caller-override"));
+        VERIFY_ARE_EQUAL(std::string::npos, logContents.find("changed-override"));
     }
 
     void RichTabProviderTests::GitStatusProviderHandlesMissingGitGracefully()

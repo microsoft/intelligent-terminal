@@ -3,6 +3,7 @@ extern crate rust_i18n;
 
 mod action_links;
 mod agent_check;
+mod agent_lifecycle;
 mod agent_hooks_installer;
 mod agent_pane_origin;
 mod agent_registry;
@@ -183,6 +184,7 @@ async fn main() -> Result<()> {
 
     // Logging must be initialized before locale, telemetry, or dispatch work.
     logging::init(&process_label(&cli));
+    protocol::acp::process::configure_child_error_reporting();
     logging::install_ctrl_handler();
     logging::install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");

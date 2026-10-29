@@ -43,6 +43,11 @@ below requires a version newer than this worktree's installed version, not an
 uninstall. This is separate from [same-layout recipe redeployment](building.md#loose-debug-and-dev-deployment),
 which can retain the same version.
 
+Keep the template's `StartTerminalOnLoginTask` declaration disabled by default.
+Settings queries that package-local task when it opens; removing or renaming it
+causes `StartupTask.GetAsync` to fail. The task ID is scoped to each package, so
+preserving it does not share startup state with normal Dev or Store.
+
 Make these additional **Dev-only** edits:
 
 | File | Local substitution |
@@ -104,18 +109,15 @@ Binary location is not package identity. For runner-side session queries, pass
 the selected package's master pipe explicitly:
 
 ```powershell
-$pipeFile = Join-Path $app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
-$masterPipe = (Get-Content -LiteralPath $pipeFile -Raw -ErrorAction Stop).Trim()
-if (-not $masterPipe) { throw 'Sandbox master pipe is missing.' }
+$masterPipe = Get-WtaMasterPipe -App $app
 Invoke-Wta -App $app -Arguments @('sessions', 'list', '--json',
     '--master', $masterPipe, '--include-status', '--origin', 'all')
 ```
 
-Read that file only after the owned app starts; verify the pipe belongs to its
-WTA master. For suites using `Get-WtSessions` / `Get-SessionListJson`, temporarily
-add this `--master` argument to the `sessions list` call in
-`test\e2e\ItE2E\Public\Sessions.ps1`, and restore it afterward. `sessions refresh`
-also accepts `--master`. Other stateful commands need a verified identity-aware
+Resolve the endpoint only after the owned app starts. `Get-WtaMasterPipe`
+verifies the Terminal executable and selects its exact WTA child process;
+`Get-WtSessions` / `Get-SessionListJson` use this targeting automatically.
+`sessions refresh` also requires `--master`. Other stateful commands need a verified identity-aware
 launch; do not claim they work from a direct `$app.WtaPath` invocation.
 C++ already launches its co-located `wta.exe`.
 Do not change user-wide PATH, the registry, or normal executable aliases.
@@ -148,4 +150,5 @@ The sandbox does not support jump-list launching: internal shell links still
 expect the normal `wtai.exe` alias, not this template's tokenized alias.
 The template also omits Explorer menus, startup tasks, default-terminal handoff,
 and global proxy registrations. Validate these with ordinary Dev, not this sandbox.
+Settings hides the login-startup switch when the package does not declare that task.
 Windows PATH checks do not prove WSL discovery or full-suite parallel safety.

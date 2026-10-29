@@ -300,9 +300,13 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
     configuration_directories = {".github", ".claude", ".copilot", ".agents", ".gemini"}
     instruction_names = {"agents.md", "claude.md", "gemini.md", "copilot-instructions.md", "skill.md", ".mcp.json"}
     trusted_harness_paths = ("test/accessibility/", "build/scripts/get-dependenciesfromappxrecipe.ps1")
+    spelling_wordlists = {
+        ".github/actions/spelling/allow/allow.txt",
+        ".github/actions/spelling/expect/expect.txt",
+    }
     blocked = []
     for path in changed:
-        if not path:
+        if not path or path in spelling_wordlists:
             continue
         parts = Path(path.lower()).parts
         if (configuration_directories.intersection(parts)
@@ -318,11 +322,14 @@ def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
 
 
 def prepare(root: Path, base: str, head: str, output: Path,
-            publication: dict[str, Any] | None = None) -> None:
+            publication: dict[str, Any] | None = None, trusted_sha: str | None = None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
         raise ValueError("head SHA must be an exact 40-character hexadecimal value")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
         raise ValueError("base SHA must be an exact 40-character hexadecimal value")
+    trusted_sha = trusted_sha if trusted_sha is not None else base
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", trusted_sha):
+        raise ValueError("trusted SHA must be an exact 40-character hexadecimal value")
     comparison_base = _git(root, "merge-base", base, head).strip()
     _verify_instruction_boundary(root, comparison_base, head)
     paths = _changed_paths(root, comparison_base, head)
@@ -359,7 +366,7 @@ def prepare(root: Path, base: str, head: str, output: Path,
         "version": 1,
         "source_sha": head.lower(),
         "comparison_base_sha": comparison_base.lower(),
-        "trusted_base_sha": base.lower(),
+        "trusted_base_sha": trusted_sha.lower(),
         "relevant": bool(paths),
         "changed_files": paths,
         "source_evidence": source_evidence,
@@ -480,8 +487,10 @@ def _validate_review_checks(root: Path, prepared: dict[str, Any], report: dict[s
                 cited_files.add(path)
     if covered_files != changed_files:
         errors.append("review_checks must cover every classified changed file")
+        errors.append("uncovered classified files: " + ", ".join(sorted(changed_files - covered_files)))
     if not changed_files.issubset(cited_files):
         errors.append("review_checks must cite every classified changed file")
+        errors.append("uncited classified files: " + ", ".join(sorted(changed_files - cited_files)))
     return errors
 
 
@@ -892,6 +901,7 @@ def main() -> int:
     prepare_parser = subparsers.add_parser("prepare")
     prepare_parser.add_argument("--root", type=Path, required=True)
     prepare_parser.add_argument("--base", required=True)
+    prepare_parser.add_argument("--trusted-sha")
     prepare_parser.add_argument("--head", required=True)
     prepare_parser.add_argument("--output", type=Path, required=True)
     prepare_parser.add_argument("--publication-branch")
@@ -914,7 +924,7 @@ def main() -> int:
             if any(value is not None for value in (args.publication_branch, args.publication_repository, args.publication_pr_number)):
                 publication = {"head_ref": args.publication_branch, "repository": args.publication_repository,
                                "pr_number": args.publication_pr_number}
-            prepare(args.root, args.base, args.head, args.output, publication)
+            prepare(args.root, args.base, args.head, args.output, publication, args.trusted_sha)
         else:
             validate(
                 args.root,

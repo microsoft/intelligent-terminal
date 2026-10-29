@@ -132,7 +132,7 @@ Describe 'Feature: MCP delegated agent identity' -Tag @('Feature', 'McpDelegated
             }
         }
         function Get-IdentitySessions {
-            $pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+            $pipe = Get-WtaMasterPipe -App $script:app
             (Invoke-Wta -App $script:app -TimeoutSec 10 -Arguments @(
                 'sessions', 'list', '--master', $pipe, '--json', '--include-status')).sessions
         }

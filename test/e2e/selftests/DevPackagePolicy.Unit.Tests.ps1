@@ -697,7 +697,7 @@ Describe 'Chat ancestry with transient Dev clients' -Tag Unit {
 Describe 'Combined sidebar cold-start observation' -Tag Unit {
     BeforeAll {
         $source = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\tests\Feature.CombinedAgentsSidebar.Tests.ps1') -Raw
-        $start = $source.IndexOf('$script:target = Resolve-ItApp -Package Dev', [StringComparison]::Ordinal)
+        $start = $source.IndexOf('$script:package = Get-ItTestPackage', [StringComparison]::Ordinal)
         $end = $source.IndexOf('if (-not $env:ITE2E_EXPECTED_APP_SHA256', $start, [StringComparison]::Ordinal)
         if ($start -lt 0 -or $end -le $start) { throw 'Combined sidebar preflight boundaries were not found.' }
         $script:combinedPreflight = [scriptblock]::Create($source.Substring($start, $end - $start))
@@ -707,6 +707,7 @@ Describe 'Combined sidebar cold-start observation' -Tag Unit {
         $script:cleanupCompleted = $false
         $script:initialProcessCheckAt = $null
         $script:initialProcesses = $null
+        Mock Get-ItTestPackage { 'Dev' }
         Mock Resolve-ItApp { [pscustomobject]@{ Package = 'IntelligentTerminal_rd9vj3e6a2mbr' } }
         Mock Stop-StaleItInstances { $script:cleanupCompleted = $true }
         Mock Get-WtProcessesForApp {
@@ -722,6 +723,38 @@ Describe 'Combined sidebar cold-start observation' -Tag Unit {
         $script:initialProcesses | Should -HaveCount 0
         Should -Invoke Stop-StaleItInstances -Times 1 -Exactly
         Should -Invoke Get-WtProcessesForApp -Times 1 -Exactly -ParameterFilter { $IncludePackageExecutables }
+    }
+
+    It 'passes the verified worktree identity to the existing protected-package preflight' {
+        Mock Get-ItTestPackage { 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr' }
+        Mock Resolve-ItApp {
+            [pscustomobject]@{
+                Package = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+                PrivateProtocolClsid = '{12579AD4-2884-43B3-B558-2F5869730132}'
+            }
+        }
+
+        . $script:combinedPreflight
+
+        $script:initialProcesses | Should -HaveCount 0
+        Should -Invoke Resolve-ItApp -Times 1 -Exactly -ParameterFilter {
+            $Package -eq 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+        }
+        Should -Invoke Stop-StaleItInstances -Times 1 -Exactly -ParameterFilter {
+            $App.Package -eq 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr'
+        }
+    }
+
+    It 'rejects non-Dev selections without verified worktree metadata before cleanup' -ForEach @(
+        @{ Selector = 'Store' }
+        @{ Selector = 'IntelligentTerminal.Worktree.fixture_rd9vj3e6a2mbr' }
+    ) {
+        Mock Get-ItTestPackage { $Selector }
+
+        { . $script:combinedPreflight } | Should -Throw '*verified worktree Dev package*'
+
+        Should -Invoke Stop-StaleItInstances -Times 0
+        Should -Invoke Get-WtProcessesForApp -Times 0
     }
 
     It 'refuses a late Dev arrival instead of fabricating an inactive recovery receipt' {

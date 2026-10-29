@@ -118,30 +118,13 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
 /// Find the native executable required by the ACP entry point, independently
 /// of an optional interactive CLI distributed by the same provider.
 pub fn find_acp_exe(agent_id: &str) -> Option<String> {
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-    let executable = profile.acp_executable(&crate::agent_source::AgentSource::Host);
-    if executable.is_empty() || executable == profile.cli_executable {
-        return find_exe(agent_id);
+    match crate::agent_lifecycle::providers::lookup(agent_id) {
+        Some(provider) => provider.find_host_acp(),
+        None => find_exe(agent_id),
     }
-    let path = spawn_path()
-        .map(std::ffi::OsString::from)
-        .or_else(|| std::env::var_os("PATH"))?;
-    let resolved = find_standalone_acp_executable_in_path(profile, &path, Path::is_file);
-    if resolved.is_some()
-        || profile.id != agent_registry::ANTIGRAVITY_AGENT_ID
-        || has_antigravity_server_on_path(&path)
-    {
-        return resolved.map(|candidate| candidate.to_string_lossy().into_owned());
-    }
-    crate::antigravity_acp::managed_host_executable()
-        .map(|candidate| candidate.to_string_lossy().into_owned())
 }
 
-fn has_antigravity_server_on_path(path: &OsStr) -> bool {
-    std::env::split_paths(path).any(|directory| directory.join("agy_acp_server.exe").is_file())
-}
-
-fn find_standalone_acp_executable_in_path(
+pub(crate) fn find_standalone_acp_executable_in_path(
     profile: &agent_registry::AgentProfile,
     path: &OsStr,
     is_file: impl Fn(&Path) -> bool,
@@ -596,36 +579,31 @@ pub async fn install_in_source(
     source: &crate::agent_source::AgentSource,
     on_line: impl FnMut(String) + Send + 'static,
 ) -> AgentInstallOutcome {
-    let canonical_id = agent_registry::lookup_profile_by_id(agent_id).id;
-    match (canonical_id, source) {
-        ("copilot", crate::agent_source::AgentSource::Host) => install_copilot(on_line).await,
-        (agent_registry::ANTIGRAVITY_AGENT_ID, crate::agent_source::AgentSource::Host) => {
-            match crate::antigravity_acp::ensure_host().await {
+    use crate::agent_lifecycle::providers::{lookup, InstallerKind};
+    let Some(provider) = lookup(agent_id) else {
+        return AgentInstallOutcome::Failed(
+            t!("agent.install.unsupported", agent = agent_id).into_owned(),
+        );
+    };
+    match (provider.installer_kind(), source) {
+        (InstallerKind::CopilotCli, crate::agent_source::AgentSource::Host) => {
+            install_copilot(on_line).await
+        }
+        (InstallerKind::StandaloneAcp, _) => {
+            let command =
+                agent_registry::build_acp_command_for_source(provider.family_id(), None, source);
+            match provider.prepare(&command, source).await {
                 Ok(_) => AgentInstallOutcome::Installed,
                 Err(error) => AgentInstallOutcome::Failed(
                     t!(
                         "agent.install.acp_failed",
-                        agent = "Google Antigravity",
+                        agent = agent_registry::lookup_profile_by_id(provider.family_id()).display_name,
                         error = error.to_string()
                     )
                     .into_owned(),
                 ),
             }
         }
-        (
-            agent_registry::ANTIGRAVITY_AGENT_ID,
-            crate::agent_source::AgentSource::Wsl { distro },
-        ) => match crate::antigravity_acp::ensure_wsl(distro).await {
-            Ok(_) => AgentInstallOutcome::Installed,
-            Err(error) => AgentInstallOutcome::Failed(
-                t!(
-                    "agent.install.acp_failed",
-                    agent = "Google Antigravity",
-                    error = error.to_string()
-                )
-                .into_owned(),
-            ),
-        },
         _ => AgentInstallOutcome::Failed(
             t!("agent.install.unsupported", agent = agent_id).into_owned(),
         ),
@@ -703,9 +681,12 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
 }
 
 fn can_install_host_agent(agent_id: &str, ordinary_cli_found: bool) -> bool {
-    agent_id.eq_ignore_ascii_case(agent_registry::COPILOT_AGENT_ID)
-        || (agent_id.eq_ignore_ascii_case(agent_registry::ANTIGRAVITY_AGENT_ID)
-            && ordinary_cli_found)
+    use crate::agent_lifecycle::providers::{lookup, InstallerKind};
+    match lookup(agent_id).map(|provider| provider.installer_kind()) {
+        Some(InstallerKind::CopilotCli) => true,
+        Some(InstallerKind::StandaloneAcp) => ordinary_cli_found,
+        _ => false,
+    }
 }
 
 pub fn recheck_agent(agent_id: &str) -> AgentStatus {
@@ -751,16 +732,16 @@ pub fn host_npx_available() -> bool {
 }
 
 pub fn check_host_agent_availability(agent_id: &str, npx_found: bool) -> HostAgentAvailability {
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    let provider = crate::agent_lifecycle::providers::lookup(agent_id);
+    let profile = agent_registry::lookup_profile_by_id(
+        provider.map_or(agent_id, |provider| provider.family_id()),
+    );
     let cli_path = find_acp_exe(agent_id);
     let native_cli_found = cli_path.is_some();
     let requires_npx = profile.acp_launch_command.starts_with("npx ");
     let launch_ready = host_requirements_available(profile, native_cli_found, || npx_found);
-    let acp_bootstrap_available = profile.id == agent_registry::ANTIGRAVITY_AGENT_ID
-        && crate::antigravity_acp::host_platform().is_ok()
-        && !launch_ready
-        && find_exe(agent_id).is_some()
-        && !spawn_path().is_some_and(|path| has_antigravity_server_on_path(OsStr::new(&path)));
+    let acp_bootstrap_available =
+        provider.is_some_and(|provider| provider.host_bootstrap_available(launch_ready));
 
     HostAgentAvailability {
         cli_path,

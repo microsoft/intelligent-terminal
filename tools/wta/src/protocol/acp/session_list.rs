@@ -1,24 +1,12 @@
 //! Shared ACP `session/list` plumbing.
 //!
-//! Drives the minimal client side of an ACP connection — `initialize`
-//! then `session/list` — over an already-spawned agent process's piped
-//! stdio. It lives here, separate from its caller, so the exchange stays
-//! reusable for any diagnostic or scan that needs a one-shot session list:
-//!
-//! * the `probe-sessions` diagnostic ([`super::probe`]) spawns a
-//!   Windows-side agent and dumps the raw result.
-//!
-//! Callers must drive this inside a tokio `LocalSet`: the stderr drain and the
-//! ACP connection I/O are spawned via [`tokio::task::spawn_local`] (the
-//! `agent-client-protocol` 1.0 connection itself is `Send`).
+//! Both host diagnostics use shared startup admission and confirmed cleanup.
+//! Callers must drive this inside a tokio `LocalSet`.
 
+use crate::protocol::acp::spawn::{ChildEnvironmentPolicy, SharedProviderSelection};
 use agent_client_protocol as acp;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::time::Duration;
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-
-use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::AgentStderrLog;
 
 /// The successful list outcome, or a human-readable reason it failed.
 ///
@@ -29,79 +17,50 @@ use crate::protocol::acp::spawn::AgentStderrLog;
 /// rather than collapsing the whole call.
 pub(crate) type ListOutcome = std::result::Result<Vec<acp::schema::v1::SessionInfo>, String>;
 
-/// Run ACP `initialize` then `session/list` over `child`'s piped stdio.
-///
-/// Returns the `initialize` response (so the diagnostic caller can dump
-/// the agent's advertised capabilities) alongside the `session/list`
-/// [`ListOutcome`]. `child` must have `stdin`/`stdout` piped; `stderr`,
-/// when piped, is drained so a chatty agent can't deadlock the pipe.
-///
-/// Runs ACP I/O and the stderr drain via [`tokio::task::spawn_local`], so call
-/// this inside a tokio `LocalSet`.
+/// Initialize once, inspect session-list support, and close the owned process
+/// while retaining the same admission lease used by inherited-provider masters.
 pub(crate) async fn fetch_session_list(
-    child: &mut tokio::process::Child,
-    client_label: &str,
-    init_timeout: Duration,
-    list_timeout: Duration,
+    agent_cmd: &str,
+    retry_startup: bool,
 ) -> Result<(acp::schema::v1::InitializeResponse, ListOutcome)> {
-    let outgoing = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("agent stdin not piped"))?
-        .compat_write();
-    let incoming = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("agent stdout not piped"))?
-        .compat();
-    let stderr_log = AgentStderrLog::new(client_label.to_string());
-    let stderr_task = child.stderr.take().map(|stderr| stderr_log.drain(stderr));
-
-    let (conn, handle_io) = conn::spawn_client(
-        acp::Client.builder().name("wta-session-list"),
-        conn::byte_streams(outgoing, incoming),
-    );
-    let io_label = client_label.to_string();
-    tokio::task::spawn_local(async move {
-        if let Err(e) = handle_io.await {
-            tracing::warn!(target: "acp_session_list", agent = %io_label, "handle_io failed: {:#}", e);
-        }
-    });
-
-    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-        .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
-        .client_info(
-            acp::schema::v1::Implementation::new("wta-session-list", env!("CARGO_PKG_VERSION"))
-                .title("WTA Session List"),
-        );
-    let init_result = tokio::time::timeout(init_timeout, conn.initialize(init_req)).await;
-    if matches!(init_result, Ok(Ok(_))) {
-        stderr_log.mark_initialized();
-    } else {
-        stderr_log.finish_failed_startup(child, stderr_task).await;
+    let shared = crate::custom_model_provider::Config::shared_from_env();
+    let inferred = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
+    let agent_id = crate::agent_registry::is_known_id(inferred).then_some(inferred);
+    let source = crate::agent_source::AgentSource::Host;
+    let binding = crate::agent_lifecycle::provider_binding_key("legacy", &shared);
+    let key = crate::agent_lifecycle::agent_key(agent_cmd, agent_id, &source, &binding, false);
+    let registry = crate::agent_lifecycle::StartupRegistry::runtime()?;
+    if retry_startup {
+        registry.retry(&key).await?;
     }
-    let init_resp = init_result
-        .map_err(|_| {
-            anyhow!(
-                "ACP initialize timed out after {:?} (agent={})",
-                init_timeout,
-                client_label
-            )
-        })?
-        .map_err(|e| anyhow!("initialize failed (agent={}): {}", client_label, e))?;
+    let mut startup = registry.lock(&key).await?;
+    startup.begin()?;
+    let result = async {
+        let mut probe = super::startup::start_probe_with_provider(
+            agent_cmd,
+            agent_id,
+            &source,
+            ChildEnvironmentPolicy::ApplySharedProvider,
+            SharedProviderSelection::Custom(&shared),
+            &mut startup,
+        )
+        .await?;
 
-    let list = match tokio::time::timeout(
-        list_timeout,
-        conn.list_sessions(acp::schema::v1::ListSessionsRequest::new()),
-    )
-    .await
-    {
-        Err(_) => Err(format!(
-            "session/list timed out after {list_timeout:?} (agent={client_label})"
-        )),
-        Ok(Err(e)) => Err(format!("session/list failed (agent={client_label}): {e}")),
-        Ok(Ok(resp)) => Ok(resp.sessions),
-    };
-
-    Ok((init_resp, list))
+        let list = match tokio::time::timeout(
+            Duration::from_secs(10),
+            probe
+                .connection
+                .list_sessions(acp::schema::v1::ListSessionsRequest::new()),
+        )
+        .await
+        {
+            Err(_) => Err("list_sessions timed out after 10s".to_string()),
+            Ok(Err(error)) => Err(error.to_string()),
+            Ok(Ok(response)) => Ok(response.sessions),
+        };
+        probe.close().await?;
+        Ok((probe.response, list))
+    }
+    .await;
+    result.map_err(|error| startup.failed(error))
 }

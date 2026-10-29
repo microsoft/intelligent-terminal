@@ -629,9 +629,9 @@ async fn start_wsl_relay(
             port
         }
         Err(error) => {
-            let details = stderr_log
-                .finish_failed_startup(&mut child, stderr_task)
-                .await;
+            let cleanup = tokio::time::timeout(Duration::from_secs(5), child.kill()).await;
+            let details = stderr_log.finish_failed_stderr(stderr_task).await;
+            cleanup.context("session MCP relay cleanup timed out")??;
             return if details.is_empty() {
                 Err(error)
             } else {

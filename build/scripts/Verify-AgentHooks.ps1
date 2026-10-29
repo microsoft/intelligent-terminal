@@ -211,6 +211,20 @@ function Get-AgentHookVersionLabel {
     return "v$installed"
 }
 
+function Get-AgentHookDetectionLabel {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][psobject]$Cli)
+
+    if (-not (Get-Member -InputObject $Cli -Name detection_fallback -ErrorAction SilentlyContinue) -or -not $Cli.detection_fallback) {
+        return ''
+    }
+    switch ($Cli.detection_fallback) {
+        'opencode-api-variant-mismatch' { return 'OpenCode API variant mismatch' }
+        'opencode-version-unknown' { return 'OpenCode CLI version unknown' }
+        default { return 'fs fallback' }
+    }
+}
+
 # Render one row of the table as a hashtable (consumed by Format-Table /
 # Write-Host). Returns:
 #   @{ CLI = 'copilot'; OnPath = $true; State = 'installed'; Color = 'Green'; Detail = '...'; Version = 'v0.1.5' }
@@ -267,8 +281,9 @@ function Get-AgentHookCliRow {
         Version = Get-AgentHookVersionLabel -Cli $Cli -PluginInstalled $plugin
     }
 
-    if ((Get-Member -InputObject $Cli -Name detection_fallback -ErrorAction SilentlyContinue) -and $Cli.detection_fallback) {
-        $row.Detail = if ($row.Detail) { "$($row.Detail); fs fallback" } else { 'fs fallback' }
+    $detectionLabel = Get-AgentHookDetectionLabel -Cli $Cli
+    if ($detectionLabel) {
+        $row.Detail = if ($row.Detail) { "$($row.Detail); $detectionLabel" } else { $detectionLabel }
     }
     return $row
 }
@@ -333,8 +348,11 @@ function Test-AgentHooksConsistent {
             # (which wouldn't be possible without an install). Otherwise
             # we treat it as "user hasn't installed yet", not failure.
         }
-        if ((Get-Member -InputObject $cli -Name detection_fallback -ErrorAction SilentlyContinue) -and $cli.detection_fallback) {
+        $detectionLabel = Get-AgentHookDetectionLabel -Cli $cli
+        if ($detectionLabel -eq 'fs fallback') {
             $reasons += "$($cli.name): wta fell back to fs detection ($($cli.detection_fallback))"
+        } elseif ($detectionLabel) {
+            $reasons += "$($cli.name): $detectionLabel ($($row.Detail))"
         }
     }
 

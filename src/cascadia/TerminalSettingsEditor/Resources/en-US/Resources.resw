@@ -765,16 +765,28 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>Installing the agent's ACP server...</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>Preparing and checking the ACP connection...</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>The agent's ACP server could not be installed. Check your network and installation, then try again.</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>The agent's ACP server could not be installed.</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>The ACP connection could not start.</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>ACP process cleanup could not be confirmed. Automatic startup has stopped.</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Try again</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+    <value>Error details</value>
+    <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>Agent CLI</value>
@@ -1404,6 +1416,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>Choose the agent used for command palette delegation in this profile. This selection takes precedence over the global delegate agent setting.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Use global setting ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

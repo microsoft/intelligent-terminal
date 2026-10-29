@@ -36,16 +36,14 @@ fn control_initialize_request(
 }
 
 pub(crate) async fn run_list(
-    master_override: Option<String>,
+    master: String,
     origin_filter: crate::agent_sessions::OriginFilter,
     refresh: bool,
     json_mode: bool,
     include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let result = local
-        .run_until(fetch_from_master(master_override, refresh))
-        .await;
+    let result = local.run_until(fetch_from_master(master, refresh)).await;
     let mut snapshot = match result {
         Ok(snapshot) => snapshot,
         Err(error) => {
@@ -92,10 +90,10 @@ fn filter_snapshot(
 }
 
 pub(crate) async fn fetch_from_master(
-    master_override: Option<String>,
+    master: String,
     refresh: bool,
 ) -> Result<crate::session_registry::SessionsListResponse> {
-    let pipe = connect_master_pipe(master_override).await?;
+    let pipe = connect_master_pipe(&master).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
@@ -145,6 +143,7 @@ pub(crate) async fn fetch_from_master(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_activate(
+    master: String,
     session_id: &str,
     provider: &str,
     location: &str,
@@ -176,7 +175,7 @@ pub(crate) async fn run_activate(
     let local = tokio::task::LocalSet::new();
     let response = local
         .run_until(async move {
-            let pipe = connect_master_pipe(None).await?;
+            let pipe = connect_master_pipe(&master).await?;
             let (read_half, write_half) = tokio::io::split(pipe);
             let outgoing = write_half.compat_write();
             let incoming = read_half.compat();
@@ -240,12 +239,20 @@ pub(crate) async fn run_activate(
 /// populate, so the registration is dropped (logged at `warn`) and the tab
 /// still opens normally.
 pub(crate) async fn register_launched(
+    master: Option<&str>,
     session_id: &str,
     pane_session_id: &str,
     cli_id: &str,
     cwd: Option<&str>,
     wsl_distro: Option<&str>,
 ) {
+    let Some(master) = master else {
+        tracing::warn!(
+            target: "delegate",
+            "live session registration skipped: no owning master specified"
+        );
+        return;
+    };
     let event = crate::agent_sessions::SessionEvent::SessionStarted {
         key: session_id.to_string(),
         cli_source: crate::agent_sessions::CliSource::from(
@@ -270,7 +277,7 @@ pub(crate) async fn register_launched(
     let local = tokio::task::LocalSet::new();
     let result: Result<()> = local
         .run_until(async move {
-            let pipe = connect_master_pipe(None).await?;
+            let pipe = connect_master_pipe(master).await?;
             let (read_half, write_half) = tokio::io::split(pipe);
             let outgoing = write_half.compat_write();
             let incoming = read_half.compat();
@@ -313,52 +320,26 @@ pub(crate) async fn register_launched(
 }
 
 async fn connect_master_pipe(
-    master_override: Option<String>,
+    master: &str,
 ) -> Result<tokio::net::windows::named_pipe::NamedPipeClient> {
-    let discovery_path = crate::runtime_paths::master_pipe_file_path();
-    connect_master_pipe_with(
-        master_override.as_deref(),
-        || async {
-            let path = discovery_path
-                .as_ref()
-                .ok_or_else(|| std::io::Error::other("resolve master pipe discovery path"))?;
-            tokio::fs::read_to_string(path).await
-        },
-        |pipe| tokio::net::windows::named_pipe::ClientOptions::new().open(pipe),
-    )
+    connect_master_pipe_with(master, |pipe| {
+        tokio::net::windows::named_pipe::ClientOptions::new().open(pipe)
+    })
     .await
 }
 
-async fn connect_master_pipe_with<T, F>(
-    master_override: Option<&str>,
-    discover: impl Fn() -> F,
+async fn connect_master_pipe_with<T>(
+    master: &str,
     open: impl Fn(&str) -> std::io::Result<T>,
-) -> Result<T>
-where
-    F: std::future::Future<Output = std::io::Result<String>>,
-{
-    use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
-    let master_override = master_override.filter(|pipe| !pipe.trim().is_empty());
-    let result = super::retry_named_pipe_open(master_override.unwrap_or("master-pipe.txt"), || async {
-        // A replacement master can publish a different address between attempts.
-        let pipe = if let Some(pipe) = master_override {
-            pipe.to_string()
-        } else {
-            let contents = discover().await.map_err(|error| {
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    std::io::Error::from_raw_os_error(ERROR_FILE_NOT_FOUND as i32)
-                } else {
-                    error
-                }
-            })?;
-            let pipe = contents.trim();
-            if pipe.is_empty() {
-                return Err(std::io::Error::from_raw_os_error(ERROR_FILE_NOT_FOUND as i32));
-            }
-            pipe.to_string()
-        };
-        tracing::debug!(target: "cli_pipe", pipe = %pipe, "connecting to discovered master pipe");
-        open(&pipe)
+) -> Result<T> {
+    if master.trim().is_empty() {
+        return Err(
+            anyhow::anyhow!("owning master pipe is not available").context(MasterUnavailable)
+        );
+    }
+    let result = super::retry_named_pipe_open(master, || async {
+        tracing::debug!(target: "cli_pipe", pipe = %master, "connecting to owning master pipe");
+        open(master)
     })
     .await;
     result.map_err(|error| {
@@ -494,84 +475,71 @@ fn format_epoch_ms_utc(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::{Cell, RefCell};
-    use std::future::ready;
+    use std::cell::Cell;
     use std::io;
     use std::time::Duration;
 
     #[tokio::test(start_paused = true)]
-    async fn master_connection_rediscovers_replaced_pipe_within_the_same_request() {
-        let discovery = RefCell::new("old-pipe".to_string());
-        let attempts = Cell::new(0);
-        let started = tokio::time::Instant::now();
-        let result = connect_master_pipe_with(
-            None,
-            || ready(Ok(discovery.borrow().clone())),
-            |pipe| {
+    async fn master_connection_retries_the_same_owner_across_restart() {
+        for code in [2, 231] {
+            let attempts = Cell::new(0);
+            let result = connect_master_pipe_with("explicit-pipe", |pipe| {
+                assert_eq!(pipe, "explicit-pipe");
                 attempts.set(attempts.get() + 1);
-                if attempts.get() == 1 {
-                    assert_eq!(pipe, "old-pipe");
-                    *discovery.borrow_mut() = "new-pipe".to_string();
-                    Err(io::Error::from_raw_os_error(2))
+                if attempts.get() < 3 {
+                    Err(io::Error::from_raw_os_error(code))
                 } else {
-                    assert_eq!(pipe, "new-pipe");
-                    Ok(pipe.to_string())
-                }
-            },
-        )
-        .await;
-        assert_eq!(result.unwrap(), "new-pipe");
-        assert_eq!(attempts.get(), 2);
-        assert_eq!(started.elapsed(), Duration::from_millis(20));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn master_connection_waits_for_missing_or_empty_discovery() {
-        for initial in [None, Some(" \r\n")] {
-            let reads = Cell::new(0);
-            let result = connect_master_pipe_with(
-                None,
-                || {
-                    reads.set(reads.get() + 1);
-                    ready(if reads.get() == 1 {
-                        initial
-                            .map(str::to_string)
-                            .ok_or_else(|| io::Error::from_raw_os_error(3))
-                    } else {
-                        Ok(" new-pipe \r\n".to_string())
-                    })
-                },
-                |pipe| {
-                    assert_eq!(pipe, "new-pipe");
                     Ok(())
-                },
-            )
+                }
+            })
             .await;
             result.unwrap();
-            assert_eq!(reads.get(), 2);
+            assert_eq!(attempts.get(), 3);
         }
     }
 
     #[tokio::test(start_paused = true)]
-    async fn master_connection_override_remains_pinned_while_unavailable() {
-        for code in [2, 231] {
+    async fn owned_master_failure_never_falls_back_to_another_instance() {
+        for master in [r"\\.\pipe\wta-master-normal", r"\\.\pipe\wta-master-admin"] {
             let attempts = Cell::new(0);
-            let result = connect_master_pipe_with(
-                Some("explicit-pipe"),
-                || ready(Ok("different-discovered-pipe".to_string())),
-                |pipe| {
-                    assert_eq!(pipe, "explicit-pipe");
-                    attempts.set(attempts.get() + 1);
-                    if attempts.get() < 3 {
-                        Err(io::Error::from_raw_os_error(code))
-                    } else {
-                        Ok(())
-                    }
-                },
-            )
-            .await;
-            result.unwrap();
-            assert_eq!(attempts.get(), 3);
+            let error = connect_master_pipe_with(master, |pipe| {
+                assert_eq!(pipe, master);
+                attempts.set(attempts.get() + 1);
+                Err::<(), _>(io::Error::from_raw_os_error(2))
+            })
+            .await
+            .unwrap_err();
+            assert!(error.is::<MasterUnavailable>());
+            assert_eq!(attempts.get(), 7);
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_explicit_master_is_not_an_unscoped_request() {
+        for master in ["", " \r\n"] {
+            let error = connect_master_pipe_with::<()>(master, |_| {
+                panic!("an empty endpoint must not be opened")
+            })
+            .await
+            .unwrap_err();
+            assert!(error.is::<MasterUnavailable>());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn born_bound_registration_is_best_effort_for_an_unavailable_owner() {
+        let missing = format!(
+            r"\\.\pipe\wta-registration-missing-{}",
+            uuid::Uuid::new_v4()
+        );
+        for (master, elapsed) in [
+            (None, Duration::ZERO),
+            (Some(""), Duration::ZERO),
+            (Some(missing.as_str()), Duration::from_millis(1870)),
+        ] {
+            let started = tokio::time::Instant::now();
+            register_launched(master, "session", "pane", "copilot", None, None).await;
+            assert_eq!(started.elapsed(), elapsed);
         }
     }
 
@@ -580,14 +548,10 @@ mod tests {
         for code in [2, 231] {
             let attempts = Cell::new(0);
             let started = tokio::time::Instant::now();
-            let error = connect_master_pipe_with(
-                None,
-                || ready(Ok("unavailable-pipe".to_string())),
-                |_| {
-                    attempts.set(attempts.get() + 1);
-                    Err::<(), _>(io::Error::from_raw_os_error(code))
-                },
-            )
+            let error = connect_master_pipe_with("unavailable-pipe", |_| {
+                attempts.set(attempts.get() + 1);
+                Err::<(), _>(io::Error::from_raw_os_error(code))
+            })
             .await
             .unwrap_err();
             assert!(error.is::<MasterUnavailable>());
@@ -602,36 +566,21 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn master_connection_access_denied_is_not_loading_or_retried() {
-        for discovery_denied in [false, true] {
-            let reads = Cell::new(0);
-            let opens = Cell::new(0);
-            let started = tokio::time::Instant::now();
-            let error = connect_master_pipe_with(
-                None,
-                || {
-                    reads.set(reads.get() + 1);
-                    ready(if discovery_denied {
-                        Err(io::Error::from_raw_os_error(5))
-                    } else {
-                        Ok("denied-pipe".to_string())
-                    })
-                },
-                |_| {
-                    opens.set(opens.get() + 1);
-                    Err::<(), _>(io::Error::from_raw_os_error(5))
-                },
-            )
-            .await
-            .unwrap_err();
-            assert!(!error.is::<MasterUnavailable>());
-            assert_eq!(
-                error.downcast_ref::<io::Error>().unwrap().raw_os_error(),
-                Some(5)
-            );
-            assert_eq!(reads.get(), 1);
-            assert_eq!(opens.get(), usize::from(!discovery_denied));
-            assert_eq!(started.elapsed(), Duration::ZERO);
-        }
+        let opens = Cell::new(0);
+        let started = tokio::time::Instant::now();
+        let error = connect_master_pipe_with("denied-pipe", |_| {
+            opens.set(opens.get() + 1);
+            Err::<(), _>(io::Error::from_raw_os_error(5))
+        })
+        .await
+        .unwrap_err();
+        assert!(!error.is::<MasterUnavailable>());
+        assert_eq!(
+            error.downcast_ref::<io::Error>().unwrap().raw_os_error(),
+            Some(5)
+        );
+        assert_eq!(opens.get(), 1);
+        assert_eq!(started.elapsed(), Duration::ZERO);
     }
 
     #[test]
@@ -653,6 +602,10 @@ mod tests {
             HistoryLoadStatus::Error,
         ] {
             let mut snapshot = SessionsListResponse {
+                pane_statuses: Vec::new(),
+                native_observation_receiver_generation: None,
+                native_observation_listener_ready: None,
+                native_pane_observations: Vec::new(),
                 sessions: vec![
                     row("older", SessionOrigin::Unknown, 1),
                     row("agent-pane", SessionOrigin::AgentPane, 3),

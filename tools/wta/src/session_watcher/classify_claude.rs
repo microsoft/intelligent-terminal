@@ -65,6 +65,7 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 vec![SessionEvent::Notification {
                     key: key.clone(),
                     message: (*q).to_string(),
+                    timestamp_ms: None,
                 }]
             } else {
                 // Running (or streaming toward) a tool — still Working.
@@ -174,7 +175,8 @@ mod tests {
             classify(&r, &"k".to_string()),
             vec![SessionEvent::Notification {
                 key: "k".to_string(),
-                message: "AskUserQuestion".to_string()
+                message: "AskUserQuestion".to_string(),
+                timestamp_ms: None,
             }]
         );
     }

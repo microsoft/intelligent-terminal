@@ -362,20 +362,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool LaunchViewModel::StartOnUserLoginAvailable()
     {
-        return IsPackaged();
+        return static_cast<bool>(_startOnUserLoginTask);
     }
 
     safe_void_coroutine LaunchViewModel::PrepareStartOnUserLoginSettings()
     {
-        if (!StartOnUserLoginAvailable())
+        if (!IsPackaged())
         {
             co_return;
         }
 
         auto strongThis{ get_strong() };
-        auto task{ co_await winrt::Windows::ApplicationModel::StartupTask::GetAsync(StartupTaskName) };
-        _startOnUserLoginTask = std::move(task);
-        _NotifyChanges(L"StartOnUserLoginConfigurable", L"StartOnUserLoginStatefulHelpText", L"StartOnUserLogin");
+        const auto tasks{ co_await winrt::Windows::ApplicationModel::StartupTask::GetForCurrentPackageAsync() };
+        for (const auto& task : tasks)
+        {
+            if (task.TaskId() == StartupTaskName)
+            {
+                _startOnUserLoginTask = task;
+                break;
+            }
+        }
+        _NotifyChanges(L"StartOnUserLoginAvailable", L"StartOnUserLoginConfigurable", L"StartOnUserLoginStatefulHelpText", L"StartOnUserLogin");
     }
 
     bool LaunchViewModel::StartOnUserLoginConfigurable()

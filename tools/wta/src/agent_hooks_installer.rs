@@ -109,6 +109,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 mod antigravity;
+mod opencode;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -138,44 +139,11 @@ const MARKETPLACE_NAME: &str = "wt-local";
 const GEMINI_EXTENSION_DIR_NAME: &str = "wt-agent-hooks";
 
 const OPENCODE_PLUGIN_JS: &str = "wt-agent-hooks.js";
-const OPENCODE_SERVER_JS: &str = "server.js";
-const OPENCODE_TUI_JS: &str = "tui.js";
-const OPENCODE_RPC_JS: &str = "rpc.js";
 const OPENCODE_LEGACY_BRIDGE_PS1: &str = "send-event.ps1";
 const OPENCODE_MANIFEST: &str = "plugin.json";
 const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
 const OPENCODE_MANAGED_MARKER: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
 const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OpenCodeLayout {
-    V1,
-    V2,
-}
-
-fn parse_opencode_layout(version: &str) -> Option<OpenCodeLayout> {
-    let version = version.lines().next_back()?.trim();
-    let version = version.strip_prefix("opencode ").unwrap_or(version).trim();
-    let mut components = version.trim_start_matches('v').split('.');
-    let major = components.next()?.parse::<u32>().ok()?;
-    components.next()?.parse::<u32>().ok()?;
-    if major == 0 {
-        return None;
-    }
-    Some(if major >= 2 {
-        OpenCodeLayout::V2
-    } else {
-        OpenCodeLayout::V1
-    })
-}
-
-fn detect_opencode_layout() -> Option<OpenCodeLayout> {
-    let output = run_plugin_cli_capture("opencode", &["--version"]).ok()?;
-    output
-        .success
-        .then(|| parse_opencode_layout(&output.stdout))
-        .flatten()
-}
 
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
@@ -234,15 +202,6 @@ pub enum CliKind {
 }
 
 fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -> CliStatus {
-    opencode_status_for_layout(on_path, bin_path, home, detect_opencode_layout())
-}
-
-fn opencode_status_for_layout(
-    on_path: bool,
-    bin_path: Option<String>,
-    home: Option<&Path>,
-    layout: Option<OpenCodeLayout>,
-) -> CliStatus {
     let mut out = CliStatus {
         name: CliKind::OpenCode.name(),
         binary_on_path: on_path,
@@ -262,28 +221,11 @@ fn opencode_status_for_layout(
     let js = dir.join(OPENCODE_PLUGIN_JS);
     let managed_js = fs::read_to_string(&js)
         .map(|text| text.contains(OPENCODE_MANAGED_MARKER))
-        .unwrap_or(false);
+        .unwrap_or(false)
+        || opencode::managed_entry(home);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
-    let managed_server = opencode_support_file_is_managed(&support_dir, OPENCODE_SERVER_JS);
-    let managed = managed_js || managed_server || managed_support;
-    let entrypoint_complete = match layout {
-        Some(OpenCodeLayout::V1) => managed_js && !support_dir.join(OPENCODE_SERVER_JS).exists(),
-        Some(OpenCodeLayout::V2) => {
-            managed_server
-                && !js.exists()
-                && fs::symlink_metadata(support_dir.join(OPENCODE_SUPPORT_DIR))
-                    .is_ok_and(|metadata| metadata.file_type().is_dir())
-                && opencode_support_file_is_managed(
-                    &support_dir.join(OPENCODE_SUPPORT_DIR),
-                    OPENCODE_RPC_JS,
-                )
-        }
-        None => false,
-    };
-    let complete = entrypoint_complete
-        && managed_support
-        && opencode_support_file_is_managed(&support_dir, OPENCODE_TUI_JS)
-        && opencode_support_file_is_managed(&support_dir, OPENCODE_RPC_JS);
+    let managed = managed_js || managed_support;
+    let complete = opencode::complete(home);
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -301,16 +243,6 @@ fn opencode_manifest_is_managed(path: &Path) -> bool {
                 && manifest.get("managed_by").and_then(Value::as_str)
                     == Some(OPENCODE_MANIFEST_MANAGED_BY)
         })
-}
-
-fn opencode_tui_is_managed(support_dir: &Path) -> bool {
-    opencode_support_file_is_managed(support_dir, OPENCODE_TUI_JS)
-}
-
-fn opencode_support_file_is_managed(support_dir: &Path, filename: &str) -> bool {
-    let path = support_dir.join(filename);
-    fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_file())
-        && fs::read_to_string(path).is_ok_and(|text| text.contains(OPENCODE_MANAGED_MARKER))
 }
 
 impl CliKind {
@@ -414,6 +346,8 @@ impl CliScope {
 /// "is the CLI running the hooks this wta ships?". They are deliberately
 /// separate from the boolean flags: a CLI can be fully, validly installed and
 /// still be a release behind, which every other field reports as healthy.
+/// Keep this shape provider-neutral; use shared flags and detection reasons
+/// for provider-specific installation checks.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliStatus {
     pub name: &'static str,
@@ -437,6 +371,7 @@ pub struct CliStatus {
     /// "none"`) or its manifest carries no parseable version.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_version: Option<String>,
+    /// Open-ended diagnostic reason; adding a reason does not change the schema.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detection_fallback: Option<&'static str>,
 }
@@ -1614,243 +1549,13 @@ fn opencode_support_dir(home: &Path) -> PathBuf {
     opencode_plugins_dir(home).join(OPENCODE_SUPPORT_DIR)
 }
 
-fn copy_opencode_bundle(source: &Path, home: &Path, layout: OpenCodeLayout) -> std::io::Result<()> {
-    let destination = opencode_plugins_dir(home);
-    let support_dir = opencode_support_dir(home);
-    let installed_js = destination.join(OPENCODE_PLUGIN_JS);
-    let installed_server = support_dir.join(OPENCODE_SERVER_JS);
-    let nested_dir = support_dir.join(OPENCODE_SUPPORT_DIR);
-    let nested_rpc = nested_dir.join(OPENCODE_RPC_JS);
-    let installed_tui = support_dir.join(OPENCODE_TUI_JS);
-    let installed_rpc = support_dir.join(OPENCODE_RPC_JS);
-    let server_existed = fs::symlink_metadata(&installed_server).is_ok();
-    let nested_rpc_existed = fs::symlink_metadata(&nested_rpc).is_ok();
-    let nested_dir_existed = fs::symlink_metadata(&nested_dir).is_ok();
-    let tui_existed = match fs::symlink_metadata(&installed_tui) {
-        Ok(_) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(error) => return Err(error),
-    };
-    let rpc_existed = match fs::symlink_metadata(&installed_rpc) {
-        Ok(_) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(error) => return Err(error),
-    };
-    let installed_js_metadata = match fs::symlink_metadata(&installed_js) {
-        Ok(metadata) => Some(metadata),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
-    };
-    let installed_js_existed = installed_js_metadata.is_some();
-    let support_dir_existed = support_dir.exists();
-    let installed_js_managed = if let Some(metadata) = installed_js_metadata {
-        if !metadata.file_type().is_file() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "{} exists but is not a regular managed file",
-                    installed_js.display()
-                ),
-            ));
-        }
-        let text = fs::read_to_string(&installed_js)?;
-        if !text.contains(OPENCODE_MANAGED_MARKER) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "{} exists but is not managed by Intelligent Terminal",
-                    installed_js.display()
-                ),
-            ));
-        }
-        true
-    } else {
-        false
-    };
-    let managed_server = opencode_support_file_is_managed(&support_dir, OPENCODE_SERVER_JS);
-    if support_dir.exists() {
-        let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
-            || installed_js_managed
-            || managed_server;
-        if !managed_support {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "{} exists but is not managed by Intelligent Terminal",
-                    support_dir.display()
-                ),
-            ));
-        }
-    }
-    if tui_existed && !opencode_tui_is_managed(&support_dir) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!(
-                "{} exists but is not a regular managed file",
-                installed_tui.display()
-            ),
-        ));
-    }
-    if rpc_existed && !opencode_support_file_is_managed(&support_dir, OPENCODE_RPC_JS) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!(
-                "{} exists but is not a regular managed file",
-                installed_rpc.display()
-            ),
-        ));
-    }
-    for (path, existed, managed) in [
-        (&installed_server, server_existed, managed_server),
-        (
-            &nested_rpc,
-            nested_rpc_existed,
-            opencode_support_file_is_managed(&nested_dir, OPENCODE_RPC_JS),
-        ),
-    ] {
-        if existed && !managed {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!(
-                    "{} exists but is not a regular managed file",
-                    path.display()
-                ),
-            ));
-        }
-    }
-    if nested_dir_existed && !fs::symlink_metadata(&nested_dir)?.file_type().is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!(
-                "{} exists but is not a regular directory",
-                nested_dir.display()
-            ),
-        ));
-    }
-    for path in [
-        source.join(OPENCODE_PLUGIN_JS),
-        source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_TUI_JS),
-        source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_RPC_JS),
-        source.join(OPENCODE_MANIFEST),
-    ] {
-        if !path.is_file() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("OpenCode bundle file missing: {}", path.display()),
-            ));
-        }
-    }
-
-    let copy_result = (|| {
-        fs::create_dir_all(&destination)?;
-        fs::create_dir_all(&support_dir)?;
-        fs::copy(
-            source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_TUI_JS),
-            &installed_tui,
-        )?;
-        fs::copy(
-            source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_RPC_JS),
-            &installed_rpc,
-        )?;
-        match layout {
-            OpenCodeLayout::V1 => {
-                fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_js)?;
-                if server_existed {
-                    fs::remove_file(&installed_server)?;
-                }
-                if nested_rpc_existed {
-                    fs::remove_file(&nested_rpc)?;
-                }
-            }
-            OpenCodeLayout::V2 => {
-                fs::create_dir_all(&nested_dir)?;
-                // The copied server entrypoint still imports ./wt-agent-hooks/rpc.js;
-                // the TUI entrypoint imports ./rpc.js from the same directory.
-                fs::copy(
-                    source.join(OPENCODE_SUPPORT_DIR).join(OPENCODE_RPC_JS),
-                    &nested_rpc,
-                )?;
-                fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_server)?;
-                if installed_js_existed {
-                    fs::remove_file(&installed_js)?;
-                }
-            }
-        }
-        if nested_dir.exists() && fs::read_dir(&nested_dir)?.next().is_none() {
-            fs::remove_dir(&nested_dir)?;
-        }
-        let legacy_bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
-        if legacy_bridge.exists() {
-            fs::remove_file(legacy_bridge)?;
-        }
-        // Commit the new version last. If the runtime file fails to copy,
-        // the old manifest keeps the upgrade eligible for retry.
-        fs::copy(
-            source.join(OPENCODE_MANIFEST),
-            support_dir.join(OPENCODE_MANIFEST),
-        )?;
-        Ok(())
-    })();
-
-    if copy_result.is_err() {
-        if !tui_existed {
-            let _ = fs::remove_file(&installed_tui);
-        }
-        if !rpc_existed {
-            let _ = fs::remove_file(&installed_rpc);
-        }
-        if !server_existed {
-            let _ = fs::remove_file(&installed_server);
-        }
-        if !nested_rpc_existed {
-            let _ = fs::remove_file(&nested_rpc);
-        }
-        if !nested_dir_existed {
-            let _ = fs::remove_dir(&nested_dir);
-        }
-        if !installed_js_existed {
-            let _ = fs::remove_file(&installed_js);
-        }
-        if !support_dir_existed {
-            let _ = fs::remove_file(support_dir.join(OPENCODE_MANIFEST));
-            let _ = fs::remove_dir(&support_dir);
-        }
-    }
-    copy_result
+#[cfg(test)]
+fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
+    opencode::copy_bundle(source, home, opencode::ApiVariant::V1)
 }
 
 fn install_for_opencode(home: &Path) -> InstallOutcome {
-    if !cli_binary_on_path(CliKind::OpenCode) {
-        tracing::debug!(
-            target: "agent_hooks",
-            "opencode not on PATH; skipping hook install (CLI not installed)",
-        );
-        return InstallOutcome::Skipped;
-    }
-    let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::OpenCode) else {
-        tracing::warn!(
-            target: "agent_hooks",
-            "no wt-agent-hooks/opencode bundle found; skipping OpenCode plugin install",
-        );
-        return InstallOutcome::Skipped;
-    };
-    let Some(layout) = detect_opencode_layout() else {
-        return InstallOutcome::Failed(
-            "cannot determine OpenCode major version; refusing to select a plugin layout".into(),
-        );
-    };
-    match copy_opencode_bundle(&bundle_dir, home, layout) {
-        Ok(()) => InstallOutcome::Installed,
-        Err(e) => {
-            tracing::warn!(
-                target: "agent_hooks",
-                err = %e,
-                source = %bundle_dir.display(),
-                "OpenCode plugin install failed",
-            );
-            InstallOutcome::Failed(format!("OpenCode plugin file copy failed: {e}"))
-        }
-    }
+    opencode::install(home)
 }
 
 // ---------------------------------------------------------------------------
@@ -1905,6 +1610,9 @@ fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
         CliKind::OpenCode => opencode_status(on_path, bin_path, home),
         CliKind::Antigravity => antigravity::status(on_path, bin_path, home),
     };
+    if cli == CliKind::OpenCode {
+        opencode::apply_compatibility(&mut out, home);
+    }
     // Read unconditionally: the bundle version is the only half of the
     // comparison that still means something when nothing is installed
     // ("`hooks install` would give you 0.1.5").
@@ -2035,6 +1743,10 @@ fn codex_plugin_cache_dir(home: &Path) -> PathBuf {
 }
 
 fn locate_binary(cli: CliKind) -> (bool, Option<String>) {
+    if cli == CliKind::OpenCode {
+        let path = crate::agent_check::find_exe("opencode");
+        return (path.is_some(), path);
+    }
     match which::which(cli.executable()) {
         Ok(p) => (true, Some(p.display().to_string())),
         Err(_) => (false, None),
@@ -3166,32 +2878,16 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
     let dir = opencode_plugins_dir(home);
     let js = dir.join(OPENCODE_PLUGIN_JS);
     let support_dir = opencode_support_dir(home);
-    let server = support_dir.join(OPENCODE_SERVER_JS);
-    let nested_dir = support_dir.join(OPENCODE_SUPPORT_DIR);
-    let nested_rpc = nested_dir.join(OPENCODE_RPC_JS);
     if !js.exists() && !support_dir.exists() {
         out.messages.push("OpenCode plugin is not installed".into());
         return out;
     }
     let managed_js = fs::read_to_string(&js)
         .map(|text| text.contains(OPENCODE_MANAGED_MARKER))
-        .unwrap_or(false);
-    let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
-    let managed_server = opencode_support_file_is_managed(&support_dir, OPENCODE_SERVER_JS);
-    let tui = support_dir.join(OPENCODE_TUI_JS);
-    let rpc = support_dir.join(OPENCODE_RPC_JS);
-    let nested_dir_safe = match fs::symlink_metadata(&nested_dir) {
-        Ok(metadata) => metadata.file_type().is_dir(),
-        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
-    };
-    if (js.exists() && !managed_js)
-        || (support_dir.exists() && !managed_support && !managed_js && !managed_server)
-        || !nested_dir_safe
-        || (server.exists() && !managed_server)
-        || (nested_rpc.exists() && !opencode_support_file_is_managed(&nested_dir, OPENCODE_RPC_JS))
-        || (tui.exists() && !opencode_tui_is_managed(&support_dir))
-        || (rpc.exists() && !opencode_support_file_is_managed(&support_dir, OPENCODE_RPC_JS))
-    {
+        .unwrap_or(false)
+        || opencode::managed_entry(home);
+    let managed_support = opencode::managed_support(home);
+    if (js.exists() && !managed_js) || (support_dir.exists() && !managed_support && !managed_js) {
         out.messages.push(format!(
             "refusing to remove non-managed OpenCode hook files under {}",
             dir.display()
@@ -3202,50 +2898,17 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     out.attempted = true;
     let mut removed = true;
+    if let Err(error) = opencode::remove_support_files(home) {
+        out.messages.push(error.to_string());
+        out.plugin_uninstalled = Some(false);
+        return out;
+    }
     let bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
     if bridge.exists() {
         if let Err(e) = fs::remove_file(&bridge) {
             removed = false;
             out.messages
                 .push(format!("failed to remove {}: {}", bridge.display(), e));
-        }
-    }
-    if removed && tui.exists() {
-        if let Err(e) = fs::remove_file(&tui) {
-            removed = false;
-            out.messages
-                .push(format!("failed to remove {}: {}", tui.display(), e));
-        }
-    }
-    if removed && rpc.exists() {
-        if let Err(e) = fs::remove_file(&rpc) {
-            removed = false;
-            out.messages
-                .push(format!("failed to remove {}: {}", rpc.display(), e));
-        }
-        if removed && nested_rpc.exists() {
-            if let Err(e) = fs::remove_file(&nested_rpc) {
-                removed = false;
-                out.messages
-                    .push(format!("failed to remove {}: {}", nested_rpc.display(), e));
-            }
-        }
-        if removed
-            && nested_dir.is_dir()
-            && fs::read_dir(&nested_dir).is_ok_and(|mut entries| entries.next().is_none())
-        {
-            if let Err(e) = fs::remove_dir(&nested_dir) {
-                removed = false;
-                out.messages
-                    .push(format!("failed to remove {}: {}", nested_dir.display(), e));
-            }
-        }
-        if removed && server.exists() {
-            if let Err(e) = fs::remove_file(&server) {
-                removed = false;
-                out.messages
-                    .push(format!("failed to remove {}: {}", server.display(), e));
-            }
         }
     }
     // Keep the JavaScript ownership marker until the support artifacts are
@@ -3258,6 +2921,16 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
                 removed = false;
                 out.messages
                     .push(format!("failed to remove {}: {}", manifest.display(), e));
+            }
+        }
+    }
+    if removed {
+        let entry = support_dir.join(OPENCODE_PLUGIN_JS);
+        if entry.exists() {
+            if let Err(error) = fs::remove_file(&entry) {
+                removed = false;
+                out.messages
+                    .push(format!("failed to remove {}: {error}", entry.display()));
             }
         }
     }
@@ -4698,45 +4371,20 @@ fn read_installed_gemini(home: &Path) -> InstalledProbe {
 }
 
 fn read_installed_opencode(home: &Path) -> InstalledProbe {
-    read_installed_opencode_for_layout(home, detect_opencode_layout())
-}
-
-fn read_installed_opencode_for_layout(
-    home: &Path,
-    layout: Option<OpenCodeLayout>,
-) -> InstalledProbe {
     let dir = opencode_plugins_dir(home);
     let js = dir.join(OPENCODE_PLUGIN_JS);
     let managed_js = match fs::read_to_string(&js) {
         Ok(text) => text.contains(OPENCODE_MANAGED_MARKER),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(error) => return Err(format!("failed to read {}: {}", js.display(), error)),
-    };
+    } || opencode::managed_entry(home);
     let support_dir = opencode_support_dir(home);
     let manifest = support_dir.join(OPENCODE_MANIFEST);
     let managed_support = opencode_manifest_is_managed(&manifest);
-    let managed_server = opencode_support_file_is_managed(&support_dir, OPENCODE_SERVER_JS);
-    if !managed_js && !managed_server && !managed_support {
+    if !managed_js && !managed_support {
         return Ok(None);
     }
-    let entrypoint_complete = match layout {
-        Some(OpenCodeLayout::V1) => managed_js && !support_dir.join(OPENCODE_SERVER_JS).exists(),
-        Some(OpenCodeLayout::V2) => {
-            managed_server
-                && !js.exists()
-                && fs::symlink_metadata(support_dir.join(OPENCODE_SUPPORT_DIR))
-                    .is_ok_and(|metadata| metadata.file_type().is_dir())
-                && opencode_support_file_is_managed(
-                    &support_dir.join(OPENCODE_SUPPORT_DIR),
-                    OPENCODE_RPC_JS,
-                )
-        }
-        None => false,
-    };
-    let complete = entrypoint_complete
-        && managed_support
-        && opencode_tui_is_managed(&support_dir)
-        && opencode_support_file_is_managed(&support_dir, OPENCODE_RPC_JS);
+    let complete = opencode::complete(home);
     Ok(Some(InstalledInfo {
         // A partial managed install must go through OpenCodeCopy even when its
         // surviving manifest already has the current bundle version.

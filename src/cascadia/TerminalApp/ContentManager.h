@@ -25,6 +25,7 @@ Abstract:
 #pragma once
 
 #include <mutex>
+#include <string_view>
 #include "ContentManager.g.h"
 #include "SharedWta.h"
 
@@ -42,9 +43,64 @@ namespace winrt::TerminalApp::implementation
         Microsoft::Terminal::Control::ControlInteractivity CreateAgentCliCore(const Microsoft::Terminal::Control::IControlSettings& settings,
                                                                               const Microsoft::Terminal::Control::IControlAppearance& unfocusedAppearance,
                                                                               const Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
-                                                                              const winrt::hstring& providerId);
+                                                                              const winrt::hstring& providerId,
+                                                                              const std::string& nativeAgentLaunchLocation = {});
         winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
         winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
+        struct NativeAgentObservationIdentity
+        {
+            winrt::hstring providerId;
+            uint64_t modeEpoch{ 0 };
+            uint64_t windowId{ 0 };
+            std::string tabId;
+            std::string agentSessionId;
+            std::string location;
+            bool initialAdmission{ false };
+            uint64_t receiverGeneration{ 0 };
+            std::string qualifiedSessionId;
+            std::string qualifiedLocation;
+            uint64_t paneCreatedAtMs{ 0 };
+            uint64_t paneCreationSequence{ 0 };
+        };
+        void SetExplicitNativeAgentProvider(uint64_t contentId, const winrt::hstring& providerId);
+        bool RefineNativeAgentLaunchLocation(uint64_t contentId, const winrt::hstring& providerId, const std::string& location);
+        std::optional<NativeAgentObservationIdentity> NativeAgentObservationForContent(uint64_t contentId) const;
+        NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0);
+        void RetainQualifiedNativeAgentIdentity(uint64_t contentId, uint64_t modeEpoch, const std::string& sessionId, const std::string& location);
+        void RemoveNativeAgentObservation(uint64_t contentId);
+        void RestartNativeAgentConnectionTracking(uint64_t contentId);
+        void SetNativeAgentSessionEventsEnabled(bool enabled);
+        void MarkAgentHelper(uint64_t contentId);
+        bool AcceptsAgentSessionEvents(const winrt::guid& paneId) const;
+        struct AgentCompletionState
+        {
+            winrt::guid paneId{};
+            std::string sessionId;
+            std::string providerId;
+            bool wasActive{ false };
+            bool unread{ false };
+            bool wasAttention{ false };
+            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider, const std::string_view status, const bool focused)
+            {
+                const auto wasUnread = unread;
+                const auto identityChanged = paneId != pane || sessionId != session || providerId != provider;
+                if (identityChanged)
+                {
+                    *this = { pane, std::string{ session }, std::string{ provider } };
+                }
+                const auto attention = status == "Attention";
+                const auto newAttention = attention && !wasAttention;
+                unread = !focused && ((attention && (unread || newAttention)) ||
+                                      (status == "Idle" && (unread || wasActive)));
+                wasActive = status == "Working" || status == "Attention";
+                wasAttention = attention;
+                return wasUnread != unread || (identityChanged && (wasUnread || unread));
+            }
+        };
+        void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
+        bool HasUnreadAgentCompletion(const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId) const;
+        void MarkAgentCompletionRead(uint64_t contentId);
+        void ResetAgentCompletion(uint64_t contentId);
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
@@ -72,6 +128,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeepRunningTabsChanged;
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
         til::event<winrt::delegate<winrt::guid, uint64_t>> PaneWindowChanged;
+        til::event<winrt::delegate<winrt::guid>> AgentCompletionChanged;
 
     private:
         mutable std::mutex _mutex;
@@ -79,8 +136,19 @@ namespace winrt::TerminalApp::implementation
         {
             Microsoft::Terminal::Control::ControlInteractivity core;
             winrt::hstring nativeAgentProviderId;
+            uint64_t paneCreatedAtMs;
+            uint64_t paneCreationSequence;
+            std::string nativeAgentLaunchLocation;
+            winrt::hstring explicitNativeAgentProviderId;
+            NativeAgentObservationIdentity observation;
+            bool observationAdmitted{ false };
+            bool agentHelper{ false };
+            AgentCompletionState completion;
         };
         std::unordered_map<uint64_t, TerminalContent> _content;
+        bool _nativeAgentSessionEventsEnabled{ true };
+        uint64_t _nativeAgentObservationGeneration{ 0 };
+        uint64_t _nativeAgentPaneCreationSequence{ 0 };
 
         struct AgentBinding
         {

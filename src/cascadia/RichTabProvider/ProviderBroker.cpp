@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <iterator>
 #include <thread>
 
 namespace Microsoft::Terminal::RichTab::Provider
@@ -21,9 +22,74 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool _IsBuiltInGitStatus(const Registration& provider)
         {
             return provider.manifest.id == "com.microsoft.intelligent-terminal.git-status" &&
+                   provider.origin == RegistrationOrigin::BuiltInCatalog &&
                    provider.kind == RegistrationKind::Managed &&
                    provider.enabled && provider.integrityValid &&
                    provider.root == BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        }
+
+        bool _IsDiagnosticEligible(const Registration& provider) noexcept
+        {
+            return provider.origin == RegistrationOrigin::BuiltInCatalog &&
+                   provider.manifest.id == "com.microsoft.intelligent-terminal.git-status";
+        }
+
+        uint8_t _FieldMask(const std::vector<std::string>& fields) noexcept
+        {
+            uint8_t result = ProviderFieldNone;
+            for (const auto& field : fields)
+            {
+                if (field == "agentStatus")
+                {
+                    result |= ProviderFieldAgentStatus;
+                }
+                else if (field == "workingDirectory")
+                {
+                    result |= ProviderFieldWorkingDirectory;
+                }
+                else if (field == "repository")
+                {
+                    result |= ProviderFieldRepository;
+                }
+                else if (field == "branch")
+                {
+                    result |= ProviderFieldBranch;
+                }
+                else if (field == "changes")
+                {
+                    result |= ProviderFieldChanges;
+                }
+            }
+            return result;
+        }
+
+        uint8_t _FieldMask(const Snapshot& snapshot) noexcept
+        {
+            uint8_t result = ProviderFieldNone;
+            for (const auto& [field, _] : snapshot.fields)
+            {
+                if (field == "agentStatus")
+                {
+                    result |= ProviderFieldAgentStatus;
+                }
+                else if (field == "workingDirectory")
+                {
+                    result |= ProviderFieldWorkingDirectory;
+                }
+                else if (field == "repository")
+                {
+                    result |= ProviderFieldRepository;
+                }
+                else if (field == "branch")
+                {
+                    result |= ProviderFieldBranch;
+                }
+                else if (field == "changes")
+                {
+                    result |= ProviderFieldChanges;
+                }
+            }
+            return result;
         }
 
         void _ClearGitStatusCwdDependentFields(Snapshot& snapshot)
@@ -116,11 +182,18 @@ namespace Microsoft::Terminal::RichTab::Provider
     }
 
     ProviderBroker::ProviderBroker() :
-        ProviderBroker{ CommandRunner::ResolveGit() }
+        ProviderBroker{ CommandRunner::ResolveGit(), true }
     {
     }
 
     ProviderBroker::ProviderBroker(std::optional<std::filesystem::path> gitBinary) :
+        ProviderBroker{ std::move(gitBinary), false }
+    {
+    }
+
+    ProviderBroker::ProviderBroker(
+        std::optional<std::filesystem::path> gitBinary,
+        const bool enableDiagnosticLogging) :
         _gitBinary{ std::move(gitBinary) }
     {
         if (BCryptGenRandom(
@@ -131,6 +204,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             _processEpoch == 0)
         {
             _processEpoch = (GetTickCount64() << 16) ^ GetCurrentProcessId();
+        }
+        if (enableDiagnosticLogging)
+        {
+            _diagnosticLog = ProviderDiagnosticLog::Create(_processEpoch);
         }
         constexpr size_t WorkerCount{ 4 };
         _executorWorkers.reserve(WorkerCount);
@@ -202,6 +279,22 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::ReloadProviders()
     {
         auto builtIns = BuiltInProviderCatalog::Load(BuiltInProviderCatalog::PackageRoot());
+        if (_diagnosticLog && !_catalogOutcomeLogged.exchange(true, std::memory_order_acq_rel))
+        {
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Catalog;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = _processEpoch;
+            record.catalogOutcome = builtIns.outcome;
+            if (builtIns.value && !builtIns.value->empty())
+            {
+                const auto& provider = builtIns.value->front();
+                record.catalogOrigin = provider.origin == RegistrationOrigin::BuiltInCatalog;
+                record.providerVersion = ParseProviderDiagnosticVersion(provider.manifest.version);
+            }
+            _diagnosticLog->TryLog(record);
+        }
         std::vector<Registration> providers;
         if (builtIns.value)
         {
@@ -230,11 +323,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
 
                 ++session.updateSequence;
-                const auto update = _UpdateFor(sessionId, session);
-                for (const auto& [_, callback] : session.callbacks)
-                {
-                    notifications.emplace_back(callback, update);
-                }
+                auto updates = _NotificationsFor(sessionId, session);
+                notifications.insert(notifications.end(), std::make_move_iterator(updates.begin()), std::make_move_iterator(updates.end()));
             }
         }
 
@@ -281,7 +371,6 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return;
             }
 
-            const auto emptySelection = selectedFields.empty();
             _visibleFields.insert_or_assign(provider->manifest.id, std::move(selectedFields));
 
             for (auto& [sessionId, session] : _sessions)
@@ -290,7 +379,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     sessionIdsToRefresh.push_back(sessionId);
                 }
-                if (emptySelection)
+                if (_VisibleFieldsForSession(session, *provider).empty())
                 {
                     if (const auto state = session.providers.find(provider->manifest.id); state != session.providers.end())
                     {
@@ -300,11 +389,8 @@ namespace Microsoft::Terminal::RichTab::Provider
                     }
                 }
                 ++session.updateSequence;
-                const auto update = _UpdateFor(sessionId, session);
-                for (const auto& [_, callback] : session.callbacks)
-                {
-                    notifications.emplace_back(callback, update);
-                }
+                auto updates = _NotificationsFor(sessionId, session);
+                notifications.insert(notifications.end(), std::make_move_iterator(updates.begin()), std::make_move_iterator(updates.end()));
             }
         }
 
@@ -317,6 +403,63 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             _Refresh(sid, ActivationEvent::ManualRefresh, false);
         }
+    }
+
+    void ProviderBroker::SetVisibleFields(
+        const AttachmentId attachment,
+        const std::string_view providerId,
+        std::vector<std::string> fields)
+    {
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        std::string sessionId;
+        {
+            std::lock_guard lock{ _mutex };
+            const auto attached = _attachmentSessions.find(attachment);
+            const auto provider = std::find_if(_providers.begin(), _providers.end(), [&](const auto& candidate) {
+                return candidate.manifest.id == providerId;
+            });
+            if (attached == _attachmentSessions.end() || provider == _providers.end())
+            {
+                return;
+            }
+
+            std::unordered_set<std::string> selectedFields;
+            for (auto& field : fields)
+            {
+                if (std::any_of(provider->manifest.fields.begin(), provider->manifest.fields.end(), [&](const auto& declared) {
+                        return declared.id == field;
+                    }))
+                {
+                    selectedFields.emplace(std::move(field));
+                }
+            }
+
+            sessionId = attached->second;
+            auto& session = _sessions.at(sessionId);
+            auto& ownerFields = session.visibleFieldsByAttachment[attachment];
+            const auto previous = ownerFields.find(provider->manifest.id);
+            if (previous != ownerFields.end() && previous->second == selectedFields)
+            {
+                return;
+            }
+            ownerFields.insert_or_assign(provider->manifest.id, std::move(selectedFields));
+            if (_VisibleFieldsForSession(session, *provider).empty())
+            {
+                if (const auto state = session.providers.find(provider->manifest.id); state != session.providers.end())
+                {
+                    state->second.generation = _nextGeneration++;
+                    state->second.pending.reset();
+                    state->second.snapshot.reset();
+                }
+            }
+            ++session.updateSequence;
+            notifications = _NotificationsFor(sessionId, session);
+        }
+        for (const auto& [callback, update] : notifications)
+        {
+            callback(update);
+        }
+        _Refresh(sessionId, ActivationEvent::ManualRefresh, false);
     }
 
     void ProviderBroker::SetFieldDisplayNames(
@@ -361,11 +504,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             for (auto& [sessionId, session] : _sessions)
             {
                 ++session.updateSequence;
-                const auto update = _UpdateFor(sessionId, session);
-                for (const auto& [_, callback] : session.callbacks)
-                {
-                    notifications.emplace_back(callback, update);
-                }
+                auto updates = _NotificationsFor(sessionId, session);
+                notifications.insert(notifications.end(), std::make_move_iterator(updates.begin()), std::make_move_iterator(updates.end()));
             }
         }
 
@@ -399,7 +539,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         return result;
     }
 
-    ProviderBroker::AttachmentId ProviderBroker::Attach(SessionContext context, Callback callback)
+    ProviderBroker::AttachmentId ProviderBroker::Attach(SessionContext context, Callback callback, VisibleFieldMap visibleFields)
     {
         if (context.sessionId.empty())
         {
@@ -410,7 +550,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<BrokerUpdate> existing;
         bool contextChanged = false;
         auto initialCallback = callback;
-        std::vector<Callback> previousCallbacks;
+        std::vector<std::pair<Callback, BrokerUpdate>> previousCallbacks;
         {
             std::lock_guard lock{ _mutex };
             _PruneDetachedSessionsLocked();
@@ -441,6 +581,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 ++session.updateSequence;
             }
             session.callbacks.emplace(attachment, std::move(callback));
+            if (!visibleFields.empty())
+            {
+                session.visibleFieldsByAttachment.emplace(attachment, std::move(visibleFields));
+            }
             _attachmentSessions.emplace(attachment, session.context.sessionId);
             if (_RecomputeAgentWorkingDirectoryLocked(session))
             {
@@ -448,16 +592,16 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     if (id != attachment)
                     {
-                        previousCallbacks.emplace_back(listener);
+                        previousCallbacks.emplace_back(listener, _UpdateFor(session.context.sessionId, session, {}, id));
                     }
                 }
             }
-            existing = _UpdateFor(session.context.sessionId, session);
+            existing = _UpdateFor(session.context.sessionId, session, {}, attachment);
         }
 
-        for (const auto& listener : previousCallbacks)
+        for (const auto& [listener, update] : previousCallbacks)
         {
-            listener(*existing);
+            listener(update);
         }
         if (contextChanged || existing->presentation)
         {
@@ -470,8 +614,8 @@ namespace Microsoft::Terminal::RichTab::Provider
     void ProviderBroker::Detach(const AttachmentId attachment)
     {
         std::string sessionId;
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        bool workingDirectoryChanged = false;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -483,6 +627,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 auto& session = found->second;
                 session.callbacks.erase(attachment);
+                const auto selectionRemoved = session.visibleFieldsByAttachment.erase(attachment) != 0;
                 session.activeAgentWorkingDirectories.erase(attachment);
                 if (session.callbacks.empty())
                 {
@@ -498,27 +643,37 @@ namespace Microsoft::Terminal::RichTab::Provider
                     ++session.updateSequence;
                     session.detachedAt = std::chrono::steady_clock::now();
                 }
-                else if (_RecomputeAgentWorkingDirectoryLocked(session))
+                else
                 {
-                    sessionId = attached->second;
-                    update = _UpdateFor(sessionId, session);
-                    callbacks.reserve(session.callbacks.size());
-                    for (const auto& [_, callback] : session.callbacks)
+                    workingDirectoryChanged = _RecomputeAgentWorkingDirectoryLocked(session);
+                    if (workingDirectoryChanged || selectionRemoved)
                     {
-                        callbacks.emplace_back(callback);
+                        sessionId = attached->second;
+                        if (!workingDirectoryChanged)
+                        {
+                            ++session.updateSequence;
+                        }
+                        notifications = _NotificationsFor(sessionId, session);
                     }
                 }
             }
             _attachmentSessions.erase(attached);
             _PruneDetachedSessionsLocked();
         }
-        for (const auto& callback : callbacks)
+        for (const auto& [callback, update] : notifications)
         {
             callback(update);
         }
         if (!sessionId.empty())
         {
-            _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+            if (workingDirectoryChanged)
+            {
+                _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+            }
+            else
+            {
+                _Refresh(sessionId, ActivationEvent::ManualRefresh, false);
+            }
         }
     }
 
@@ -529,8 +684,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<std::string> shellType)
     {
         std::string sessionId;
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -552,14 +706,9 @@ namespace Microsoft::Terminal::RichTab::Provider
             ++session.updateSequence;
             _InvalidateGitStatusWorkingDirectoryLocked(session);
             sessionId = session.context.sessionId;
-            update = _UpdateFor(sessionId, session);
-            callbacks.reserve(session.callbacks.size());
-            for (const auto& [_, callback] : session.callbacks)
-            {
-                callbacks.emplace_back(callback);
-            }
+            notifications = _NotificationsFor(sessionId, session);
         }
-        for (const auto& callback : callbacks)
+        for (const auto& [callback, update] : notifications)
         {
             callback(update);
         }
@@ -571,8 +720,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::unordered_map<std::string, std::string> fields)
     {
         std::string sessionId;
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -595,15 +743,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
             ++session.updateSequence;
             sessionId = attached->second;
-            update = _UpdateFor(sessionId, session);
-            callbacks.reserve(session.callbacks.size());
-            for (const auto& [_, callback] : session.callbacks)
-            {
-                callbacks.emplace_back(callback);
-            }
+            notifications = _NotificationsFor(sessionId, session);
         }
 
-        for (const auto& callback : callbacks)
+        for (const auto& [callback, update] : notifications)
         {
             callback(update);
         }
@@ -620,8 +763,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             workingDirectory.reset();
         }
         std::string sessionId;
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         {
             std::lock_guard lock{ _mutex };
             const auto attached = _attachmentSessions.find(attachment);
@@ -643,13 +785,9 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return;
             }
             sessionId = attached->second;
-            update = _UpdateFor(sessionId, session);
-            for (const auto& [_, callback] : session.callbacks)
-            {
-                callbacks.emplace_back(callback);
-            }
+            notifications = _NotificationsFor(sessionId, session);
         }
-        for (const auto& callback : callbacks)
+        for (const auto& [callback, update] : notifications)
         {
             callback(update);
         }
@@ -757,22 +895,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                     activation = ActivationEvent::ManualRefresh;
                 }
 
-                std::vector<std::string> visibleFieldsForProvider;
-                const auto selected = _visibleFields.find(provider.manifest.id);
-                if (selected != _visibleFields.end())
-                {
-                    visibleFieldsForProvider.assign(selected->second.begin(), selected->second.end());
-                }
-                else
-                {
-                    for (const auto& field : provider.manifest.fields)
-                    {
-                        if (field.defaultVisible)
-                        {
-                            visibleFieldsForProvider.emplace_back(field.id);
-                        }
-                    }
-                }
+                auto visibleFieldsForProvider = _VisibleFieldsForSession(session, provider);
 
                 auto& providerState = session.providers[provider.manifest.id];
                 if (visibleFieldsForProvider.empty())
@@ -785,8 +908,9 @@ namespace Microsoft::Terminal::RichTab::Provider
                 const auto generation = _nextGeneration++;
                 providerState.generation = generation;
                 Request request;
+                request.hostRequestId = _nextRequest++;
                 request.requestId =
-                    std::to_string(_processEpoch) + "-" + std::to_string(_nextRequest++);
+                    std::to_string(_processEpoch) + "-" + std::to_string(request.hostRequestId);
                 request.providerId = provider.manifest.id;
                 request.processEpoch = _processEpoch;
                 request.sessionId = session.context.sessionId;
@@ -838,6 +962,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         Request request,
         const uint64_t generation)
     {
+        const auto diagnosticsEnabled =
+            _diagnosticLog && _diagnosticLog->Enabled() && _IsDiagnosticEligible(provider);
+        ProviderDiagnosticRecord diagnosticRecord;
+        if (diagnosticsEnabled)
+        {
+            diagnosticRecord.event = ProviderDiagnosticEvent::Invocation;
+            diagnosticRecord.timestamp = ProviderDiagnosticTimestamp();
+            diagnosticRecord.processId = GetCurrentProcessId();
+            diagnosticRecord.processEpoch = _processEpoch;
+            diagnosticRecord.hostRequestId = request.hostRequestId;
+            diagnosticRecord.generation = generation;
+            diagnosticRecord.contextRevision = request.contextRevision;
+            diagnosticRecord.providerVersion = ParseProviderDiagnosticVersion(provider.manifest.version);
+            diagnosticRecord.activationReason = request.reason;
+            diagnosticRecord.selectedFields = _FieldMask(request.visibleFields);
+            diagnosticRecord.catalogOrigin = provider.origin == RegistrationOrigin::BuiltInCatalog;
+        }
+
         std::vector<std::string> diagnostics;
         const auto serialized = SerializeRequest(request, provider.manifest);
         std::optional<Snapshot> snapshot;
@@ -847,7 +989,24 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
         else
         {
+            const auto started = std::chrono::steady_clock::now();
             const auto command = _runner.Run(provider.manifest, *serialized.value, ProviderTimeout);
+            const auto finished = std::chrono::steady_clock::now();
+            if (diagnosticsEnabled)
+            {
+                diagnosticRecord.runnerAttempted = true;
+                diagnosticRecord.durationMicroseconds = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(finished - started).count());
+                diagnosticRecord.runnerStatus = command.status;
+                diagnosticRecord.processStarted = command.processStarted;
+                diagnosticRecord.exitCode = command.exitCode;
+                diagnosticRecord.exitCodeValid = command.exitCodeValid;
+                diagnosticRecord.win32Error = command.win32Error;
+                diagnosticRecord.win32ErrorValid = command.win32ErrorValid;
+                diagnosticRecord.outputLimitObserved = command.outputLimitObserved;
+                diagnosticRecord.standardOutputExceeded = command.standardOutputExceeded;
+                diagnosticRecord.standardErrorExceeded = command.standardErrorExceeded;
+            }
             if (command.status != CommandResult::Status::Completed || command.exitCode != 0)
             {
                 diagnostics.emplace_back(
@@ -864,6 +1023,11 @@ namespace Microsoft::Terminal::RichTab::Provider
                 if (parsed)
                 {
                     snapshot = *parsed.value;
+                    if (diagnosticsEnabled)
+                    {
+                        diagnosticRecord.parseOutcome = ProviderParseOutcome::Valid;
+                        diagnosticRecord.returnedFields = _FieldMask(*snapshot);
+                    }
                     if (const auto status = request.firstPartyFields.find("agentStatusId");
                         status != request.firstPartyFields.end())
                     {
@@ -872,6 +1036,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
                 else
                 {
+                    if (diagnosticsEnabled)
+                    {
+                        diagnosticRecord.parseOutcome = ProviderParseOutcome::Invalid;
+                    }
                     diagnostics.insert(diagnostics.end(), parsed.errors.begin(), parsed.errors.end());
                 }
             }
@@ -881,48 +1049,64 @@ namespace Microsoft::Terminal::RichTab::Provider
             }
         }
 
-        std::vector<Callback> callbacks;
-        BrokerUpdate update;
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::optional<PendingRequest> next;
+        auto disposition = ProviderBrokerDisposition::NotApplicable;
         {
             std::lock_guard lock{ _mutex };
             const auto session = _sessions.find(request.sessionId);
             if (session == _sessions.end())
             {
-                return;
+                disposition = ProviderBrokerDisposition::SessionMissing;
             }
-            const auto state = session->second.providers.find(provider.manifest.id);
-            if (state == session->second.providers.end() ||
-                !state->second.running ||
-                state->second.runningGeneration != generation)
+            else
             {
-                return;
-            }
-            state->second.running = false;
-
-            if (state->second.generation == generation &&
-                session->second.contextRevision == request.contextRevision)
-            {
-                state->second.snapshot = std::move(snapshot);
-                ++session->second.updateSequence;
-                update = _UpdateFor(request.sessionId, session->second, std::move(diagnostics));
-                callbacks.reserve(session->second.callbacks.size());
-                for (const auto& [_, callback] : session->second.callbacks)
+                const auto state = session->second.providers.find(provider.manifest.id);
+                if (state == session->second.providers.end())
                 {
-                    callbacks.emplace_back(callback);
+                    disposition = ProviderBrokerDisposition::ProviderStateMissing;
                 }
-            }
+                else if (!state->second.running ||
+                         state->second.runningGeneration != generation)
+                {
+                    disposition = ProviderBrokerDisposition::RunningGenerationMismatch;
+                }
+                else
+                {
+                    state->second.running = false;
+                    if (state->second.generation != generation)
+                    {
+                        disposition = ProviderBrokerDisposition::GenerationMismatch;
+                    }
+                    else if (session->second.contextRevision != request.contextRevision)
+                    {
+                        disposition = ProviderBrokerDisposition::ContextRevisionMismatch;
+                    }
+                    else
+                    {
+                        disposition = ProviderBrokerDisposition::Accepted;
+                        state->second.snapshot = std::move(snapshot);
+                        ++session->second.updateSequence;
+                        notifications = _NotificationsFor(request.sessionId, session->second, diagnostics);
+                    }
 
-            if (state->second.pending)
-            {
-                next = std::move(state->second.pending);
-                state->second.pending.reset();
-                state->second.running = true;
-                state->second.runningGeneration = next->generation;
+                    if (state->second.pending)
+                    {
+                        next = std::move(state->second.pending);
+                        state->second.pending.reset();
+                        state->second.running = true;
+                        state->second.runningGeneration = next->generation;
+                    }
+                }
             }
         }
 
-        for (const auto& callback : callbacks)
+        if (diagnosticsEnabled)
+        {
+            diagnosticRecord.brokerDisposition = disposition;
+            _diagnosticLog->TryLog(diagnosticRecord);
+        }
+        for (const auto& [callback, update] : notifications)
         {
             callback(update);
         }
@@ -949,10 +1133,58 @@ namespace Microsoft::Terminal::RichTab::Provider
         });
     }
 
+    std::vector<std::string> ProviderBroker::_VisibleFieldsForSession(
+        const SessionState& state,
+        const Registration& provider) const
+    {
+        std::vector<std::string> fields;
+        const auto defaults = _visibleFields.find(provider.manifest.id);
+        for (const auto& field : provider.manifest.fields)
+        {
+            const auto selectedFor = [&](const AttachmentId attachment) {
+                if (const auto owner = state.visibleFieldsByAttachment.find(attachment);
+                    owner != state.visibleFieldsByAttachment.end())
+                {
+                    if (const auto selected = owner->second.find(provider.manifest.id);
+                        selected != owner->second.end())
+                    {
+                        return selected->second.contains(field.id);
+                    }
+                }
+                return defaults != _visibleFields.end() ?
+                           defaults->second.contains(field.id) :
+                           field.defaultVisible;
+            };
+            if (state.callbacks.empty() ? selectedFor(0) :
+                                          std::any_of(state.callbacks.begin(), state.callbacks.end(), [&](const auto& item) {
+                                              return selectedFor(item.first);
+                                          }))
+            {
+                fields.emplace_back(field.id);
+            }
+        }
+        return fields;
+    }
+
+    std::vector<std::pair<ProviderBroker::Callback, BrokerUpdate>> ProviderBroker::_NotificationsFor(
+        const std::string& sessionId,
+        const SessionState& state,
+        const std::vector<std::string>& diagnostics) const
+    {
+        std::vector<std::pair<Callback, BrokerUpdate>> notifications;
+        notifications.reserve(state.callbacks.size());
+        for (const auto& [attachment, callback] : state.callbacks)
+        {
+            notifications.emplace_back(callback, _UpdateFor(sessionId, state, diagnostics, attachment));
+        }
+        return notifications;
+    }
+
     BrokerUpdate ProviderBroker::_UpdateFor(
         const std::string& sessionId,
         const SessionState& state,
-        std::vector<std::string> diagnostics) const
+        std::vector<std::string> diagnostics,
+        const AttachmentId attachment) const
     {
         std::unordered_map<std::string, Snapshot> snapshots;
         for (const auto& [id, provider] : state.providers)
@@ -962,12 +1194,41 @@ namespace Microsoft::Terminal::RichTab::Provider
                 snapshots.emplace(id, *provider.snapshot);
             }
         }
+        for (const auto& provider : _providers)
+        {
+            if (_IsBuiltInGitStatus(provider))
+            {
+                // Host-owned status must not disappear while Git refreshes or fails.
+                auto& snapshot = snapshots[provider.manifest.id];
+                snapshot.fields.erase("agentStatus");
+                snapshot.agentStatus.clear();
+                if (const auto status = state.context.firstPartyFields.find("agentStatus");
+                    status != state.context.firstPartyFields.end() && !status->second.empty())
+                {
+                    snapshot.fields.emplace("agentStatus", status->second);
+                    if (const auto id = state.context.firstPartyFields.find("agentStatusId");
+                        id != state.context.firstPartyFields.end())
+                    {
+                        snapshot.agentStatus = id->second;
+                    }
+                }
+            }
+        }
+        auto visibleFields = _visibleFields;
+        if (const auto selection = state.visibleFieldsByAttachment.find(attachment);
+            selection != state.visibleFieldsByAttachment.end())
+        {
+            for (const auto& [provider, fields] : selection->second)
+            {
+                visibleFields.insert_or_assign(provider, fields);
+            }
+        }
         return BrokerUpdate{
             sessionId,
             state.sessionIncarnation,
             state.contextRevision,
             state.updateSequence,
-            ComposePresentation(_providers, snapshots, _visibleFields, _fieldDisplayNames),
+            ComposePresentation(_providers, snapshots, visibleFields, _fieldDisplayNames),
             std::move(diagnostics)
         };
     }

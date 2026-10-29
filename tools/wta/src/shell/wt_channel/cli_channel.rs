@@ -777,6 +777,10 @@ impl CliChannel {
                                             }
                                             continue;
                                         }
+                                        if val.get("method").and_then(serde_json::Value::as_str) == Some("wt_listener_ready") {
+                                            tracing::debug!(target: "wtcli", "ignored externally supplied listener readiness event");
+                                            continue;
+                                        }
                                         let tx = this.event_tx.lock().unwrap();
                                         if let Some(tx) = tx.as_ref() {
                                             let _ = tx.send(val);
@@ -956,6 +960,11 @@ impl WtChannel for CliChannel {
     ) -> anyhow::Result<serde_json::Value> {
         // Map protocol method names to wtcli subcommands + args.
         match method {
+            "publish" => {
+                let payload = params.to_string();
+                self.run_wtcli(&["publish", "--existing-only", &payload])
+                    .await
+            }
             "list_windows" => self.run_wtcli(&["list-windows"]).await,
             "list_tabs" => {
                 let mut args = vec!["list-tabs"];
@@ -1375,6 +1384,10 @@ mod tests {
         assert!(!is_listener_ready_marker(&marker, "wta-43"));
         assert!(!is_listener_ready_marker(
             &serde_json::json!({"method": "agent_event", "token": "wta-42"}),
+            "wta-42"
+        ));
+        assert!(!is_listener_ready_marker(
+            &serde_json::json!({"method": "wt_listener_ready", "params": {}}),
             "wta-42"
         ));
     }

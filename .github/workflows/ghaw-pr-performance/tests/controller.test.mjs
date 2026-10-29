@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const workflow = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
@@ -14,9 +15,86 @@ const extract = name => {
 };
 const reportScript = new AsyncFunction('github', 'context', 'core', 'process', 'require', extract('Publish linked PR run report'));
 
+function temporaryDirectory(prefix) {
+    const generated = path.join(process.cwd(), 'Generated Files');
+    fs.mkdirSync(generated, { recursive: true });
+    return fs.mkdtempSync(path.join(generated, prefix));
+}
+
+test('controller loads its helper from the workflow revision when the PR base predates it', t => {
+    const root = temporaryDirectory('performance-controller-checkout-');
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 15000 }).trim();
+    const commit = subject => {
+        git(['add', '--all']);
+        git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', subject]);
+        return git(['rev-parse', 'HEAD']);
+    };
+    git(['init', '--quiet', '--initial-branch=main']);
+    const source = path.join(root, 'tools', 'wta', 'src', 'lib.rs');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.writeFileSync(source, 'pub fn value() -> usize { 1 }\n');
+    const base = commit('PR base before the reviewer existed');
+    git(['checkout', '--quiet', '-b', 'topic']);
+    fs.writeFileSync(source, 'pub fn value() -> usize { 2 }\n');
+    const head = commit('Reviewed source change');
+    git(['checkout', '--quiet', 'main']);
+    const helper = path.join(root, '.github', 'workflows', 'ghaw-pr-performance', 'scripts', 'performance-review.mjs');
+    fs.mkdirSync(path.dirname(helper), { recursive: true });
+    fs.copyFileSync(new URL('../scripts/performance-review.mjs', import.meta.url), helper);
+    commit('Install the reviewer after the PR base');
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+        'merge', '--quiet', '--no-ff', '-m', 'Workflow merge revision', 'topic']);
+    const trusted = git(['rev-parse', 'HEAD']);
+    assert.equal(git(['merge-base', trusted, head]), head);
+    const context = {
+        'github.workflow_sha': trusted,
+        'github.event.pull_request.base.sha': base,
+        'github.event.pull_request.head.sha': head,
+    };
+    const expression = workflow.match(/uses: actions\/checkout@[^\r\n]+\r?\n\s+with:\r?\n\s+ref: \$\{\{\s*([^}]+?)\s*\}\}/)?.[1];
+    assert.ok(Object.hasOwn(context, expression), 'resolve the actual controller checkout expression');
+    git(['checkout', '--quiet', '--detach', context[expression]]);
+    const scopeDirectory = path.join(root, '.git', 'scope');
+    const comparisonBase = git(['merge-base', base, head]);
+    execFileSync(process.execPath, [helper, 'prepare', '--output-dir', scopeDirectory,
+        '--pr', '42', '--base', comparisonBase, '--head', head], { cwd: root, timeout: 15000 });
+    const scope = JSON.parse(fs.readFileSync(path.join(scopeDirectory, 'performance-scope.json'), 'utf8'));
+    assert.deepEqual(scope.identity, { prNumber: 42, baseSha: base, headSha: head });
+    assert.deepEqual(scope.candidates.map(file => file.filename), ['tools/wta/src/lib.rs']);
+    assert.equal(git(['rev-parse', 'HEAD']), trusted);
+    assert.match(workflow, /BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+    assert.match(workflow, /HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+});
+
+test('repair worker collects the agent-written report from its pre-created output directory', t => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const block = worker.match(/RUNTIME=.*node --input-type=module <<'NODE'\r?\n([\s\S]*?)\r?\n      NODE/)?.[1];
+    assert.ok(block, 'actual report collection step exists');
+    const root = temporaryDirectory('performance-agent-summary-');
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const agent = path.join(root, 'agent');
+    const output = path.join(root, 'artifacts');
+    fs.mkdirSync(agent);
+    fs.mkdirSync(output);
+    const file = path.join(agent, 'performance-summary.md');
+    const markdown = '## Performance review\n\nNo actionable findings.\n\n| Check | Result |\n| --- | --- |\n| Source review | Completed |\n';
+    fs.writeFileSync(file, markdown);
+    const script = block.replace(/^ {6}/gm, '').replaceAll("'/tmp/gh-aw/agent/performance-summary.md'", JSON.stringify(file));
+    execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: root, timeout: 15000,
+        env: { ...process.env, OUTPUT: output,
+            RUNTIME: fileURLToPath(new URL('../scripts/performance-review.mjs', import.meta.url)) },
+    });
+    assert.equal(fs.readFileSync(path.join(output, '.performance-summary.md'), 'utf8'), markdown);
+    assert.match(worker, /Always write[\s\S]*?even when there are no findings or no eligible commits/);
+    assert.match(worker, /before requesting either[^]*?noop/);
+    assert.match(worker, /noop\.message[^]*?does not replace/);
+});
+
 async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead = 'a'.repeat(40),
     outcome = 'success', comments = [], failComment = false, commentSequence, headSequence } = {}) {
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-delivery-'));
+    const root = temporaryDirectory('performance-delivery-');
     const checks = [];
     const posted = [];
     const warnings = [];
@@ -158,21 +236,56 @@ test('worker/controller source contains no build/test, proposal renderer or nati
     assert.match(workflow, /readReviewSummary/);
 });
 
-test('fork summary capture preserves Markdown and provides only the fixed reviewed head', async t => {
-    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-fork-guidance.md', import.meta.url), 'utf8');
-    const block = worker.match(/    script: \|\r?\n((?: {6}.*(?:\r?\n|$))+)/)?.[1];
-    assert.ok(block);
-    const root = fs.mkdtempSync(path.join(process.cwd(), '.performance-fork-capture-'));
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const script = block.replace(/^ {6}/gm, '').replaceAll("'/tmp/gh-aw/.performance-summary.md'", JSON.stringify(path.join(root, '.performance-summary.md')))
-        .replaceAll("'/tmp/gh-aw/review-head.txt'", JSON.stringify(path.join(root, 'review-head.txt')));
-    const capture = new AsyncFunction('summaryMarkdown', 'process', script);
-    const markdown = '| HIGH | Manual handoff | None |\n';
-    await capture(markdown, { env: { HEAD_SHA: 'a'.repeat(40) } });
-    assert.equal(fs.readFileSync(path.join(root, '.performance-summary.md'), 'utf8'), markdown);
-    assert.equal(fs.readFileSync(path.join(root, 'review-head.txt'), 'utf8'), 'a'.repeat(40));
-    await assert.rejects(capture('@'.repeat(24 * 1024 + 1), { env: { HEAD_SHA: 'a'.repeat(40) } }), /artifact limits/);
-    assert.match(worker, /bash: false/);
-    assert.match(worker, /edit: false/);
-    assert.doesNotMatch(worker, /renderedCard|report_json|push-to-pull-request-branch:/);
+test('controller dispatches only the repair worker with immutable pull-request context and correlates its run', async () => {
+    const dispatch = new AsyncFunction('github', 'context', 'core', 'process', 'setTimeout',
+        extract('Dispatch and wait for isolated worker'));
+    const head = 'a'.repeat(40);
+    const base = 'b'.repeat(40);
+    const mergeBase = 'c'.repeat(40);
+    const dispatchId = `ghaw-pr-performance-42-${head}-100-2`;
+    const calls = [];
+    const outputs = {};
+    const run = { id: 101, display_title: `Performance repair ${dispatchId}`,
+        created_at: new Date().toISOString(), status: 'completed', conclusion: 'success',
+        html_url: 'https://github.com/owner/repo/actions/runs/101' };
+    const github = { rest: { actions: {
+        async createWorkflowDispatch(value) { calls.push(['dispatch', value]); },
+        async listWorkflowRuns(value) {
+            calls.push(['list', value]);
+            return { data: { workflow_runs: [
+                { ...run, id: 102, display_title: 'Unrelated repair' }, run,
+            ] } };
+        },
+        async getWorkflowRun(value) { assert.equal(value.run_id, 101); return { data: run }; },
+        listJobsForWorkflowRun: 'jobs',
+    } }, async paginate(method, value) {
+        assert.equal(method, 'jobs');
+        assert.equal(value.run_id, 101);
+        return [{ name: 'agent', conclusion: 'success',
+            steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: 'success' }] }];
+    } };
+    await dispatch(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100,
+        payload: { pull_request: { number: 42 } } },
+    { setOutput(name, value) { outputs[name] = value; } },
+    { env: { GITHUB_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
+        COMPARISON_BASE_SHA: mergeBase, HEAD_REF: 'feature', BASE_REF: 'main', HEAD_REPO: 'owner/repo' } },
+    callback => callback());
+    assert.deepEqual(calls.map(([method]) => method), ['dispatch', 'list']);
+    const inputs = calls[0][1].inputs;
+    for (const [, value] of calls) assert.equal(value.workflow_id, 'ghaw-pr-performance.lock.yml');
+    assert.equal(calls[0][1].ref, 'main');
+    assert.equal(calls[1][1].branch, 'main');
+    assert.equal(inputs.dispatch_id, dispatchId);
+    assert.equal(inputs.same_repo, 'true');
+    assert.equal(inputs.head_repo, 'owner/repo');
+    assert.equal(inputs.expected_head_sha, head);
+    assert.equal(inputs.expected_base_sha, base);
+    assert.equal(inputs.comparison_base_sha, mergeBase);
+    assert.deepEqual(JSON.parse(inputs.aw_context), {
+        run_id: '100', workflow_id: 'ghaw-pr-performance-controller',
+        item_type: 'pull_request', item_number: 42, repo: 'owner/repo',
+        event_type: 'pull_request', head_sha: head, base_sha: base, comparison_base_sha: mergeBase,
+    });
+    assert.equal(outputs.run_id, '101');
+    assert.equal(outputs.conclusion, 'success');
 });

@@ -5,6 +5,8 @@
 #include "AppLogic.h"
 #include "AppLogic.g.cpp"
 #include "SettingsLoadEventArgs.h"
+#include "SharedWta.h"
+#include "../inc/AgentRegistry.h"
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
 
 #include <WtExeUtils.h>
@@ -159,6 +161,21 @@ namespace winrt::TerminalApp::implementation
         // including this variable in the vars we serialize in the
         // Remoting::CommandlineArgs up in HandleCommandlineArgs.
         _setupFolderPathEnvVar();
+    }
+
+    void AppLogic::ShutdownBackgroundServices() noexcept
+    {
+        SharedWta::Instance().Shutdown();
+    }
+
+    void AppLogic::_UpdateWtaServicePolicy()
+    {
+        namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+        namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        SharedWta::Instance().SetEnabled(
+            !Registry::FilteredAcpAgents().empty() ||
+            Policy::IsCustomAgentAllowed() ||
+            Policy::IsAgentSessionHooksAllowed());
     }
 
     // Method Description:
@@ -391,6 +408,7 @@ namespace winrt::TerminalApp::implementation
                                     // each own a cache. Refresh this module now; the settings reload
                                     // refreshes SettingsModel and emits the runtime-config diff.
                                     ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                                    self->_UpdateWtaServicePolicy();
                                     self->ReloadSettingsThrottled();
                                 }
                             }
@@ -501,6 +519,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _ApplyLanguageSettingChange();
+        _UpdateWtaServicePolicy();
         _ProcessLazySettingsChanges();
 
         if (initialLoad)

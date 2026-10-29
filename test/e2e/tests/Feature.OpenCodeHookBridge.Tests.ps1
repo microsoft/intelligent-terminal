@@ -31,12 +31,23 @@ Describe 'Feature §8 OpenCode hook bridge' -Tag 'Feature' -Skip:(-not $script:R
             return
         }
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $version = (& opencode --version 2>&1) -join "`n"
+        $version | Should -Match '^(?:opencode\s+)?v?([12])\.' -Because 'the bridge supports OpenCode V1 and V2'
+        $script:apiVariant = if ($version -match '^(?:opencode\s+)?v?2\.') { 'v2' } else { 'v1' }
+        $script:fixtureSessionId = $null
+        $script:fixtureDir = $null
 
         # Same guard as the Copilot suite: a plugin left over from an earlier
         # build satisfies "installed" just as well as the one under test, and
         # would quietly turn this into a test of code that is not in this branch.
-        $shipped = Join-Path $script:app.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks.js'
-        $active = Join-Path $HOME '.config\opencode\plugins\wt-agent-hooks.js'
+        $shipped = Join-Path $script:app.InstallLocation "wt-agent-hooks\opencode\$script:apiVariant\wt-agent-hooks.js"
+        $configRoot = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }
+        $plugins = Join-Path $configRoot 'opencode\plugins'
+        $active = if ($script:apiVariant -eq 'v1') {
+            Join-Path $plugins 'wt-agent-hooks.js'
+        } else {
+            Join-Path $plugins 'wt-agent-hooks\wt-agent-hooks.js'
+        }
         if (-not (Test-Path $shipped)) { $script:SkipReason = "packaged OpenCode plugin not found at $shipped"; return }
         if (-not (Test-Path $active)) { $script:SkipReason = "OpenCode plugin is not installed at $active"; return }
         $shippedHash = (Get-FileHash -LiteralPath $shipped).Hash
@@ -46,9 +57,37 @@ Describe 'Feature §8 OpenCode hook bridge' -Tag 'Feature' -Skip:(-not $script:R
             "(installed=$($activeHash.Substring(0,12)) shipped=$($shippedHash.Substring(0,12))). Run ``wta hooks install --cli opencode``."
             Write-ItLog -Level WARN -Message $script:SkipReason
         }
+        $shippedBridge = Join-Path $script:app.InstallLocation 'wt-agent-hooks\opencode\shared\bridge.js'
+        $activeBridge = Join-Path $plugins 'wt-agent-hooks\bridge.js'
+        if (-not (Test-Path $activeBridge) -or (Get-FileHash $shippedBridge).Hash -ne (Get-FileHash $activeBridge).Hash) {
+            $script:SkipReason = 'The installed OpenCode bridge helper does not match the selected package'
+        }
+        if ($script:apiVariant -eq 'v2') {
+            foreach ($name in @('server.js', 'tui.js', 'rpc.js', 'package.json')) {
+                $expected = Join-Path $script:app.InstallLocation "wt-agent-hooks\opencode\v2\$name"
+                $installed = Join-Path $plugins "wt-agent-hooks\$name"
+                if (-not (Test-Path $installed) -or (Get-FileHash $expected).Hash -ne (Get-FileHash $installed).Hash) {
+                    $script:SkipReason = "The installed V2 $name does not match the selected package"
+                }
+            }
+        }
     }
 
-    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+    AfterAll {
+        try {
+            if ($script:fixtureSessionId) {
+                $null = & opencode api session.remove --param "sessionID=$script:fixtureSessionId" --data (
+                    @{ location = @{ directory = $script:fixtureDir } } | ConvertTo-Json -Compress)
+                $LASTEXITCODE | Should -Be 0 -Because 'only the fixture session should be removed'
+            }
+            if ($script:fixtureDir -and (Test-Path $script:fixtureDir)) {
+                Remove-Item -LiteralPath $script:fixtureDir -Recurse -Force
+            }
+        }
+        finally {
+            if ($script:app) { Stop-Terminal -App $script:app }
+        }
+    }
 
     BeforeEach { if ($script:SkipReason) { Set-ItResult -Skipped -Because $script:SkipReason } }
 
@@ -61,6 +100,33 @@ Describe 'Feature §8 OpenCode hook bridge' -Tag 'Feature' -Skip:(-not $script:R
 
         $listener = Start-WtEventListener -App $script:app
         try {
+            if ($script:apiVariant -eq 'v2') {
+                # A pre-created session needs no model prompt. The real TUI
+                # must report its pane to the shared server through the sidecar.
+                $script:fixtureDir = Join-Path ([IO.Path]::GetTempPath()) "opencode-tui-bridge-$([guid]::NewGuid().ToString('N'))"
+                New-Item -ItemType Directory -Path $script:fixtureDir | Out-Null
+                $body = @{
+                    title = 'OpenCode pane binding fixture'
+                    location = @{ directory = $script:fixtureDir }
+                } | ConvertTo-Json -Compress
+                $created = & opencode api session.create --data $body
+                $LASTEXITCODE | Should -Be 0
+                $script:fixtureSessionId = (($created -join "`n") | ConvertFrom-Json).data.id
+                $script:fixtureSessionId | Should -Not -BeNullOrEmpty
+                $directory = $script:fixtureDir.Replace("'", "''")
+                $command = "Set-Location '$directory'; & (Get-Command opencode).Source --session '$script:fixtureSessionId'"
+                Send-WtInput -App $script:app -SessionId $paneId -Text $command
+                Send-WtKeys -App $script:app -SessionId $paneId -Keys @('Enter')
+                $arrived = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Quiet -Condition {
+                    @(Get-WtEvents -Listener $listener -Predicate {
+                        $_.method -eq 'agent_event' -and $_.params.pane_id -eq $paneId -and
+                        $_.params.agent_session_id -eq $script:fixtureSessionId -and
+                        $_.params.cli_source -eq 'opencode' -and $_.params.event -eq 'agent.session.start'
+                    }).Count -gt 0
+                }
+                $arrived | Should -BeTrue -Because 'the real V2 client must bind its pane and reach the native bridge, with no model call'
+                return
+            }
             $command = "`$c=(Get-Command opencode).Source; " +
             "& `$c run 'Run the shell command: echo $token' *> '$outFile'; " +
             '"IT-OPENCODE" + "-DONE=$LASTEXITCODE"'

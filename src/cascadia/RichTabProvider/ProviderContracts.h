@@ -96,6 +96,7 @@ namespace Microsoft::Terminal::RichTab::Provider
     struct Request
     {
         std::string requestId;
+        uint64_t hostRequestId{ 0 };
         std::string providerId;
         uint64_t processEpoch{ 0 };
         std::string sessionId;

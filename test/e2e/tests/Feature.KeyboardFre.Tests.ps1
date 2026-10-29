@@ -15,7 +15,31 @@ Describe 'Feature §11 keyboard-only FRE' -Tag 'Feature' -Skip:(-not $script:Rea
     AfterEach { if ($script:app) { Stop-Terminal -App $script:app; $script:app = $null } }
 
     It 'Keyboard-only FRE works (focus + Enter advances Welcome -> Save and completes the FRE)' {
-        $script:app = Start-TerminalFre -Package (Get-ItTestPackage)
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT }
+        else { Join-Path $PSScriptRoot '..\artifacts' }
+        $evidence = Join-Path $artifactRoot "fre-keyboard\$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+        $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$((Join-Path $evidence 'fixture.log').Replace("'", "''"))'"
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -ShowFre -Settings @{
+            acpAgent = 'custom:fre-keyboard-fixture'
+            acpCustomCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
+            acpModel = ''
+            autoErrorDetectionEnabled = $false
+            autoFixEnabled = $false
+            agentSessionManagementEnabled = $false
+            'agentPane.yoloMode' = $false
+            defaultProfile = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'
+            disabledProfileSources = @(
+                'Windows.Terminal.PowershellCore', 'Windows.Terminal.Wsl',
+                'Windows.Terminal.Azure', 'Windows.Terminal.VisualStudio',
+                'Windows.Terminal.SSH', 'Microsoft.WSL'
+            )
+            profiles = @{ list = @(
+                @{ guid = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'; commandline = 'cmd.exe' }
+                @{ guid = '{61c54bbd-c2c6-5271-96e7-009a87ff44bf}'; commandline = 'cmd.exe'; hidden = $true }
+            ) }
+        }
         Test-UiElementExists -App $script:app -Selector 'WelcomePage' -TimeoutSec 12 | Should -BeTrue -Because 'the FRE Welcome page must show on a fresh profile'
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) { Set-ItResult -Skipped -Because 'WT window cannot take foreground for keyboard activation (Enter)'; return }
         $hwnd = [string]$script:app.Hwnd

@@ -1639,11 +1639,16 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
         reg.get(&sid.to_string()).unwrap().status,
         AgentStatus::Attention
     );
+    let before = reg.get(&sid.to_string()).unwrap().clone();
     route(&mut reg, "agent.tool.finished");
     let row = reg.get(&sid.to_string()).unwrap();
-    assert_eq!(row.status, AgentStatus::Working);
-    assert!(row.current_tool.is_none());
-    assert!(row.attention_reason.is_none());
+    assert_eq!(row.status, AgentStatus::Attention);
+    assert_eq!(row.current_tool, before.current_tool);
+    assert_eq!(row.attention_reason, before.attention_reason);
+    assert_eq!(
+        row.attention_cooldown_until_ms,
+        before.attention_cooldown_until_ms
+    );
 
     // Only agent.stop ends the turn → Idle.
     route(&mut reg, "agent.stop");
@@ -1672,6 +1677,131 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
         reg.get(&sid.to_string()).unwrap().status,
         AgentStatus::Ended
     );
+}
+
+#[test]
+fn copilot_hook_timestamp_range_matches_json_listener() {
+    for (timestamp, expected) in [
+        (json!(0), Some(0)),
+        (json!(253402300799999_u64), Some(253402300799999)),
+        (json!("9999-12-31T23:59:59.999Z"), Some(253402300799999)),
+        (json!("9999-12-31T23:59:59.999-01:00"), None),
+        (json!(253402300800000_u64), None),
+        (json!(u64::MAX), None),
+        (json!(-1), None),
+        (json!(1.5), None),
+    ] {
+        assert_eq!(
+            hook_timestamp_ms(&json!({"timestamp": timestamp})),
+            expected,
+            "{timestamp}"
+        );
+    }
+}
+
+#[test]
+fn copilot_out_of_range_waiting_timestamp_recovers_helper() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource};
+    for timestamp in [253402300800000_u64, u64::MAX] {
+        let mut reg = AgentSessionRegistry::new();
+        let mut hook = json!({
+            "event": "agent.prompt.submit", "cli_source": "copilot",
+            "agent_session_id": "range", "payload": {},
+        });
+        route_agent_event_to_registry(&mut reg, "owner", &hook);
+        let facts = AgentEventFacts {
+            key: "range".into(),
+            session_known: true,
+            session_status: Some(AgentStatus::Working),
+            pane_owned_by_other: false,
+        };
+        let plan = plan_agent_event(
+            "agent.notification",
+            &json!({"notification_type": "permission_prompt", "message": "approve", "timestamp": timestamp}),
+            "owner",
+            &CliSource::Copilot,
+            &facts,
+        );
+        for event in plan.events {
+            reg.apply_at(event, std::time::UNIX_EPOCH);
+        }
+        assert_eq!(
+            reg.get(&"range".into()).unwrap().status,
+            AgentStatus::Attention
+        );
+        hook["event"] = json!("agent.tool.finished");
+        hook["payload"] = json!({"tool_name": "sql", "timestamp": 1792473545613_u64});
+        route_agent_event_to_registry(&mut reg, "owner", &hook);
+        let row = reg.get(&"range".into()).unwrap();
+        assert_eq!(row.status, AgentStatus::Working, "{timestamp}");
+        assert!(row.attention_reason.is_none());
+    }
+}
+
+#[test]
+fn copilot_stale_tool_return_preserves_helper_waiting() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource};
+
+    for (timestamp, expected) in [
+        (json!("2026-10-20T05:19:05.580Z"), AgentStatus::Attention),
+        (json!(1792473545610_u64), AgentStatus::Attention),
+        (json!("2026-10-20T13:19:05.612+08:00"), AgentStatus::Working),
+        (json!(1792473545613_u64), AgentStatus::Working),
+        (serde_json::Value::Null, AgentStatus::Working),
+        (json!("invalid"), AgentStatus::Working),
+    ] {
+        let mut reg = AgentSessionRegistry::new();
+        let key = "copilot-stale-tool-return";
+        let pane = "owner";
+        let mut hook = json!({
+            "event": "agent.prompt.submit",
+            "cli_source": "copilot",
+            "agent_session_id": key,
+            "payload": {},
+        });
+        route_agent_event_to_registry(&mut reg, pane, &hook);
+        hook["event"] = json!("agent.notification");
+        for timestamp in [1792473545608_u64, 1792473545612, 1792473545609] {
+            hook["payload"] = json!({
+                "notification_type": "permission_prompt",
+                "message": "approve command",
+                "timestamp": timestamp,
+            });
+            let facts = AgentEventFacts {
+                key: key.into(),
+                session_known: true,
+                session_status: reg.get(&key.to_string()).map(|row| row.status.clone()),
+                pane_owned_by_other: false,
+            };
+            let plan = plan_agent_event(
+                "agent.notification",
+                &hook["payload"],
+                pane,
+                &CliSource::Copilot,
+                &facts,
+            );
+            // Keep the receipt-time cooldown expired to isolate source-time ordering.
+            for event in plan.events {
+                reg.apply_at(event, std::time::UNIX_EPOCH);
+            }
+            reg.take_dirty();
+        }
+        let before = reg.get(&key.to_string()).unwrap().clone();
+        hook["event"] = json!("agent.tool.finished");
+        hook["payload"] = json!({"tool_name": "sql", "timestamp": timestamp});
+        let changed = route_agent_event_to_registry(&mut reg, pane, &hook);
+        let row = reg.get(&key.to_string()).unwrap();
+        assert_eq!(row.status, expected, "timestamp={timestamp}");
+        if expected == AgentStatus::Attention {
+            assert!(!changed);
+            assert_eq!(row.attention_reason, before.attention_reason);
+            assert_eq!(row.current_tool, before.current_tool);
+            assert_eq!(row.last_activity_at, before.last_activity_at);
+        } else {
+            assert!(changed);
+            assert!(row.attention_reason.is_none());
+        }
+    }
 }
 
 /// Counterpart guard: when the event carries a real `agent_session_id`,
@@ -1988,6 +2118,7 @@ fn copilot_background_notifications_preserve_session_activity() {
         SessionEvent::Notification {
             key: key.clone(),
             message: "Permission needed".into(),
+            timestamp_ms: None,
         },
     ] {
         for type_field in ["notificationType", "notification_type"] {
@@ -2194,6 +2325,7 @@ fn idle_prompt_does_not_demote_a_pending_permission_prompt() {
     reg.apply(SessionEvent::Notification {
         key: "claude-sid".into(),
         message: "Claude needs your permission to use Bash".into(),
+        timestamp_ms: None,
     });
     reg.take_dirty();
 
@@ -8886,6 +9018,111 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     );
 }
 
+#[tokio::test]
+async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionOrigin};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crate::session_registry::{InMemoryRegistry, SessionInfo, SessionRegistry};
+
+    for origin in [SessionOrigin::Unknown, SessionOrigin::AgentPane] {
+        for failure_first in [false, true] {
+            let _capture = crate::wt_protocol_events::capture_test_published_events();
+            let (mut app, mut master_rx) = test_app_with_master_rx();
+            let (hook_tx, mut hook_rx) = tokio::sync::mpsc::unbounded_channel();
+            app.set_session_hook_tx(hook_tx);
+            app.window_id = Some("42".into());
+            app.agent_sessions.apply(SessionEvent::SessionStarted {
+                key: "resume-once".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "old-pane".into(),
+                cwd: std::path::PathBuf::new(),
+                title: "Resume once".into(),
+            });
+            app.agent_sessions.apply(SessionEvent::SessionStopped {
+                key: "resume-once".into(),
+                reason: "exit".into(),
+            });
+            app.agent_sessions.set_origin("resume-once", origin.clone());
+            app.agent_sessions
+                .set_location("resume-once", SessionLocation::Host);
+            let row = app
+                .agent_sessions
+                .get(&"resume-once".into())
+                .unwrap()
+                .clone();
+            let registry = InMemoryRegistry::new();
+            let sid = agent_client_protocol::schema::v1::SessionId::new("resume-once");
+            let mut history = SessionInfo::new(sid.clone(), std::path::PathBuf::new());
+            history.status = Some(AgentStatus::Historical);
+            history.cli_source = Some(CliSource::Copilot);
+            registry.upsert(history).await;
+
+            app.activate_agent_session_routed(&row);
+            let dispatch = hook_rx.try_recv().expect("resume must reach master");
+            let wire = crate::session_registry::build_session_hook_request(&dispatch);
+            let dispatch =
+                crate::session_registry::parse_session_hook_params(&wire.params).unwrap();
+            assert!(matches!(dispatch, SessionEvent::ResumeDispatched { .. }));
+            assert!(registry.apply_event(dispatch).await);
+            let assignment = SessionEvent::ResumePaneAssigned {
+                key: "resume-once".into(),
+                pane_session_id: "failed-pane".into(),
+            };
+            if !failure_first {
+                assert!(registry.apply_event(assignment.clone()).await);
+            }
+            registry
+                .record_pane_connection_failure("failed-pane", "launch failed", Some(false))
+                .await;
+            if failure_first {
+                assert!(registry.apply_event(assignment.clone()).await);
+            }
+            // Drain the other real producer channel only AFTER recovery: the old
+            // duplicate RPC used to revive Historical without a viable binding.
+            while let Ok(request) = master_rx.try_recv() {
+                match request {
+                    MasterExtRequest::SessionResumeDispatched { sid, .. } => {
+                        registry.mark_resume_dispatched(&sid).await;
+                    }
+                    other => panic!("unexpected resume request: {other:?}"),
+                }
+            }
+            let failed = registry.lookup(&sid).await.unwrap();
+            assert_eq!(failed.status, Some(AgentStatus::Historical));
+            assert!(failed.pane_session_id.is_none());
+            assert!(hook_rx.try_recv().is_err());
+            assert!(!registry.apply_event(assignment.clone()).await);
+            assert_eq!(registry.lookup(&sid).await.unwrap(), failed);
+
+            app.agent_sessions.apply(SessionEvent::ResumeFailed {
+                key: "resume-once".into(),
+                reason: "launch failed".into(),
+            });
+            let retry = app
+                .agent_sessions
+                .get(&"resume-once".into())
+                .unwrap()
+                .clone();
+            app.activate_agent_session_routed(&retry);
+            assert!(registry.apply_event(hook_rx.try_recv().unwrap()).await);
+            assert!(master_rx.try_recv().is_err());
+            assert!(!registry.apply_event(assignment).await);
+            assert!(
+                registry
+                    .apply_event(SessionEvent::ResumePaneAssigned {
+                        key: "resume-once".into(),
+                        pane_session_id: "retry-pane".into(),
+                    })
+                    .await
+            );
+            let retried = registry.lookup(&sid).await.unwrap();
+            assert_eq!(retried.status, Some(AgentStatus::Idle));
+            assert_eq!(retried.pane_session_id.as_deref(), Some("retry-pane"));
+            assert!(registry.lookup_active_by_pane("retry-pane").await.is_some());
+        }
+    }
+}
+
 /// When the stored cwd no longer exists on disk (e.g. user deleted
 /// the project), `dispatch_resume` must omit `-d <cwd>` entirely so
 /// wtcli falls back to the profile's startingDirectory. Without
@@ -15008,6 +15245,40 @@ fn show_copilot_auth_screen_with_missing_cli_preserves_diagnostic_setup() {
             message,
         } if message == &error
     ));
+}
+
+#[test]
+fn initial_startup_native_details_are_rendered_without_changing_recovery() {
+    let _locale = crate::test_support::lock_locale();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    let error = crate::agent_lifecycle::StartupDetails::attach(
+        anyhow::anyhow!("agent exited before initialize"),
+        &[
+            "Failed to load Python DLL 'native-loader.dll'.".into(),
+            "LoadLibrary: controlled native failure.".into(),
+        ],
+    );
+    let failure = crate::protocol::acp::failure::AgentFailure::Startup(
+        crate::agent_lifecycle::StartupFailure::from_error(&error, 2, Some(true), false),
+    );
+    let message = failure.to_string();
+    app.handle_event(AppEvent::InitialAgentStartupFailed { failure, message });
+    assert_eq!(app.mode, AppMode::Setup);
+    let text = render_to_text(&mut app, 120, 35);
+    assert!(text.contains("native-loader.dll"), "rendered:\n{text}");
+    assert!(
+        text.contains("LoadLibrary: controlled native failure."),
+        "rendered:\n{text}"
+    );
+    assert!(app.current_tab().messages.is_empty());
+    assert!(app
+        .setup
+        .as_ref()
+        .unwrap()
+        .options
+        .iter()
+        .any(|option| matches!(option, SetupOption::RetryConnection)));
 }
 
 #[test]
@@ -23257,6 +23528,7 @@ fn completed_tool_call_defaults_compact_and_expands_independently() {
 
 #[test]
 fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
+    let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().completed_turns.push(CompletedTurn {
@@ -26914,6 +27186,8 @@ fn antigravity_resume_keeps_acp_and_cli_sessions_in_their_own_stores() {
             last_error: None,
             current_tool: None,
             attention_reason: None,
+            attention_timestamp_ms: None,
+            attention_cooldown_until_ms: None,
             log_path: None,
             origin: origin.clone(),
             location: SessionLocation::Wsl {
@@ -26983,6 +27257,8 @@ fn antigravity_wsl_cli_resume_preserves_literal_cwd_arguments() {
             last_error: None,
             current_tool: None,
             attention_reason: None,
+            attention_timestamp_ms: None,
+            attention_cooldown_until_ms: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
             location: SessionLocation::Wsl {
@@ -27119,6 +27395,8 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         last_error: None,
         current_tool: None,
         attention_reason: None,
+        attention_timestamp_ms: None,
+        attention_cooldown_until_ms: None,
         log_path: None,
         origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {

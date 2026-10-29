@@ -64,7 +64,7 @@ if ($ScanId -eq 'fre-settings')
 $markerId = switch ($ScanId)
 {
     'fre' { 'NextButton' }
-    'fre-settings' { 'TabModeComboBox' }
+    'fre-settings' { 'AgentComboBox' }
     'agents' { 'AcpAgentComboBox' }
 }
 $marker = Wait-VisibleElement -AutomationId $markerId

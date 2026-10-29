@@ -433,6 +433,7 @@
         "newTab",
         "newWindow",
         "nextTab",
+        "nextSidebarTab",
         "openAbout",
         "openCWD",
         "openNewTabDropdown",
@@ -444,6 +445,7 @@
         "openWorkspace",
         "paste",
         "prevTab",
+        "prevSidebarTab",
         "quakeMode",
         "quit",
         "renameTab",
@@ -2719,7 +2721,7 @@
           "type": "boolean"
         },
         "sidebarShowRecentAgentSessions": {
-          "default": false,
+          "default": true,
           "description": "Whether the sidebar's Recent agent sessions option is checked. Saved automatically when toggled in the sidebar or through an action, and restored when a window opens. A nonempty search temporarily includes recent sessions without changing this preference.",
           "type": "boolean"
         },

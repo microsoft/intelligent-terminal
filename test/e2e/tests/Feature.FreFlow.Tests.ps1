@@ -106,7 +106,7 @@ Describe 'Feature §0 FRE overlay flow' -Tag 'Feature' -Skip:(-not $script:Ready
     }
 }
 
-Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $script:Ready) {
+Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient
@@ -148,12 +148,25 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         $script:configBackedUp = $true
         $settings = Get-WtSettingsObject -App $script:targetApp
         if ($settings) {
-            $settings.PSObject.Properties.Remove('tabLayout')
+            foreach ($key in @('tabLayout', 'renderAgentMarkdown', 'showTokenUsageAndCost')) {
+                $settings.PSObject.Properties.Remove($key)
+            }
             $settings | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $script:targetApp.SettingsPath -Encoding utf8
         }
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
         $fixtureLog = Join-Path $script:evidenceDir 'fixture.log'
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($fixtureLog.Replace("'", "''"))'"
+        # Isolate FRE persistence from the independent sidebar upgrade migration.
+        $script:freState = @{
+            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'
+            sidebarRolloutVersion = 1
+            sidebarRolloutAssignment = 'Sidebar'
+            sidebarLayoutMigrationCompleted = $true
+            sidebarIntroductionShown = $true
+        }
+        foreach ($key in $script:freState.Keys) {
+            Set-WtState -App $script:targetApp -Key $key -Value $script:freState[$key] | Out-Null
+        }
         $script:freSettings = @{
             language = 'en-US'
             defaultProfile = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'
@@ -190,7 +203,6 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
                 Get-UiTree -App $script:app -Depth 18 |
                     Set-Content -LiteralPath (Join-Path $script:evidenceDir 'final-ui.txt') -Encoding utf8NoBOM
                 @{
-                    Picker = Get-UiElement -App $script:app -Selector 'TabModeComboBox'
                     Agent = Get-UiElement -App $script:app -Selector 'AgentComboBox'
                     Vertical = Get-UiElement -App $script:app -Selector 'SearchTabsButton'
                     Horizontal = Get-UiElement -App $script:app -Selector 'NewTabButton'
@@ -215,38 +227,74 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         }
     }
 
-    It 'FRE offers Sidebar as the initial Tab Mode' {
+    It 'FRE omits advanced display choices (<Language>)' -TestCases @(
+        @{ Language = 'en-US' }
+        @{ Language = 'ar-SA' }
+    ) {
+        param($Language)
+        $script:freSettings.language = $Language
         $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
         Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
-        Wait-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
-        $picker = Get-UiElement -App $script:app -Selector 'TabModeComboBox'
-        $picker.name | Should -Be 'Tab Mode'
-        $picker.y | Should -BeLessThan (Get-UiElement -App $script:app -Selector 'AgentComboBox').y
-        @($picker.children | Where-Object type -eq 'ListItem').name | Should -BeExactly 'Sidebar'
+        Wait-UiElement -App $script:app -Selector 'AgentComboBox' | Out-Null
         $window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:app.Hwnd)
         $window.Current.ProcessId | Should -Be $script:app.Pid
-        $control = $window.FindFirst(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'TabModeComboBox'))
-        $control.Current.HelpText | Should -BeExactly 'Toggle between the new sidebar or classic horizontal tabs view'
-        (Get-WtSettingsObject -App $script:app).PSObject.Properties.Name | Should -Not -Contain 'tabLayout'
+        foreach ($removed in @('TabModeComboBox', 'RenderAgentMarkdownToggle', 'ShowTokenUsageAndCostToggle')) {
+            $window.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $removed)) |
+                Should -BeNullOrEmpty -Because "$removed must not remain in the FRE automation tree"
+        }
+        $previous = $null
+        foreach ($retained in @('AgentComboBox', 'PanePositionComboBox', 'ErrorDetectionComboBox', 'SessionManagementToggle')) {
+            $control = Get-UiElement -App $script:app -Selector $retained
+            $control | Should -Not -BeNullOrEmpty
+            $control.name | Should -Not -BeNullOrEmpty
+            $control.width | Should -BeGreaterThan 0
+            $control.isOffscreen | Should -BeFalse
+            if ($previous) { $control.y | Should -BeGreaterThan $previous.y }
+            $previous = $control
+        }
         $settingsHash = (Get-FileHash -LiteralPath $script:app.SettingsPath -Algorithm SHA256).Hash
-        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'default-sidebar.png') | Out-Null
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "settings-$Language.png") | Out-Null
 
         Test-WtWindowKeyFocusable -App $script:app | Should -BeTrue -Because 'the owned window must accept physical keyboard input'
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
-            Should -Be 'SaveButton' -Because 'adding Tab Mode must not change the initial Enter-to-Save focus'
-        $control.SetFocus()
-        Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
-        @((Get-UiElement -App $script:app -Selector 'TabModeComboBox').children | Where-Object type -eq 'ListItem').name |
-            Should -BeExactly 'Horizontal'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
-            Should -Be 'ACP' -Because 'the existing agent-description link remains in keyboard order'
+            Should -Be 'SaveButton' -Because 'simplifying the form must retain Enter-to-Save focus'
+        $agent = $window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'AgentComboBox'))
+        $agent.SetFocus()
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
-            Should -Be 'AgentComboBox' -Because 'Tab Mode must precede agent selection in keyboard order'
+            Should -Be 'PanePositionComboBox'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+            Should -Be 'ErrorDetectionComboBox'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $sessions = $window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'SessionManagementToggle'))
+        $sessions | Should -Not -BeNullOrEmpty
+        if ($sessions.Current.IsEnabled) {
+            [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+                Should -Be 'SessionManagementToggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        }
+        $approval = $window.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'AutomaticApprovalToggle'))
+        if ($approval -and $approval.Current.IsEnabled -and -not $approval.Current.IsOffscreen) {
+            [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+                Should -Be 'AutomaticApprovalToggle'
+            $approval.Current.Name | Should -Not -BeNullOrEmpty
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        }
+        [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+            Should -Be 'SaveButton' -Because 'Tab skips the removed display toggles'
         (Get-FileHash -LiteralPath $script:app.SettingsPath -Algorithm SHA256).Hash | Should -Be $settingsHash
         Stop-Terminal -App $script:app -RestoreSettings $false
         $script:app = $null
@@ -254,7 +302,7 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         Get-FreCompleted -App $script:targetApp | Should -BeFalse
     }
 
-    It 'FRE retries Tab Mode after setup failure' {
+    It 'FRE preserves display preferences through setup retry' {
         if ($script:targetApp.Package -ne 'IntelligentTerminal_rd9vj3e6a2mbr') {
             Set-ItResult -Skipped -Because 'the deterministic FRE setup-failure marker is supported only by Dev packages'
             return
@@ -264,12 +312,18 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
         try {
             New-Item -ItemType File -Path $marker | Out-Null
             $script:freSettings.tabLayout = 'horizontal'
+            $script:freSettings.renderAgentMarkdown = $false
+            $script:freSettings.showTokenUsageAndCost = $false
             # The hook-failure boundary applies to a supported built-in, not a custom ACP fixture.
             $script:freSettings.acpAgent = 'copilot'
             $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
             Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
-            Invoke-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
-            Invoke-UiElement -App $script:app -Selector 'Sidebar' | Out-Null
+            $window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:app.Hwnd)
+            $agentCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'AgentComboBox')
+            $agentControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $agentCondition)
+            $agentControl | Should -Not -BeNullOrEmpty
+            $agentRuntimeId = $agentControl.GetRuntimeId() -join ','
             if (-not (Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle')) {
                 Set-ItResult -Skipped -Because 'session-management policy prevents the setup-failure preservation control'
                 return
@@ -281,54 +335,56 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
                 Should -Match '\[FRE\] E2E: forcing hooks install failure'
             Get-FreCompleted -App $script:app | Should -BeFalse
             Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be 'horizontal'
-            @((Get-UiElement -App $script:app -Selector 'TabModeComboBox').children | Where-Object type -eq 'ListItem').name |
-                Should -BeExactly 'Sidebar'
+            Get-WtSetting -App $script:app -Key 'renderAgentMarkdown' | Should -BeFalse
+            Get-WtSetting -App $script:app -Key 'showTokenUsageAndCost' | Should -BeFalse
             (Get-UiElement -App $script:app -Selector 'SessionManagementToggle').toggleState | Should -Be 'off'
             Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-failed.png') | Out-Null
 
+            # Reload only the agent identity before retry so completion cannot bootstrap real Copilot.
+            Set-WtAgent -App $script:app -Agent 'custom:fre-tab-mode-fixture' | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'native settings reload to reach the existing FRE overlay' -Condition {
+                $log = Get-ItLogText -App $script:app -Name 'terminal-agent-pane.log' -SinceStart
+                $log -match '_ReconcileAgentSettings: entered\. current\.acp=custom:fre-tab-mode-fixture '
+            } | Out-Null
+            $reloadedAgent = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $agentCondition)
+            $reloadedAgent | Should -Not -BeNullOrEmpty
+            ($reloadedAgent.GetRuntimeId() -join ',') | Should -Be $agentRuntimeId -Because 'retry must reuse the same FRE instance'
+            Get-FreCompleted -App $script:app | Should -BeFalse
             Remove-Item -LiteralPath $marker
             Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-            Wait-Until -TimeoutSec 30 -Because 'retry to commit the retained Tab Mode choice' -Condition {
-                (Get-FreCompleted -App $script:app) -and
-                (Get-WtSetting -App $script:app -Key 'tabLayout') -eq 'vertical'
+            Wait-Until -TimeoutSec 30 -Because 'retry to finish without changing display preferences' -Condition {
+                Get-FreCompleted -App $script:app
             } | Out-Null
+            Get-WtSetting -App $script:app -Key 'acpAgent' | Should -Be 'custom:fre-tab-mode-fixture'
+            Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be 'horizontal'
+            Get-WtSetting -App $script:app -Key 'renderAgentMarkdown' | Should -BeFalse
+            Get-WtSetting -App $script:app -Key 'showTokenUsageAndCost' | Should -BeFalse
             (Get-ActivePane -App $script:app).session_id | Should -Not -BeNullOrEmpty
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'setup-retry-completed.png') | Out-Null
         }
         finally {
             if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker }
         }
     }
 
-    It 'FRE saves the selected Tab Mode (<Saved>)' -TestCases @(
-        @{ Initial = 'horizontal'; InitialLabel = 'Horizontal'; Saved = 'vertical'; Label = 'Sidebar' }
-        @{ Initial = 'vertical'; InitialLabel = 'Sidebar'; Saved = 'horizontal'; Label = 'Horizontal' }
+    It 'FRE preserves display preferences on Save and restart (<Preference>)' -TestCases @(
+        @{ Preference = 'absent'; Layout = $null; Enabled = $null }
+        @{ Preference = 'horizontal-off'; Layout = 'horizontal'; Enabled = $false }
+        @{ Preference = 'vertical-on'; Layout = 'vertical'; Enabled = $true }
     ) {
-        param($Initial, $InitialLabel, $Saved, $Label)
-        $script:freSettings.tabLayout = $Initial
+        param($Preference, $Layout, $Enabled)
+        if ($Layout) {
+            $script:freSettings.tabLayout = $Layout
+            $script:freSettings.renderAgentMarkdown = $Enabled
+            $script:freSettings.showTokenUsageAndCost = $Enabled
+        }
         $script:app = Start-Terminal -Package $script:package -ShowFre -Backup $false -CleanSettings $false -Settings $script:freSettings
         Invoke-UiElement -App $script:app -Selector 'NextButton' | Out-Null
-        Wait-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
-        @((Get-UiElement -App $script:app -Selector 'TabModeComboBox').children | Where-Object type -eq 'ListItem').name |
-            Should -BeExactly $InitialLabel -Because 'initialization must preserve the explicit preference'
-        Invoke-UiElement -App $script:app -Selector 'TabModeComboBox' | Out-Null
-        Invoke-UiElement -App $script:app -Selector $Label | Out-Null
-        Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be $Initial
-        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'selected-mode.png') | Out-Null
+        Wait-UiElement -App $script:app -Selector 'AgentComboBox' | Out-Null
         Invoke-UiElement -App $script:app -Selector 'SaveButton' | Out-Null
-        try {
-            Wait-Until -TimeoutSec 30 -Because 'FRE Save to persist the chosen tab mode and complete' -Condition {
-                (Get-FreCompleted -App $script:app) -and
-                (Get-WtSetting -App $script:app -Key 'tabLayout') -eq $Saved
-            } | Out-Null
-        }
-        catch {
-            @{
-                Completed = Get-FreCompleted -App $script:app
-                TabLayout = Get-WtSetting -App $script:app -Key 'tabLayout'
-                Expected = $Saved
-            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'save-observation.json')
-            throw
-        }
+        Wait-Until -TimeoutSec 30 -Because 'FRE Save to complete without changing display preferences' -Condition {
+            Get-FreCompleted -App $script:app
+        } | Out-Null
 
         foreach ($phase in @('saved', 'restarted')) {
             if ($phase -eq 'restarted') {
@@ -337,19 +393,28 @@ Describe 'Feature §0 FRE Tab Mode' -Tag 'Feature', 'FreTabMode' -Skip:(-not $sc
                 $script:app = Start-Terminal -Package $script:package -PassFre $false -Backup $false -CleanSettings $false
             }
             Get-FreCompleted -App $script:app | Should -BeTrue
-            Get-WtSetting -App $script:app -Key 'tabLayout' | Should -Be $Saved
+            $settings = Get-WtSettingsObject -App $script:app
+            foreach ($key in @('tabLayout', 'renderAgentMarkdown', 'showTokenUsageAndCost')) {
+                if ($Layout) {
+                    $settings.$key | Should -Be $(if ($key -eq 'tabLayout') { $Layout } else { $Enabled })
+                }
+                else {
+                    $settings.PSObject.Properties.Name | Should -Not -Contain $key
+                }
+            }
             Test-UiElementExists -App $script:app -Selector 'NextButton' -TimeoutSec 1 | Should -BeFalse
-            $layoutControl = if ($Saved -eq 'vertical') { 'SearchTabsButton' } else { 'NewTabButton' }
-            Wait-Until -TimeoutSec 20 -Because "the $Saved tab layout to be visible after $phase" -Condition {
+            $effectiveLayout = if ($Layout) { $Layout } else { 'vertical' }
+            $layoutControl = if ($effectiveLayout -eq 'vertical') { 'SearchTabsButton' } else { 'NewTabButton' }
+            Wait-Until -TimeoutSec 20 -Because "the $effectiveLayout tab layout to be visible after $phase" -Condition {
                 $element = Get-UiElement -App $script:app -Selector $layoutControl
                 $element -and -not $element.isOffscreen -and $element.width -gt 0
             } | Out-Null
-            if ($Saved -eq 'horizontal') {
+            if ($effectiveLayout -eq 'horizontal') {
                 Test-UiElementExists -App $script:app -Selector 'SearchTabsButton' -TimeoutSec 1 | Should -BeFalse
             }
             $activePane = Get-ActivePane -App $script:app
-            $activePane.session_id | Should -Not -BeNullOrEmpty -Because 'the chosen layout must retain an active terminal after FRE'
-            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "$phase-$Saved.png") | Out-Null
+            $activePane.session_id | Should -Not -BeNullOrEmpty -Because 'the preserved layout must retain an active terminal after FRE'
+            Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir "$phase-$Preference.png") | Out-Null
         }
     }
 }

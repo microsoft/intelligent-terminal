@@ -327,10 +327,16 @@ Gemini speaks ACP natively, so no wrapper is required.
 Antigravity's ACP server is distributed separately from the interactive `agy` CLI.
 With `agy` installed, Intelligent Terminal automatically downloads and prepares
 a supported, pinned ACP archive when the server is needed. This includes agent
-pane connections, Settings model discovery and eligible host background startup.
-Read-only availability checks do not download software. Settings displays
-installation progress and a retry action when preparation fails; the terminal
-remains usable.
+pane connections and Settings model discovery. Background sidebar discovery does
+not automatically prepare or start Antigravity, even if a CLI shim or cached ACP
+installation is detected. Read-only availability checks do not download software.
+Settings displays preparation/check progress and a retry action when setup
+fails; the terminal remains usable. Installation is followed by one startup
+check, reused from the first real connection where possible. If installation
+succeeds but ACP cannot initialize, the error is shown without hiding or
+disabling the agent. You can still select it and retry from the agent pane.
+Automatic startup is limited to three attempts per launch target, and failed
+attempts release their owned process trees before replacement.
 
 The managed installation validates the archive checksum, expected companion
 files and Windows publisher signatures. It does not replace a complete existing
@@ -576,9 +582,9 @@ wta hooks status
 
 You should see `installed` for the agent you selected, followed by the
 installed hook version (for example `v0.1.5`). When a CLI's hooks were
-registered by a different build, the row also names the version this
-Intelligent Terminal ships — `v0.1.4 (bundle v0.1.5)` means the CLI is
-loading older hooks and should be reinstalled with `wta hooks install`.
+registered by a different build, use `wta hooks status --json` to compare
+`installed_version` with `bundle_version` and inspect `bundle_source`.
+If hooks need repair, run `wta hooks install`.
 If Session management is off, turn it on to retry automatic reconciliation.
 
 > [!TIP]

@@ -33,7 +33,7 @@ const sdk = createContext({
 })
 tuiContext.client = sdk.client
 tuiContext.location = sdk.location
-const hooks = mode === "v1" ? await plugin.server({ directory }) : undefined
+const hooks = mode === "v1" ? await plugin({ directory }) : undefined
 const serverDispose = mode === "v1" ? () => hooks.dispose() : await plugin.setup(sdk.context)
 const tuiDispose = mode === "v2" ? (await loadPlugin(tuiPluginPath)).setup(tuiContext) : undefined
 if (mode === "v2" && (typeof serverDispose !== "function" || typeof tuiDispose !== "function")) {
@@ -56,7 +56,7 @@ async function event(type, data, location) {
   }
   if (mode === "v2") await sdk.event(type, data, location)
   else {
-    const properties = ["session.created", "session.updated"].includes(type)
+    const properties = ["session.created", "session.updated", "session.deleted"].includes(type)
       ? { info: { ...data, id: data.sessionID, directory } }
       : data
     await hooks.event({ event: { type, properties } })
@@ -78,6 +78,11 @@ try {
         if (mode !== "v2") throw new Error("Viewing sessions requires V2")
         route = { type: "session", sessionID: request.id }
         handlers.get("session.viewed")?.({ data: { sessionID: request.id } })
+        break
+      case "home":
+        if (mode !== "v2") throw new Error("Returning home requires V2")
+        route = { type: "home" }
+        handlers.get("session.viewed")?.({ data: {} })
         break
       case "prompt":
         if (mode === "v2") await sdk.prompt(request.id)

@@ -1,5 +1,6 @@
 BeforeAll {
-    $script:root = Join-Path $PSScriptRoot ('..\artifacts\sidebar-report-selftest-' + [guid]::NewGuid().ToString('N'))
+    $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+    $script:root = Join-Path $artifactRoot ('sidebar-report-selftest-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $script:root | Out-Null
     $script:titles = @(
         'Sidebar plus always creates the default profile',
@@ -9,6 +10,7 @@ BeforeAll {
         'Recent Sessions collapses without hiding live agents',
         'Sidebar upgrade migrates Horizontal only once',
         'Sidebar introduction is independent of completed migration',
+        'Horizontal rollout introduces vertical tabs only once',
         'Sidebar migration persistence failure warns and retries without false completion',
         'Absent Sidebar upgrade flags migrate once without bypassing fresh FRE',
         'Collapsed Sidebar defers its pending introduction until visible',
@@ -17,7 +19,10 @@ BeforeAll {
         'Collapsing focused Recent Sessions preserves the active shell',
         'Agents live tab mutations reconcile rows without refreshing history',
         'Mixed Sidebar keyboard crosses the Recent Sessions boundary without activation',
-        'Sidebar header search and options show their actual action tooltips'
+        'Sidebar header search and options show their actual action tooltips',
+        'Sidebar navigation hotkeys cycle through displayed tabs',
+        'Introduction survives window movement, maximize and restore until dismissed (vertical)',
+        'Introduction survives window movement, maximize and restore until dismissed (horizontal)'
     )
     $cases = $script:titles | ForEach-Object {
         '<test-case name="Synthetic report contract.' + [Security.SecurityElement]::Escape($_) +
@@ -32,6 +37,13 @@ BeforeAll {
 }
 AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
 Describe 'Sidebar release-report contracts without product activation' {
+    It 'assigns a unique stable ID to displayed-tab navigation' {
+        $lines = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\..\doc\release-check-list.md')
+        $navigation = @($lines | Where-Object { $_.Contains('**Sidebar navigation hotkeys cycle through displayed tabs:') })
+        $navigation | Should -HaveCount 1
+        $navigation[0] | Should -Match '^- \[[ xX]\] `C459`'
+        @($lines | Where-Object { $_ -match '^-\s+\[[ xX]\]\s+`C459`' }) | Should -HaveCount 1
+    }
     It 'assigns new sidebar scope cases unique stable IDs' {
         $text = Get-Content (Join-Path $PSScriptRoot '..\..\..\doc\release-check-list.md') -Raw
         $ids = [regex]::Matches($text, '(?m)^- \[[ x!]\] `(?<id>C\d+)`') |
@@ -170,6 +182,55 @@ Describe 'Sidebar release-report contracts without product activation' {
                 $text | Should -Match ('(?m)^- \[x\].*\*\*' + [regex]::Escape($title) + ':')
             }
             $text | Should -Not -Match '(?m)^- \[x\].*`C38[23]`'
+        }
+    }
+    It 'tracks missing skipped and failed layouts independently across full and incremental reports' {
+        $vertical = [Security.SecurityElement]::Escape($script:titles[-2])
+        $horizontal = [Security.SecurityElement]::Escape($script:titles[-1])
+        $verticalPass = "<test-case name=`"Feature.SidebarUpgrade.$vertical`" executed=`"True`" result=`"Success`" />"
+        $verticalFail = "<test-case name=`"Feature.SidebarUpgrade.$vertical`" executed=`"True`" result=`"Failure`" />"
+        $horizontalPass = "<test-case name=`"Feature.SidebarUpgrade.$horizontal`" executed=`"True`" result=`"Success`" />"
+        $horizontalFail = "<test-case name=`"Feature.SidebarUpgrade.$horizontal`" executed=`"True`" result=`"Failure`" />"
+        $horizontalSkip = "<test-case name=`"Feature.SidebarUpgrade.$horizontal`" executed=`"False`" result=`"Ignored`" />"
+        $failureXml = Join-Path $script:root 'movement-failure.xml'
+        $reverseFailureXml = Join-Path $script:root 'movement-reverse-failure.xml'
+        $partialXml = Join-Path $script:root 'movement-partial.xml'
+        $skippedXml = Join-Path $script:root 'movement-skipped.xml'
+        "<test-results><test-suite><results>$verticalPass$horizontalFail</results></test-suite></test-results>" | Set-Content -LiteralPath $failureXml
+        "<test-results><test-suite><results>$verticalFail$horizontalPass</results></test-suite></test-results>" | Set-Content -LiteralPath $reverseFailureXml
+        "<test-results><test-suite><results>$verticalPass</results></test-suite></test-results>" | Set-Content -LiteralPath $partialXml
+        "<test-results><test-suite><results>$verticalPass$horizontalSkip</results></test-suite></test-results>" | Set-Content -LiteralPath $skippedXml
+
+        foreach ($xml in @($partialXml, $skippedXml)) {
+            & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml $xml -OutFile $script:full
+            & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml @() -OutFile $script:incremental
+            & (Join-Path $PSScriptRoot '..\Update-ReleaseReport.ps1') -Report $script:incremental `
+                -ResultsXml $xml -OutFile $script:incremental
+            foreach ($path in @($script:full, $script:incremental)) {
+                $text = Get-Content -LiteralPath $path -Raw
+                $text | Should -Match '(?m)^- \[x\] `C461`'
+                $text | Should -Match '(?m)^- \[ \] `C462`'
+                $text | Should -Not -Match '(?m)^- \[ \] `C462`.*AUTOMATION FAILED'
+            }
+        }
+
+        & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml $reverseFailureXml -OutFile $script:full
+        (Get-Content -LiteralPath $script:full -Raw) | Should -Match '(?m)^- \[ \] `C461`.*AUTOMATION FAILED'
+        (Get-Content -LiteralPath $script:full -Raw) | Should -Match '(?m)^- \[x\] `C462`'
+        & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml $failureXml -OutFile $script:full
+        & (Join-Path $PSScriptRoot '..\New-ReleaseReport.ps1') -ResultsXml @() -OutFile $script:incremental
+        & (Join-Path $PSScriptRoot '..\Update-ReleaseReport.ps1') -Report $script:incremental `
+            -ResultsXml $failureXml -OutFile $script:incremental
+        foreach ($path in @($script:full, $script:incremental)) {
+            $text = Get-Content -LiteralPath $path -Raw
+            $text | Should -Match '(?m)^- \[x\] `C461`'
+            $text | Should -Match '(?m)^- \[ \] `C462`.*AUTOMATION FAILED'
+        }
+        foreach ($xml in @($partialXml, $skippedXml)) {
+            & (Join-Path $PSScriptRoot '..\Update-ReleaseReport.ps1') -Report $script:incremental `
+                -ResultsXml $xml -OutFile $script:incremental
+            (Get-Content -LiteralPath $script:incremental -Raw) |
+                Should -Match '(?m)^- \[ \] `C462`.*AUTOMATION FAILED'
         }
     }
     It 'marks a matching failed case as failed and does not erase that evidence with a skipped-only update' {

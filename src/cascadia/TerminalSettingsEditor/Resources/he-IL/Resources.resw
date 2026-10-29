@@ -761,6 +761,10 @@
     <value>בחר את המודל שסוכן זה משתמש בו.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data>
+  <data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+    <value>פרטי השגיאה</value>
+    <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>CLI של הסוכן</value>
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
@@ -1379,6 +1383,10 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>בחר את הסוכן המשמש להאצלה מלוח הפקודות בפרופיל זה. בחירה זו מקבלת עדיפות על ההגדרה הגלובלית של סוכן ההאצלה.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>השתמש בהגדרה הגלובלית ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -3090,15 +3098,23 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>מתקין את שרת ה-ACP של הסוכן...</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>מכין ובודק את חיבור ACP...</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>לא ניתן היה להתקין את שרת ה-ACP של הסוכן. בדוק את הרשת ואת ההתקנה ולאחר מכן נסה שוב.</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>לא ניתן היה להתקין את שרת ה-ACP של הסוכן.</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>לא ניתן היה להפעיל את חיבור ACP.</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>לא ניתן היה לאשר שתהליכי ACP נסגרו. ההפעלה האוטומטית הופסקה.</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>נסה שוב</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
 </root>

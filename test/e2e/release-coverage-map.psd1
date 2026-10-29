@@ -215,6 +215,8 @@
     'Add custom ACP agent'              = 'A configured custom ACP agent connects and chats'
     'Edit custom ACP agent'             = 'Edit custom ACP agent updates the command used by new agent panes'
     'Delete custom ACP agent'           = 'Delete custom ACP agent returns to a valid built-in selection'
+    # The existing Settings UI case checks Startup's optional task before opening Agents.
+    'AI Agents page opens'             = 'AI Agents settings page opens and shows the agent picker'
     # §6 "Model selection visible" — the Settings editor IS drivable: Open-WtSettings opens it via
     # the Ctrl+, accelerator (OS-level key to the WT window), then winapp navigates to the AI Agents
     # page and asserts the Model control renders for a custom agent (Feature.SettingsUi).

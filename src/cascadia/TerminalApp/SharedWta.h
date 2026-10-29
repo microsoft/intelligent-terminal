@@ -5,7 +5,7 @@
 
 // Process-scope singleton for the wta-master half of the helper +
 // master architecture. One wta-master process per Terminal process,
-// spawned lazily on the first agent-pane request, contained in a
+// spawned lazily on the first assistant or CLI tracking request, contained in a
 // Job Object with KILL_ON_JOB_CLOSE so it dies with Terminal.
 //
 // See doc/specs/Multi-window-agent-pane.md for the full design.
@@ -19,9 +19,10 @@
 // Lifecycle model: move-only leases. Each agent pane owns the lease
 // returned by `AcquirePane` and retires it when it closes. Retirement
 // retains cleanup-only ownership during the session-close grace period.
-// The first acquire spawns the master; the last lease release terminates
-// it via the Job Object. Unexpected exits get bounded recovery only
-// while active leases remain, reusing the pipe name so helpers reconnect.
+// Pane leases do not own the service lifetime. Once requested, the master
+// stays available until Terminal shuts down or policy disables the service.
+// Unexpected exits get bounded recovery independent of pane count, reusing
+// the pipe name so helpers and confirmed CLI bindings can reconnect.
 
 #include <atomic>
 #include <chrono>
@@ -157,12 +158,16 @@ namespace winrt::TerminalApp::implementation
         // environment; nullopt means the requested block could not be built.
         std::optional<std::wstring> BuildEnvironmentBlock(
             std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
+        std::optional<std::wstring> BuildMasterEnvironmentBlock(
+            std::span<const std::pair<std::wstring, std::wstring>> overrides,
+            uint64_t generation,
+            std::wstring_view shutdownEvent = {}) noexcept;
 
         struct SuspendedProcessOperations
         {
-            DWORD(WINAPI* resumeThread)(HANDLE){ ::ResumeThread };
-            BOOL(WINAPI* unregisterWait)(HANDLE, HANDLE){ ::UnregisterWaitEx };
-            BOOL(WINAPI* terminateProcess)(HANDLE, UINT){ ::TerminateProcess };
+            DWORD(WINAPI* resumeThread)(HANDLE) { ::ResumeThread };
+            BOOL(WINAPI* unregisterWait)(HANDLE, HANDLE) { ::UnregisterWaitEx };
+            BOOL(WINAPI* terminateProcess)(HANDLE, UINT) { ::TerminateProcess };
         };
 
         bool ResumeSuspendedProcess(
@@ -173,8 +178,8 @@ namespace winrt::TerminalApp::implementation
 
         struct ProcessRetirementOperations
         {
-            DWORD(WINAPI* waitForSingleObject)(HANDLE, DWORD){ ::WaitForSingleObject };
-            BOOL(WINAPI* terminateProcess)(HANDLE, UINT){ ::TerminateProcess };
+            DWORD(WINAPI* waitForSingleObject)(HANDLE, DWORD) { ::WaitForSingleObject };
+            BOOL(WINAPI* terminateProcess)(HANDLE, UINT) { ::TerminateProcess };
         };
 
         bool EnsureProcessExitedBeforeRestart(
@@ -189,7 +194,9 @@ namespace winrt::TerminalApp::implementation
         public:
             using Generation = uintptr_t;
 
+            Generation Reserve() noexcept;
             Generation Register(DWORD pid) noexcept;
+            Generation Register(DWORD pid, Generation generation) noexcept;
             void Retire() noexcept;
             std::optional<DWORD> Claim(Generation generation) noexcept;
             Generation Current() const noexcept;
@@ -209,7 +216,7 @@ namespace winrt::TerminalApp::implementation
             void Retire() noexcept;
             bool ShouldRespawn(
                 Generation generation,
-                size_t activeRefCount,
+                bool serviceRequested,
                 bool spawnSuppressed,
                 bool hasCachedArgs) noexcept;
 
@@ -262,9 +269,24 @@ namespace winrt::TerminalApp::implementation
         SharedWta(const SharedWta&) = delete;
         SharedWta& operator=(const SharedWta&) = delete;
 
-        /// Acquire a reference to the shared wta process. Spawns wta
-        /// on the first acquire; subsequent acquires just bump an
-        /// internal counter. Returns an owning lease, or empty on failure.
+        /// Start the process-owned service without creating an assistant pane.
+        /// Repeated requests reuse the running master and its stable pipe.
+        bool EnsureStarted(std::wstring_view wtaPath,
+                           std::span<const std::wstring> extraArgs = {},
+                           std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+
+        /// Check before resolving launch arguments; EnsureStarted rechecks under its lock.
+        bool CanStart() const noexcept;
+
+        /// Policy may stop the service; re-enabling it permits lazy startup.
+        void SetEnabled(bool enabled) noexcept;
+
+        /// Called once at process exit, never when an individual window closes.
+        /// Request cleanup, wait a bounded time, then reclaim the owned job.
+        void Shutdown() noexcept;
+
+        /// Acquire pane-local ownership after starting the shared service.
+        /// Returns an owning lease, or empty on failure.
         ///
         /// `wtaPath` is the full path to wta.exe — see
         /// `TerminalPage::_DetectWtaPath()`.
@@ -286,15 +308,13 @@ namespace winrt::TerminalApp::implementation
         ///
         /// Move the lease along with its pane during transfers. Retire it
         /// when the pane closes; reset it only for creation rollback.
-        /// When the last lease releases, the Job Object is closed,
-        /// terminating wta and every descendant it spawned.
+        /// Releasing the last lease leaves the process-owned master running.
         SharedWtaLease AcquirePane(const std::wstring_view wtaPath,
                                    std::span<const std::wstring> extraArgs = {},
                                    std::span<const std::pair<std::wstring, std::wstring>> environment = {});
         SharedWtaLease AcquireKeepRunningLease();
 
-        /// Force-restart the wta-master process, bypassing the
-        /// lease reference count. Used by the
+        /// Force-restart the process-owned wta-master service. Used by the
         /// `/restart` slash command and launch-configuration changes after
         /// their sessions retire. Existing panes and helpers stay alive; the
         /// replacement master listens on the same `_masterPipeName` so they
@@ -313,10 +333,8 @@ namespace winrt::TerminalApp::implementation
         /// the new master inherits the new per-process settings and
         /// any subsequent crash-recovery respawn uses the same.
         ///
-        /// No-op if the master isn't running, or if there were no
-        /// cached spawn args (no AcquirePane has succeeded this
-        /// process) and no fresh args were supplied. Returns true on
-        /// successful respawn or no-op.
+        /// The fresh-argument overload also updates an already-requested
+        /// service after its bounded crash recovery has been exhausted.
         bool Restart();
         bool Restart(const std::wstring_view wtaPath,
                      std::span<const std::wstring> extraArgs,
@@ -334,8 +352,8 @@ namespace winrt::TerminalApp::implementation
         uint64_t GetSettingsGeneration(const winrt::Windows::Foundation::IInspectable& settings);
 
         /// Whether wta is currently spawned. Becomes false after a
-        /// crash is observed by the wait callback, or after the last
-        /// pane releases.
+        /// crash is observed by the wait callback, policy disables the
+        /// service, or process shutdown begins.
         bool IsRunning() const noexcept;
 
         /// Native handle of the running master process, valid only
@@ -353,12 +371,13 @@ namespace winrt::TerminalApp::implementation
         DWORD ProcessId() const noexcept;
 
         /// Path to the Windows named pipe that wta-master is
-        /// listening on. Generated once at first acquire (per-process
+        /// listening on. Generated once at first service start (per-process
         /// unique GUID) and reused for the master's lifetime; each
         /// per-pane wta-helper connects to this pipe to talk ACP
         /// JSON-RPC to the master. Empty before the first
-        /// `AcquirePane`. Format: `\\.\pipe\wta-master-<GUID>`.
+        /// service start. Format: `\\.\pipe\wta-master-<GUID>`.
         std::wstring_view MasterPipeName() const noexcept;
+        uint64_t MasterGeneration() const noexcept;
 
     private:
         friend class SharedWtaLease;
@@ -373,6 +392,11 @@ namespace winrt::TerminalApp::implementation
 
         // All `*Locked` helpers assume the caller already holds `_mtx`.
         SharedWtaLease _AcquireLeaseLocked() noexcept;
+        bool _EnsureStartedLocked(std::wstring_view wtaPath,
+                                  std::span<const std::wstring> extraArgs,
+                                  std::span<const std::pair<std::wstring, std::wstring>> environment,
+                                  bool explicitRetry = false);
+        void _StopLocked() noexcept;
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
                           std::span<const std::pair<std::wstring, std::wstring>> environment,
@@ -393,15 +417,19 @@ namespace winrt::TerminalApp::implementation
         mutable std::mutex _mtx;
         wil::unique_handle _process;
         wil::unique_handle _job;
+        wil::unique_handle _shutdownEvent;
         HANDLE _waitHandle{ nullptr };
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
-        // Total includes cleanup-only leases retained during session close;
-        // only active leases justify unexpected-exit recovery.
+        uint64_t _masterGeneration{ 0 };
+        // Pane accounting only; neither count controls service lifetime.
         size_t _refCount{ 0 };
         size_t _activeRefCount{ 0 };
-        // Generated lazily on first AcquirePane; reused across
+        bool _serviceRequested{ false };
+        bool _serviceEnabled{ true };
+        bool _shuttingDown{ false };
+        // Generated lazily on first service start; reused across
         // master respawns within the same Terminal process so any
         // helpers spawned with stale cmdline can still find the
         // currently-live master.

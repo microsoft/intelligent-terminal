@@ -61,7 +61,7 @@ WTA is normally launched **by Windows Terminal**, not by hand. WT spawns one
 `wta-helper` per agent pane (renders this TUI and speaks ACP to master over a
 named pipe). Helpers selecting the same agent identity, source, and command
 share one agent process. Master warms installed, policy-allowed native host agents
-other than Gemini in the background at startup; Gemini and other selections
+other than Gemini and Antigravity in the background at startup; explicit selections
 remain on-demand. Bare `wta` with
 no subcommand and neither `--master`
 nor `--connect-master` exits with an error — there is no standalone agent / TUI
@@ -215,18 +215,20 @@ as soon as its named pipe is ready, without waiting for the sidebar to open. It 
 the native agent CLI and required `npx` prerequisite before starting ACP, reuses
 matching connections in the agent pool, and merges each supported `session/list`
 response into the registry. No chat session or prompt is created by discovery.
-Gemini is excluded before availability checks and ACP startup, even when installed
-and policy-allowed. Explicit Gemini chat selections remain supported, and Gemini
-sessions already registered by other paths are not filtered out of the sidebar.
+Gemini and Antigravity are excluded before availability checks and ACP startup,
+even when installed and policy-allowed. Explicit chat selections remain supported,
+and sessions already registered by other paths are not filtered out of the sidebar.
 
 Discovery never automatically installs a native agent CLI. The pinned Claude and
 Codex ACP adapters are separate: their cache presence is not checked, and the
 existing `npx -y` launch behavior may download and bootstrap an uncached adapter
-during initial startup or a later refresh that starts a provider. Similarly,
-when Antigravity's ordinary `agy` CLI is detected, starting its ACP connection can
-prepare the pinned standalone ACP server and companion. Complete existing ACP
-installations are preserved. These dependency preparations may require network
-access; background startup is not an offline-only operation. See
+during initial startup or a later refresh that starts a provider. Antigravity's
+standalone ACP dependency is prepared only when requested through an agent-pane
+connection or Settings model discovery, not by background sidebar discovery.
+A detected npm CLI shim or a cached ACP installation does not opt Antigravity
+into background startup. Complete existing ACP installations are preserved.
+These dependency preparations may require network access; background startup is
+not an offline-only operation. See
 [Installing dependencies](../../doc/installing-dependencies.md) for the native CLI
 and ACP wrapper prerequisites.
 
@@ -241,8 +243,12 @@ The WSL Session MCP relay also requires native Python 3 in that user's login
 environment. It is separate from Antigravity's bundled ACP runtime; preparing
 the ACP dependency does not install Python.
 
-Sidebar Agent sessions runs
-`wta sessions list --origin shell --json --include-status`.
+Tab/pane agent metadata and Sidebar Recent share a bounded
+`wta sessions list --master <pipe> --json --include-status` snapshot request. Recent applies
+the existing shell-origin filter to the conversation projection; pane metadata
+reads the normalized `pane_statuses` projection without requiring an agent
+session ID. A Recent request can join an in-flight metadata request, and hiding
+Recent cancels only that projection, not the shared request.
 This only reads the current registry snapshot; it never starts an agent or waits
 for an ACP history query. Each initialized, listing-capable agent command/source
 has a separate, reusable history-only ACP process, including already-connected
@@ -287,15 +293,25 @@ The opt-in JSON object contains `sessions` and `history_status` (`loading`, `rea
 or `error`), with optional `history_error_kind` to distinguish timeout-only failures;
 ordinary `--json` output remains one session per line.
 
-Session commands without an explicit `--master` rediscover `master-pipe.txt`
-before each connection attempt, so a stale address from a previous Terminal
-process does not pin a startup request to the old pipe. An explicit `--master`
-stays pinned. Missing discovery files, missing pipes, and busy pipes share the
-existing seven-attempt retry budget (1.87 seconds of backoff); permission and
-other failures are not retried. Listing, activation, and born-bound registration
-use the same connection path.
+Terminal-owned session snapshots, activation, activation-status queries, and
+delegate registration use the owning process's explicit `--master` pipe.
+An unavailable or empty owned endpoint never falls back to shared discovery.
+The pipe remains stable across master restarts, and activation retries retain
+both the owning pipe and operation ID.
 
-If the master remains temporarily unavailable, `sessions list --json --include-status`
+All `sessions` commands require `--master`, including activation-status queries.
+Master addresses are passed in memory or as process arguments; WTA does not
+publish or read a shared discovery file. Concurrent normal and elevated Terminal
+processes therefore cannot overwrite each other's session-command target.
+An old discovery file left by a previous version is ignored.
+Missing and busy pipes share the existing seven-attempt retry budget
+(1.87 seconds of backoff); permission and other failures are not retried.
+
+`delegate --master <pipe>` pins split validation and best-effort live registration
+to that master. Without it, an ordinary delegate still launches, but logs that
+live registration was skipped; exact session splits require an owning master.
+
+If the master remains temporarily unavailable, `sessions list --master <pipe> --json --include-status`
 exits nonzero and writes `{"error":{"kind":"master_unavailable"}}` instead of a
 successful empty snapshot. Other listing failures retain their ordinary error
 behavior. The sidebar keeps loading (or retains existing rows) and retries every
@@ -326,7 +342,7 @@ other-window action. Missing or malformed membership is unknown, not evidence
 that the pane is attached elsewhere. These fields are refreshed per response,
 not stored as registry ownership or lifecycle state.
 
-Sessions registered as live in master keep their detailed Idle, Active,
+Sessions registered as live in master keep their detailed Idle, Working,
 Waiting for input, or Error status. Historical/Ended native host Copilot rows
 are not live IT registrations; they may instead receive the response-only
 `InUse` status, displayed as **In use**, from their exact default-universe SDK
@@ -336,7 +352,7 @@ and an actively held `inuse.<pid>.hold` lease (observed with Copilot SDK
 1.0.80). A stale marker, released lease, inaccessible process,
 or nonmatching provider/source/universe leaves the original status unchanged.
 External sessions do not expose detailed activity: this probe does not read
-`events.jsonl` or infer Idle/Active from turns. Marker and lease reads have a
+`events.jsonl` or infer Idle/Working from turns. Marker and lease reads have a
 two-second budget and share one process-wide nonblocking admission gate.
 The gate remains occupied until the blocking file operation finishes, even
 when its caller times out or disconnects. Busy list reads retain the original
@@ -404,11 +420,12 @@ remain visible according to the requested origin filter.
 
 Initial host discovery runs at master startup, after a confirmed host-agent
 installation, or on an explicit `wta sessions refresh` request. There is no unconditional
-periodic installation scan. Failed host-agent startup discoveries are retried through the
-same discovery worker, with delays of 5, 10, 20, 40, then at most 60 seconds after
-each failure (checked on the existing five-second history timer). Retries recheck
+periodic installation scan. Failed host-agent startup discoveries use delays of 5
+and 10 seconds and stop after three total attempts. The master, dedicated history
+workers and model probes use the common startup admission layer; separate probe
+processes cannot reset the same target's failure budget. Retries recheck
 installation and policy and do not restart healthy resident providers.
-`wta sessions refresh --json` schedules discovery while respecting failure backoff and returns the
+`wta sessions refresh --master <pipe> --json` schedules discovery while respecting failure backoff and returns the
 current snapshot with `history_status`; it does not wait for discovery to finish.
 The removed `--all-agents` flag is no longer accepted. F5 in a helper's session view
 explicitly refreshes that helper's bound connection without discovering other agents.
@@ -417,12 +434,47 @@ only in nonvertical layout; vertical layout uses the Sidebar fallback instead.
 Live layout changes and helper-ready runtime configuration update this selection per
 window without reconnecting ACP. Push updates remain immediate in either layout,
 and returning to nonvertical layout immediately refreshes an already-open helper view.
-History-query recovery may rebuild only its history-only process. Startup
-discovery retries are separate and retain the existing ACP initialization timeout.
+History-query recovery may rebuild only its history-only process.
 
-Master allows up to 60 seconds for an ACP `initialize` reply from either a
-native agent or an `npx` adapter, including cold starts. Session creation,
-authentication and model-probe timeouts are separate and unchanged.
+### ACP preparation and startup verification
+
+Provider-specific detection and preparation adapters live in
+`src/agent_lifecycle/providers/`. The agent registry still owns commands, models
+and authentication metadata. Shared admission, safe diagnostics and process-tree
+ownership apply to every provider, including custom launch commands.
+
+`install-acp --agent-id antigravity` prepares the separate ACP dependency and
+performs one initialize-only check. Its JSON distinguishes `dependency_present`
+from `startup_verified`; a failed check exits nonzero but does not uninstall the
+dependency or hide the provider. `verify-acp --agent <command> --agent-id <id>`
+performs the same bounded check without a conversation or prompt.
+Both accept `--wsl-distro` and explicit `--retry-startup`.
+
+Settings uses the first initialization of its model probe as the startup check,
+rather than launching a disposable verification process and then another model
+probe. The normal agent-pane connection similarly verifies its prepared
+dependency in the actual shared runtime. An installation-time check is not a
+guarantee of future startup.
+
+Failure budgets are stored under the package-private `acp-startup` directory,
+scoped to the WTA binary identity and hashed effective launch target. They contain
+counts, structured failure fields and bounded, filtered native details rather
+than full provider configuration objects. Native details can include file paths. Ordinary
+refreshes and new helper generations do not reset them. A successful initialize
+or an explicit user retry resets the target's budget; unconfirmed cleanup stops
+replacement instead. `probe-models --retry-startup` is the CLI equivalent of the
+explicit retry action. See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
+
+The `probe-sessions` and `probe-host-sessions` diagnostics share admission for
+their inherited provider binding and retain it through confirmed cleanup.
+Both accept `--retry-startup`; it reopens an exhausted cycle, not a cleanup
+quarantine. They preserve their diagnostic output shapes and treat an unsupported
+session-list method as a normal result rather than an initialization failure.
+Their session-list timeout remains 10 seconds.
+
+Startup checks allow up to 60 seconds for an ACP `initialize` reply from either a
+native agent or an `npx` adapter, including cold starts. Session creation and
+authentication retain their own limits.
 
 ### tmux-like CLI
 
@@ -934,6 +986,149 @@ agent-reported model, when available, without switching it to the current
 default model. Settings still supplies the requested model for new sessions
 and later model changes; an existing confirmed selection stays visible until
 the agent confirms the switch.
+
+### Native status observations when session tracking is off
+
+Managed Terminal masters receive `WTA_MASTER_GENERATION`, a positive decimal
+u64 reserved for that successfully launched receiver. Full sessions-list replies
+carry optional `native_observation_receiver_generation` (u64) and
+`native_observation_listener_ready` (bool). Ready starts false and becomes true
+only after the master's token-verified WT listener subscription marker; a
+successful snapshot alone is not readiness. The marker triggers the existing
+registry-changed invalidation. Ready is a subscription-established marker for
+this receiver lifetime, not a health poll.
+
+Managed `native_agent_observation` and restored `session_born_bound` events
+must include matching `receiver_generation` and wait for ready. Missing/stale
+generations are rejected for every observation kind, including BEL and removal.
+Masters without this environment variable retain legacy admission and omit the
+receiver metadata. Invalid supplied generations fail startup rather than
+downgrading to unmanaged behavior.
+
+Restored births use the existing `session_born_bound` COM topic and existing
+`pane_id`, exact `agent_session_id`, `agent`, `cwd`, tab/window identity and
+optional `wsl_distro` fields. Master handles birth before the following native
+reset on its ordered event reader, reusing the existing qualified resume/binding helpers;
+late duplicate helper RPCs do not overwrite live activity. Only Terminal-created
+or previously qualified actual identities may be replayed. Unknown panes get
+no synthetic confirmed conversation ID; inferred list metadata cannot be
+replayed as ownership, and no activity is copied.
+Interactive known-session resumes use the same generation-qualified ordered
+birth path before OFF reset. The master confirms the exact active qualified
+pane binding without changing its current activity; a subsequent reset may omit
+location only when that authoritative binding already supplies it. Registration
+uses the exact provider/backend identity even when another backend has the same
+raw session ID; generic hook and helper-RPC reducers remain unchanged.
+For an explicit different-session replacement in the same pane, birth may also
+carry `expected_previous_binding` with `agent_session_id` and `mode_epoch`.
+Together with the birth's newer `mode_epoch`, this authorizes an atomic handoff
+only from that exact native owner. A stale or missing predecessor cannot steal
+the binding. The old conversation becomes unbound Historical, not process-exited.
+Same-owner replay remains idempotent; ON retirement and provider-only unknown
+admissions retain their existing behavior.
+
+Terminal publishes `method: "native_agent_observation"` through the existing
+COM event subscription. Its `params` object contains:
+
+```json
+{
+  "pane_id": "00112233-4455-6677-8899-aabbccddeeff",
+  "provider_id": "copilot",
+  "window_id": 7,
+  "tab_id": "stable-tab-id",
+  "mode_epoch": 1,
+  "pane_created_at_ms": 1792108800000,
+  "pane_creation_sequence": 42,
+  "kind": "reset",
+  "tracking_enabled": false
+}
+```
+
+`pane_id` is the actual connection GUID. The Terminal producer admits only
+Terminal-known agent panes, not agents inferred from shell output.
+`pane_created_at_ms` is captured before a connection lifetime starts, not at first
+OSC, discovery or receiver readiness. `pane_creation_sequence` is the producer's
+monotonic connection-creation order, including restarts that retain the content ID.
+Both survive partial updates, admission resets and retained-content moves.
+Restart Connection retires the old GUID and admits the replacement with fresh
+creation metadata and Idle activity. Emission-time GUID/epoch checks reject queued
+old signals; only a declared native agent's identical explicit-resume command
+preserves a confirmed conversation binding. Older producers
+without creation metadata remain supported but cannot participate in timed
+list inference. Known execution `location` may be supplied without a session ID;
+absence never implies Host.
+
+After delegate creation, the existing `agent_event` broadcast envelope carries
+`params.event: "agent.pane.launch.source"` with the returned
+`pane_id`, canonical `agent` and selected `location` through the existing COM
+broadcast. Terminal accepts it only for the matching declared native pane and
+refines an unknown launch source once without changing its admission epoch.
+WTA merges the same source metadata into an already admitted pending pane,
+without changing activity or creating a pane from this metadata alone.
+The retained content metadata supplies the same source on later readiness,
+mode and transfer replays; it does not create a second activity store or turn
+an ordinary shell into an agent.
+
+Existing history discovery can attach a separately marked inferred identity
+to a pending pane record. This is not a canonical binding, action route or
+process-liveness claim. Explicit resume identity remains authoritative.
+Historical status does not overwrite observed pane activity, and discovery
+does not add a query or polling worker.
+While such a pane is pending, the existing retained history request follows
+pagination to a complete inventory under its original deadlines. Partial
+pages cannot prove uniqueness. The pane projection carries the inferred
+qualified key only for Recent duplicate suppression in its owning window;
+closing the pane or returning to ON restores that historical row without
+inventing a canonical live binding.
+
+Send `reset`
+with a strictly increasing per-pane `mode_epoch` on initial admission and mode
+changes. `tracking_enabled: false` establishes a fresh OFF baseline of Idle; `true`
+clears OFF ownership. Other events must match the admitted epoch and identity:
+`progress` carries `progress_state` (1/3 Working, 2 Error, 0/4 Idle), `bell`
+means Attention (including completion ready for the next request), and `removed`
+means actual pane removal. Connection Closed/Failed and shell prompt markers
+are not removal while OFF. An old or unadmitted observation is ignored.
+After same-master subscription recovery, Terminal retries only admissions
+missing from the ready snapshot, reusing their epochs without replaying progress
+or bells. Duplicate admitted resets remain no-ops.
+
+An optional `agent_session_id` must be the exact explicitly selected real
+session ID, never a pane-derived ID. To bind an unowned history row on OFF
+`reset`, also supply its exact `location`: `"Host"` or
+`{"Wsl":{"distro":"Ubuntu"}}`. Provider, session ID and backend must identify
+one unowned row; an existing pane binding cannot be stolen. Keep these optional
+identity fields consistent throughout the epoch.
+The existing explicit resume/born-bound pane assignment may arrive before or
+after OFF reset. A later assignment links the admitted pane to that exact
+canonical row immediately; it does not require another OSC/BEL observation.
+History upserts alone do not promote an unknown pane.
+Re-admitting the same active OFF owner after transfer or reconnect preserves
+its canonical activity and activity timestamp while updating window/tab context
+and epoch. A changed provider, exact session identity, or backend is a new owner;
+OFF after ON also starts a fresh Idle baseline. Earlier epochs remain fenced.
+
+The existing `_intellterm.wta/sessions/list` response exposes `pane_statuses`
+for tab/pane metadata and retains `sessions` for conversation history. Each
+pane status requires `pane_id`, `provider_id` and `status`; its
+`agent_session_id` is optional. WTA resolves canonical and native representations
+into one pane projection, so the UI does not merge those model collections.
+Conversation rows still require real, qualified session identity. The shared
+UI capture feeds both projections, and status getters do not register panes or
+change observation mode. Registration remains on explicit pane lifecycle,
+setting and receiver-recovery paths.
+
+For diagnostics and existing consumers, the response also retains
+`native_pane_observations`, omitted when empty. Each entry has `pane_id`,
+`provider_id`, `window_id`, `tab_id`, `mode_epoch`, `status`,
+`last_activity_at_ms`, optional `location`, and `agent_session_id` only when
+bound to a real registry row. Unknown panes have useful pane status but create
+no session/history/resume row. Known rows update the same registry snapshot
+used by the sidebar and classic session picker; exact-bound watcher activity
+still updates that row. All accepted observations invalidate existing readers
+through the normal sessions-changed notification, without additional polling.
+Window identity is preserved verbatim, including numeric zero. Returning to ON
+does not overwrite the canonical session's activity or tool/attention metadata.
 
 ### Diagnosing a missing current-shell pane
 

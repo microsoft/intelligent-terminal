@@ -135,7 +135,7 @@ unknown/custom). The launch path only does born-bound registration when this is
 ### Transport
 
 - **(a)** runs in the short-lived `wta delegate` process. It opens its own
-  connection to the master pipe (`master-pipe.txt` rendezvous), registers, and
+  connection to the owning master pipe passed by Terminal as `--master`, registers, and
   exits — the same transport `wta sessions list` already uses. Master not
   running → no-op (no registry to populate; harmless).
 - **(c)** runs in the helper, which already creates the resume tab and binds its
@@ -239,3 +239,49 @@ executor its own master sender like (a)'s. Threading that through without
 disturbing the recommendation's other steps is why (b) is deferred to its own
 change. It will reuse the exact same id-pinning and born-bound registration as
 (a); only the transport differs.
+
+## Managed native agent profiles
+
+Managed Copilot, Claude, and Gemini profiles also pin a fresh UUID with
+`--session-id` when Terminal creates their ConPTY connection. The connection's
+pane GUID and evaluated starting directory are retained with that UUID, using
+the existing pending born-bound registration and subscribed-helper replay path.
+Registration waits for the owning tab and the ready master generation, so
+startup does not depend on hooks or on a helper subscribing before the launch.
+
+The explicit binding also supplies the native status path when session
+management is disabled. A profile restart generates a new conversation UUID
+and binds it to the replacement connection; persisted layouts retain a resume
+command for the known conversation instead of replaying the new-session command.
+Real hooks can still take ownership of the same session.
+
+Command previews and profile settings do not contain a generated UUID.
+Handwritten command overrides, resume/continue commands, help/version commands,
+and providers without new-session ID support keep their existing command behavior.
+
+All managed native profiles also publish their evaluated launch directory as
+pane-only metadata for the native status fallback. This supplies an initial cwd
+for Codex, Antigravity, and OpenCode without inventing a conversation ID or
+binding a history row. Empty managed starting directories use the window's
+virtual cwd or capture the inherited host cwd before delayed connection startup.
+Relative managed Host directories are resolved to absolute Windows paths at
+connection creation, so bindings and saved layouts do not depend on a later
+launcher's directory.
+A confirmed session cwd takes precedence where supported;
+Antigravity's existing shell-session cwd suppression remains unchanged, with the
+Terminal-authored launch directory available as a fallback.
+
+All managed native profiles display an initial Idle state and their fixed
+ConPTY launch cwd without waiting for master or hooks, regardless of session
+management mode. This presentation-only fallback does not invent conversation
+IDs or change native signal ownership. Confirmed pane/session status takes
+precedence, and closing or failed connections do not retain the launch fallback.
+
+Replacing a managed profile connection explicitly retires the old pane in
+master before announcing its replacement, even if a failure was already reported.
+Host resume actions retain the evaluated session cwd when the terminal has no
+usable cwd report, rather than saving an empty or relative profile directory.
+
+A pinned UUID is not proof that a conversation was persisted. Restore uses the
+saved resume command without inspecting Claude transcripts or replacing its
+session ID; an empty Claude session can still report that no conversation exists.

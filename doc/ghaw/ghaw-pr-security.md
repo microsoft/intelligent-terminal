@@ -29,8 +29,12 @@ better vulnerability detection.
 
 1. The trusted controller binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
-   Forks receive read-only guidance; only authorized same-repository WTA-source
-   scopes may enter repair.
+   Scope resolution, repair publication and reporting load their own code from
+   GitHub's automatic `github.workflow_sha`, never the PR's potentially older
+   base. The recorded PR base/head still govern comparison and live identity;
+   no commit ID is hardcoded.
+   It runs only for ordinary same-repository pull requests; fork pull requests
+   are skipped. Only authorized same-repository WTA-source scopes may enter repair.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
    narrowly allowed HIGH/high-confidence source fix, but cannot execute
@@ -105,18 +109,23 @@ The severity label does not broaden the language/path allowlist or lower
 confidence.
 
 The controller and workers rematerialize agents, skill, validator, driver, and
-publisher from the trusted workflow revision, not PR-edited files. Dispatch
+publisher from their selected workflow revisions. Dispatch
 fails if the worker revision differs from the recorded trusted base. Git
 reads disable replacement objects, external diff/textconv, pagers, and
-filesystem-monitor hooks. Forks are inspected as fetched immutable Git objects,
-not executed checkouts. Trusted credential cleanup precedes inference.
+filesystem-monitor hooks. Trusted credential cleanup precedes inference.
+The ordinary `pull_request` controller definition comes from the PR merge
+revision, so same-repository branch authors are trusted to modify that
+definition. Controller jobs use that workflow revision for their helpers;
+this is not an independent base-only boundary against authorized workflow
+authors. The dispatched worker is base-branch-sourced and must match its
+recorded trusted base revision. PR comparison inputs remain separate.
 Live base/head checks recur before handoff and publication; base changes
 invalidate the snapshot. The head lease rejects both concurrent advance and
 rewind; it never authorizes rewriting history.
 
 ## Native review capabilities
 
-Both workers use `.github/agents/ghaw-pr-security.agent.md` and the shared
+The retained repair worker uses `.github/agents/ghaw-pr-security.agent.md` and the shared
 `.github/skills/ghaw-pr-security/SKILL.md`. The primary has bounded immutable
 reads, `inspect-security-repair`, the repair-mode-only bounded writer, report
 submission, and one terminal `noop`; it has no generic shell/edit/delegation
@@ -181,7 +190,7 @@ Workflow-root permissions are empty. Analysis/dispatch has actions write,
 contents read, and PR read. Repair publication has contents write and PR read.
 The separate report job has PR write and contents read, **no contents write**;
 it verifies the per-finding commit chain and linked receipt, or the unchanged
-head for no-patch/fork reports, before updating one bot-owned SHA-labelled
+head for no-patch reports, before updating one bot-owned SHA-labelled
 comment. Human comments remain untouched. Workers stage safe outputs, disable
 issue-reporting paths, and emit one noop; agents never publish directly.
 
@@ -200,9 +209,8 @@ secret scanner or confidentiality boundary against the same process.
 node --test .github\skills\ghaw-pr-security\scripts\security-review.test.mjs
 node --test .github\skills\ghaw-pr-security\scripts\security-review-driver.test.mjs
 node --test .github\skills\ghaw-pr-security\scripts\prepare-security-review-private-logs.test.mjs
-gh aw compile ghaw-pr-security
-gh aw compile ghaw-pr-security-guide-fork
-gh aw validate ghaw-pr-security ghaw-pr-security-guide-fork
+gh aw compile ghaw-pr-security --no-check-update
+gh aw validate ghaw-pr-security --no-check-update
 ```
 
 These test trusted contracts, not PR builds/tests. Fake driver children and

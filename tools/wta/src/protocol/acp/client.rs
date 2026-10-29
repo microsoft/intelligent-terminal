@@ -660,7 +660,7 @@ fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
 
-fn acp_error_detail(error: &acp::Error) -> String {
+pub(crate) fn acp_error_detail(error: &acp::Error) -> String {
     error
         .data
         .as_ref()
@@ -3040,6 +3040,7 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
+    retry_startup: bool,
     requested_authentication: Option<
         crate::protocol::acp::authentication::AcpAuthenticationAttempt,
     >,
@@ -3371,13 +3372,18 @@ pub async fn run_acp_client_over_pipe(
                 },
                 cloud_models_source: (!supplied_cloud_models.is_empty())
                     .then(|| "helper".to_string()),
+                startup_intent: (retry_startup || post_login_reconnect)
+                    .then(|| "retry".to_string()),
                 ..Default::default()
             },
         );
         req
     };
     let init_future = conn.initialize(init_request);
-    let init_result = tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
+    let init_result = tokio::time::timeout(
+        crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT,
+        init_future,
+    ).await;
     log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);
     let mut init_resp = init_result
         .map_err(|_| {
@@ -3385,11 +3391,12 @@ pub async fn run_acp_client_over_pipe(
                 target: "helper",
                 step = "acp_initialize",
                 pipe = %pipe_name,
-                "ACP initialize over master pipe timed out after 60s — wta-master did not respond"
+                timeout_secs = crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT.as_secs(),
+                "ACP startup over master pipe exceeded its overall deadline"
             );
             anyhow::anyhow!(
-                "ACP initialize over master pipe timed out after 60s — \
-             wta-master did not respond"
+                "ACP startup over master pipe timed out after {}s — wta-master did not respond",
+                crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT.as_secs()
             )
         })?
         .map_err(|e| {
@@ -3400,10 +3407,7 @@ pub async fn run_acp_client_over_pipe(
                 error = %e,
                 "ACP initialize over master pipe failed"
             );
-            anyhow::Error::new(AgentFailure::HandshakeFailed {
-                stage: HandshakeStage::Initialize,
-                detail: acp_error_detail(&e),
-            })
+            anyhow::Error::new(AgentFailure::from_initialize_error(&e))
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);

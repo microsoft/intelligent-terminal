@@ -91,118 +91,22 @@ mapping:
 - `30` → `BLOCKED`
 - `64` → `INVALID_INPUT`
 
-## Native final-report handoff
+## Batched checks
 
-When a caller specifies a final checker report path, collect bundles from actual
-checker execution; never fabricate bundle fields or convert human conclusions
-into checker JSON. Keep initial failing attempts out of the final report. The
-root agent owns repository discovery, the final rerun, and writing the report.
-After repairs and any required independent review, write only the final rerun
-bundles using the caller's exact envelope and path. The caller's native
-post-step owns structural validation and write gating.
+For larger scopes, use one `pwsh` process per batch: dot-source
+`localization_checks.ps1` once and call its public functions directly with
+native PowerShell arguments. Assess the actual returned statuses and findings;
+do not fabricate results or generate another checker.
 
-For initial checks and the final rerun, use one `pwsh` process per batch that dot-sources
-`localization_checks.ps1` once and calls the public functions directly. Each
-completed check returns one bundle object with `check`, `status`, `exitCode`,
-`summary`, and `results`. Invalid required arguments can throw; let the batch
-fail rather than write a partial report. Collect those actual bundle objects and write the
-caller-selected JSON envelope with PowerShell file operations only. Do not
-delegate report ownership to a reviewer and do not rely on `rm`, `touch`,
-`jq`, or hand-authored bundle JSON.
+Run initial checks before repairs and rerun the affected checks after repairs.
+For a read-only review, reuse successful check results instead of repeating the
+same batch. Inspect summaries and non-PASS findings rather than printing every
+bundle into the model context. No separate aggregate checker-report file is
+required.
 
-Example final rerun in one PowerShell process. This example intentionally shows
-scoped batch rows only: each row must be a PowerShell hashtable with an explicit non-empty
-`RequiredKeys` array and an explicit `ComparableKeys` array, which may be
-empty until the key exists on both sides. For whole-file checks outside this
-scoped batch pattern, omit `-Keys` when calling the public checker functions as
-shown in the API table above. Assume the caller already resolved the report
-path, mode, and scoped source/target/locale rows to inspect.
-Use scoped `RequiredKeys` only for source-present additions or updates. Handle
-source removals and target stale-entry cleanup with the explicit git/file
-review from reusable procedure step 1 instead of forcing source-absent names
-through scoped `-Keys`. Pass only already-comparable keys to
-`Test-PlaceholderParity`, `Test-LockedContent`, and `Test-PseudoLocale`;
-those dependent checks intentionally return `BLOCKED` when the scoped key is
-missing from either side:
-
-```powershell
-. (Join-Path $PWD '.github/skills/ensure-localization/scripts/localization_checks.ps1')
-
-$reportPath = $CallerSuppliedReportPath
-$mode = $CallerSuppliedMode
-$targets = $CallerSuppliedTargets
-$bundles = [System.Collections.Generic.List[object]]::new()
-
-foreach ($target in $targets) {
-    if ($target -isnot [hashtable]) {
-        throw 'Batch rows must be hash tables; use ConvertFrom-Json -AsHashtable for JSON input.'
-    }
-    if ($null -eq $target.RequiredKeys -or @($target.RequiredKeys).Count -eq 0) {
-        throw 'Each scoped batch row must define a non-empty RequiredKeys array.'
-    }
-    if ($null -eq $target.ComparableKeys) {
-        throw 'Each scoped batch row must define a ComparableKeys array, even when it is empty.'
-    }
-
-    $requiredKeys = @($target.RequiredKeys)
-    $comparableKeys = @($target.ComparableKeys)
-    if (@($requiredKeys | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
-        throw 'RequiredKeys must contain only non-blank key names.'
-    }
-    if (@($comparableKeys | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
-        throw 'ComparableKeys must contain only non-blank key names.'
-    }
-
-    $sourceEncodingArgs = @{ File = $target.SourcePath }
-    if (-not [string]::IsNullOrWhiteSpace($target['SourceOriginalPath'])) {
-        $sourceEncodingArgs['OriginalFile'] = $target['SourceOriginalPath']
-    }
-
-    $targetEncodingArgs = @{ File = $target.TargetPath }
-    if (-not [string]::IsNullOrWhiteSpace($target['TargetOriginalPath'])) {
-        $targetEncodingArgs['OriginalFile'] = $target['TargetOriginalPath']
-    }
-
-    $requiredKeysArgs = @{
-        SourceFile = $target.SourcePath
-        TargetFile = $target.TargetPath
-        Keys = $requiredKeys
-    }
-
-    $dependentArgs = @{
-        SourceFile = $target.SourcePath
-        TargetFile = $target.TargetPath
-    }
-    if ($comparableKeys.Count -gt 0) {
-        $dependentArgs['Keys'] = $comparableKeys
-    }
-
-    $bundles.Add((Test-ResourceSyntax -File $target.SourcePath))
-    $bundles.Add((Test-ResourceEncoding @sourceEncodingArgs))
-    $bundles.Add((Test-ResourceSyntax -File $target.TargetPath))
-    $bundles.Add((Test-ResourceEncoding @targetEncodingArgs))
-    $bundles.Add((Test-RequiredKeys @requiredKeysArgs))
-    if ($comparableKeys.Count -gt 0) {
-        $bundles.Add((Test-PlaceholderParity @dependentArgs))
-        $bundles.Add((Test-LockedContent @dependentArgs -Locale $target.Locale))
-        if ($target.Locale -in @('qps-ploc', 'qps-ploca', 'qps-plocm')) {
-            $bundles.Add((Test-PseudoLocale @dependentArgs -Locale $target.Locale))
-        }
-    }
-}
-
-$report = [ordered]@{
-    version = 1
-    mode = $mode
-    bundles = @($bundles.ToArray())
-}
-
-$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-[System.IO.File]::WriteAllText(
-    $reportPath,
-    ($report | ConvertTo-Json -Compress -Depth 8),
-    $utf8NoBom)
-```
+The agent owns scope completeness and language judgment. Mechanical checks
+support that assessment; they cannot establish that every affected resource
+was discovered or that a translation is correct.
 
 ## Reusable procedure
 
@@ -256,7 +160,7 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
    those dependent checks for that pair.
 7. Same-repo repair: run the checks before editing, repair only localized
    targets, preserve the original patch-derived scope through the final rerun,
-   recompute each row's `ComparableKeys` from the final on-disk source/target
+   recompute the comparable key subset from the final on-disk source/target
    files after every edit, include any newly translated source-added keys in
    that rebuilt comparable set, rerun the same relevant checks, then finish
    with one independent read-only review before requesting any branch write.
@@ -305,7 +209,7 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   git inspection to confirm that the live tree really removed the files.
 - After repairing a previously missing scoped key, recompute that
   comparable-only subset from the final on-disk files before the final rerun.
-  A stale pre-edit empty `ComparableKeys` array can incorrectly skip
+  A stale pre-edit empty comparable subset can incorrectly skip
   placeholder, lock, or pseudo-locale validation for the new translated
   source-added entry.
 - If your tool output truncates the original patch, keep reading until every

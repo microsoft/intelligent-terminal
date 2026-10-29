@@ -1253,6 +1253,10 @@
     <value>Wählen Sie den Agenten aus, der in diesem Profil für die Befehlspalette verwendet wird. Diese Auswahl hat Vorrang vor der globalen Auswahl für die Befehlspalette.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Globale Einstellung verwenden ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2831,6 +2835,10 @@
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Wählen Sie den Agenten aus, der im Agentbereich verwendet wird. Jeder kompatible ACP-Agent wird erkannt.</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modell</value><comment>Header for the setting that specifies the model used by the agent pane agent. &#xA;In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Wählen Sie das Modell aus, das von diesem Agenten verwendet wird.</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_AcpErrorDetails.Header" xml:space="preserve">
+    <value>Fehlerdetails</value>
+    <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agenten-CLI</value><comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Erstellen Sie eine neue Registerkarte mit Ihrer bevorzugten Agenten-CLI, optional mit einem Prompt und Kontext aus dem aktiven Bereich.
 Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten.</value><comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment></data>
@@ -3047,15 +3055,23 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
     <comment>Description of the reply-formatting toggle, shared by Settings and first-run setup. Only AI agent replies are formatted; live text stays literal. Stopped replies include completed, canceled, or failed responses. History means saved conversations, not shell command history.</comment>
   </data>
   <data name="AIAgents_AcpPreparing.Text" xml:space="preserve">
-    <value>ACP-Server des Agenten wird installiert...</value>
-    <comment>Progress shown in AI Agents Settings while preparing a separately distributed Agent Client Protocol server. This does not install the ordinary agent CLI or sign in. {Locked="ACP"}</comment>
+    <value>ACP-Verbindung wird vorbereitet und überprüft...</value>
+    <comment>Progress shown while preparing required ACP dependencies and checking the connection. Does not sign in or send a model prompt. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_AcpPreparationFailed.Text" xml:space="preserve">
-    <value>Der ACP-Server des Agenten konnte nicht installiert werden. Überprüfen Sie Ihr Netzwerk und die Installation und versuchen Sie es dann erneut.</value>
-    <comment>Error shown in AI Agents Settings when the separate Agent Client Protocol server cannot be prepared. The adjacent button retries installation. {Locked="ACP"}</comment>
+    <value>Der ACP-Server des Agenten konnte nicht installiert werden.</value>
+    <comment>Factual summary shown when the separate ACP server cannot be installed. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpStartupFailed.Text" xml:space="preserve">
+    <value>Die ACP-Verbindung konnte nicht gestartet werden.</value>
+    <comment>Factual summary shown when ACP startup fails. Native error details appear below; do not add remediation or retry advice. {Locked="ACP"}</comment>
+  </data>
+  <data name="AIAgents_AcpCleanupFailed.Text" xml:space="preserve">
+    <value>Die Beendigung der ACP-Prozesse konnte nicht bestätigt werden. Der automatische Start wurde angehalten.</value>
+    <comment>Shown when the previous ACP process tree could not be confirmed stopped. Automatic startup must not continue. {Locked="ACP"}</comment>
   </data>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Erneut versuchen</value>
-    <comment>Button in AI Agents Settings that retries preparation of the separately distributed ACP server after installation failed.</comment>
+    <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
 </root>

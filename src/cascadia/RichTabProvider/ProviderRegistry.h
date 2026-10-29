@@ -18,10 +18,17 @@ namespace Microsoft::Terminal::RichTab::Provider
         Development,
     };
 
+    enum class RegistrationOrigin
+    {
+        Unknown,
+        BuiltInCatalog,
+    };
+
     struct Registration
     {
         Manifest manifest;
         RegistrationKind kind{ RegistrationKind::Managed };
+        RegistrationOrigin origin{ RegistrationOrigin::Unknown };
         std::filesystem::path root;
         std::string payloadHash;
         bool enabled{ false };

@@ -6,6 +6,7 @@ ACTIVEOBJECT
 AGILEREFERENCE
 alignas
 alignof
+APPEXECLINK
 APPLYTOSUBMENUS
 appxrecipe
 bitfield

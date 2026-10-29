@@ -106,13 +106,7 @@ Describe 'Feature: Sidebar resume watcher' -Tag @('Feature', 'SidebarResumeWatch
             Set-Content (Join-Path $script:evidence 'settings-after-launch.json')
         Invoke-WtCli -App $script:app -Arguments @('get-settings') | ConvertTo-Json -Depth 32 |
             Set-Content (Join-Path $script:evidence 'settings-product.json')
-        $pipePath = Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
-        $script:pipe = Wait-Until -TimeoutSec 60 -Because 'the owned master publishes its pipe independently of ACP readiness' -Condition {
-            if (Test-Path $pipePath) {
-                $name = (Get-Content $pipePath -Raw).Trim()
-                if ($name) { $name }
-            }
-        }
+        $script:pipe = Get-WtaMasterPipe -App $script:app -TimeoutSec 60
         $masters = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | Where-Object {
             $_.ExecutablePath -eq $script:app.WtaPath -and
                 $_.CommandLine.Contains('--master') -and $_.CommandLine.Contains($script:pipe)

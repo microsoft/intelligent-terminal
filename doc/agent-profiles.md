@@ -169,6 +169,10 @@ Discovery checks native CLI files directly during settings loading and Settings
 Extensions enumeration, not each time the new-tab menu opens. It reads the fresh
 Windows environment PATH and retains process-only PATH entries, preferring
 `.exe` over `.cmd` across directories. It does not depend on `wta.exe`.
+Windows app execution aliases, such as those registered in `WindowsApps`, are
+recognized as launchable entries even when ordinary file-status queries cannot
+follow them. The alias path is preserved so Windows can resolve the registered
+application when launching the profile.
 Successful results are cached for 30 seconds. After installing or removing a
 CLI, reload settings after that interval or restart Terminal. There is no
 30-second polling timer. A failed filesystem probe is
@@ -185,9 +189,18 @@ Terminal's generated-profile state; rediscovery does not make it visible again.
 Managed launches resolve the executable again at connection creation, so a stale
 menu entry cannot run an unavailable CLI.
 
-Agent profiles use the ordinary profile menu mechanism and can be reordered
-through the new-tab menu settings or hidden individually. Existing custom menu
-layouts are preserved. Profiles also respect disabled profile sources and the
+The default new-tab menu lists ordinary profiles first and automatically generated
+agent profiles second, with a separator only when both groups have visible,
+available profiles. Each group preserves the existing profile order and shortcuts.
+The default layout means an omitted `newTabMenu` or exactly one
+`{ "type": "remainingProfiles" }` entry. Grouping affects only the displayed menu
+and does not rewrite `settings.json`. User-created copies without the generated
+agent source stay in the ordinary group.
+
+Agent profiles can be reordered through the new-tab menu settings or hidden
+individually. Any other `newTabMenu` layout, including an empty list, folders,
+explicit profiles, or separators, is rendered as configured without automatic
+grouping or separators. Profiles also respect disabled profile sources and the
 agent allowlist.
 
 There is no WTA or hidden PowerShell process beneath a managed agent. The native CLI

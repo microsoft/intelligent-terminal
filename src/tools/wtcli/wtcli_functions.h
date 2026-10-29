@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <format>
 #include <iterator>
 #include <string>
 #include <sstream>
@@ -97,7 +99,6 @@ namespace wtcli
         }
         return result;
     }
-
 
     // Build the standard JSON envelope the COM server expects for an
     // `agent_event`. The caller provides the event name, an optional JSON
@@ -188,6 +189,7 @@ namespace wtcli
         "message",
         "notification_type",
         "notificationType",
+        "timestamp",
         "reason",
         "error",
         "pane_owner",
@@ -242,6 +244,10 @@ namespace wtcli
             }
             else if (member.isBool() &&
                      (std::string_view{ key } == "pane_owner" || std::string_view{ key } == "running"))
+            {
+                reduced[key] = member;
+            }
+            else if (member.isUInt64() && std::string_view{ key } == "timestamp")
             {
                 reduced[key] = member;
             }
@@ -563,6 +569,66 @@ namespace wtcli
 
         outEvt = std::move(event);
         return true;
+    }
+
+    enum class ListenEventFormatResult
+    {
+        Unchanged,
+        Normalized,
+        InvalidJson,
+        InvalidTimestamp,
+    };
+
+    // Only JSON listen output normalizes hook timestamps; broadcasts stay raw.
+    // formattedJson is populated only when the result is Normalized.
+    inline ListenEventFormatResult FormatListenEvent(
+        const std::string& eventJson,
+        const bool jsonMode,
+        std::string& formattedJson)
+    {
+        if (!jsonMode)
+        {
+            return ListenEventFormatResult::Unchanged;
+        }
+
+        Json::Value event;
+        Json::CharReaderBuilder reader;
+        std::string errors;
+        std::istringstream stream{ eventJson };
+        if (!Json::parseFromStream(reader, stream, &event, &errors))
+        {
+            return ListenEventFormatResult::InvalidJson;
+        }
+
+        const auto& envelope = event;
+        if (!envelope.isObject() || envelope["method"] != "agent_event" ||
+            !envelope["params"].isObject() || !envelope["params"]["payload"].isObject())
+        {
+            return ListenEventFormatResult::Unchanged;
+        }
+        const auto& timestamp = envelope["params"]["payload"]["timestamp"];
+        if (timestamp.isNull() || timestamp.isString())
+        {
+            return ListenEventFormatResult::Unchanged;
+        }
+        if (!timestamp.isInt64())
+        {
+            return ListenEventFormatResult::InvalidTimestamp;
+        }
+
+        using namespace std::chrono;
+        constexpr auto firstMillisecond = duration_cast<milliseconds>(sys_days{ year{ 0 } / January / 1 }.time_since_epoch()).count();
+        constexpr auto endMillisecond = duration_cast<milliseconds>(sys_days{ year{ 10000 } / January / 1 }.time_since_epoch()).count();
+        const auto value = timestamp.asInt64();
+        if (value < firstMillisecond || value >= endMillisecond)
+        {
+            return ListenEventFormatResult::InvalidTimestamp;
+        }
+        event["params"]["payload"]["timestamp"] = std::format("{:%FT%TZ}", sys_time<milliseconds>{ milliseconds{ value } });
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        formattedJson = Json::writeString(writer, event);
+        return ListenEventFormatResult::Normalized;
     }
 
     // Check whether an event JSON string passes the session_id and event type

@@ -1,45 +1,111 @@
 use anyhow::{Context, Result};
 
-pub(crate) async fn run_install_acp(agent_id: &str, wsl_distro: Option<&str>) -> Result<()> {
+pub(crate) async fn run_install_acp(
+    agent_id: &str,
+    wsl_distro: Option<&str>,
+    retry_startup: bool,
+) -> Result<()> {
+    let provider = crate::agent_lifecycle::providers::lookup(agent_id)
+        .context("unknown ACP provider")?;
     anyhow::ensure!(
-        agent_id.eq_ignore_ascii_case(crate::agent_registry::ANTIGRAVITY_AGENT_ID),
+        provider.installer_kind()
+            == crate::agent_lifecycle::providers::InstallerKind::StandaloneAcp,
         "this agent has no separately installable ACP dependency"
     );
-    let server = match wsl_distro {
-        Some(distro) => crate::antigravity_acp::ensure_wsl(distro).await?,
-        None => crate::antigravity_acp::ensure_host()
-            .await?
-            .to_string_lossy()
-            .into_owned(),
+    let source = match wsl_distro {
+        Some(distro) => crate::agent_source::AgentSource::Wsl {
+            distro: distro.to_string(),
+        },
+        None => crate::agent_source::AgentSource::Host,
     };
-    println!(
-        "{}",
-        serde_json::json!({
-            "agent_id": crate::agent_registry::ANTIGRAVITY_AGENT_ID,
-            "server": server,
-            "dependency_present": true
-        })
-    );
-    Ok(())
+    let command =
+        crate::agent_registry::build_acp_command_for_source(provider.family_id(), None, &source);
+    run_verify_acp(&command, provider.family_id(), wsl_distro, retry_startup).await
+}
+
+pub(crate) async fn run_verify_acp(
+    command: &str,
+    agent_id: &str,
+    wsl_distro: Option<&str>,
+    retry_startup: bool,
+) -> Result<()> {
+    let source = match wsl_distro {
+        Some(distro) => crate::agent_source::AgentSource::Wsl {
+            distro: distro.to_string(),
+        },
+        None => crate::agent_source::AgentSource::Host,
+    };
+    let local = tokio::task::LocalSet::new();
+    let result = local
+        .run_until(crate::agent_lifecycle::verification::verify(
+            command,
+            agent_id,
+            &source,
+            retry_startup,
+        ))
+        .await;
+    match result {
+        Ok(verified) => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "agent_id": agent_id,
+                    "server": verified.executable,
+                    "dependency_present": true,
+                    "startup_verified": true,
+                    "agent_name": verified.name,
+                    "agent_version": verified.version
+                })
+            );
+            Ok(())
+        }
+        Err(failure) => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "agent_id": agent_id,
+                    "dependency_present": failure.dependency_present,
+                    "startup_verified": failure.startup_verified,
+                    "startup_failure": failure
+                })
+            );
+            Err(failure.into())
+        }
+    }
 }
 
 /// Drive [`crate::protocol::acp::probe::probe_models`] on a tokio `LocalSet`
 /// (the ACP client connection is `!Send`), serialize the result to
 /// stdout, force-exit. See exit notes below.
-pub(crate) async fn run_models(agent: &str, agent_id: Option<&str>) -> Result<()> {
+pub(crate) async fn run_models(
+    agent: &str,
+    agent_id: Option<&str>,
+    retry_startup: bool,
+) -> Result<()> {
     // Logging is initialized in `main()` (file, not stderr — the Settings UI
     // captures our stdout for the JSON payload and stderr would pollute it).
     tracing::info!("probe-models start: agent={}", agent);
 
     let local = tokio::task::LocalSet::new();
     let result = match local
-        .run_until(crate::protocol::acp::probe::probe_models_for_agent(
-            agent, agent_id,
+        .run_until(crate::protocol::acp::probe::probe_models_with_intent(
+            agent,
+            agent_id,
+            retry_startup,
         ))
         .await
     {
         Ok(r) => r,
         Err(e) => {
+            let failure = crate::agent_lifecycle::StartupFailure::from_error(&e, 0, None, false);
+            println!(
+                "{}",
+                serde_json::json!({
+                    "dependency_present": failure.dependency_present,
+                    "startup_verified": failure.startup_verified,
+                    "startup_failure": failure
+                })
+            );
             tracing::error!("probe-models failed: {:#}", e);
             eprintln!("probe-models failed: {:#}", e);
             let _ = std::io::Write::flush(&mut std::io::stderr());
@@ -57,14 +123,8 @@ pub(crate) async fn run_models(agent: &str, agent_id: Option<&str>) -> Result<()
     let payload = serde_json::to_string(&result).context("serialize probe result")?;
     println!("{}", payload);
 
-    // Force-exit before the tokio runtime tries to drop. The agent we
-    // spawned is e.g. `cmd /c npx ...`; kill_on_drop kills cmd but
-    // the npx → node grandchildren survive as orphans. Tokio's IOCP
-    // reactor stays blocked on handles those orphans inherited and
-    // the runtime drop hangs for ~35s. Runtime cleanup is meaningless
-    // for a one-shot CLI — the caller is blocked on our process
-    // handle, exit now. Orphan grandchildren self-exit shortly after
-    // when they notice their pipes are broken.
+    // Process-tree cleanup is confirmed by the probe before reaching this
+    // one-shot exit. Flush output and logs before skipping runtime teardown.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     // Flush the file appender — process::exit skips the guard drop.
     crate::logging::shutdown_flush();
@@ -171,12 +231,15 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
 /// (the ACP client connection is `!Send`), print the result as pretty
 /// JSON to stdout, force-exit. Diagnostic-only: evaluates whether an
 /// agent CLI answers ACP `session/list` and what it returns.
-pub(crate) async fn run_sessions(agent: &str) -> Result<()> {
+pub(crate) async fn run_sessions(agent: &str, retry_startup: bool) -> Result<()> {
     tracing::info!("probe-sessions start: agent={}", agent);
 
     let local = tokio::task::LocalSet::new();
     let result = match local
-        .run_until(crate::protocol::acp::probe::probe_sessions(agent))
+        .run_until(crate::protocol::acp::probe::probe_sessions(
+            agent,
+            retry_startup,
+        ))
         .await
     {
         Ok(r) => r,
@@ -197,8 +260,7 @@ pub(crate) async fn run_sessions(agent: &str) -> Result<()> {
     let payload = serde_json::to_string_pretty(&result).context("serialize session probe")?;
     println!("{payload}");
 
-    // Same force-exit rationale as run_models (orphan npx/node
-    // grandchildren keep the tokio reactor blocked on drop).
+    // The probe has already confirmed process-tree cleanup.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     crate::logging::shutdown_flush();
     std::process::exit(0);
@@ -207,12 +269,10 @@ pub(crate) async fn run_sessions(agent: &str) -> Result<()> {
 /// Diagnostic host-history smoke test: run one ACP CLI, fetch
 /// `session/list`, apply the production Class-A filter, and print the
 /// rows in the same compact shape used by the WSL probe.
-pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
+pub(crate) async fn run_host_sessions(agent: &str, retry_startup: bool) -> Result<()> {
     use crate::agent_sessions::{CliSource, SessionLocation};
-    use std::time::Duration;
 
     tracing::info!("probe-host-sessions start: agent={}", agent);
-    crate::antigravity_acp::prepare(agent, None, &crate::agent_source::AgentSource::Host).await?;
 
     // Resolve the CliSource from the agent command so the probe labels and
     // classifies rows the way production seeding does (which uses the real
@@ -224,23 +284,9 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(
-                agent,
-                None,
-                None,
-                crate::protocol::acp::spawn::ChildEnvironmentPolicy::ApplySharedProvider,
-            )?;
-            let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
-            let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
-            let result = crate::protocol::acp::session_list::fetch_session_list(
-                &mut spawned.child,
-                &label,
-                init_timeout,
-                Duration::from_secs(10),
-            )
-            .await;
-            let _ = spawned.child.start_kill();
-            let (_init, list_result) = result?;
+            let (_init, list_result) =
+                crate::protocol::acp::session_list::fetch_session_list(agent, retry_startup)
+                    .await?;
             // session/list unsupported (e.g. `Method not found`) is the production
             // "empty history, no fallback" case — surface it as `[]` + exit 0, not a
             // diagnostic failure. A genuine spawn/init error still propagates above.
@@ -260,8 +306,7 @@ pub(crate) async fn run_host_sessions(agent: &str) -> Result<()> {
     {
         Ok(r) => r,
         Err(e) => {
-            // Same force-exit rationale as run_sessions: orphan npx/node
-            // grandchildren keep the tokio reactor blocked ~35s on drop.
+            // Shared startup has already confirmed cleanup or persisted quarantine.
             tracing::error!("probe-host-sessions failed: {:#}", e);
             eprintln!("probe-host-sessions failed: {:#}", e);
             let _ = std::io::Write::flush(&mut std::io::stderr());

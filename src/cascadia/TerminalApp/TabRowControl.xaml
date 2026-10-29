@@ -179,6 +179,15 @@
 
     </mux:TabView>
 
+    <Canvas FlowDirection="LeftToRight"
+            IsHitTestVisible="False">
+        <!--  WinUI 2's BottomRight tail is 20 DIPs from the visible box edge.  -->
+        <Border x:Name="HorizontalTabsIntroductionTarget"
+                Width="40"
+                Height="1"
+                AutomationProperties.AccessibilityView="Raw" />
+    </Canvas>
+
     <!--
         PROTOTYPE — visibility flipped by TabRowControl.IsVerticalLayout. The
         complete vertical chrome uses the titlebar when available, with

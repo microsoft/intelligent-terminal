@@ -19,6 +19,7 @@ namespace
     constexpr auto WtaSessionCloseGracePeriod{ std::chrono::seconds{ 16 } };
     constexpr auto WtaMasterExitTimeout{ std::chrono::seconds{ 3 } };
     constexpr auto WtaMasterForcedExitTimeout{ std::chrono::seconds{ 5 } };
+    constexpr DWORD WtaMasterShutdownTimeoutMs{ 3'000 };
 }
 
 namespace winrt::TerminalApp::implementation::details
@@ -421,14 +422,55 @@ namespace winrt::TerminalApp::implementation::details
         return true;
     }
 
-    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid) noexcept
+    std::optional<std::wstring> BuildMasterEnvironmentBlock(
+        const std::span<const std::pair<std::wstring, std::wstring>> overrides,
+        const uint64_t generation,
+        const std::wstring_view shutdownEvent) noexcept
+    {
+        if (generation == 0)
+        {
+            return std::nullopt;
+        }
+        try
+        {
+            std::vector<std::pair<std::wstring, std::wstring>> environment{ overrides.begin(), overrides.end() };
+            std::erase_if(environment, [](const auto& entry) {
+                return _wcsicmp(entry.first.c_str(), L"WTA_MASTER_GENERATION") == 0 ||
+                       _wcsicmp(entry.first.c_str(), L"WTA_MASTER_SHUTDOWN_EVENT") == 0;
+            });
+            environment.emplace_back(L"WTA_MASTER_GENERATION", std::to_wstring(generation));
+            environment.emplace_back(L"WTA_MASTER_SHUTDOWN_EVENT", shutdownEvent);
+            return BuildEnvironmentBlock(environment);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return std::nullopt;
+        }
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Reserve() noexcept
     {
         do
         {
             ++_nextGeneration;
         } while (_nextGeneration == 0);
 
-        _currentGeneration = _nextGeneration;
+        return _nextGeneration;
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid) noexcept
+    {
+        return Register(pid, Reserve());
+    }
+
+    ProcessWaitGenerationTracker::Generation ProcessWaitGenerationTracker::Register(const DWORD pid, const Generation generation) noexcept
+    {
+        if (generation == 0 || generation != _nextGeneration)
+        {
+            return 0;
+        }
+        _currentGeneration = generation;
         _pid = pid;
         return _currentGeneration;
     }
@@ -468,7 +510,7 @@ namespace winrt::TerminalApp::implementation::details
 
     bool UnexpectedExitRecoveryPolicy::ShouldRespawn(
         const Generation generation,
-        const size_t activeRefCount,
+        const bool serviceRequested,
         const bool spawnSuppressed,
         const bool hasCachedArgs) noexcept
     {
@@ -481,7 +523,7 @@ namespace winrt::TerminalApp::implementation::details
         // The replacement is intentionally not armed, so another unexpected
         // exit cannot create an unbounded respawn loop.
         Retire();
-        return activeRefCount > 0 && !spawnSuppressed && hasCachedArgs;
+        return serviceRequested && !spawnSuppressed && hasCachedArgs;
     }
 }
 
@@ -641,6 +683,7 @@ namespace winrt::TerminalApp::implementation
         _job.reset();
         _process.reset();
         _pid = 0;
+        _masterGeneration = 0;
     }
 
     bool SharedWta::IsRunning() const noexcept
@@ -667,29 +710,96 @@ namespace winrt::TerminalApp::implementation
         return _masterPipeName;
     }
 
+    uint64_t SharedWta::MasterGeneration() const noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        return _masterGeneration;
+    }
+
+    bool SharedWta::CanStart() const noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        return !_process.is_valid() && !_serviceRequested && _serviceEnabled && !_shuttingDown && !_spawnSuppressed;
+    }
+
+    bool SharedWta::EnsureStarted(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        std::lock_guard lock{ _mtx };
+        return _EnsureStartedLocked(wtaPath, extraArgs, environment);
+    }
+
+    bool SharedWta::_EnsureStartedLocked(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment,
+        const bool explicitRetry)
+    {
+        if (wtaPath.empty() || !_serviceEnabled || _shuttingDown || _spawnSuppressed)
+        {
+            return false;
+        }
+        // Status polling must not turn a bounded crash recovery into a loop.
+        // A new explicit pane request or /restart may retry an exhausted service.
+        if (!_process.is_valid() &&
+            ((_serviceRequested && !explicitRetry) || !_SpawnLocked(wtaPath, extraArgs, environment)))
+        {
+            return false;
+        }
+        _serviceRequested = true;
+        return true;
+    }
+
+    void SharedWta::SetEnabled(const bool enabled) noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        _serviceEnabled = enabled;
+        if (!enabled)
+        {
+            _serviceRequested = false;
+            _StopLocked();
+        }
+    }
+
+    void SharedWta::Shutdown() noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        _shuttingDown = true;
+        _serviceRequested = false;
+        _StopLocked();
+    }
+
+    void SharedWta::_StopLocked() noexcept
+    try
+    {
+        _unexpectedExitRecovery.Retire();
+        if (_process && _shutdownEvent)
+        {
+            LOG_IF_WIN32_BOOL_FALSE(SetEvent(_shutdownEvent.get()));
+            const auto result = WaitForSingleObject(_process.get(), WtaMasterShutdownTimeoutMs);
+            if (result != WAIT_OBJECT_0)
+            {
+                LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "WTA service cleanup did not complete before shutdown deadline");
+            }
+        }
+        _CleanupLocked();
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        _job.reset();
+    }
+
     SharedWtaLease SharedWta::AcquirePane(const std::wstring_view wtaPath,
                                           std::span<const std::wstring> extraArgs,
                                           std::span<const std::pair<std::wstring, std::wstring>> environment)
     {
-        if (wtaPath.empty())
-        {
-            return {};
-        }
-
         std::lock_guard lock{ _mtx };
-        if (_spawnSuppressed)
+        if (!_EnsureStartedLocked(wtaPath, extraArgs, environment, true))
         {
             return {};
-        }
-
-        // A new pane request can start a fresh master after the bounded
-        // automatic recovery attempt is exhausted.
-        if (!_process.is_valid())
-        {
-            if (!_SpawnLocked(wtaPath, extraArgs, environment))
-            {
-                return {};
-            }
         }
         return _AcquireLeaseLocked();
     }
@@ -697,8 +807,7 @@ namespace winrt::TerminalApp::implementation
     SharedWtaLease SharedWta::AcquireKeepRunningLease()
     {
         std::lock_guard lock{ _mtx };
-        // A headless shell needs hook tracking, but must not start an unused master.
-        return _refCount ? _AcquireLeaseLocked() : SharedWtaLease{};
+        return _serviceRequested && _serviceEnabled && !_shuttingDown ? _AcquireLeaseLocked() : SharedWtaLease{};
     }
 
     SharedWtaLease SharedWta::_AcquireLeaseLocked() noexcept
@@ -717,10 +826,7 @@ namespace winrt::TerminalApp::implementation
             {
                 --_activeRefCount;
             }
-            if (--_refCount == 0 && _process.is_valid())
-            {
-                _CleanupLocked();
-            }
+            --_refCount;
         }
         CATCH_LOG()
     }
@@ -734,7 +840,7 @@ namespace winrt::TerminalApp::implementation
     bool SharedWta::Restart()
     {
         std::lock_guard lock{ _mtx };
-        if (_spawnSuppressed)
+        if (!_serviceEnabled || _shuttingDown || _spawnSuppressed)
         {
             return false;
         }
@@ -770,18 +876,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         std::lock_guard lock{ _mtx };
-        if (_spawnSuppressed)
+        if (!_serviceEnabled || _shuttingDown || _spawnSuppressed)
         {
             return false;
         }
 
-        // Nothing live to replace (e.g. settings changed while no pane
-        // was open in any window). The next AcquirePane will _SpawnLocked
-        // with freshly-built args anyway, so we don't need to touch the
-        // cache here.
         if (!_process.is_valid())
         {
-            return true;
+            return !_serviceRequested || _SpawnLocked(wtaPath, extraArgs, environment);
         }
 
         // Settings reload is delivered to every window, and a page may defer
@@ -926,10 +1028,9 @@ namespace winrt::TerminalApp::implementation
         // Refresh the current process's PATH from the Windows registry
         // so the master (which inherits our env) sees PATH entries added
         // after Terminal launched (e.g. WinGet\Links after FRE installs
-        // copilot). With no overrides, lpEnvironment=nullptr inherits it
-        // directly; with overrides, BuildEnvironmentBlock clones it first.
-        // Both preserve process-only variables (WT_COM_CLSID, etc.) that
-        // regenerate() would drop.
+        // copilot). BuildMasterEnvironmentBlock preserves process-only
+        // variables (WT_COM_CLSID, etc.) while adding the owned receiver
+        // generation without changing Terminal's environment.
         try
         {
             ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
@@ -939,7 +1040,16 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
-        auto environmentBlock = details::BuildEnvironmentBlock(environment);
+        const auto receiverGeneration = _waitGeneration.Reserve();
+        const auto shutdownEventName = L"Local\\wta-master-shutdown-" +
+                                       _masterPipeName.substr(_masterPipeName.find_last_of(L'\\') + 1) +
+                                       L"-" + std::to_wstring(receiverGeneration);
+        wil::unique_handle shutdownEvent{ CreateEventW(nullptr, TRUE, FALSE, shutdownEventName.c_str()) };
+        if (!shutdownEvent || GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            return false;
+        }
+        auto environmentBlock = details::BuildMasterEnvironmentBlock(environment, receiverGeneration, shutdownEventName);
         if (!environmentBlock)
         {
             return false;
@@ -966,7 +1076,7 @@ namespace winrt::TerminalApp::implementation
         const auto pid = pi.dwProcessId;
 
         // Containment: a Job Object with KILL_ON_JOB_CLOSE binds
-        // wta's lifetime to ours. When the last pane releases (or
+        // wta's lifetime to ours. When the service stops (or
         // Terminal exits and Windows closes the final handle), the job handle
         // drops and the OS terminates wta + every descendant it
         // spawned. Any failure here MUST TerminateProcess to avoid
@@ -1004,7 +1114,7 @@ namespace winrt::TerminalApp::implementation
         // replacement wait, and the integer context has no lifetime to
         // manage while non-blocking unregister drains queued callbacks.
         HANDLE waitHandle = nullptr;
-        const auto waitGeneration = _waitGeneration.Register(pid);
+        const auto waitGeneration = _waitGeneration.Register(pid, receiverGeneration);
         if (!RegisterWaitForSingleObject(
                 &waitHandle,
                 process.get(),
@@ -1031,7 +1141,10 @@ namespace winrt::TerminalApp::implementation
 
         _process = std::move(process);
         _job = std::move(job);
+        _shutdownEvent = std::move(shutdownEvent);
+        _serviceRequested = true;
         _pid = pid;
+        _masterGeneration = receiverGeneration;
         _waitHandle = waitHandle;
         if (waitHandle && armUnexpectedExitRecovery)
         {
@@ -1063,6 +1176,7 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("releasing wta-master pid=" + std::to_string(_pid) + " (deliberate teardown via KILL_ON_JOB_CLOSE)");
         auto process = std::move(_process);
         _job.reset();
+        _shutdownEvent.reset();
         if (_waitHandle)
         {
             // Invalidate before the non-blocking unregister. A queued
@@ -1079,6 +1193,7 @@ namespace winrt::TerminalApp::implementation
             _unexpectedExitRecovery.Retire();
         }
         _pid = 0;
+        _masterGeneration = 0;
         return process;
     }
 
@@ -1093,8 +1208,8 @@ namespace winrt::TerminalApp::implementation
         // Runs on a Win32 thread-pool thread. wta has exited (crash,
         // OOM, manual kill). Retained helpers reconnect to the stable pipe,
         // so give the current explicitly-spawned generation one automatic
-        // replacement while active pane leases remain. Cleanup-only leases
-        // retain the old master for session close but must not respawn it.
+        // replacement while the process-owned service is requested, even
+        // when there are no assistant panes or only retiring leases.
         std::lock_guard lock{ _mtx };
 
         // Claiming also retires the current generation. A callback queued
@@ -1121,6 +1236,7 @@ namespace winrt::TerminalApp::implementation
         // _process first, so the validity check above bails).
         _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(*observedPid) + " (crash/OOM/external kill — observed by wait callback)");
         _job.reset();
+        _shutdownEvent.reset();
         _process.reset();
         if (_waitHandle)
         {
@@ -1130,11 +1246,12 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+        _masterGeneration = 0;
 
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,
-                _activeRefCount,
-                _spawnSuppressed,
+                _serviceRequested,
+                _spawnSuppressed || !_serviceEnabled || _shuttingDown,
                 !_cachedWtaPath.empty()))
         {
             const std::wstring wtaPath{ _cachedWtaPath };

@@ -2,7 +2,7 @@ name: Performance Review
 run-name: 'Performance Review for PR #${{ github.event.pull_request.number }}'
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
@@ -17,17 +17,17 @@ concurrency:
 
 jobs:
   performance-review:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 175
     outputs:
       worker_run_id: ${{ steps.worker.outputs.run_id }}
       comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
     steps:
-      - name: Checkout trusted base
+      - name: Checkout trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -74,16 +74,12 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
         with:
           script: |
             const pr = context.payload.pull_request;
             const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
             if (!/^[1-9][0-9]*$/.test(runAttempt ?? "")) throw new Error("Missing valid controller run attempt.");
-            const sameRepo = process.env.SAME_REPO === "true";
-            const worker = sameRepo
-              ? "ghaw-pr-performance.lock.yml"
-              : "ghaw-pr-performance-fork-guidance.lock.yml";
+            const worker = "ghaw-pr-performance.lock.yml";
             const dispatchId =
               `ghaw-pr-performance-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${runAttempt}`;
             const inputs = {
@@ -96,8 +92,8 @@ jobs:
               head_ref: process.env.HEAD_REF,
               base_ref: process.env.BASE_REF,
               head_repo: process.env.HEAD_REPO,
-              same_repo: String(sameRepo),
-              aw_context: JSON.stringify(sameRepo ? {
+              same_repo: "true",
+              aw_context: JSON.stringify({
                 run_id: String(context.runId),
                 workflow_id: "ghaw-pr-performance-controller",
                 item_type: "pull_request",
@@ -107,12 +103,6 @@ jobs:
                 head_sha: process.env.EXPECTED_HEAD_SHA,
                 base_sha: process.env.EXPECTED_BASE_SHA,
                 comparison_base_sha: process.env.COMPARISON_BASE_SHA
-              } : {
-                run_id: String(context.runId),
-                workflow_id: "ghaw-pr-performance-controller",
-                event_type: "workflow_dispatch",
-                source_pr_number: pr.number,
-                head_sha: process.env.EXPECTED_HEAD_SHA
               })
             };
             const startedAt = Date.now() - 5000;
@@ -234,7 +224,7 @@ jobs:
                   "--dir", directory], {
                     env: process.env, timeout: 30000, stdio: "pipe"
                   });
-                reviewSummary = readReviewSummary(directory);
+                reviewSummary = readReviewSummary(path.join(directory, ".performance-summary.md"));
                 const recordedHead = fs.readFileSync(path.join(directory, "review-head.txt"), "utf8").trim();
                 if (!/^[0-9a-f]{40}$/.test(recordedHead)) throw new Error("Worker report head is malformed.");
                 if (process.env.RUN_OUTCOME === "success") head = recordedHead;

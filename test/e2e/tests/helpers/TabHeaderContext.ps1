@@ -296,6 +296,7 @@ function Invoke-TestTabHeaderContextMenu {
         $point = [Windows.Point]::new([int]($bounds.X + $bounds.Width / 2), [int]($bounds.Y + $bounds.Height / 2))
         $geometry = {
             param($h)
+            $textBounds = $h.Text.Current.BoundingRectangle
             $parts = @($h.Row.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
                 Where-Object { $_.Current.ProcessId -eq $App.Pid -and -not $_.Current.IsOffscreen -and
                     $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0 })
@@ -303,17 +304,21 @@ function Invoke-TestTabHeaderContextMenu {
             if ($h.Vertical) {
                 $anchors = @($parts | Where-Object { $_.Current.AutomationId -eq 'TabGroupToggleButton' })
                 if (-not $anchors.Count) { $anchors = @($parts | Where-Object { $_.Current.AutomationId -eq 'TabCloseButton' }) }
+                if (-not $anchors.Count) { $anchors = @($parts | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Text -and
+                    $_.Current.Name -eq $h.Text.Current.Name
+                }) }
                 if ($anchors.Count -ne 1) { throw 'Canonical top header band is ambiguous or unavailable.' }
                 $anchor = $anchors[0].Current.BoundingRectangle
-                $band = [Windows.Rect]::new($band.Left, $anchor.Top, $band.Width, $anchor.Height)
+                $band = [Windows.Rect]::new($band.Left, $anchor.Top, $band.Width, [Math]::Max(28, $anchor.Height))
             }
             $actions = @($parts | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button } |
                 ForEach-Object { $_.Current.BoundingRectangle })
             @{
                 FullyVisible = -not $h.Text.Current.IsOffscreen -and -not $h.Row.Current.IsOffscreen -and
-                    $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
-                    $bounds.Contains($point) -and $h.Container.Current.BoundingRectangle.Contains($bounds) -and
-                    $h.Row.Current.BoundingRectangle.Contains($bounds)
+                    $textBounds.Width -gt 0 -and $textBounds.Height -gt 0 -and
+                    $textBounds.Contains($point) -and $h.Container.Current.BoundingRectangle.Contains($textBounds) -and
+                    $h.Row.Current.BoundingRectangle.Contains($textBounds)
                 InHeaderBand = $band.Contains($point)
                 OutsideActions = @($actions | Where-Object { $_.Contains($point) }).Count -eq 0
                 Band = $band
@@ -439,6 +444,66 @@ function Invoke-TestTabHeaderContextMenu {
             throw 'Original cursor capture or header pointer placement failed.'
         }
         $cursorMoved = $true
+        $hoverState = @{ Header = $header; First = (& $geometry $header); Since = Get-Date }
+        $hoverSecond = Wait-Until -TimeoutSec 3 -IntervalSec 0.05 -Because 'canonical header hover geometry to settle' -Condition {
+            $candidate = & $resolve
+            $next = & $geometry $candidate
+            if ($next.Fingerprint -cne $hoverState.First.Fingerprint) {
+                $hoverState.First = $next
+                $hoverState.Since = Get-Date
+                return $null
+            }
+            if (((Get-Date) - $hoverState.Since).TotalMilliseconds -lt 150) { return $null }
+            $hoverState.Header = $candidate
+            $next
+        }
+        $header = $hoverState.Header
+        if (($header.Text.GetRuntimeId() -join ',') -cne ($receipt.header_runtime_id -join ',') -or
+            ($header.Row.GetRuntimeId() -join ',') -cne ($receipt.row_runtime_id -join ',')) {
+            throw 'Canonical tab header identity changed after pointer placement.'
+        }
+        $hoverHit = [Windows.Automation.AutomationElement]::FromPoint($point)
+        $hit = $hoverHit
+        $hoverOwnedHit = $false
+        $hoverForbiddenHit = $hoverHit.Current.ProcessId -ne $App.Pid
+        while ($hit) {
+            if ($hit.Current.ProcessId -ne $App.Pid) { break }
+            if ($hit.Current.AutomationId -eq 'PaneActivateButton' -or
+                $hit.Current.ControlType -eq [Windows.Automation.ControlType]::Button) { $hoverForbiddenHit = $true; break }
+            if ([Windows.Automation.Automation]::Compare($hit, $header.Row)) { $hoverOwnedHit = $true; break }
+            $hit = $walker.GetParent($hit)
+        }
+        $hoverOpaqueRoot = $hoverHit.Current.ControlType -eq [Windows.Automation.ControlType]::Window -and
+            $hoverHit.Current.ClassName -eq 'CASCADIA_HOSTING_WINDOW_CLASS' -and
+            [Windows.Automation.Automation]::Compare($hoverHit, $header.Window)
+        $hoverNativeHit = [ItE2E.ItWtWin32Input]::WindowFromPoint($nativePoint)
+        $hoverGuard = $guard.Clone()
+        $hoverGuard.FullyVisible = $hoverState.First.FullyVisible -and $hoverSecond.FullyVisible
+        $hoverGuard.InHeaderBand = $hoverState.First.InHeaderBand -and $hoverSecond.InHeaderBand
+        $hoverGuard.OutsideActions = $hoverState.First.OutsideActions -and $hoverSecond.OutsideActions
+        $hoverGuard.Stable = $hoverState.First.Fingerprint -ceq $hoverSecond.Fingerprint
+        $hoverGuard.LeaseOwned = & $leaseOwned
+        $hoverGuard.RunLease = $runLease -and $env:ITE2E_RUN_TOKEN -ceq $runToken
+        $hoverGuard.NativeOwned = [ItE2E.ItWtWin32Input]::GetAncestor($hoverNativeHit, 2) -eq $root -and
+            [ItE2E.ItWtWin32Input]::GetWindowProcessId($hoverNativeHit) -eq $App.Pid
+        $hoverGuard.ForegroundOwned = [ItE2E.ItWtWin32Input]::GetForegroundWindow() -eq $root -and
+            [ItE2E.ItWtWin32Input]::GetAncestor($root, 2) -eq $root -and
+            [ItE2E.ItWtWin32Input]::GetWindowProcessId($root) -eq $App.Pid
+        $hoverGuard.NoKnownOverlay = & $overlayClear
+        $hoverGuard.DeepHit = $hoverOwnedHit
+        $hoverGuard.OpaqueRoot = $hoverOpaqueRoot
+        $hoverGuard.ForbiddenHit = $hoverForbiddenHit
+        Assert-TestTabHeaderPointSafety $hoverGuard
+        $receipt.hover_baseline = @{
+            header_bounds = $header.Text.Current.BoundingRectangle.ToString()
+            header_band = $hoverSecond.Band.ToString()
+            toggle_bounds = $hoverSecond.ToggleBounds
+            viewport_bounds = $header.Container.Current.BoundingRectangle.ToString()
+            independent_guards = $hoverGuard
+        }
+        $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath
+        $second = $hoverSecond
+        $pointHit = $hoverHit
         $header = & $resolve
         $final = & $geometry $header
         $finalOverlayClear = $null
@@ -461,10 +526,10 @@ function Invoke-TestTabHeaderContextMenu {
             $finalForeground = [ItE2E.ItWtWin32Input]::GetForegroundWindow().ToInt64()
             $receipt.final_rejection = @{
                 false_clauses = @(Get-TestTabHeaderFinalReasons $facts); clause_facts = $facts
-                pre_title_bounds = $bounds.ToString(); final_title_bounds = $header.Text.Current.BoundingRectangle.ToString()
+                pre_title_bounds = $receipt.hover_baseline.header_bounds; final_title_bounds = $header.Text.Current.BoundingRectangle.ToString()
                 pre_header_band = $second.Band.ToString(); final_header_band = $final.Band.ToString()
                 pre_toggle_bounds = $second.ToggleBounds; final_toggle_bounds = $final.ToggleBounds
-                pre_viewport_bounds = $receipt.viewport_bounds
+                pre_viewport_bounds = $receipt.hover_baseline.viewport_bounds
                 final_viewport_bounds = $header.Container.Current.BoundingRectangle.ToString()
                 matched_known_overlays = if ($null -ne $finalOverlayClear) { @($overlayMatches.ToArray()) } else { @() }
                 native_root = $finalNativeRoot; native_pid = $finalNativePid; foreground = $finalForeground

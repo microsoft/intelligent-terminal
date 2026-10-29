@@ -23,15 +23,17 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $binary.Hash | Should -Not -BeNullOrEmpty -Because 'pin the exact feature-source Dev payload before running'
             (Get-FileHash -LiteralPath $binary.Path).Hash | Should -Be $binary.Hash
         }
-        $script:pluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks.js'
-        $sourcePlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks.js'
-        (Get-FileHash -LiteralPath $script:pluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourcePlugin).Hash
-        $script:tuiPluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
-        $sourceTuiPlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks\tui.js'
-        (Get-FileHash -LiteralPath $script:tuiPluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourceTuiPlugin).Hash
-        $script:rpcPluginPath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode\wt-agent-hooks\rpc.js'
-        $sourceRpcPlugin = Join-Path $PSScriptRoot '..\..\..\tools\wta\wt-agent-hooks\opencode\wt-agent-hooks\rpc.js'
-        (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash | Should -Be (Get-FileHash -LiteralPath $sourceRpcPlugin).Hash
+        $script:bundlePath = Join-Path $selected.InstallLocation 'wt-agent-hooks\opencode'
+        foreach ($relative in @(
+            'v1\wt-agent-hooks.js', 'v2\wt-agent-hooks.js', 'v2\server.js',
+            'v2\rpc.js', 'v2\tui.js', 'v2\package.json', 'shared\bridge.js', 'plugin.json'
+        )) {
+            $source = Join-Path $PSScriptRoot "..\..\..\tools\wta\wt-agent-hooks\opencode\$relative"
+            (Get-FileHash -LiteralPath (Join-Path $script:bundlePath $relative)).Hash |
+                Should -Be (Get-FileHash -LiteralPath $source).Hash
+        }
+        $script:tuiPluginPath = Join-Path $script:bundlePath 'v2\tui.js'
+        $script:rpcPluginPath = Join-Path $script:bundlePath 'v2\rpc.js'
         $mock = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $customCommand = '"' + (Get-Command pwsh).Source + '" -NoProfile -File "' + $mock + '" -LogPath "' + (Join-Path $TestDrive 'acp.jsonl') + '"'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -41,23 +43,29 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             tabMode = 'horizontal'
         }
         $script:pane = (Get-ActivePane -App $script:app).session_id
-        $pipeFile = Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
         $script:pipe = Wait-Until -TimeoutSec 45 -Because 'the owned package master pipe' -Condition {
-            if (-not (Test-Path -LiteralPath $pipeFile)) { return $null }
-            $candidate = (Get-Content -LiteralPath $pipeFile -Raw).Trim()
-            if ([string]::IsNullOrWhiteSpace($candidate)) { return $null }
-            $masters = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($script:app.Pid) AND Name='wta.exe'" |
-                Where-Object {
-                    $_.ExecutablePath -eq $script:app.WtaPath -and $_.CommandLine -match '\s--master\s' -and
-                    $_.CommandLine.Contains($candidate)
-                })
-            if ($masters.Count -ne 1) { return $null }
+            $candidate = Get-WtaMasterPipe -App $script:app -TimeoutSec 0
             $probe = Invoke-Wta -App $script:app -Arguments @(
                 'sessions', 'list', '--master', $candidate, '--json', '--include-status'
             ) -Raw
             if ($probe.ExitCode -eq 0) { $candidate }
         }
         $script:listener = Start-WtEventListener -App $script:app -WaitForReady -ExistingOnly
+
+        function Assert-DisposableHookFixture($App) {
+            $message = 'OpenCode hook fixtures require a harness-owned disposable Terminal instance; fixture rows remain resumable until its master exits.'
+            if (-not $App -or -not $App.PSObject.Properties['Launched'] -or -not $App.Launched -or
+                -not $App.PSObject.Properties['OwnedProcess'] -or -not $App.OwnedProcess) {
+                throw $message
+            }
+            $owned = $App.OwnedProcess
+            if ($owned.HasExited -or $owned.Id -ne $App.Pid) { throw $message }
+            $current = Get-Process -Id $App.Pid -ErrorAction Stop
+            if ($current.StartTime -ne $owned.StartTime -or
+                $current.Path -ine (Join-Path $App.InstallLocation 'WindowsTerminal.exe')) {
+                throw $message
+            }
+        }
 
         function Read-HookSessions {
             $result = Invoke-Wta -App $script:app -Arguments @(
@@ -74,7 +82,8 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $start.RedirectStandardInput = $true
             $start.RedirectStandardOutput = $true
             $start.RedirectStandardError = $true
-            foreach ($argument in @($script:driverPath, $script:pluginPath, $Mode, $script:fixtureDirectory, $script:tuiPluginPath)) {
+            $pluginPath = Join-Path $script:bundlePath "$Mode\wt-agent-hooks.js"
+            foreach ($argument in @($script:driverPath, $pluginPath, $Mode, $script:fixtureDirectory, $script:tuiPluginPath)) {
                 $start.ArgumentList.Add($argument)
             }
             $start.Environment['WT_COM_CLSID'] = $script:app.ComClsid
@@ -158,27 +167,45 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             Set-ItResult -Skipped -Because 'Node.js is not installed for controlled SDK inputs'
             return
         }
+        Assert-DisposableHookFixture $script:app
         foreach ($mode in @('v1', 'v2')) {
             $driver = Start-HookDriver $mode
             $id = "ite2e-opencode-$mode-$([guid]::NewGuid().ToString('N'))"
             Send-HookAction $driver @{ action = 'event'; type = 'session.created'; data = @{ sessionID = $id; title = 'Original' } }
             if ($mode -eq 'v2') { Send-HookAction $driver @{ action = 'view'; id = $id } }
             Assert-HookState $id 'Idle' 'agent.session.start' | Out-Null
-            Send-HookAction $driver @{ action = 'event'; type = 'session.renamed'; data = @{ sessionID = $id; title = "Renamed $mode" } }
+            $rename = if ($mode -eq 'v1') { 'session.updated' } else { 'session.renamed' }
+            Send-HookAction $driver @{ action = 'event'; type = $rename; data = @{ sessionID = $id; title = "Renamed $mode" } }
             Wait-Until -TimeoutSec 15 -Because 'renaming updates the authoritative row title' -Condition {
                 @(Read-HookSessions | Where-Object { $_.session_id -eq $id -and $_.title -eq "Renamed $mode" }).Count -eq 1
             } | Should -BeTrue
             Send-HookAction $driver @{ action = 'prompt'; id = $id }
             (Assert-HookState $id 'Working' 'agent.prompt.submit').title | Should -Be "Renamed $mode"
+            if ($mode -eq 'v2') {
+                Send-HookAction $driver @{ action = 'home' }
+                Send-HookAction $driver @{ action = 'view'; id = $id }
+                Assert-HookState $id 'Working' 'agent.session.start' | Out-Null
+                Send-HookAction $driver @{ action = 'home' }
+                Wait-Until -TimeoutSec 15 -Because 'Home releases the working session without ending its task' -Condition {
+                    Read-HookSessions | Where-Object { $_.session_id -eq $id -and $_.status -eq 'Working' -and -not $_.pane_session_id }
+                } | Should -Not -BeNullOrEmpty
+                Send-HookAction $driver @{ action = 'event'; type = 'session.execution.succeeded'; data = @{ sessionID = $id } }
+                Send-HookAction $driver @{ action = 'view'; id = $id }
+                Assert-HookState $id 'Idle' 'agent.stop' | Out-Null
+                Send-HookAction $driver @{ action = 'prompt'; id = $id }
+                Assert-HookState $id 'Working' 'agent.prompt.submit' | Out-Null
+            }
             Send-HookAction $driver @{ action = 'tool'; id = $id; tool = 'question'; args = @{ questions = @('Continue?') } }
             Assert-HookState $id 'Attention' 'agent.tool.starting' | Out-Null
             Send-HookAction $driver @{ action = 'event'; type = 'question.asked'; data = @{ sessionID = $id } }
             Assert-HookState $id 'Attention' 'agent.notification' | Out-Null
             Send-HookAction $driver @{ action = 'event'; type = 'question.replied'; data = @{ sessionID = $id } }
             Assert-HookState $id 'Working' 'agent.prompt.submit' | Out-Null
-            Send-HookAction $driver @{ action = 'event'; type = 'session.execution.succeeded'; data = @{ sessionID = $id } }
+            $stop = if ($mode -eq 'v1') { 'session.idle' } else { 'session.execution.succeeded' }
+            Send-HookAction $driver @{ action = 'event'; type = $stop; data = @{ sessionID = $id } }
             Assert-HookState $id 'Idle' 'agent.stop' | Out-Null
-            Send-HookAction $driver @{ action = 'event'; type = 'session.execution.failed'; data = @{ sessionID = $id; error = @{ message = 'fixture failure' } } }
+            $failure = if ($mode -eq 'v1') { 'session.error' } else { 'session.execution.failed' }
+            Send-HookAction $driver @{ action = 'event'; type = $failure; data = @{ sessionID = $id; error = @{ message = 'fixture failure' } } }
             Assert-HookState $id 'Error' 'agent.error' | Out-Null
             Send-HookAction $driver @{ action = 'event'; type = 'session.deleted'; data = @{ sessionID = $id } }
             Assert-HookState $id 'Ended' 'agent.session.end' | Out-Null
@@ -192,6 +219,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             Set-ItResult -Skipped -Because 'Node.js is not installed for controlled SDK inputs'
             return
         }
+        Assert-DisposableHookFixture $script:app
         $driver = Start-HookDriver 'v2'
         $prefix = "ite2e-opencode-negative-$([guid]::NewGuid().ToString('N'))"
         $root = "$prefix-root"
@@ -211,7 +239,14 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         }
         Send-HookAction $driver @{ action = 'lookup-race'; id = "$prefix-deleted" }
         Send-HookAction $driver @{ action = 'lookup-race'; id = "$prefix-disposed"; dispose = $true }
-        Assert-HookState $root 'Ended' 'agent.session.end' | Out-Null
+        $unbound = Wait-Until -TimeoutSec 20 -Because 'disposing the TUI detaches rather than deletes its server session' -Condition {
+            Read-HookSessions | Where-Object { $_.session_id -eq $root -and $_.status -eq 'Idle' -and -not $_.pane_session_id }
+        }
+        $unbound | Should -Not -BeNullOrEmpty
+        @(Get-WtEvents -Listener $script:listener -Predicate {
+            $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $root -and
+            $_.params.event -eq 'agent.session.end'
+        }).Count | Should -Be 0 -Because 'detaching a TUI does not delete its shared-server session'
         $unexpected = Wait-Until -TimeoutSec 3 -IntervalSec 0.2 -Quiet -Because 'completed negative actions produce no delayed bridge event' -Condition {
             @(Get-WtEvents -Listener $script:listener -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -like "$prefix-*" -and
@@ -249,14 +284,19 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $arguments = @('--json', 'hooks', 'install', '--cli', 'opencode')
         $result = Invoke-Native -FilePath $script:app.WtaPath -Arguments $arguments -Environment $environment -TimeoutSec 45
         $result.ExitCode | Should -Be 0 -Because "$($result.StdOut)`n$($result.StdErr)"
-        $activeEntrypoint = if ($v2) { Join-Path $support 'server.js' } else { $installed }
-        (Get-FileHash -LiteralPath $activeEntrypoint).Hash | Should -Be (Get-FileHash -LiteralPath $script:pluginPath).Hash
-        (Get-FileHash -LiteralPath (Join-Path $support 'tui.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:tuiPluginPath).Hash
-        (Get-FileHash -LiteralPath (Join-Path $support 'rpc.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash
+        $variant = (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).api_variant
+        $variant | Should -Be $(if ($v2) { 'v2' } else { 'v1' })
+        $activeEntrypoint = if ($v2) { Join-Path $support 'wt-agent-hooks.js' } else { $installed }
+        (Get-FileHash -LiteralPath $activeEntrypoint).Hash |
+            Should -Be (Get-FileHash -LiteralPath (Join-Path $script:bundlePath "$variant\wt-agent-hooks.js")).Hash
+        (Get-FileHash -LiteralPath (Join-Path $support 'bridge.js')).Hash |
+            Should -Be (Get-FileHash -LiteralPath (Join-Path $script:bundlePath 'shared\bridge.js')).Hash
         if ($v2) {
             Test-Path -LiteralPath $installed | Should -BeFalse -Because 'V2 must not load both managed entrypoints'
-            (Get-FileHash -LiteralPath (Join-Path $support 'wt-agent-hooks\rpc.js')).Hash | Should -Be `
-                (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash
+            foreach ($file in @('server.js', 'tui.js', 'rpc.js', 'package.json')) {
+                (Get-FileHash -LiteralPath (Join-Path $support $file)).Hash |
+                    Should -Be (Get-FileHash -LiteralPath (Join-Path $script:bundlePath "v2\$file")).Hash
+            }
         }
         $bundledManifest = Get-Content -LiteralPath (Join-Path $script:app.InstallLocation 'wt-agent-hooks\opencode\plugin.json') -Raw | ConvertFrom-Json
         (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).version | Should -Be $bundledManifest.version
@@ -294,36 +334,27 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         $script:nativeRoots.Add($nativeRoot)
         $nativeWork = Join-Path $nativeRoot 'work'
         New-Item -ItemType Directory -Path $nativeWork -Force | Out-Null
-        $shimDirectory = Join-Path $nativeRoot 'bin'
-        New-Item -ItemType Directory -Path $shimDirectory | Out-Null
-        Set-Content -LiteralPath (Join-Path $shimDirectory 'opencode.cmd') -Encoding utf8NoBOM -Value @(
-            '@echo off'
-            ('"{0}" %*' -f $executable.Replace('%', '%%'))
-        )
         $config = Join-Path $nativeRoot 'config'
         $plugins = Join-Path $config 'opencode\plugins'
         $support = Join-Path $plugins 'wt-agent-hooks'
         $v2 = [int]$majorVersion -ge 2
-        $install = Invoke-Native -FilePath $script:app.WtaPath -Arguments @('--json', 'hooks', 'install', '--cli', 'opencode') `
-            -Environment @{
-                XDG_CONFIG_HOME = $config
-                WTA_HOOKS_BUNDLE_DIR = (Join-Path $script:app.InstallLocation 'wt-agent-hooks')
-                WT_COM_CLSID = $script:app.ComClsid
-                PATH = "$shimDirectory$([IO.Path]::PathSeparator)$env:PATH"
-            } -TimeoutSec 45
-        $install.ExitCode | Should -Be 0 -Because $install.StdErr
-        (Get-FileHash -LiteralPath (Join-Path $support 'plugin.json')).Hash | Should -Be `
-            (Get-FileHash -LiteralPath (Join-Path $script:app.InstallLocation 'wt-agent-hooks\opencode\plugin.json')).Hash
-        (Get-FileHash -LiteralPath (Join-Path $support 'tui.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:tuiPluginPath).Hash
-        (Get-FileHash -LiteralPath (Join-Path $support 'rpc.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash
+        New-Item -ItemType Directory -Path $support -Force | Out-Null
+        $variant = if ($v2) { 'v2' } else { 'v1' }
+        Copy-Item -LiteralPath (Join-Path $script:bundlePath 'shared\bridge.js') -Destination (Join-Path $support 'bridge.js')
+        Copy-Item -LiteralPath (Join-Path $script:bundlePath 'plugin.json') -Destination (Join-Path $support 'plugin.json')
         if ($v2) {
+            foreach ($file in @('wt-agent-hooks.js', 'server.js', 'tui.js', 'rpc.js', 'package.json')) {
+                $source = Join-Path $script:bundlePath "v2\$file"
+                Copy-Item -LiteralPath $source -Destination (Join-Path $support $file)
+                (Get-FileHash -LiteralPath (Join-Path $support $file)).Hash | Should -Be (Get-FileHash -LiteralPath $source).Hash
+            }
             Test-Path -LiteralPath (Join-Path $plugins 'wt-agent-hooks.js') | Should -BeFalse `
                 -Because 'V2 must not activate both the standalone file and the directory'
-            (Get-FileHash -LiteralPath (Join-Path $support 'server.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:pluginPath).Hash
-            (Get-FileHash -LiteralPath (Join-Path $support 'wt-agent-hooks\rpc.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:rpcPluginPath).Hash
         }
         else {
-            (Get-FileHash -LiteralPath (Join-Path $plugins 'wt-agent-hooks.js')).Hash | Should -Be (Get-FileHash -LiteralPath $script:pluginPath).Hash
+            $source = Join-Path $script:bundlePath 'v1\wt-agent-hooks.js'
+            Copy-Item -LiteralPath $source -Destination (Join-Path $plugins 'wt-agent-hooks.js')
+            (Get-FileHash -LiteralPath (Join-Path $plugins 'wt-agent-hooks.js')).Hash | Should -Be (Get-FileHash -LiteralPath $source).Hash
             Test-Path -LiteralPath (Join-Path $support 'server.js') | Should -BeFalse
         }
         $password = [guid]::NewGuid().ToString('N')
@@ -370,6 +401,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             $start.Environment.Remove('OPENCODE_SERVER_PASSWORD') | Out-Null
             $start.Environment.Remove('OPENCODE_SERVER_USERNAME') | Out-Null
         }
+        Assert-DisposableHookFixture $script:app
         $server = [Diagnostics.Process]::Start($start)
         $null = $server.Handle
         $stdout = $server.StandardOutput.ReadToEndAsync()
@@ -381,12 +413,17 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
                 [Text.Encoding]::UTF8.GetBytes("opencode:$password"))
         }
         $tuiPane = $null
+        $secondTuiPane = $null
         try {
             Wait-Until -TimeoutSec 30 -Because 'the newly created local OpenCode server becomes responsive' -Condition {
                 if ($server.HasExited) { throw "OpenCode server exited with code $($server.ExitCode)" }
                 $ownedListener = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop |
                     Where-Object OwningProcess -eq $server.Id)
                 if ($ownedListener.Count -lt 1) { return $false }
+                if ($v2) {
+                    $inventory = Invoke-RestMethod -Uri "$base/api/plugin" -Headers $headers -TimeoutSec 2
+                    return $null -ne $inventory.PSObject.Properties['data']
+                }
                 (Invoke-RestMethod -Uri "$base/global/health" -TimeoutSec 2).healthy
             } | Should -BeTrue
             if ($v2) {
@@ -421,26 +458,59 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             if ($v2) {
                 @(Read-HookSessions | Where-Object session_id -eq $created.id).Count | Should -Be 0 `
                     -Because 'V2 server-only hooks must not claim a pane before any TUI views the session'
-                $launch = '"' + (Get-Command pwsh).Source + '" -NoProfile -File "' + $script:tuiDriverPath +
-                    '" -Executable "' + $executable + '" -BaseUrl "' + $base + '" -SessionId "' + $created.id +
-                    '" -Config "' + $config + '" -Data "' + $environment.XDG_DATA_HOME +
-                    '" -Cache "' + $environment.XDG_CACHE_HOME + '" -State "' + $environment.XDG_STATE_HOME +
-                    '" -CredentialFile "' + $credentialFile + '"'
-                $tuiPane = (New-WtTab -App $script:app -Command $launch -Cwd $nativeWork).session_id
-                $viewed = Wait-Until -TimeoutSec 60 -IntervalSec 0.5 -Quiet -Because 'native TUI view sends a pane-owned hook' -Condition {
-                    @(Get-WtEvents -Listener $script:listener -Predicate ({
-                        $_.method -eq 'agent_event' -and $_.params.cli_source -eq 'opencode' -and
-                        $_.params.agent_session_id -eq $created.id -and $_.params.event -eq 'agent.session.start' -and
-                        $_.params.pane_id -and
-                        $_.params.pane_id.Trim('{}').ToLowerInvariant() -eq $tuiPane.Trim('{}').ToLowerInvariant()
-                    }.GetNewClosure())).Count -gt 0
+                $tuiCommand = {
+                    param([string]$SessionId, [string]$CredentialPath)
+                    '"' + (Get-Command pwsh).Source + '" -NoProfile -File "' + $script:tuiDriverPath +
+                        '" -Executable "' + $executable + '" -BaseUrl "' + $base + '" -SessionId "' + $SessionId +
+                        '" -Config "' + $config + '" -Data "' + $environment.XDG_DATA_HOME +
+                        '" -Cache "' + $environment.XDG_CACHE_HOME + '" -State "' + $environment.XDG_STATE_HOME +
+                        '" -CredentialFile "' + $CredentialPath + '"'
                 }
-                $viewed | Should -BeTrue -Because (Get-WtCapture -App $script:app -SessionId $tuiPane -MaxLines 60)
-                $row = Wait-Until -TimeoutSec 20 -Because 'viewing the native V2 session binds it to the TUI pane' -Condition {
-                    Read-HookSessions | Where-Object session_id -eq $created.id | Select-Object -First 1
+                $firstTab = New-WtTab -App $script:app -Command (& $tuiCommand $created.id $credentialFile) -Cwd $nativeWork
+                $tuiPane = $firstTab.session_id
+                $row = Wait-Until -TimeoutSec 60 -Because 'viewing the native V2 session binds it to the TUI pane in the authoritative master' -Condition {
+                    Read-HookSessions | Where-Object {
+                        $_.session_id -eq $created.id -and $_.status -eq 'Idle' -and $_.pane_session_id -and
+                        $_.pane_session_id.Trim('{}').ToLowerInvariant() -eq $tuiPane.Trim('{}').ToLowerInvariant()
+                    } | Select-Object -First 1
                 }
                 $row.status | Should -Be 'Idle'
                 $row.pane_session_id.Trim('{}').ToLowerInvariant() | Should -Be $tuiPane.Trim('{}').ToLowerInvariant()
+                $second = (Invoke-RestMethod -Method Post -Uri $sessionEndpoint -Headers $headers -ContentType 'application/json' `
+                    -Body '{"title":"ITE2E native OpenCode second pane"}' -TimeoutSec 45).data
+                $second.id | Should -Not -BeNullOrEmpty
+                $secondCredential = Join-Path $nativeRoot 'second-server-credential.dpapi'
+                $password | ConvertTo-SecureString -AsPlainText -Force |
+                    ConvertFrom-SecureString | Set-Content -LiteralPath $secondCredential -NoNewline
+                $secondTuiPane = (Split-WtPane -App $script:app -SessionId $tuiPane -Direction right `
+                    -Command (& $tuiCommand $second.id $secondCredential)).session_id
+                $secondTuiPane | Should -Not -BeNullOrEmpty
+                Wait-Until -TimeoutSec 60 -Because 'a second native TUI independently binds its own shared-server session' -Condition {
+                    Read-HookSessions | Where-Object {
+                        $_.session_id -eq $second.id -and $_.status -eq 'Idle' -and $_.pane_session_id -and
+                        $_.pane_session_id.Trim('{}').ToLowerInvariant() -eq $secondTuiPane.Trim('{}').ToLowerInvariant()
+                    }
+                } | Should -Not -BeNullOrEmpty
+                $panes = @(Get-WtPanes -App $script:app -TabId $firstTab.tab_id)
+                foreach ($id in @($tuiPane, $secondTuiPane)) {
+                    @($panes | Where-Object session_id -eq $id) | Should -HaveCount 1 -Because 'both real TUIs must share one terminal tab'
+                }
+                $firstRow = Read-HookSessions | Where-Object session_id -eq $created.id
+                $firstRow.pane_session_id.Trim('{}').ToLowerInvariant() | Should -Be $tuiPane.Trim('{}').ToLowerInvariant()
+                Close-WtPane -App $script:app -SessionId $tuiPane
+                $tuiPane = $null
+                Wait-Until -TimeoutSec 20 -Because 'closing the first native TUI clears its binding' -Condition {
+                    Read-HookSessions | Where-Object { $_.session_id -eq $created.id -and -not $_.pane_session_id }
+                } | Should -Not -BeNullOrEmpty
+                $remaining = Read-HookSessions | Where-Object session_id -eq $second.id
+                $remaining.status | Should -Be 'Idle'
+                $remaining.pane_session_id.Trim('{}').ToLowerInvariant() | Should -Be $secondTuiPane.Trim('{}').ToLowerInvariant()
+                Invoke-RestMethod -Method Delete -Uri "$sessionEndpoint/$($second.id)" -Headers $headers -TimeoutSec 15 | Out-Null
+                Wait-Until -TimeoutSec 20 -Because 'deleting the remaining viewed native session ends its registry row' -Condition {
+                    Read-HookSessions | Where-Object {
+                        $_.session_id -eq $second.id -and $_.status -eq 'Ended' -and -not $_.pane_session_id
+                    }
+                } | Should -Not -BeNullOrEmpty
             }
             Invoke-RestMethod -Method Delete -Uri "$sessionEndpoint/$($created.id)" -Headers $headers -TimeoutSec 15 | Out-Null
             if (-not $v2) {
@@ -450,6 +520,7 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
         finally {
             try {
                 if ($tuiPane) { Close-WtPane -App $script:app -SessionId $tuiPane }
+                if ($secondTuiPane) { Close-WtPane -App $script:app -SessionId $secondTuiPane }
             }
             finally {
                 if (-not $server.HasExited) { $server.Kill() }
@@ -463,6 +534,15 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
                 }
                 Write-ItLog -Message "OpenCode server stdout: $serverOut"
                 Write-ItLog -Message "OpenCode server stderr: $serverErr"
+                foreach ($log in Get-ChildItem -LiteralPath $nativeRoot -Recurse -File -Filter '*.log') {
+                    $diagnostics = @(Get-Content -LiteralPath $log.FullName |
+                        Where-Object { $_ -match 'wt-agent-hooks|plugin|rpc|error|WT_SESSION|WT_COM_CLSID|WTCLI_PATH' }) -join "`n"
+                    if ($diagnostics) {
+                        $diagnostics = $diagnostics.Replace($password, '[redacted]')
+                        if ($v2) { $diagnostics = $diagnostics.Replace($token, '[redacted]') }
+                        Write-ItLog -Message "OpenCode native log $($log.Name): $diagnostics"
+                    }
+                }
                 $server.Dispose()
             }
         }

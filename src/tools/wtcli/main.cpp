@@ -609,6 +609,54 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
+    auto* listProfilesCmd = app.add_subcommand("list-profiles", "List effective terminal profiles, including dynamically generated agent profiles");
+    listProfilesCmd->callback([&]() {
+        auto server = connect();
+        if (!server)
+            return;
+
+        const auto support = SupportsCapability(server.get(), "list_profiles");
+        if (support != S_OK)
+        {
+            if (support == S_FALSE)
+            {
+                fprintf(stderr, "[wtcli] WT_PROTOCOL_UNSUPPORTED_LIST_PROFILES: update Terminal to query runtime profiles\n");
+                exitCode = 2;
+            }
+            else
+            {
+                fprintf(stderr, "[wtcli] GetCapabilities failed or returned malformed capabilities: 0x%08X\n", static_cast<uint32_t>(support));
+                exitCode = 1;
+            }
+            return;
+        }
+
+        Json::Value profiles;
+        const auto hr = CallJson([&](BSTR* json) { return server->ListProfiles(json); }, profiles);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "ListProfiles failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        if (!profiles.isArray())
+        {
+            fprintf(stderr, "[wtcli] ListProfiles returned malformed profiles\n");
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["profiles"] = std::move(profiles);
+            PrintJson(result);
+        }
+        else
+        {
+            FormatProfilesHuman(profiles);
+        }
+    });
+
     // ── get-settings ──
     auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
     getSettingsCmd->callback([&]() {
@@ -1383,7 +1431,18 @@ int wmain(int argc, wchar_t** argv)
         sink.attach(new EventSink([&](const std::string& eventUtf8) {
             if (!wtcli::MatchesEventFilter(eventUtf8, listenTarget, listenEventFilter))
                 return;
-            printf("%s\n", eventUtf8.c_str());
+            std::string formattedJson;
+            const auto result = wtcli::FormatListenEvent(eventUtf8, jsonMode, formattedJson);
+            if (result == wtcli::ListenEventFormatResult::InvalidJson)
+            {
+                fprintf(stderr, "[wtcli] listen: invalid event JSON; forwarding unchanged\n");
+            }
+            else if (result == wtcli::ListenEventFormatResult::InvalidTimestamp)
+            {
+                fprintf(stderr, "[wtcli] listen: unsupported hook timestamp; forwarding unchanged\n");
+            }
+            const auto& output = result == wtcli::ListenEventFormatResult::Normalized ? formattedJson : eventUtf8;
+            printf("%s\n", output.c_str());
             fflush(stdout);
         }));
 

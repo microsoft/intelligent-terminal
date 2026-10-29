@@ -1883,6 +1883,7 @@ wapproj
 WAVEFORMATEX
 wbuilder
 wch
+wchan
 wchars
 WCIA
 WCIW

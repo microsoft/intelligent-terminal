@@ -135,5 +135,8 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean CanEnableAgentPaneYoloMode { get; };
         Windows.UI.Xaml.Visibility AgentPaneYoloModeVisibility { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, RenderAgentMarkdown);
+        String AcpPreparationErrorText { get; };
+        String AcpPreparationErrorDetails { get; };
+        Boolean HasAcpPreparationErrorDetails { get; };
     }
 }

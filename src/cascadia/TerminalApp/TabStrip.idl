@@ -77,6 +77,7 @@ namespace TerminalApp
         Boolean IsKeepRunning;
         String StatusLabelText;
         String WindowHintText;
+        Boolean HasUnreadActivity { get; };
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
@@ -104,6 +105,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
+        Windows.UI.Xaml.Visibility CloseVisibility;
+        Boolean HasUnreadActivity;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged
@@ -140,6 +143,7 @@ namespace TerminalApp
         Object IconSource;
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         Int32 LeadingContentColumnSpan;
+        Boolean ShowStatusIcon;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs
@@ -189,7 +193,6 @@ namespace TerminalApp
         // Mirrors TabView.ContainerFromIndex — used by tearoff drop-position math.
         Windows.UI.Xaml.DependencyObject ContainerFromIndex(Int32 index);
         void SetTabItemVisibility(Object item, Boolean visible);
-        void SetFilterStatus(UInt32 visibleTabCount, Boolean selectedTabVisible);
 
         Boolean CanReorderTabs;
         Boolean CanDragTabs;

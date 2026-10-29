@@ -778,13 +778,13 @@ pub(crate) async fn prepare(
     agent_command: &str,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let id =
         agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_command));
     if crate::agent_registry::lookup_profile_by_id(id).id
         != crate::agent_registry::ANTIGRAVITY_AGENT_ID
     {
-        return Ok(());
+        return Ok(None);
     }
     let parts = crate::coordinator::split_windows_commandline(agent_command);
     let builtin_server = match source {
@@ -797,14 +797,15 @@ pub(crate) async fn prepare(
     };
     // Explicit paths and wrappers retain their existing installation and launch handling.
     if !builtin_server {
-        return Ok(());
+        return Ok(None);
     }
-    if matches!(source, crate::agent_source::AgentSource::Host) {
-        ensure_host().await?;
-    } else if let crate::agent_source::AgentSource::Wsl { distro } = source {
-        ensure_wsl(distro).await?;
-    }
-    Ok(())
+    let executable = match source {
+        crate::agent_source::AgentSource::Host => {
+            ensure_host().await?.to_string_lossy().into_owned()
+        }
+        crate::agent_source::AgentSource::Wsl { distro } => ensure_wsl(distro).await?,
+    };
+    Ok(Some(executable))
 }
 
 #[cfg(test)]

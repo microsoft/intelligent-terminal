@@ -123,11 +123,14 @@ impl AgentStderrLog {
     pub(crate) fn drain(&self, stderr: tokio::process::ChildStderr) -> tokio::task::JoinHandle<()> {
         let log = self.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
+            let mut reader = BufReader::new(stderr);
             loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => log.log_line(&line),
-                    Ok(None) => break,
+                let mut line = Vec::new();
+                match reader.read_until(b'\n', &mut line).await {
+                    Ok(0) => break,
+                    Ok(_) => log.log_line(
+                        String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']),
+                    ),
                     Err(error) => {
                         log.log_line(&format!("failed to read agent stderr: {error}"));
                         break;
@@ -146,10 +149,21 @@ impl AgentStderrLog {
     /// CLI, a broken sandbox, an auth prompt) reaches the log only.
     pub(crate) async fn finish_failed_startup(
         &self,
-        child: &mut tokio::process::Child,
+        child: &mut super::process::AgentProcess,
+        stderr_task: Option<tokio::task::JoinHandle<()>>,
+    ) -> Result<Vec<String>> {
+        let cleanup = child.terminate().await;
+        let lines = self.finish_failed_stderr(stderr_task).await;
+        cleanup
+            .context("failed to reclaim the ACP process tree")
+            .map_err(|error| crate::agent_lifecycle::StartupDetails::attach(error, &lines))?;
+        Ok(lines)
+    }
+
+    pub(crate) async fn finish_failed_stderr(
+        &self,
         stderr_task: Option<tokio::task::JoinHandle<()>>,
     ) -> Vec<String> {
-        let _ = child.start_kill();
         if let Some(mut stderr_task) = stderr_task {
             if tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, &mut stderr_task)
                 .await
@@ -209,6 +223,10 @@ impl AgentStderrLog {
     }
 
     pub(crate) fn log_line(&self, line: &str) {
+        // The WSL host-lifetime guardian uses blank stderr heartbeats.
+        if line.trim().is_empty() {
+            return;
+        }
         let redacted = super::authentication::redact_auth_stderr(line);
         {
             let mut inner = self
@@ -256,17 +274,11 @@ fn truncate_stderr_line(line: &str) -> String {
 }
 
 pub(crate) struct AgentSpawn {
-    pub child: tokio::process::Child,
-    pub history_job: Option<super::history_process::HistoryJob>,
-    pub wsl_history_marker: Option<String>,
+    pub child: super::process::AgentProcess,
     /// Original first token of `agent_cmd`, before path resolution.
     pub raw_program: String,
     /// Resolved program path (post `resolve_bare_agent_name`).
     pub resolved_program: String,
-    /// True when the resolved program is an `npx` launcher. Callers
-    /// stretch their initialize timeout when this is set — first npx
-    /// run downloads the adapter package.
-    pub is_npx: bool,
     /// For npx launches, the first `@`-prefixed arg (the adapter
     /// package id, e.g. `@zed-industries/claude-code-acp`).
     pub adapter_package: Option<String>,
@@ -289,21 +301,6 @@ impl AgentSpawn {
 /// matter). `agent_id` is authoritative when supplied by the master, so a
 /// custom command whose executable happens to match a built-in agent cannot
 /// inherit that built-in's BYOK configuration.
-pub(crate) fn spawn_agent_process(
-    agent_cmd: &str,
-    cwd: Option<&Path>,
-    agent_id: Option<&str>,
-    environment_policy: ChildEnvironmentPolicy,
-) -> Result<AgentSpawn> {
-    spawn_agent_process_with_provider(
-        agent_cmd,
-        cwd,
-        agent_id,
-        environment_policy,
-        SharedProviderSelection::Inherit,
-    )
-}
-
 pub(crate) fn spawn_agent_process_with_provider(
     agent_cmd: &str,
     cwd: Option<&Path>,
@@ -317,7 +314,6 @@ pub(crate) fn spawn_agent_process_with_provider(
         agent_id,
         environment_policy,
         provider_selection,
-        false,
     )
 }
 
@@ -327,7 +323,6 @@ fn spawn_host_agent_process(
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
     provider_selection: SharedProviderSelection<'_>,
-    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
@@ -461,24 +456,13 @@ fn spawn_host_agent_process(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let (child, history_job) = if history_only {
-        let (child, job) = super::history_process::HistoryJob::spawn(&mut cmd)?;
-        (child, Some(job))
-    } else {
-        (
-            cmd.spawn()
-                .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?,
-            None,
-        )
-    };
+    let child = super::process::AgentProcess::spawn(&mut cmd, None)
+        .with_context(|| format!("failed to spawn agent '{agent_cmd}'"))?;
 
     Ok(AgentSpawn {
         child,
-        history_job,
-        wsl_history_marker: None,
         raw_program: raw_program.to_string(),
         resolved_program,
-        is_npx,
         adapter_package,
     })
 }
@@ -598,23 +582,6 @@ fn should_omit_optional_dependencies(agent_cmd: &str, agent_id: Option<&str>) ->
 }
 
 /// Spawn an ACP agent in the selected per-tab execution source.
-pub(crate) fn spawn_agent_process_for_source(
-    agent_cmd: &str,
-    cwd: Option<&Path>,
-    agent_id: Option<&str>,
-    source: &crate::agent_source::AgentSource,
-    environment_policy: ChildEnvironmentPolicy,
-) -> Result<AgentSpawn> {
-    spawn_agent_process_for_source_with_provider(
-        agent_cmd,
-        cwd,
-        agent_id,
-        source,
-        environment_policy,
-        SharedProviderSelection::Inherit,
-    )
-}
-
 pub(crate) fn spawn_agent_process_for_source_with_provider(
     agent_cmd: &str,
     cwd: Option<&Path>,
@@ -632,7 +599,7 @@ pub(crate) fn spawn_agent_process_for_source_with_provider(
             provider_selection,
         ),
         crate::agent_source::AgentSource::Wsl { distro } => {
-            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy, false)
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
         }
     }
 }
@@ -643,23 +610,14 @@ pub(crate) fn spawn_history_agent_process(
     source: &crate::agent_source::AgentSource,
     provider_selection: SharedProviderSelection<'_>,
 ) -> Result<AgentSpawn> {
-    match source {
-        crate::agent_source::AgentSource::Host => spawn_host_agent_process(
-            agent_cmd,
-            None,
-            Some(agent_id),
-            ChildEnvironmentPolicy::ApplySharedProvider,
-            provider_selection,
-            true,
-        ),
-        crate::agent_source::AgentSource::Wsl { distro } => spawn_wsl_agent_process(
-            agent_cmd,
-            distro,
-            Some(agent_id),
-            ChildEnvironmentPolicy::ApplySharedProvider,
-            true,
-        ),
-    }
+    spawn_agent_process_for_source_with_provider(
+        agent_cmd,
+        None,
+        Some(agent_id),
+        source,
+        ChildEnvironmentPolicy::ApplySharedProvider,
+        provider_selection,
+    )
 }
 
 fn spawn_wsl_agent_process(
@@ -667,7 +625,6 @@ fn spawn_wsl_agent_process(
     distro: &str,
     agent_id: Option<&str>,
     environment_policy: ChildEnvironmentPolicy,
-    history_only: bool,
 ) -> Result<AgentSpawn> {
     let parts = crate::coordinator::split_windows_commandline(agent_cmd);
     let raw_program = parts
@@ -686,10 +643,8 @@ fn spawn_wsl_agent_process(
     {
         script = antigravity_wsl_launch_script(&parts, environment_policy);
     }
-    let wsl_history_marker = history_only.then(|| format!("wta-history-{}", uuid::Uuid::new_v4()));
-    if let Some(marker) = &wsl_history_marker {
-        script = super::history_process::wsl_history_script(&script, marker);
-    }
+    let marker = format!("wta-acp-{}", uuid::Uuid::new_v4());
+    script = super::process::wsl_process_script(&script, &marker);
 
     let mut command = wsl_agent_command(distro, &script);
     command
@@ -707,30 +662,16 @@ fn spawn_wsl_agent_process(
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let (child, history_job) = if history_only {
-        let (child, job) = super::history_process::HistoryJob::spawn(&mut command)?;
-        (child, Some(job))
-    } else {
-        (
-            command.spawn().map_err(|error| {
-                anyhow!(
-                    "failed to spawn agent '{}' in WSL distro '{}': {}",
-                    agent_cmd,
-                    distro,
-                    error
-                )
-            })?,
-            None,
-        )
-    };
+    let child = super::process::AgentProcess::spawn(
+        &mut command,
+        Some((distro.to_string(), marker)),
+    )
+    .with_context(|| format!("failed to spawn agent '{agent_cmd}' in WSL distro '{distro}'"))?;
 
     Ok(AgentSpawn {
         child,
-        history_job,
-        wsl_history_marker,
         raw_program,
         resolved_program: format!("wsl.exe -d {distro}"),
-        is_npx,
         adapter_package,
     })
 }
@@ -864,6 +805,117 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn failed_acp_startup_reclaims_the_owned_descendant_before_returning() {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+            JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_SYNCHRONIZE,
+        };
+
+        let command = r#"pwsh.exe -NoLogo -NoProfile -NonInteractive -Command $null=[Console]::ReadLine();$child=Start-Process pwsh.exe -ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru;[Console]::Error.WriteLine($child.Id);Start-Sleep -Seconds 120"#;
+        let mut spawned = spawn_agent_process_with_provider(
+            command,
+            None,
+            Some("custom:startup-cleanup-regression"),
+            ChildEnvironmentPolicy::CleanCloudDiscovery,
+            SharedProviderSelection::Inherit,
+        )
+        .expect("spawn the real ACP launcher fixture");
+
+        // The fixture waits for stdin before spawning, so this independent
+        // test job contains every descendant even when the RED assertion fails.
+        let safety_job = unsafe {
+            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            assert!(!handle.is_null());
+            let job = OwnedHandle::from_raw_handle(handle);
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            assert_ne!(
+                SetInformationJobObject(
+                    job.as_raw_handle(),
+                    JobObjectExtendedLimitInformation,
+                    std::ptr::addr_of!(limits).cast(),
+                    std::mem::size_of_val(&limits) as u32,
+                ),
+                0
+            );
+            assert_ne!(
+                AssignProcessToJobObject(job.as_raw_handle(), spawned.child.raw_handle().unwrap()),
+                0
+            );
+            job
+        };
+        spawned
+            .child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"start\n")
+            .await
+            .unwrap();
+        let mut stderr = tokio::io::BufReader::new(spawned.child.stderr.take().unwrap());
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(30), stderr.read_line(&mut line))
+            .await
+            .expect("fixture must report its descendant")
+            .unwrap();
+        let descendant_pid = line
+            .trim()
+            .parse::<u32>()
+            .expect("fixture reports a native descendant PID");
+        // A live handle and job-membership proof prevent PID reuse or another
+        // process from being mistaken for the fixture's descendant.
+        let descendant = unsafe {
+            let handle = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                0,
+                descendant_pid,
+            );
+            assert!(!handle.is_null());
+            let process = OwnedHandle::from_raw_handle(handle);
+            let mut in_job = 0;
+            assert_ne!(
+                IsProcessInJob(process.as_raw_handle(), safety_job.as_raw_handle(), &mut in_job),
+                0
+            );
+            assert_ne!(in_job, 0);
+            assert_eq!(WaitForSingleObject(process.as_raw_handle(), 0), WAIT_TIMEOUT);
+            process
+        };
+
+        AgentStderrLog::new("startup-cleanup-regression")
+            .finish_failed_startup(&mut spawned.child, None)
+            .await
+            .expect("failed startup must confirm descendant cleanup");
+        let gone_when_cleanup_returned =
+            unsafe { WaitForSingleObject(descendant.as_raw_handle(), 0) == WAIT_OBJECT_0 };
+
+        unsafe {
+            assert_ne!(TerminateJobObject(safety_job.as_raw_handle(), 1), 0);
+            assert_eq!(
+                WaitForSingleObject(descendant.as_raw_handle(), 5_000),
+                WAIT_OBJECT_0,
+                "the test safety job must reclaim its fixture even on RED"
+            );
+        }
+        tokio::time::timeout(Duration::from_secs(5), spawned.child.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            gone_when_cleanup_returned,
+            "failed ACP startup returned while its owned descendant was still running"
+        );
+    }
+
     #[test]
     fn explicit_agent_id_overrides_command_inference() {
         assert_eq!(
@@ -900,7 +952,7 @@ mod tests {
         );
         for history_only in [false, true] {
             let script = if history_only {
-                super::super::history_process::wsl_history_script(&script, "wta-history-test")
+                super::super::process::wsl_process_script(&script, "wta-history-test")
             } else {
                 script.clone()
             };
@@ -1232,6 +1284,44 @@ mod tests {
         assert!(!captured.contains("accounts.google.com"));
         assert!(!captured.contains("private-marker"));
         assert!(captured.contains("redacted"));
+    }
+
+    #[test]
+    fn stderr_heartbeats_do_not_displace_startup_diagnostics() {
+        let log = AgentStderrLog::new("heartbeat-fixture");
+        log.log_line("native failure detail");
+        for _ in 0..STARTUP_STDERR_MAX_LINES + 1 {
+            log.log_line("");
+            log.log_line("\r");
+        }
+        assert_eq!(log.mark_failed(), vec!["native failure detail"]);
+    }
+
+    #[tokio::test]
+    async fn stderr_reader_keeps_draining_after_non_utf8_bytes() {
+        let mut command = tokio::process::Command::new("pwsh.exe");
+        command
+            .args([
+                "-NoProfile",
+                "-Command",
+                "$e=[Console]::OpenStandardError();$e.Write([byte[]](255,10,111,107,10),0,5);$e.Flush()",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = super::super::process::AgentProcess::spawn(&mut command, None).unwrap();
+        let log = AgentStderrLog::new("lossy-stderr-fixture");
+        let drain = log.drain(child.stderr.take().unwrap());
+        tokio::time::timeout(Duration::from_secs(20), drain)
+            .await
+            .unwrap()
+            .unwrap();
+        child.terminate().await.unwrap();
+        assert_eq!(
+            log.mark_failed(),
+            vec![char::REPLACEMENT_CHARACTER.to_string(), "ok".to_string()]
+        );
     }
 
     #[test]

@@ -96,35 +96,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         namespace Backend = ::Microsoft::Terminal::Settings::Model;
 
         std::vector<Editor::AgentEntry> entries;
-        const auto globalEntry = winrt::make<implementation::AgentEntry>(
+        entries.emplace_back(winrt::make<implementation::AgentEntry>(
             L"",
             winrt::hstring{ RS_fmt(
-                L"Profile_AgentPaneBackend_AgentFormat",
-                std::wstring{ std::wstring_view{ _AgentDisplayName(globalId) } },
-                std::wstring{ L"Windows" }) },
-            true);
+                L"Profile_AgentPaneBackend_GlobalFormat",
+                std::wstring{ std::wstring_view{ _AgentDisplayName(globalId) } }) },
+            true));
 
-        bool globalEntryAdded = false;
         for (const auto& agent : allowedAgents)
         {
             if (availableHostAgents.contains(std::wstring{ agent.id }))
             {
-                const bool isGlobalAgent = agent.id == globalId;
                 entries.emplace_back(winrt::make<implementation::AgentEntry>(
-                    isGlobalAgent ?
-                        winrt::hstring{} :
-                        winrt::hstring{ Backend::AgentPaneBackend::Host(agent.id) },
+                    winrt::hstring{ Backend::AgentPaneBackend::Host(agent.id) },
                     winrt::hstring{ RS_fmt(
                         L"Profile_AgentPaneBackend_AgentFormat",
                         std::wstring{ agent.displayName },
                         std::wstring{ L"Windows" }) },
                     true));
-                globalEntryAdded = globalEntryAdded || isGlobalAgent;
             }
-        }
-        if (!globalEntryAdded)
-        {
-            entries.insert(entries.begin(), globalEntry);
         }
 
         if (!wslDistro.empty())
@@ -147,14 +137,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             }
         }
 
-        const auto selectedIsGlobalHost =
-            !globalId.empty() &&
-            selected == Backend::AgentPaneBackend::Host(globalId);
-        const auto selectedPresent =
-            selectedIsGlobalHost ||
-            std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
-                return std::wstring_view{ entry.Id() } == selected;
-            });
+        const auto selectedPresent = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
+            return std::wstring_view{ entry.Id() } == selected;
+        });
         if (!selected.empty() && !selectedPresent)
         {
             std::wstring label{ selected };
@@ -334,13 +319,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AgentEntry ProfileViewModel::CurrentAgentPaneBackend()
     {
-        auto selected = AgentPaneBackend();
-        const auto globalId = _appSettings.GlobalSettings().EffectiveAcpAgent();
-        if (!globalId.empty() &&
-            selected == winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ globalId }) })
-        {
-            selected = {};
-        }
+        const auto selected = AgentPaneBackend();
         for (uint32_t i = 0; i < _agentPaneBackendList.Size(); ++i)
         {
             const auto entry = _agentPaneBackendList.GetAt(i);
@@ -363,13 +342,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AgentEntry ProfileViewModel::CurrentCommandPaletteAgent()
     {
-        auto selected = CommandPaletteAgent();
-        const auto globalId = _appSettings.GlobalSettings().EffectiveDelegateAgent();
-        if (!globalId.empty() &&
-            selected == winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ globalId }) })
-        {
-            selected = {};
-        }
+        const auto selected = CommandPaletteAgent();
         for (uint32_t i = 0; i < _commandPaletteAgentList.Size(); ++i)
         {
             const auto entry = _commandPaletteAgentList.GetAt(i);

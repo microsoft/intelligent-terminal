@@ -388,6 +388,10 @@ pub(crate) enum Command {
     /// PROMPT, the prompt is baked into the agent's launch; omit PROMPT to open
     /// the agent interactively with no startup prompt.
     Delegate {
+        /// Owning Terminal's master pipe. Required for exact session splits and
+        /// live session registration; never inferred from another instance.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: Option<String>,
         /// The prompt to send to the delegate agent. Omit to open the agent
         /// interactively in a new tab with no startup prompt.
         #[arg(value_name = "PROMPT")]
@@ -449,6 +453,20 @@ pub(crate) enum Command {
         /// Install only in this explicitly selected distro's default-user source.
         #[arg(long)]
         wsl_distro: Option<String>,
+        /// Explicit user retry after a previous startup check failed.
+        #[arg(long)]
+        retry_startup: bool,
+    },
+    /// Prepare the selected ACP dependency and verify one initialize round trip.
+    VerifyAcp {
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        agent_id: String,
+        #[arg(long)]
+        wsl_distro: Option<String>,
+        #[arg(long)]
+        retry_startup: bool,
     },
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
@@ -467,6 +485,9 @@ pub(crate) enum Command {
         /// Authoritative built-in/custom identity supplied by the Settings caller.
         #[arg(long)]
         agent_id: Option<String>,
+        /// Explicitly retry this target after its previous startup attempt finishes.
+        #[arg(long)]
+        retry_startup: bool,
     },
     /// List built-in ACP agents installed inside one WSL distro.
     /// Used by the per-profile Settings picker.
@@ -506,6 +527,9 @@ pub(crate) enum Command {
         /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
         #[arg(long)]
         agent: String,
+        /// Start a new bounded retry cycle unless cleanup is quarantined.
+        #[arg(long)]
+        retry_startup: bool,
     },
     /// Diagnostic: spawn an agent CLI, call ACP `session/list`, filter
     /// agent-pane-origin rows, and print the host history rows WTA would
@@ -515,6 +539,9 @@ pub(crate) enum Command {
         /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
         #[arg(long)]
         agent: String,
+        /// Start a new bounded retry cycle unless cleanup is quarantined.
+        #[arg(long)]
+        retry_startup: bool,
     },
     /// Submit a typed terminal-action proposal directly to the Helper that
     /// owns the current turn. Intended to be run by an agent session using
@@ -536,9 +563,9 @@ pub(crate) enum Command {
 pub(crate) enum SessionsAction {
     /// List sessions in the master registry.
     List {
-        /// Override the wta-master named pipe path.
+        /// Owning wta-master named pipe path.
         #[arg(long, value_name = "PIPE_NAME")]
-        master: Option<String>,
+        master: String,
         /// Restrict the list to a session origin. `all` (default) shows
         /// every row — that matches the historical debug behavior.
         /// `shell` shows only user-started shell-pane sessions (the
@@ -553,13 +580,16 @@ pub(crate) enum SessionsAction {
     },
     /// Request background host-agent discovery and return the current session snapshot.
     Refresh {
-        /// Override the wta-master named pipe path.
+        /// Owning wta-master named pipe path.
         #[arg(long, value_name = "PIPE_NAME")]
-        master: Option<String>,
+        master: String,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]
     Activate {
+        /// The same owning master used to obtain the session snapshot.
+        #[arg(long, value_name = "PIPE_NAME")]
+        master: String,
         #[arg(long)]
         session_id: String,
         #[arg(long)]
