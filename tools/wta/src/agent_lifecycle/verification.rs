@@ -15,7 +15,7 @@ pub(crate) async fn verify(
     retry_startup: bool,
 ) -> Result<VerifiedStartup, StartupFailure> {
     let result = async {
-        let registry = StartupRegistry::runtime()?;
+        let registry = StartupRegistry::runtime();
         let key = agent_key(command, Some(agent_id), source, "native", false);
         if retry_startup {
             registry.retry(&key).await?;

@@ -61,7 +61,7 @@ pub(crate) async fn probe_models_with_intent(
         let inferred = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
         crate::agent_registry::is_known_id(inferred).then_some(inferred)
     });
-    let registry = crate::agent_lifecycle::StartupRegistry::runtime()?;
+    let registry = crate::agent_lifecycle::StartupRegistry::runtime();
     let key = crate::agent_lifecycle::agent_key(
         agent_cmd,
         agent_id,

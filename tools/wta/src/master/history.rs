@@ -9,28 +9,16 @@ use crate::protocol::acp::process::AgentProcess;
 
 const WAIT_STEPS: [u64; 5] = [5, 10, 20, 40, 60];
 const HARD_TIMEOUT: Duration = Duration::from_secs(300);
+const MAX_FAILED_CYCLES: usize = 3;
 const MAX_INVENTORY_PAGES: usize = 1024;
 const MAX_INVENTORY_ROWS: usize = 100_000;
 
 #[derive(Clone)]
 pub(super) struct HistoryTarget {
-    pub startup_registry: Arc<crate::agent_lifecycle::StartupRegistry>,
     pub command: String,
     pub agent_id: String,
     pub source: crate::agent_source::AgentSource,
     pub provider: ProviderBinding,
-}
-
-impl HistoryTarget {
-    fn admission_key(&self) -> String {
-        crate::agent_lifecycle::agent_key(
-            &self.command,
-            Some(&self.agent_id),
-            &self.source,
-            &self.provider.admission_binding_key(),
-            self.provider.is_model_scoped(),
-        )
-    }
 }
 
 async fn await_history_startup(
@@ -103,6 +91,201 @@ mod tests {
         let mut page = acp::schema::v1::ListSessionsResponse::new(vec![row]);
         page.next_cursor = cursor.map(str::to_string);
         page
+    }
+
+    async fn complete_query(
+        query: &mut HistoryQuery,
+        requests: &mut mpsc::UnboundedReceiver<(Option<String>, PageReply)>,
+        response: acp::Result<acp::schema::v1::ListSessionsResponse>,
+    ) -> std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure> {
+        let cancelled = tokio_util::sync::CancellationToken::new();
+        let mut poll = Box::pin(query.poll(None, &cancelled, false));
+        let (_, reply) = tokio::select! {
+            request = requests.recv() => request.expect("history query request"),
+            result = &mut poll => panic!("query completed without issuing a request: {result:?}"),
+        };
+        reply.send(response).unwrap();
+        poll.await
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn history_hard_timeouts_pause_after_three_cycles_and_retry_reopens() {
+        LocalSet::new()
+            .run_until(async {
+                let (mut query, mut requests) = controlled_query();
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                for cycle in 0..3 {
+                    if cycle != 0 {
+                        let (mut replacement, receiver) = controlled_query();
+                        query.process = replacement.process.take();
+                        requests = receiver;
+                    }
+                    let mut poll = Box::pin(query.poll(None, &cancelled, false));
+                    let (_, held) = tokio::select! {
+                        request = requests.recv() => request.unwrap(),
+                        result = &mut poll => panic!("history did not reach session/list: {result:?}"),
+                    };
+                    tokio::time::advance(HARD_TIMEOUT).await;
+                    assert_eq!(poll.await.unwrap_err(), HistoryRefreshFailure::Timeout);
+                    assert!(query.process.is_none());
+                    drop(held);
+                }
+                assert!(query.recovery_paused());
+                for _ in 0..3 {
+                    assert_eq!(
+                        query.poll(None, &cancelled, false).await.unwrap_err(),
+                        HistoryRefreshFailure::Other
+                    );
+                    assert!(query.process.is_none());
+                }
+                assert!(query.retry_paused());
+                let (mut replacement, mut requests) = controlled_query();
+                query.process = replacement.process.take();
+                let response = complete_query(
+                    &mut query,
+                    &mut requests,
+                    Ok(acp::schema::v1::ListSessionsResponse::new(vec![])),
+                )
+                .await
+                .unwrap();
+                assert!(response.sessions.is_empty());
+                assert!(!query.recovery_paused());
+                assert!(!query.retry_paused());
+            })
+            .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn history_soft_timeouts_neither_consume_nor_reset_failed_cycles() {
+        LocalSet::new()
+            .run_until(async {
+                let (mut query, mut requests) = controlled_query();
+                for _ in 0..2 {
+                    assert!(complete_query(
+                        &mut query,
+                        &mut requests,
+                        Err(acp::Error::internal_error())
+                    )
+                    .await
+                    .is_err());
+                }
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                let mut poll = Box::pin(query.poll(None, &cancelled, false));
+                let (_, held) = tokio::select! {
+                    request = requests.recv() => request.unwrap(),
+                    result = &mut poll => panic!("third query never started: {result:?}"),
+                };
+                tokio::time::advance(Duration::from_secs(5)).await;
+                assert_eq!(poll.await.unwrap_err(), HistoryRefreshFailure::Timeout);
+                for wait in [5, 10] {
+                    let mut poll = Box::pin(query.poll(None, &cancelled, false));
+                    assert!(futures::poll!(&mut poll).is_pending());
+                    tokio::time::advance(Duration::from_secs(wait)).await;
+                    assert_eq!(poll.await.unwrap_err(), HistoryRefreshFailure::Timeout);
+                    assert!(requests.try_recv().is_err());
+                }
+                assert!(!query.recovery_paused());
+                held.send(Err(acp::Error::internal_error())).unwrap();
+                assert_eq!(
+                    query.poll(None, &cancelled, false).await.unwrap_err(),
+                    HistoryRefreshFailure::Other
+                );
+                assert!(query.recovery_paused());
+            })
+            .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn history_successful_empty_response_resets_failed_cycles() {
+        LocalSet::new()
+            .run_until(async {
+                let (mut query, mut requests) = controlled_query();
+                for _ in 0..2 {
+                    assert!(complete_query(
+                        &mut query,
+                        &mut requests,
+                        Err(acp::Error::internal_error())
+                    )
+                    .await
+                    .is_err());
+                }
+                assert!(complete_query(
+                    &mut query,
+                    &mut requests,
+                    Ok(acp::schema::v1::ListSessionsResponse::new(vec![])),
+                )
+                .await
+                .is_ok());
+                for _ in 0..2 {
+                    assert!(complete_query(
+                        &mut query,
+                        &mut requests,
+                        Err(acp::Error::internal_error())
+                    )
+                    .await
+                    .is_err());
+                    assert!(!query.recovery_paused());
+                }
+                assert!(complete_query(
+                    &mut query,
+                    &mut requests,
+                    Err(acp::Error::internal_error())
+                )
+                .await
+                .is_err());
+                assert!(query.recovery_paused());
+            })
+            .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn history_transport_retirement_does_not_consume_a_new_query_cycle() {
+        LocalSet::new()
+            .run_until(async {
+                for cleanup_failed in [false, true] {
+                    let (mut query, mut requests) = controlled_query();
+                    for _ in 0..2 {
+                        assert!(complete_query(
+                            &mut query,
+                            &mut requests,
+                            Err(acp::Error::internal_error()),
+                        )
+                        .await
+                        .is_err());
+                    }
+                    let finished = tokio::task::spawn_local(async { Ok::<(), acp::Error>(()) });
+                    while !finished.is_finished() {
+                        tokio::task::yield_now().await;
+                    }
+                    let process = query.process.as_mut().unwrap();
+                    process.io = Some(finished);
+                    process.reject_stop = cleanup_failed;
+                    let target = fixture_target();
+                    let cancelled = tokio_util::sync::CancellationToken::new();
+                    if cleanup_failed {
+                        for _ in 0..3 {
+                            assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+                            assert!(!query.recovery_paused(),
+                                "retiring the already-failed transport is not another failed query");
+                            assert!(query.process.is_some());
+                        }
+                        query.process.as_mut().unwrap().reject_stop = false;
+                        query.stop().await.unwrap();
+                        assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+                        assert!(query.recovery_paused(),
+                            "only a new query cycle may consume the remaining failure budget");
+                    } else {
+                        let error = query.poll_inner(Some(&target), &cancelled, false)
+                            .await.unwrap_err();
+                        assert_eq!(
+                            error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+                            Some(&crate::agent_lifecycle::StartupPhase::Spawn),
+                            "confirmed retirement proceeds to a new attempt instead of reporting the old exit again"
+                        );
+                    }
+                }
+            })
+            .await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -376,7 +559,6 @@ mod tests {
 
     fn fixture_target() -> HistoryTarget {
         HistoryTarget {
-            startup_registry: Arc::default(),
             command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
             agent_id: "custom:history-ownership".into(),
             source: crate::agent_source::AgentSource::Host,
@@ -384,29 +566,22 @@ mod tests {
         }
     }
 
-    fn fixture_process(target: &HistoryTarget) -> HistoryProcess {
+    fn fixture_process() -> HistoryProcess {
         let (pipe, _peer) = tokio::io::duplex(1024);
         let (read, write) = tokio::io::split(pipe);
         let (connection, _io) = conn::spawn_client(
             acp::Client.builder().name("history-ownership-fixture"),
             conn::byte_streams(write.compat_write(), read.compat()),
         );
-        let mut process = HistoryProcess::mock(connection);
-        process.startup_registry = Arc::clone(&target.startup_registry);
-        process.admission_key = target.admission_key();
-        process
+        HistoryProcess::mock(connection)
     }
 
     #[tokio::test]
-    async fn receipt_cancellation_retains_child_and_admission_until_confirmed_stop() {
+    async fn receipt_cancellation_retains_child_until_confirmed_stop() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut lease = target.startup_registry.lock(&key).await.unwrap();
-                lease.begin().unwrap();
-                process.startup = Some(lease);
+                let mut process = fixture_process();
                 process.initialized = false;
                 process.conn = None;
                 let mut command = tokio::process::Command::new("pwsh.exe");
@@ -443,16 +618,7 @@ mod tests {
                 }
                 let process = query.process.as_mut().unwrap();
                 assert_eq!(process.child.as_ref().unwrap().id(), pid);
-                assert!(process.startup.is_some());
                 assert!(query.recycling);
-                {
-                    let mut competing = std::pin::pin!(target.startup_registry.lock(&key));
-                    std::future::poll_fn(|cx| {
-                        assert!(std::future::Future::poll(competing.as_mut(), cx).is_pending());
-                        std::task::Poll::Ready(())
-                    })
-                    .await;
-                }
                 {
                     let mut stop = std::pin::pin!(query.stop());
                     std::future::poll_fn(|cx| {
@@ -461,7 +627,10 @@ mod tests {
                     })
                     .await;
                 }
-                assert!(query.process.as_ref().unwrap().startup.is_some());
+                assert_eq!(
+                    query.process.as_ref().unwrap().child.as_ref().unwrap().id(),
+                    pid
+                );
                 drop(
                     query
                         .process
@@ -478,121 +647,80 @@ mod tests {
                     .expect("retained receipt ownership permits confirmed cleanup")
                     .unwrap();
                 assert!(query.process.is_none());
-                target
-                    .startup_registry
-                    .lock(&key)
-                    .await
-                    .unwrap()
-                    .begin()
-                    .unwrap();
             })
             .await;
     }
 
-    #[tokio::test]
-    async fn post_initialize_stop_failure_quarantines_independent_admission() {
+    #[tokio::test(start_paused = true)]
+    async fn failed_cleanup_retains_the_history_process_until_recovery() {
         tokio::task::LocalSet::new()
             .run_until(async {
-                let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut startup = target.startup_registry.lock(&key).await.unwrap();
-                startup.begin().unwrap();
-                startup.succeeded().unwrap();
-                drop(startup);
-                assert!(process.initialized);
-                assert!(process.startup.is_none());
-                process.reject_stop = true;
-                let error = process.stop().await.unwrap_err();
-                assert_eq!(
-                    error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .unwrap()
-                        .phase,
-                    crate::agent_lifecycle::StartupPhase::Cleanup,
+                let (mut query, mut requests) = controlled_query();
+                query.process.as_mut().unwrap().reject_stop = true;
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                let mut poll = Box::pin(query.poll(None, &cancelled, false));
+                let (_, held) = tokio::select! {
+                    request = requests.recv() => request.unwrap(),
+                    result = &mut poll => panic!("missing held request: {result:?}"),
+                };
+                tokio::time::advance(HARD_TIMEOUT).await;
+                assert!(poll.await.is_err());
+                for _ in 0..3 {
+                    assert!(query.poll(None, &cancelled, false).await.is_err());
+                    assert!(
+                        !query.recovery_paused(),
+                        "cleanup retries must not consume new query cycles"
+                    );
+                }
+                assert!(
+                    query.process.as_ref().unwrap().reject_stop,
+                    "unconfirmed cleanup must not replace the owned process"
                 );
-                let registry = Arc::clone(&target.startup_registry);
-                let error = registry.lock(&key).await.unwrap().begin().unwrap_err();
-                assert!(error.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>());
-                assert!(registry.retry(&key).await.is_err());
+                assert!(requests.try_recv().is_err());
+                assert!(query.recycling);
+                query.process.as_mut().unwrap().reject_stop = false;
+                query.stop().await.unwrap();
+                assert!(query.process.is_none());
+                assert!(!query.recycling);
+                drop(held);
             })
             .await;
     }
 
     #[tokio::test]
-    async fn initialization_failure_reuses_its_lease_during_cleanup() {
-        tokio::task::LocalSet::new()
-            .run_until(async {
-                let target = fixture_target();
-                let key = target.admission_key();
-                let mut process = fixture_process(&target);
-                let mut startup = target.startup_registry.lock(&key).await.unwrap();
-                startup.begin().unwrap();
-                process.startup = Some(startup);
-                process.initialized = false;
-                process.reject_stop = true;
-                let error =
-                    tokio::time::timeout(Duration::from_secs(1), process.initialize(&target))
-                        .await
-                        .expect("initialization cleanup must not reacquire its own lease")
-                        .unwrap_err();
-                assert_eq!(
-                    error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .unwrap()
-                        .phase,
-                    crate::agent_lifecycle::StartupPhase::Cleanup,
-                );
-                assert!(target
-                    .startup_registry
-                    .lock(&key)
-                    .await
-                    .unwrap()
-                    .begin()
-                    .is_err());
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    async fn stopped_history_requires_a_new_registry_retry_epoch() {
+    async fn history_startup_failures_pause_without_using_chat_admission() {
         let target = fixture_target();
-        let key = target.admission_key();
         let cancelled = tokio_util::sync::CancellationToken::new();
         let mut query = HistoryQuery::default();
-        for _ in 0..crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS {
+        for _ in 0..3 {
             assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
         }
-        assert!(query.startup_stopped);
+        assert!(query.recovery_paused());
+        assert!(matches!(
+            query
+                .poll_inner(Some(&target), &cancelled, false)
+                .await
+                .unwrap(),
+            Err(HistoryRefreshFailure::Other)
+        ));
+        assert!(query.retry_paused());
         assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-        assert!(query.startup_stopped);
-        target.startup_registry.retry(&key).await.unwrap();
-        assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-        assert!(!query.startup_stopped);
-        assert_eq!(
-            query.retry_epoch,
-            target.startup_registry.retry_epoch(&key).await.unwrap()
-        );
+        assert!(!query.recovery_paused());
     }
 
-    #[test]
-    fn stale_failure_cannot_stop_a_new_retry_epoch() {
+    #[tokio::test]
+    async fn history_cancelled_startups_do_not_exhaust_recovery() {
+        let target = fixture_target();
+        let cancelled = tokio_util::sync::CancellationToken::new();
+        cancelled.cancel();
         let mut query = HistoryQuery::default();
-        query.observe_startup_failure(0, 1);
-        assert!(!query.startup_stopped);
-        assert_eq!(query.retry_epoch, 1);
-        query.observe_startup_failure(1, 1);
-        assert!(query.startup_stopped);
-        query.observe_startup_failure(0, 1);
-        assert!(
-            query.startup_stopped,
-            "stale failure cannot change current state"
-        );
-        query.observe_startup_failure(1, 2);
-        assert!(!query.startup_stopped);
-        query.observe_startup_failure(0, 0);
-        assert!(!query.startup_stopped);
-        assert_eq!(query.retry_epoch, 2);
+        for _ in 0..3 {
+            assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
+        }
+        assert!(!query.recovery_paused());
+        let active = tokio_util::sync::CancellationToken::new();
+        assert!(query.poll(Some(&target), &active, false).await.is_err());
+        assert!(!query.recovery_paused());
     }
 }
 
@@ -629,9 +757,6 @@ impl AdaptiveWait {
 }
 
 pub(super) struct HistoryProcess {
-    startup_registry: Arc<crate::agent_lifecycle::StartupRegistry>,
-    admission_key: String,
-    startup: Option<crate::agent_lifecycle::StartupLease>,
     conn: Option<conn::ClientLink>,
     child: Option<AgentProcess>,
     incoming: Option<BufReader<tokio::process::ChildStdout>>,
@@ -645,41 +770,26 @@ pub(super) struct HistoryProcess {
 
 impl HistoryProcess {
     async fn spawn(target: &HistoryTarget) -> Result<Self> {
-        let key = target.admission_key();
-        let mut startup = target.startup_registry.lock(&key).await?;
-        startup.begin()?;
-        let prepared = crate::agent_lifecycle::providers::prepare(
+        crate::agent_lifecycle::providers::prepare(
             &target.command,
             Some(&target.agent_id),
             &target.source,
         )
         .await
-        .context(crate::agent_lifecycle::StartupPhase::Preparation);
-        match prepared {
-            Ok(prepared) => startup.prepared(prepared),
-            Err(error) => return Err(startup.failed(error)),
-        }
-        let spawned = crate::protocol::acp::spawn::spawn_history_agent_process(
+        .context(crate::agent_lifecycle::StartupPhase::Preparation)?;
+        let mut spawned = crate::protocol::acp::spawn::spawn_history_agent_process(
             &target.command,
             &target.agent_id,
             &target.source,
             target.provider.spawn_selection(),
         )
-        .context(crate::agent_lifecycle::StartupPhase::Spawn);
-        let mut spawned = match spawned {
-            Ok(spawned) => spawned,
-            Err(error) => return Err(startup.failed(error)),
-        };
+        .context(crate::agent_lifecycle::StartupPhase::Spawn)?;
         let stderr = AgentStderrLog::new(format!("history-{}", target.agent_id));
         if let Some(pipe) = spawned.child.stderr.take() {
             stderr.drain(pipe);
         }
-        // No await after spawn: the query must own the child and admission
-        // lease before receipt acquisition can be cancelled.
+        // The query must own the child before receipt acquisition can be cancelled.
         Ok(Self {
-            startup_registry: Arc::clone(&target.startup_registry),
-            admission_key: key,
-            startup: Some(startup),
             conn: None,
             child: Some(spawned.child),
             incoming: None,
@@ -722,10 +832,6 @@ impl HistoryProcess {
                 acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                     .client_info(acp::schema::v1::Implementation::new("wta-history", env!("CARGO_PKG_VERSION"))),
             )).await.context("history ACP initialize timed out")??;
-            if let Some(startup) = &mut self.startup {
-                startup.succeeded()?;
-            }
-            self.startup = None;
             if response.agent_capabilities.session_capabilities.list.is_none() {
                 return Err(anyhow!("history ACP server does not support session/list"));
             }
@@ -740,18 +846,12 @@ impl HistoryProcess {
             for line in &lines {
                 tracing::warn!(target: "master_history", agent_id = %target.agent_id, "{line}");
             }
-            // Keep an initialization lease in self across cleanup awaits.
-            // Reacquiring it here would deadlock, and a local would be lost
-            // if retirement cancels cleanup.
-            let cleanup = self.cleanup().await;
+            let cleanup = self.stop().await;
             let error = crate::agent_lifecycle::StartupDetails::attach(
                 cleanup.err().unwrap_or(error),
                 &lines,
             );
-            return Err(match self.startup.take() {
-                Some(startup) => startup.failed(error),
-                None => error,
-            });
+            return Err(error);
         }
         Ok(())
     }
@@ -763,21 +863,6 @@ impl HistoryProcess {
     }
 
     async fn stop(&mut self) -> Result<()> {
-        let result = self.cleanup().await;
-        let startup = self.startup.take();
-        match result {
-            Ok(()) => Ok(()),
-            Err(error) => Err(match startup {
-                Some(startup) => startup.failed(error),
-                None => error,
-            }),
-        }
-    }
-
-    async fn cleanup(&mut self) -> Result<()> {
-        if self.startup.is_none() {
-            self.startup = Some(self.startup_registry.lock(&self.admission_key).await?);
-        }
         let result: Result<()> = async {
             #[cfg(test)]
             if self.reject_stop {
@@ -796,9 +881,7 @@ impl HistoryProcess {
             Ok(())
         }
         .await;
-        result
-            .context(crate::agent_lifecycle::StartupPhase::Cleanup)
-            .context(crate::agent_lifecycle::StartupCleanupUnconfirmed)
+        result.context(crate::agent_lifecycle::StartupPhase::Cleanup)
     }
 
     fn ended(&mut self) -> Result<bool> {
@@ -815,9 +898,6 @@ impl HistoryProcess {
     #[cfg(test)]
     pub(super) fn mock(conn: conn::ClientLink) -> Self {
         Self {
-            startup_registry: Arc::default(),
-            admission_key: "history-fixture".into(),
-            startup: None,
             conn: Some(conn),
             child: None,
             incoming: None,
@@ -896,9 +976,9 @@ pub(super) struct HistoryQuery {
     pending: Option<PendingList>,
     recycling: bool,
     wait: AdaptiveWait,
-    startup_stopped: bool,
-    retry_epoch: u64,
     last_response_complete: bool,
+    failed_cycles: usize,
+    cycle_in_progress: bool,
 }
 
 impl HistoryQuery {
@@ -924,21 +1004,20 @@ impl HistoryQuery {
         self.pending.is_some()
     }
 
-    fn observe_startup_failure(&mut self, failed_epoch: u64, registry_epoch: u64) {
-        let retried = registry_epoch > self.retry_epoch;
-        self.retry_epoch = self.retry_epoch.max(registry_epoch);
-        if failed_epoch < self.retry_epoch {
-            if retried {
-                self.startup_stopped = false;
-            }
-            return;
-        }
-        self.startup_stopped = true;
-        self.retry_epoch = self.retry_epoch.max(failed_epoch);
-    }
-
     pub fn last_response_complete(&self) -> bool {
         self.last_response_complete
+    }
+
+    pub(super) fn recovery_paused(&self) -> bool {
+        self.failed_cycles >= MAX_FAILED_CYCLES
+    }
+
+    pub(super) fn retry_paused(&mut self) -> bool {
+        if !self.recovery_paused() {
+            return false;
+        }
+        self.failed_cycles = 0;
+        true
     }
 
     pub async fn stop(&mut self) -> Result<()> {
@@ -967,34 +1046,31 @@ impl HistoryQuery {
         cancelled: &tokio_util::sync::CancellationToken,
         complete_inventory: bool,
     ) -> std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure> {
-        match self.poll_inner(target, cancelled, complete_inventory).await {
+        let result = self.poll_inner(target, cancelled, complete_inventory).await;
+        if cancelled.is_cancelled() {
+            self.cycle_in_progress = false;
+        } else if matches!(&result, Ok(Ok(_))) {
+            self.failed_cycles = 0;
+            self.cycle_in_progress = false;
+        } else if self.cycle_in_progress && self.pending.is_none() {
+            // Soft checkpoints retain the pending request and do not finish a cycle.
+            self.cycle_in_progress = false;
+            self.failed_cycles += 1;
+            if self.recovery_paused() {
+                tracing::warn!(target: "master_history",
+                    agent_id = ?target.map(|target| target.agent_id.as_str()),
+                    agent_source = ?target.map(|target| &target.source),
+                    failed_cycles = self.failed_cycles,
+                    "automatic history recovery paused after consecutive failed query cycles");
+                if let Err(error) = self.stop().await {
+                    tracing::error!(target: "master_history", %error,
+                        "paused history query retains ownership until cleanup is confirmed");
+                }
+            }
+        }
+        match result {
             Ok(result) => result,
             Err(error) => {
-                if error.is::<crate::agent_lifecycle::StartupLimitReached>()
-                    || error.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>()
-                {
-                    let failed_epoch = error
-                        .downcast_ref::<crate::agent_lifecycle::StartupFailure>()
-                        .map(|failure| failure.retry_epoch)
-                        .unwrap_or(self.retry_epoch);
-                    let registry_epoch = if let Some(target) = target {
-                        match target
-                            .startup_registry
-                            .retry_epoch(&target.admission_key())
-                            .await
-                        {
-                            Ok(epoch) => epoch,
-                            Err(epoch_error) => {
-                                tracing::warn!(target: "master_history", error = %epoch_error,
-                                    "could not read history startup retry epoch");
-                                self.retry_epoch
-                            }
-                        }
-                    } else {
-                        self.retry_epoch
-                    };
-                    self.observe_startup_failure(failed_epoch, registry_epoch);
-                }
                 self.wait.fast_successes = 0;
                 tracing::warn!(target: "master_history",
                     pid = ?self.process.as_ref().and_then(|process| process.child.as_ref()).and_then(|child| child.id()),
@@ -1011,23 +1087,13 @@ impl HistoryQuery {
         complete_inventory: bool,
     ) -> Result<std::result::Result<acp::schema::v1::ListSessionsResponse, HistoryRefreshFailure>>
     {
-        if self.startup_stopped {
-            let Some(target) = target else {
-                return Ok(Err(HistoryRefreshFailure::Other));
-            };
-            let epoch = target
-                .startup_registry
-                .retry_epoch(&target.admission_key())
-                .await?;
-            if epoch <= self.retry_epoch {
-                return Ok(Err(HistoryRefreshFailure::Other));
-            }
-            self.retry_epoch = epoch;
-            self.startup_stopped = false;
-        }
         if self.recycling {
             self.stop().await?;
         }
+        if self.recovery_paused() {
+            return Ok(Err(HistoryRefreshFailure::Other));
+        }
+        // Cleanup alone must not charge an already-completed query cycle.
         if self
             .process
             .as_mut()
@@ -1035,9 +1101,13 @@ impl HistoryQuery {
             .transpose()?
             .unwrap_or(false)
         {
+            let interrupted = self.pending.is_some();
             self.stop().await?;
-            return Err(anyhow!("history ACP process or transport exited"));
+            if interrupted {
+                return Err(anyhow!("history ACP process or transport exited"));
+            }
         }
+        self.cycle_in_progress = true;
         if self.process.is_none() {
             self.process = Some(
                 await_history_startup(
@@ -1048,13 +1118,6 @@ impl HistoryQuery {
                 )
                 .await?,
             );
-            if let Some(startup) = self
-                .process
-                .as_ref()
-                .and_then(|process| process.startup.as_ref())
-            {
-                self.retry_epoch = self.retry_epoch.max(startup.retry_epoch());
-            }
         }
         if let Some(process) = self.process.as_mut().filter(|process| !process.initialized) {
             self.recycling = true;

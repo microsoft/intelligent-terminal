@@ -1910,6 +1910,7 @@ struct AgentHistoryRefresh {
     target: OnceLock<history::HistoryTarget>,
     cancelled: tokio_util::sync::CancellationToken,
     worker_started: std::sync::atomic::AtomicBool,
+    retry_requested: tokio::sync::Notify,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1947,6 +1948,15 @@ struct HistoryRefreshState {
 }
 
 impl HistoryRefreshState {
+    fn retry_paused_history(&mut self) -> bool {
+        if !self.query.retry_paused() {
+            return false;
+        }
+        self.failures = 0;
+        self.next_refresh_at = None;
+        true
+    }
+
     fn observe_retry_epoch(&mut self, epoch: u64) {
         if epoch > self.retry_epoch {
             self.retry_epoch = epoch;
@@ -5070,7 +5080,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         Err(error) => return Err(error).context("read WTA_MASTER_GENERATION"),
     };
     let inner = Arc::new(MasterStateInner {
-        startup_registry: Arc::new(crate::agent_lifecycle::StartupRegistry::runtime()?),
+        startup_registry: crate::agent_lifecycle::StartupRegistry::runtime(),
         native_observation_receiver_generation,
         native_observation_listener_ready: std::sync::atomic::AtomicBool::new(false),
         session_lifecycle_gates: Mutex::new(SessionLifecycleGateTable::default()),
@@ -5792,14 +5802,8 @@ where
                 let result = match startup.begin() {
                     Ok(()) => match initialize(Arc::clone(&cell)).await {
                         Ok(agent) => {
-                            match startup.succeeded() {
-                                Ok(()) => Ok(agent),
-                                Err(error) => {
-                                    agent.conn.shutdown();
-                                    retire_agent_history(&agent).await;
-                                    Err(error)
-                                }
-                            }
+                            startup.succeeded();
+                            Ok(agent)
                         }
                         Err(error) => Err(startup.failed(error)),
                     },
@@ -5957,7 +5961,7 @@ async fn wait_for_agent_exit(
     child: &mut crate::protocol::acp::process::AgentProcess,
 ) -> Result<std::process::ExitStatus> {
     // Lease only retirement, not a healthy process's lifetime. Cleanup must
-    // still reclaim our owned process if the admission ledger is unavailable.
+    // still reclaim our owned process if the admission lease is unavailable.
     let exited = child.wait_for_exit_or_stop().await;
     let startup = state.startup_registry.lock(admission_key).await;
     let status = match exited {
@@ -6348,7 +6352,6 @@ async fn spawn_one_agent(
         .history_refresh
         .target
         .set(history::HistoryTarget {
-            startup_registry: Arc::clone(&state.startup_registry),
             command: agent_cmd.to_string(),
             agent_id: resolved_agent_id.clone(),
             source: source.clone(),
@@ -7906,6 +7909,7 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             tokio::select! {
                 _ = agent.history_refresh.cancelled.cancelled() => break,
                 _ = tokio::time::sleep_until(next) => {}
+                _ = agent.history_refresh.retry_requested.notified() => {}
             }
         }
     });
@@ -8175,6 +8179,88 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
     });
 }
 
+fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentCli>>) {
+    use std::sync::atomic::Ordering;
+
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let discover = agent.is_none();
+        let retained: Vec<_> = if discover {
+            state
+                .history_queries
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let agents = match agent.as_ref() {
+            Some(agent) => vec![Arc::clone(agent)],
+            None => state
+                .agents
+                .lock()
+                .await
+                .values()
+                .filter_map(|cell| cell.get().cloned())
+                .collect(),
+        };
+        let mut gates = Vec::new();
+        for gate in retained.into_iter().chain(
+            agents
+                .iter()
+                .map(|agent| Arc::clone(&agent.history_refresh.gate)),
+        ) {
+            if !gates.iter().any(|known| Arc::ptr_eq(known, &gate)) {
+                gates.push(gate);
+            }
+        }
+        for gate in gates {
+            let state = Arc::clone(&state);
+            let bound = agent.clone();
+            tokio::task::spawn_local(async move {
+                let mut refresh = gate.lock().await;
+                if bound
+                    .as_ref()
+                    .is_some_and(|agent| agent.history_refresh.retired.load(Ordering::Acquire))
+                {
+                    return;
+                }
+                let reopened = refresh.retry_paused_history();
+                drop(refresh);
+                let agents = match bound {
+                    Some(agent) => vec![agent],
+                    None => state
+                        .agents
+                        .lock()
+                        .await
+                        .values()
+                        .filter_map(|cell| cell.get())
+                        .filter(|agent| Arc::ptr_eq(&agent.history_refresh.gate, &gate))
+                        .cloned()
+                        .collect(),
+                };
+                for agent in agents {
+                    if agent.history_refresh.retired.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    if reopened {
+                        tracing::info!(target: "master_history",
+                            agent_id = %agent.resolved_agent_id, agent_source = %agent.source,
+                            "explicit history retry reopened automatic recovery");
+                        agent.history_refresh.retry_requested.notify_one();
+                    }
+                    start_agent_history_worker(&state, &agent);
+                }
+            });
+        }
+        if discover {
+            request_host_history_refresh(&state);
+        }
+    });
+}
+
 /// Ordinary reads never contact agents. Only an explicit rescan may refresh.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
@@ -8198,8 +8284,13 @@ where
     F: FnOnce(Vec<crate::session_registry::SessionInfo>) -> Fut,
     Fut: std::future::Future<Output = Vec<crate::session_registry::SessionInfo>>,
 {
+    if parsed.retry_history && !parsed.rescan {
+        return Err(acp::Error::invalid_params().data("history retry requires an explicit rescan"));
+    }
     if parsed.rescan {
-        if let Some(agent) = agent {
+        if parsed.retry_history {
+            request_history_retry(state, agent.cloned());
+        } else if let Some(agent) = agent {
             // F5 shares the bound source's worker, but the helper's ACP
             // dispatch must never wait behind a slow history request.
             start_agent_history_worker(state, agent);

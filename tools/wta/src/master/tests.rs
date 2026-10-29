@@ -9681,7 +9681,7 @@ async fn runtime_cleanup_wait_does_not_block_admission_for_a_live_agent() {
             .expect("waiting for a live agent must not hold startup admission")
             .unwrap();
             startup.begin().unwrap();
-            startup.succeeded().unwrap();
+            startup.succeeded();
         }
         drop(release_process);
         let status = tokio::time::timeout(std::time::Duration::from_secs(20), reaper)
@@ -15501,10 +15501,9 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
 }
 
 #[tokio::test(start_paused = true)]
-async fn dedicated_history_startup_stops_after_three_failures_and_accepts_explicit_retry() {
+async fn dedicated_history_startup_does_not_consume_the_chat_budget() {
     let state = make_state();
     let target = history::HistoryTarget {
-        startup_registry: Arc::clone(&state.startup_registry),
         command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
         agent_id: "custom:history-failure".to_string(),
         source: crate::agent_source::AgentSource::Host,
@@ -15518,14 +15517,27 @@ async fn dedicated_history_startup_stops_after_three_failures_and_accepts_explic
     );
     let cancelled = tokio_util::sync::CancellationToken::new();
     let mut query = history::HistoryQuery::default();
-    for _ in 0..3 {
+    for _ in 0..5 {
         assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
     }
-    assert!(state.startup_registry.lock(&key).await.unwrap().begin().is_err());
+    for _ in 0..crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS {
+        state
+            .startup_registry
+            .lock(&key)
+            .await
+            .unwrap()
+            .begin()
+            .unwrap();
+    }
+    let blocked = state
+        .startup_registry
+        .lock(&key)
+        .await
+        .unwrap()
+        .begin()
+        .unwrap_err();
+    assert!(blocked.is::<crate::agent_lifecycle::StartupLimitReached>());
     assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-    state.startup_registry.retry(&key).await.unwrap();
-    assert!(query.poll(Some(&target), &cancelled, false).await.is_err());
-    state.startup_registry.lock(&key).await.unwrap().begin().unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -17320,7 +17332,7 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
 }
 
 #[tokio::test]
-async fn history_refresh_real_worker_initializes_from_send_task_and_releases_ownership() {
+async fn history_refresh_real_worker_ignores_chat_quarantine_and_releases_ownership() {
     use std::sync::atomic::Ordering;
 
     struct Fixture(PathBuf);
@@ -17370,7 +17382,6 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "pwsh.exe -NoProfile -EncodedCommand {}",
                         crate::osc52::base64_encode(&utf16)
@@ -17381,6 +17392,17 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 })
                 .ok()
                 .unwrap();
+            let target = agent.history_refresh.target.get().unwrap();
+            let key = agent_cmd_key_with_provider(
+                &target.command,
+                Some(&target.agent_id),
+                &target.source,
+                &target.provider,
+            );
+            let _ = state.startup_registry.lock(&key).await.unwrap().failed(
+                anyhow!("chat cleanup was not confirmed")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
+            );
             let worker_state = Arc::clone(&state);
             let worker_agent = Arc::clone(&agent);
             // This task has no LocalSet context, just like a hook callback.
@@ -17398,6 +17420,14 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
             .await
             .expect("production worker initializes and lists through its child ACP connection");
             assert_eq!(agent.history_refresh.gate.lock().await.last_count, Some(1));
+            let blocked = state
+                .startup_registry
+                .lock(&key)
+                .await
+                .unwrap()
+                .begin()
+                .unwrap_err();
+            assert!(blocked.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>());
             let rows = state.registry.snapshot().await;
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0].title.as_deref(), Some("Saved task"));
@@ -17457,12 +17487,13 @@ async fn history_refresh_real_process_restarts_after_confirmed_job_exit_without_
 $marker='{marker}'
 $launches='{launches}'
 Add-Content -LiteralPath $launches -Value $PID
+$launchNumber=@(Get-Content -LiteralPath $launches).Count
 while ($null -ne ($line=[Console]::In.ReadLine())) {{
     $request=$line | ConvertFrom-Json
     if ($request.method -eq 'initialize') {{
         $result=@{{protocolVersion=1;agentCapabilities=@{{sessionCapabilities=@{{list=@{{}}}}}}}}
     }} elseif ($request.method -eq 'session/list') {{
-        if (-not (Test-Path -LiteralPath $marker)) {{
+        if ($launchNumber -le 3) {{
             Set-Content -LiteralPath $marker -Value $PID
             while ($true) {{ Start-Sleep -Seconds 30 }}
         }}
@@ -17477,7 +17508,8 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     tokio::task::LocalSet::new()
         .run_until(async {
-            let state = make_state();
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
             let mut agent = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
             let inner = Arc::get_mut(&mut agent).unwrap();
             Arc::get_mut(&mut inner.history_refresh.gate)
@@ -17489,7 +17521,6 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "pwsh.exe -NoProfile -EncodedCommand {}",
                         crate::osc52::base64_encode(&utf16)
@@ -17500,61 +17531,95 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 })
                 .ok()
                 .unwrap();
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
+            add_test_agent_to_pool(&state, &agent).await;
+            let _ = state.startup_registry.lock(&agent.cmd_key).await.unwrap().failed(
+                anyhow!("chat cleanup remains quarantined")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
             );
-            assert!(
-                marker.exists(),
-                "real process received and held its first list request"
-            );
-            assert_eq!(
-                std::fs::read_to_string(&launches).unwrap().lines().count(),
-                1
-            );
-            assert!(agent
-                .conn
-                .list_sessions(acp::schema::v1::ListSessionsRequest::new())
-                .await
-                .is_ok());
-            agent
-                .history_refresh
-                .gate
-                .lock()
-                .await
-                .query
-                .expire_for_test();
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
-            assert!(
-                agent
-                    .history_refresh
-                    .gate
-                    .lock()
-                    .await
-                    .query
-                    .process
-                    .is_none(),
-                "confirmed job exit precedes replacement"
-            );
+            for attempt in 1..=3 {
+                let mut refresh = Box::pin(refresh_agent_history(
+                    &state, &agent, HistoryRefreshTrigger::Immediate,
+                ));
+                let received = async {
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+                    loop {
+                        let starts = std::fs::read_to_string(&launches).unwrap_or_default();
+                        let held = std::fs::read_to_string(&marker).unwrap_or_default();
+                        if starts.lines().count() == attempt
+                            && starts.lines().last().is_some_and(|pid| pid.trim() == held.trim())
+                        {
+                            break;
+                        }
+                        assert!(std::time::Instant::now() < deadline, "real session/list request never arrived");
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                };
+                tokio::select! {
+                    _ = received => {}
+                    result = &mut refresh => panic!("history completed before the held request: {result:?}"),
+                }
+                tokio::time::pause();
+                tokio::time::advance(std::time::Duration::from_secs(300)).await;
+                tokio::time::resume();
+                assert_eq!(refresh.await, None);
+                assert!(agent.history_refresh.gate.lock().await.query.process.is_none(),
+                    "confirmed job exit precedes replacement");
+                if attempt < 3 {
+                    tokio::time::pause();
+                    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+                    tokio::time::resume();
+                }
+            }
+            assert!(agent.history_refresh.gate.lock().await.query.recovery_paused());
             tokio::time::pause();
-            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            tokio::time::advance(std::time::Duration::from_secs(60)).await;
             tokio::time::resume();
             assert_eq!(
                 refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                Some(0)
+                None
             );
             assert_eq!(
                 std::fs::read_to_string(&launches).unwrap().lines().count(),
-                2
+                3,
+                "successful initialize must not reset repeated session/list timeouts"
             );
+            handle_sessions_list(&state, Some(&agent), &crate::session_registry::SessionsListParams {
+                rescan: true,
+                ..Default::default()
+            }).await.unwrap();
+            tokio::task::yield_now().await;
+            assert!(agent.history_refresh.gate.lock().await.query.recovery_paused(),
+                "ordinary refresh must not reopen a failed recovery cycle");
+            let invalid_retry = handle_sessions_list(&state, Some(&agent),
+                &crate::session_registry::SessionsListParams {
+                    retry_history: true,
+                    ..Default::default()
+                }).await;
+            assert!(invalid_retry.is_err(), "a read-only snapshot cannot reset recovery");
+            handle_sessions_list(&state, None, &crate::session_registry::SessionsListParams {
+                rescan: true,
+                retry_history: true,
+            }).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                loop {
+                    if agent.history_refresh.gate.lock().await.last_count == Some(0) {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }).await.expect("explicit history retry wakes the existing worker without waiting for backoff");
+            assert_eq!(std::fs::read_to_string(&launches).unwrap().lines().count(), 4);
+            assert!(!agent.history_refresh.gate.lock().await.query.recovery_paused());
+            let blocked = state.startup_registry.lock(&agent.cmd_key).await.unwrap().begin().unwrap_err();
+            assert!(blocked.is::<crate::agent_lifecycle::StartupCleanupUnconfirmed>(),
+                "history retry must not reset chat admission");
             assert!(agent
                 .conn
                 .list_sessions(acp::schema::v1::ListSessionsRequest::new())
                 .await
                 .is_ok());
+            agent.history_refresh.retired.store(true, std::sync::atomic::Ordering::Release);
+            agent.history_refresh.cancelled.cancel();
             agent
                 .history_refresh
                 .gate
@@ -17564,6 +17629,223 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
                 .stop()
                 .await
                 .unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_retry_reopens_retained_gate_after_chat_retirement_without_bypassing_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for cleanup_failed in [false, true] {
+                let mut state = make_state();
+                Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+                let (agent, mut requests) =
+                    controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+                let key = agent.cmd_key.clone();
+                let gate = Arc::clone(&agent.history_refresh.gate);
+                let target = history::HistoryTarget {
+                    command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
+                    agent_id: "custom:retained-history".into(),
+                    source: crate::agent_source::AgentSource::Host,
+                    provider: ProviderBinding::Native,
+                };
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                {
+                    let mut refresh = gate.lock().await;
+                    let process = refresh.query.process.take();
+                    refresh.query = history::HistoryQuery::default();
+                    for _ in 0..3 {
+                        assert!(refresh
+                            .query
+                            .poll(Some(&target), &cancelled, false)
+                            .await
+                            .is_err());
+                    }
+                    assert!(refresh.query.recovery_paused());
+                    if cleanup_failed {
+                        refresh.query.process = process;
+                        refresh.query.reject_stop_for_test(true);
+                    }
+                    refresh.owner = Some(agent.instance_id);
+                    refresh.failures = 3;
+                    refresh.next_refresh_at =
+                        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(60));
+                }
+                state
+                    .history_queries
+                    .lock()
+                    .await
+                    .insert(key.clone(), Arc::clone(&gate));
+                add_test_agent_to_pool(&state, &agent).await;
+                let cell = state.agents.lock().await[&key].clone();
+                reap_agent(&state, &key, &cell, agent.instance_id).await;
+                assert!(!state.agents.lock().await.contains_key(&key));
+                assert!(gate.lock().await.query.recovery_paused());
+
+                handle_sessions_list(
+                    &state,
+                    None,
+                    &crate::session_registry::SessionsListParams {
+                        rescan: true,
+                        retry_history: true,
+                    },
+                )
+                .await
+                .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                    loop {
+                        if !gate.lock().await.query.recovery_paused() {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    }
+                })
+                .await
+                .expect("unbound history retry must reopen retained queries before rediscovery");
+
+                let retained = state.history_queries.lock().await[&key].clone();
+                assert!(Arc::ptr_eq(&retained, &gate));
+                let mut refresh = retained.lock().await;
+                assert_eq!(refresh.owner, Some(agent.instance_id));
+                assert_eq!(refresh.failures, 0);
+                assert!(refresh.next_refresh_at.is_none());
+                assert_eq!(refresh.query.process.is_some(), cleanup_failed);
+                if cleanup_failed {
+                    assert!(refresh
+                        .query
+                        .poll(Some(&target), &cancelled, false)
+                        .await
+                        .is_err());
+                    assert!(
+                        refresh.query.process.is_some(),
+                        "explicit retry must retain the unconfirmed old process"
+                    );
+                    assert!(
+                        requests.try_recv().is_err(),
+                        "retry must not issue another RPC before cleanup is confirmed"
+                    );
+                    refresh.query.reject_stop_for_test(false);
+                    refresh.query.stop().await.unwrap();
+                }
+                assert!(refresh
+                    .query
+                    .poll(Some(&target), &cancelled, false)
+                    .await
+                    .is_err());
+                assert!(
+                    !refresh.query.recovery_paused(),
+                    "the retained query can attempt a new cycle after confirmed cleanup"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_retry_wakes_paused_worker_without_waiting_for_other_agents() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state = make_state();
+            Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+            let (paused, mut paused_requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let (busy, mut busy_requests) =
+                controlled_history_agent("claude", crate::agent_source::AgentSource::Host);
+            let paused_gate = Arc::clone(&paused.history_refresh.gate);
+            {
+                let mut refresh = paused_gate.lock().await;
+                let process = refresh.query.process.take();
+                refresh.query = history::HistoryQuery::default();
+                let target = history::HistoryTarget {
+                    command: format!("wta-missing-history-{}.exe", uuid::Uuid::new_v4()),
+                    agent_id: "custom:paused-history".into(),
+                    source: crate::agent_source::AgentSource::Host,
+                    provider: ProviderBinding::Native,
+                };
+                let cancelled = tokio_util::sync::CancellationToken::new();
+                for _ in 0..3 {
+                    assert!(refresh
+                        .query
+                        .poll(Some(&target), &cancelled, false)
+                        .await
+                        .is_err());
+                }
+                assert!(refresh.query.recovery_paused());
+                refresh.query.process = process;
+                refresh.owner = Some(paused.instance_id);
+                refresh.failures = 3;
+                refresh.next_refresh_at =
+                    Some(tokio::time::Instant::now() + std::time::Duration::from_secs(60));
+            }
+            {
+                let mut gates = state.history_queries.lock().await;
+                gates.insert(paused.cmd_key.clone(), Arc::clone(&paused_gate));
+                gates.insert("shared-paused-gate".into(), Arc::clone(&paused_gate));
+                gates.insert(busy.cmd_key.clone(), Arc::clone(&busy.history_refresh.gate));
+            }
+            add_test_agent_to_pool(&state, &paused).await;
+            add_test_agent_to_pool(&state, &busy).await;
+            start_agent_history_worker(&state, &paused);
+            tokio::task::yield_now().await;
+
+            let mut busy_refresh = Box::pin(refresh_agent_history(
+                &state,
+                &busy,
+                HistoryRefreshTrigger::Immediate,
+            ));
+            let held = tokio::select! {
+                request = busy_requests.recv() => request.unwrap(),
+                result = &mut busy_refresh => panic!("missing busy history request: {result:?}"),
+            };
+            handle_sessions_list(
+                &state,
+                None,
+                &crate::session_registry::SessionsListParams {
+                    rescan: true,
+                    retry_history: true,
+                },
+            )
+            .await
+            .unwrap();
+            let reply =
+                tokio::time::timeout(std::time::Duration::from_secs(1), paused_requests.recv())
+                    .await
+                    .expect("a busy unrelated gate must not delay a paused worker")
+                    .unwrap();
+            reply.send(Ok(vec![])).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    if paused_gate.lock().await.last_count == Some(0) {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(
+                busy_requests.try_recv().is_err(),
+                "retry must not duplicate or replace the healthy in-flight request"
+            );
+            held.send(Ok(vec![])).unwrap();
+            assert_eq!(busy_refresh.await, Some(0));
+            for agent in [&paused, &busy] {
+                agent
+                    .history_refresh
+                    .retired
+                    .store(true, std::sync::atomic::Ordering::Release);
+                agent.history_refresh.cancelled.cancel();
+                agent
+                    .history_refresh
+                    .gate
+                    .lock()
+                    .await
+                    .query
+                    .stop()
+                    .await
+                    .unwrap();
+            }
         })
         .await;
 }
@@ -17729,7 +18011,6 @@ async fn history_refresh_live_copilot_readonly_connection_can_be_recycled() {
                 .history_refresh
                 .target
                 .set(history::HistoryTarget {
-                    startup_registry: Arc::clone(&state.startup_registry),
                     command: format!(
                         "{} --no-auto-update",
                         crate::agent_registry::build_acp_command("copilot", None)
@@ -17792,7 +18073,7 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                     PathBuf::from("C:\\repo"),
                 ))
                 .await;
-            for delay in [5, 10, 20, 40, 60, 60] {
+            for delay in [5, 10] {
                 let refresh =
                     refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
                 let reply = async {
