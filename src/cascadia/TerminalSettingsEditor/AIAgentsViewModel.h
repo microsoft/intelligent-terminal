@@ -201,6 +201,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Model::GlobalAppSettings _GlobalSettings;
         std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> _agentPolicySnapshot;
         std::tuple<bool, bool, bool, bool, bool, winrt::hstring, winrt::hstring> _agentPolicyState;
+        const std::tuple<winrt::hstring, bool, winrt::hstring, bool> _sourceModelSettings;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
@@ -225,6 +226,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();
+        void _ReconcileAcpModelSelection(const Model::GlobalAppSettings& settings) const;
         void _LoadCustomModelProviders();
         void _CommitCustomModelProviders();
         void _RemoveCustomModelProvider(const winrt::hstring& id);

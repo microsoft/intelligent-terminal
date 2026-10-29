@@ -79,6 +79,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentSettingsReloadReusesUnchangedViewModel);
         TEST_METHOD(TestAgentSettingsReloadRejectsAgentConfigurationChanges);
         TEST_METHOD(TestAgentSettingsReloadNormalizesLegacyCommands);
+        TEST_METHOD(TestAgentSettingsReloadReconcilesStaleModel);
 
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
@@ -348,6 +349,50 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(viewModel.TryUpdateSettings(changed.GlobalSettings()));
                 verifyRawSource();
             }
+        }));
+    }
+
+    void SettingsTests::TestAgentSettingsReloadReconcilesStaleModel()
+    {
+        VERIFY_SUCCEEDED(RunOnUIThread([&]() {
+            const auto state = AcpRuntimeState::Current();
+            const auto savedModels = state.AvailableModels(L"");
+            const auto savedCurrent = state.CurrentModelId(L"");
+            const auto restore = wil::scope_exit([&]() {
+                state.SetAvailableModels(L"", savedModels, savedCurrent);
+            });
+            const auto catalog = winrt::single_threaded_vector<AcpModelInfo>({ AcpModelInfo{ L"available-model", L"Available model", L"" } });
+            state.SetAvailableModels(L"", catalog.GetView(), L"available-model");
+
+            const CascadiaSettings source{ LR"({"acpAgent":"","delegateAgent":"","acpModel":"obsolete-model","profiles":[]})", {} };
+            const auto editing = source.Copy();
+            const Editor::AIAgentsViewModel viewModel{ editing.GlobalSettings() };
+            VERIFY_IS_TRUE(editing.GlobalSettings().AcpModel().empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"obsolete-model" }, source.GlobalSettings().AcpModel());
+            const auto models = viewModel.AcpModelList();
+            const auto firstModel = models.GetAt(0);
+
+            for (const auto agentsOnly : { false, true, false })
+            {
+                const auto reloaded = source.Copy();
+                reloaded.GlobalSettings().SidebarShowAgentsOnly(agentsOnly);
+                VERIFY_IS_TRUE(viewModel.TryUpdateSettings(reloaded.GlobalSettings()));
+                VERIFY_IS_TRUE(reloaded.GlobalSettings().AcpModel().empty());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"obsolete-model" }, source.GlobalSettings().AcpModel());
+                VERIFY_ARE_EQUAL(models, viewModel.AcpModelList());
+                VERIFY_ARE_EQUAL(firstModel, models.GetAt(0));
+                VERIFY_IS_FALSE(viewModel.IsAcpPreparing());
+            }
+
+            for (const auto model : { L"available-model", L"different-obsolete-model" })
+            {
+                const auto changed = source.Copy();
+                changed.GlobalSettings().AcpModel(model);
+                VERIFY_IS_FALSE(viewModel.TryUpdateSettings(changed.GlobalSettings()));
+            }
+            const auto custom = source.Copy();
+            custom.GlobalSettings().CustomModelSelection(L"custom:provider:model");
+            VERIFY_IS_FALSE(viewModel.TryUpdateSettings(custom.GlobalSettings()));
         }));
     }
 

@@ -26,6 +26,16 @@ namespace
     constexpr std::wstring_view AutoErrorHandlingSuggest{ L"suggest" };
     constexpr std::wstring_view AutoErrorHandlingOff{ L"off" };
 
+    auto CaptureModelSettings(const GlobalAppSettings& settings)
+    {
+        return std::tuple{
+            settings.AcpModel(),
+            settings.HasAcpModel(),
+            settings.CustomModelSelection(),
+            settings.HasCustomModelSelection(),
+        };
+    }
+
     auto CaptureAgentPolicyState(const GlobalAppSettings& settings)
     {
         return std::tuple{
@@ -516,7 +526,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     AIAgentsViewModel::AIAgentsViewModel(Model::GlobalAppSettings globalSettings) :
         _GlobalSettings{ globalSettings },
-        _agentPolicySnapshot{ ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() }
+        _agentPolicySnapshot{ ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() },
+        _sourceModelSettings{ CaptureModelSettings(globalSettings) }
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
@@ -651,7 +662,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool AIAgentsViewModel::TryUpdateSettings(const Model::GlobalAppSettings& globalSettings)
     {
-        if (_agentPolicySnapshot != ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot())
+        // Catalog cleanup must not hide a real change to the persisted model settings.
+        if (_agentPolicySnapshot != ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() ||
+            _sourceModelSettings != CaptureModelSettings(globalSettings))
         {
             return false;
         }
@@ -681,12 +694,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return false;                                              \
     }
         CHECK_AGENT_SETTING(AcpAgent);
-        CHECK_AGENT_SETTING(AcpModel);
         CHECK_AGENT_SETTING(AcpCustomCommand);
         CHECK_AGENT_SETTING(DelegateAgent);
         CHECK_AGENT_SETTING(DelegateModel);
         CHECK_AGENT_SETTING(DelegateCustomCommand);
-        CHECK_AGENT_SETTING(CustomModelSelection);
         CHECK_AGENT_SETTING(AutoErrorDetectionEnabled);
         CHECK_AGENT_SETTING(AutoFixEnabled);
         CHECK_AGENT_SETTING(AgentSessionManagementEnabled);
@@ -716,6 +727,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             !listsEqual(_GlobalSettings.AcpCustomCommands(), globalSettings.AcpCustomCommands(), std::equal_to{}) ||
             !listsEqual(_GlobalSettings.DelegateCustomCommands(), globalSettings.DelegateCustomCommands(), std::equal_to{}) ||
             !listsEqual(_GlobalSettings.CustomModelProviders(), globalSettings.CustomModelProviders(), providersEqual))
+        {
+            return false;
+        }
+
+        _ReconcileAcpModelSelection(globalSettings);
+        if (CaptureModelSettings(_GlobalSettings) != CaptureModelSettings(globalSettings))
         {
             return false;
         }
@@ -1025,54 +1042,40 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         //
         // Empty is already the legitimate "use whatever default the agent
         // picks" sentinel, so the empty case needs no reconciliation.
-        if (_acpModelList.Size() > 0)
-        {
-            const auto current = supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty() ?
-                                     _GlobalSettings.CustomModelSelection() :
-                                     _GlobalSettings.AcpModel();
-            if (!current.empty())
-            {
-                bool matched = false;
-                for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
-                {
-                    if (_acpModelList.GetAt(i).Id() == current)
-                    {
-                        matched = true;
-                        break;
-                    }
-                }
-                if (!matched)
-                {
-                    const bool persistedCustomSelectionStillExists =
-                        supportsCustomModels &&
-                        ::Microsoft::Terminal::CustomModels::IsCustomSelection(
-                            std::wstring_view{ current }) &&
-                        ::Microsoft::Terminal::CustomModels::SelectionExists(
-                            _GlobalSettings.CustomModelProviders(),
-                            std::wstring_view{ current });
-                    if (!persistedCustomSelectionStillExists)
-                    {
-                        // Stale leftover id this agent doesn't advertise → reset
-                        // to the empty "agent default" sentinel (send no model
-                        // override), which renders as the "Default" placeholder.
-                        if (supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty())
-                        {
-                            _GlobalSettings.CustomModelSelection(L"");
-                        }
-                        else
-                        {
-                            _GlobalSettings.AcpModel(L"");
-                        }
-                    }
-                }
-            }
-        }
+        _ReconcileAcpModelSelection(_GlobalSettings);
 
         _NotifyChanges(L"AcpModelList",
                        L"HasAcpModelList",
                        L"ShowAcpModelTextBox",
                        L"AcpModel",
                        L"CurrentAcpModelEntry");
+    }
+
+    void AIAgentsViewModel::_ReconcileAcpModelSelection(const Model::GlobalAppSettings& settings) const
+    {
+        const auto reset = ::Microsoft::Terminal::AcpModels::ReconcileModelSelection(
+            std::wstring_view{ settings.AcpModel() },
+            std::wstring_view{ settings.CustomModelSelection() },
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsByok(
+                std::wstring_view{ settings.EffectiveAcpAgent() }),
+            _acpModelList && _acpModelList.Size() > 0,
+            [&](const std::wstring_view id) {
+                return std::ranges::any_of(_acpModelList, [&](const auto& model) {
+                    return std::wstring_view{ model.Id() } == id;
+                });
+            },
+            [&](const std::wstring_view id) {
+                return ::Microsoft::Terminal::CustomModels::SelectionExists(
+                    settings.CustomModelProviders(), id);
+            });
+        if (reset.customModelSelection)
+        {
+            settings.CustomModelSelection(L"");
+        }
+        if (reset.acpModel)
+        {
+            settings.AcpModel(L"");
+        }
     }
 
     bool AIAgentsViewModel::HasAcpModelList() const
