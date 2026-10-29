@@ -85,11 +85,13 @@ namespace TerminalAppUnitTests
     {
         const auto defaultSize = winrt::TerminalApp::implementation::ResolveFreDefaultWindowSize(1.0);
         const auto scaledSize = winrt::TerminalApp::implementation::ResolveFreDefaultWindowSize(1.5);
+        const auto hostedTitlebarSize = winrt::TerminalApp::implementation::ResolveFreDefaultWindowSize(1.0, true);
 
         VERIFY_ARE_EQUAL(1130.0, defaultSize.width);
         VERIFY_ARE_EQUAL(631.0, defaultSize.height);
         VERIFY_ARE_EQUAL(1695.0, scaledSize.width);
         VERIFY_ARE_EQUAL(946.5, scaledSize.height);
+        VERIFY_ARE_EQUAL(671.0, hostedTitlebarSize.height);
 
         VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(true, false, false, false, false, true));
         VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(false, false, false, false, false, true));
@@ -116,6 +118,14 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(1920.0, constrained.width);
         VERIFY_ARE_EQUAL(1040.0, constrained.height);
+
+        const auto position = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+            { 100.0, 100.0 },
+            constrained,
+            { 0.0, 0.0 },
+            { 1920.0, 1040.0 });
+        VERIFY_ARE_EQUAL(0.0, position.x);
+        VERIFY_ARE_EQUAL(0.0, position.y);
     }
 
     void FreLayoutMetricsTests::WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint()

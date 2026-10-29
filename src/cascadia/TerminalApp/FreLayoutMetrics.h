@@ -5,6 +5,11 @@
 
 #include <algorithm>
 
+namespace winrt::TerminalApp
+{
+    struct TerminalWindow;
+}
+
 namespace winrt::TerminalApp::implementation
 {
     struct FreWindowSize
@@ -13,11 +18,18 @@ namespace winrt::TerminalApp::implementation
         double height{};
     };
 
-    constexpr FreWindowSize ResolveFreDefaultWindowSize(const double scale) noexcept
+    struct FreWindowPosition
+    {
+        double x{};
+        double y{};
+    };
+
+    constexpr FreWindowSize ResolveFreDefaultWindowSize(const double scale,
+                                                         const bool includeHostedTitlebar = false) noexcept
     {
         return {
             1130.0 * scale,
-            631.0 * scale,
+            (631.0 + (includeHostedTitlebar ? 40.0 : 0.0)) * scale,
         };
     }
 
@@ -30,11 +42,26 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
+    constexpr FreWindowPosition ClampFreWindowPositionToWorkArea(const FreWindowPosition requested,
+                                                                 const FreWindowSize windowSize,
+                                                                 const FreWindowPosition workAreaOrigin,
+                                                                 const FreWindowSize workAreaSize) noexcept
+    {
+        const auto maximumX = workAreaOrigin.x + std::max(0.0, workAreaSize.width - windowSize.width);
+        const auto maximumY = workAreaOrigin.y + std::max(0.0, workAreaSize.height - windowSize.height);
+        return {
+            std::clamp(requested.x, workAreaOrigin.x, maximumX),
+            std::clamp(requested.y, workAreaOrigin.y, maximumY),
+        };
+    }
+
     constexpr double ClampFreMinimumWindowDimension(const bool widthOrHeight,
                                                      const double dimension) noexcept
     {
         return std::max(dimension, widthOrHeight ? 711.0 : 631.0);
     }
+
+    bool ShouldConstrainFreLaunchToWorkArea(const winrt::TerminalApp::TerminalWindow& window) noexcept;
 
     constexpr bool ShouldUseFreDefaultWindowSize(const bool freRequired,
                                                  const bool hasExplicitSize,

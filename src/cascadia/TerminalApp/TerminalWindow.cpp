@@ -627,6 +627,7 @@ namespace winrt::TerminalApp::implementation
     // - a point containing the requested dimensions in pixels.
     winrt::Windows::Foundation::Size TerminalWindow::GetLaunchDimensions(uint32_t dpi)
     {
+        _shouldConstrainFreLaunchToWorkArea = false;
         winrt::Windows::Foundation::Size proposedSize{};
         bool hasPersistedSize{ false };
 
@@ -699,7 +700,9 @@ namespace winrt::TerminalApp::implementation
                                           hasContentBounds,
                                           isDefaultLaunchMode))
         {
-            const auto freSize = ResolveFreDefaultWindowSize(scale);
+            _shouldConstrainFreLaunchToWorkArea = true;
+            const auto includeHostedTitlebar = _settings.GlobalSettings().ShowTabsInTitlebar() && !focusMode;
+            const auto freSize = ResolveFreDefaultWindowSize(scale, includeHostedTitlebar);
             return {
                 static_cast<float>(freSize.width),
                 static_cast<float>(freSize.height),
@@ -740,6 +743,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         return proposedSize;
+    }
+
+    bool ShouldConstrainFreLaunchToWorkArea(const winrt::TerminalApp::TerminalWindow& window) noexcept
+    {
+        return winrt::get_self<TerminalWindow>(window)->ShouldConstrainFreLaunchToWorkArea();
     }
 
     // Method Description:

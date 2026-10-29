@@ -604,6 +604,8 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     }
 
     auto initialSize = _windowLogic.GetLaunchDimensions(dpix);
+    const auto constrainFreLaunchToWorkArea =
+        winrt::TerminalApp::implementation::ShouldConstrainFreLaunchToWorkArea(_windowLogic);
 
     const auto islandWidth = Utils::ClampToShortMax(lrintf(initialSize.Width), 1);
     const auto islandHeight = Utils::ClampToShortMax(lrintf(initialSize.Height), 1);
@@ -627,7 +629,7 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     const til::size desktopDimensions{ nearestMonitorInfo.rcWork.right - nearestMonitorInfo.rcWork.left,
                                        nearestMonitorInfo.rcWork.bottom - nearestMonitorInfo.rcWork.top };
 
-    if (!ApplicationState::SharedInstance().AgentFreCompleted())
+    if (constrainFreLaunchToWorkArea)
     {
         const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
             { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
@@ -668,6 +670,19 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
         origin = {
             (nearestMonitorInfo.rcWork.left + ((desktopDimensions.width / 2) - (dimensions.width / 2))),
             (nearestMonitorInfo.rcWork.top + ((desktopDimensions.height / 2) - (dimensions.height / 2)))
+        };
+    }
+
+    if (constrainFreLaunchToWorkArea)
+    {
+        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+            { static_cast<double>(origin.x), static_cast<double>(origin.y) },
+            { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
+            { static_cast<double>(nearestMonitorInfo.rcWork.left), static_cast<double>(nearestMonitorInfo.rcWork.top) },
+            { static_cast<double>(desktopDimensions.width), static_cast<double>(desktopDimensions.height) });
+        origin = {
+            gsl::narrow<til::CoordType>(constrained.x),
+            gsl::narrow<til::CoordType>(constrained.y),
         };
     }
 

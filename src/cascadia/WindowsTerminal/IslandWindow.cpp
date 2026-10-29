@@ -300,6 +300,46 @@ LRESULT IslandWindow::_OnSizing(const WPARAM wParam, const LPARAM lParam)
         clientHeight = lroundf(height * pxPerDip);
     }
 
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (GetMonitorInfo(hmon, &monitorInfo))
+    {
+        switch (wParam)
+        {
+        case WMSZ_LEFT:
+        case WMSZ_TOPLEFT:
+        case WMSZ_BOTTOMLEFT:
+            clientWidth = std::min<LONG>(
+                clientWidth,
+                std::max<LONG>(0, winRect->right - monitorInfo.rcWork.left - nonClientSize.width));
+            break;
+        case WMSZ_RIGHT:
+        case WMSZ_TOPRIGHT:
+        case WMSZ_BOTTOMRIGHT:
+            clientWidth = std::min<LONG>(
+                clientWidth,
+                std::max<LONG>(0, monitorInfo.rcWork.right - winRect->left - nonClientSize.width));
+            break;
+        }
+
+        switch (wParam)
+        {
+        case WMSZ_TOP:
+        case WMSZ_TOPLEFT:
+        case WMSZ_TOPRIGHT:
+            clientHeight = std::min<LONG>(
+                clientHeight,
+                std::max<LONG>(0, winRect->bottom - monitorInfo.rcWork.top - nonClientSize.height));
+            break;
+        case WMSZ_BOTTOM:
+        case WMSZ_BOTTOMLEFT:
+        case WMSZ_BOTTOMRIGHT:
+            clientHeight = std::min<LONG>(
+                clientHeight,
+                std::max<LONG>(0, monitorInfo.rcWork.bottom - winRect->top - nonClientSize.height));
+            break;
+        }
+    }
+
     // Now make the window rectangle match the calculated client width and height,
     // regarding which border the user is dragging. E.g. if user drags left border, then
     // we make sure to adjust the 'left' component of rectangle and not the 'right'. Note

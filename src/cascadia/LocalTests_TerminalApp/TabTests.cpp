@@ -3558,6 +3558,7 @@ namespace TerminalAppLocalTests
                 const auto groups = winrt::single_threaded_vector<winrt::guid>({ firstGroup, secondGroup });
                 window->SetStartupKeptGroups(groups.GetView(), bounds);
                 VERIFY_ARE_EQUAL(bounds.Width, window->GetLaunchDimensions(96).Width);
+                VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
                 VERIFY_ARE_EQUAL(bounds.Height, window->GetLaunchDimensions(96).Height);
                 VERIFY_ARE_EQUAL(bounds.Width * 1.5f, window->GetLaunchDimensions(144).Width);
                 VERIFY_ARE_EQUAL(bounds.Height * 1.5f, window->GetLaunchDimensions(144).Height);
