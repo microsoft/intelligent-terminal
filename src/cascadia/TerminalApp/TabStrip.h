@@ -517,6 +517,8 @@ namespace winrt::TerminalApp::implementation
                                        winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSidebarRowPointerExited(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnSidebarPointerExited(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSidebarRowGotFocus(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSidebarListFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -728,6 +730,7 @@ namespace winrt::TerminalApp::implementation
         void _updateRichTabMetadataSelectionState();
         void _setHighContrastMode(bool enabled);
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);
+        void _clearSidebarPointerOver();
         void _refreshRealizedPaneRowVisuals(bool highContrastActive);
         void _refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display);
         void _refreshPaneRowVisuals(TerminalApp::TabStripDisplayItem const& display,

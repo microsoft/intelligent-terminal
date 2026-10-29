@@ -18,6 +18,8 @@
              xmlns:mux="using:Microsoft.UI.Xaml.Controls"
              MinWidth="40"
              Background="{ThemeResource TabViewBackground}"
+             PointerCanceled="OnSidebarPointerExited"
+             PointerExited="OnSidebarPointerExited"
              mc:Ignorable="d">
 
     <UserControl.Resources>

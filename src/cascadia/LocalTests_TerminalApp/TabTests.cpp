@@ -24917,19 +24917,25 @@ namespace TerminalAppLocalTests
             const auto inactiveTitle = inactiveHeader.FindName(L"TabHeaderPresenter").as<Control>();
             const auto inactiveHover = inactiveHeader.FindName(L"TabHoverBackground").as<Border>();
             const auto inactivePalette = Media::VisualTreeHelper::GetChild(inactiveContainer, 0).as<Primitives::ListViewItemPresenter>();
+            const auto inactiveDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(impl->DisplayItemForTab(inactiveTab));
             inactiveHover.Background(hoverBackground);
             inactivePalette.PointerOverForeground(hoverForeground);
             impl->OnSidebarRowPointerEntered(inactiveHeader, nullptr);
+            VERIFY_IS_TRUE(inactiveDisplay->IsPointerOver());
             VERIFY_IS_TRUE(inactiveTitle.Foreground() == hoverForeground);
             VERIFY_IS_TRUE(inactiveHover.Background() == hoverBackground);
             VERIFY_ARE_EQUAL(1.0, inactiveHover.Opacity());
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, inactivePalette.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
             VERIFY_IS_FALSE(inactiveContainer.IsSelected());
             VERIFY_IS_TRUE(strip.SelectedItem() == selectedTab);
+            impl->OnSidebarPointerExited(impl->ItemsList(), nullptr);
+            VERIFY_IS_FALSE(inactiveDisplay->IsPointerOver());
+            VERIFY_IS_TRUE(inactiveTitle.Foreground() == normalForeground);
+            VERIFY_ARE_EQUAL(0.0, inactiveHover.Opacity());
+            impl->OnSidebarRowPointerEntered(inactiveHeader, nullptr);
             VERIFY_IS_TRUE(impl->SearchTabsButton().Focus(FocusState::Keyboard));
             VERIFY_ARE_EQUAL(0.0, inactiveHover.Opacity());
             VERIFY_IS_TRUE(inactivePalette.PointerOverBackground() == hoverBackground);
-            const auto inactiveDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(impl->DisplayItemForTab(inactiveTab));
             inactiveDisplay->SetPointerOver(false, false);
             VERIFY_IS_TRUE(impl->FocusTabSearch());
             VERIFY_IS_TRUE(inactiveTitle.Foreground() == normalForeground);
@@ -24966,6 +24972,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(impl->SearchTabsButton().Focus(FocusState::Keyboard));
             VERIFY_ARE_EQUAL(Visibility::Visible, paneRoot.FindName(L"PaneActiveBackground").as<Border>().Visibility());
             VERIFY_IS_TRUE(selectedContainer.IsSelected());
+            const auto otherPane = winrt::get_self<winrt::TerminalApp::implementation::TabStripPaneItem>(display.PaneItems().GetAt(1));
+            impl->OnPanePointerEntered(otherRoot, nullptr);
+            VERIFY_IS_TRUE(otherPane->IsPointerOver());
+            VERIFY_ARE_EQUAL(1.0, otherRoot.FindName(L"PaneHoverBackground").as<Border>().Opacity());
+            impl->OnSidebarPointerExited(impl->ItemsList(), nullptr);
+            VERIFY_IS_FALSE(otherPane->IsPointerOver());
+            VERIFY_IS_TRUE(otherTitle.Foreground() == normalForeground);
+            VERIFY_ARE_EQUAL(0.0, otherRoot.FindName(L"PaneHoverBackground").as<Border>().Opacity());
         });
     }
 
