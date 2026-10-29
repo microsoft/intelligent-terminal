@@ -82,8 +82,6 @@ namespace TerminalApp
         void SetPersistedLayoutIdx(UInt32 idx);
         void RequestExitFullscreen();
         Windows.Foundation.Size GetLaunchDimensions(UInt32 dpi);
-        Boolean ShouldConstrainFreLaunchToWorkArea();
-        Boolean IsFreRequired();
         Boolean CenterOnLaunch { get; };
 
         InitialPosition GetInitialPosition(Int64 defaultInitialX, Int64 defaultInitialY);
@@ -161,5 +159,8 @@ namespace TerminalApp
 
         Microsoft.Terminal.Settings.Model.WindowLayout GetStartupRestoreLayout();
         void WindowMoved();
+
+        Boolean ShouldConstrainFreLaunchToWorkArea();
+        Boolean IsFreRequired();
     }
 }
