@@ -579,6 +579,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarIntroductionContentMatchesDesign);
         TEST_METHOD(SidebarIntroductionPopupMatchesDesign);
         TEST_METHOD(SidebarIntroductionSurvivesHostPopupDismissal);
+        TEST_METHOD(AgentProfilesIntroductionHostOverlayGate);
         TEST_METHOD(HorizontalTabsIntroductionPopupMatchesDesign);
         TEST_METHOD(HorizontalTabsIntroductionPopupMatchesDesignRtl);
         TEST_METHOD(LiteralSearchHighlighting);
@@ -9223,6 +9224,32 @@ namespace TerminalAppLocalTests
     void TabTests::HorizontalTabsIntroductionPopupMatchesDesign()
     {
         _verifyTabIntroductionPopup(false, L"en-US");
+    }
+
+    void TabTests::AgentProfilesIntroductionHostOverlayGate()
+    {
+        _createContentManager();
+        TestOnUIThread([&]() {
+            const auto properties = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
+            const winrt::TerminalApp::TerminalPage projected{ properties, *_contentManager };
+            const auto page = winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected);
+            page->_visible = true;
+            page->_activated = true;
+            const auto palette = page->FindName(L"CommandPaletteElement").as<FrameworkElement>();
+            const auto suggestions = page->FindName(L"SuggestionsElement").as<FrameworkElement>();
+            palette.Visibility(Visibility::Collapsed);
+            suggestions.Visibility(Visibility::Collapsed);
+            VERIFY_IS_TRUE(page->_CanShowAgentProfilesIntroduction());
+            for (const auto& overlay : { palette, suggestions })
+            {
+                overlay.Visibility(Visibility::Visible);
+                VERIFY_IS_FALSE(page->_CanShowAgentProfilesIntroduction());
+                overlay.Visibility(Visibility::Collapsed);
+                VERIFY_IS_TRUE(page->_CanShowAgentProfilesIntroduction());
+            }
+            page->_activated = false;
+            VERIFY_IS_FALSE(page->_CanShowAgentProfilesIntroduction());
+        });
     }
 
     void TabTests::SidebarIntroductionSurvivesHostPopupDismissal()

@@ -49,6 +49,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         MainPage() = delete;
         MainPage(const Model::CascadiaSettings& settings);
+        ~MainPage();
 
         void UpdateSettings(const Model::CascadiaSettings& settings);
 
@@ -60,6 +61,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void SettingsNav_ItemInvoked(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Microsoft::UI::Xaml::Controls::NavigationViewItemInvokedEventArgs& args);
         void SettingsNav_PaneOpened(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Windows::Foundation::IInspectable& args);
         void SettingsNav_PaneClosed(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Windows::Foundation::IInspectable& args);
+        void AgentProfilesIntroductionTip_CloseButtonClick(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
+        void AgentProfilesIntroductionTip_Closed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
         void SaveButton_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void ResetButton_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void BreadcrumbBar_ItemClicked(const Microsoft::UI::Xaml::Controls::BreadcrumbBar& sender, const Microsoft::UI::Xaml::Controls::BreadcrumbBarItemClickedEventArgs& args);
@@ -70,6 +73,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
         void NavigateToAIAgents();
+        void SetAgentProfilesIntroductionPresentationGate(const Editor::AgentProfilesIntroductionPresentationGate& gate);
 
         Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;
         Editor::ExtensionsViewModel ExtensionsVM() const noexcept { return _extensionsVM; }
@@ -107,6 +111,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Microsoft::UI::Xaml::Controls::NavigationViewItem _FindProfileNavItem(winrt::guid profileGuid) const;
 
         void _AnnounceNavPaneState(bool opened);
+        void _TryShowAgentProfilesIntroduction();
+        void _UpdateAgentProfilesIntroductionPopup() noexcept;
+        std::optional<Windows::Foundation::Rect> _GetAgentProfilesIntroductionTargetBounds();
+        std::optional<Windows::Foundation::Size> _GetAgentProfilesIntroductionWindowSize() const noexcept;
+        void _ReleaseAgentProfilesIntroduction(bool dismissed, bool recoverNavigation = true) noexcept;
 
         void _UpdateBackgroundForMica();
         void _MoveXamlParsedNavItemsIntoItemSource();
@@ -131,6 +140,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _extensionsViewModelChangedRevoker;
 
         std::unordered_set<std::wstring> _availableHostAgents;
+        Windows::UI::Xaml::DispatcherTimer _agentProfilesIntroductionTimer{ nullptr };
+        Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _agentProfilesIntroductionLayoutRevoker;
+        Windows::UI::Xaml::Controls::Primitives::Popup _agentProfilesIntroductionPopup{ nullptr };
+        uint64_t _agentProfilesIntroductionClaim{ 0 };
+        Editor::AgentProfilesIntroductionPresentationGate _agentProfilesIntroductionPresentationGate{ nullptr };
+        bool _agentProfilesIntroductionPresented{ false };
+        bool _agentProfilesIntroductionResizing{ false };
+        bool _agentProfilesIntroductionDismissed{ false };
+        bool _agentProfilesIntroductionRevealRequested{ false };
+        bool _agentProfilesIntroductionScrollRequested{ false };
+        std::optional<Windows::Foundation::Rect> _agentProfilesIntroductionTargetBounds;
+        std::optional<Windows::Foundation::Size> _agentProfilesIntroductionWindowSize;
     };
 }
 

@@ -26,11 +26,13 @@
 #include "NewTabMenu.h"
 #include "NavConstants.h"
 #include "..\inc\AgentAvailability.h"
+#include "..\inc\AgentProfileUtils.h"
 #include "..\types\inc\utils.hpp"
 #include <..\WinRTUtils\inc\Utils.h>
 
 #include <dwmapi.h>
 #include <fmt/compile.h>
+#include <winrt/Windows.UI.Xaml.Shapes.h>
 
 namespace winrt
 {
@@ -197,6 +199,61 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _breadcrumbs = single_threaded_observable_vector<IInspectable>();
         _UpdateSearchIndex();
+
+        _agentProfilesIntroductionTimer = DispatcherTimer{};
+        _agentProfilesIntroductionTimer.Interval(std::chrono::milliseconds{ 500 });
+        _agentProfilesIntroductionTimer.Tick([weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get())
+            {
+                page->_TryShowAgentProfilesIntroduction();
+            }
+        });
+        SizeChanged([weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get(); page && page->_agentProfilesIntroductionClaim)
+            {
+                const auto windowSize = page->_GetAgentProfilesIntroductionWindowSize();
+                if (!windowSize || windowSize == page->_agentProfilesIntroductionWindowSize)
+                {
+                    return;
+                }
+                page->_agentProfilesIntroductionResizing = true;
+                // PaneClosed can run on either side of SizeChanged during layout.
+                // Keep this resize associated only with the current layout turn.
+                page->Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weak, claim = page->_agentProfilesIntroductionClaim]() {
+                    if (const auto current = weak.get(); current && current->_agentProfilesIntroductionClaim == claim)
+                    {
+                        current->_agentProfilesIntroductionWindowSize = current->_GetAgentProfilesIntroductionWindowSize();
+                        current->_agentProfilesIntroductionResizing = false;
+                    }
+                });
+            }
+        });
+        Unloaded([weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get())
+            {
+                page->_agentProfilesIntroductionTimer.Stop();
+                if (page->_agentProfilesIntroductionClaim)
+                {
+                    if (const auto tip = page->AgentProfilesIntroductionTip())
+                    {
+                        tip.IsOpen(false);
+                    }
+                    page->_ReleaseAgentProfilesIntroduction(false);
+                }
+                page->_agentProfilesIntroductionRevealRequested = false;
+                page->_agentProfilesIntroductionScrollRequested = false;
+                page->_agentProfilesIntroductionTargetBounds.reset();
+            }
+        });
+    }
+
+    MainPage::~MainPage()
+    {
+        if (_agentProfilesIntroductionTimer)
+        {
+            _agentProfilesIntroductionTimer.Stop();
+        }
+        _ReleaseAgentProfilesIntroduction(false);
     }
 
     // Method Description:
@@ -398,6 +455,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto hasThemeForSettings{ theme.Settings() != nullptr };
         const auto requestedTheme = hasThemeForSettings ? theme.Settings().RequestedTheme() : theme.RequestedTheme();
         _setThemeOnPopups(SettingsSearchBox(), requestedTheme);
+        _agentProfilesIntroductionTimer.Start();
     }
 
     void MainPage::_AnnounceNavPaneState(bool opened)
@@ -420,6 +478,310 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void MainPage::SettingsNav_PaneClosed(const MUX::Controls::NavigationView&, const IInspectable&)
     {
         _AnnounceNavPaneState(false);
+        if (_agentProfilesIntroductionClaim)
+        {
+            if (const auto tip = AgentProfilesIntroductionTip())
+            {
+                tip.IsOpen(false);
+            }
+            _ReleaseAgentProfilesIntroduction(false);
+        }
+    }
+
+    void MainPage::SetAgentProfilesIntroductionPresentationGate(const Editor::AgentProfilesIntroductionPresentationGate& gate)
+    {
+        _agentProfilesIntroductionPresentationGate = gate;
+    }
+
+    void MainPage::_TryShowAgentProfilesIntroduction()
+    try
+    {
+        const auto state = ApplicationState::SharedInstance();
+        if (!_agentProfilesIntroductionClaim && state.AgentProfilesIntroductionShown())
+        {
+            _agentProfilesIntroductionTimer.Stop();
+            return;
+        }
+        if (!IsLoaded() || !_hostingHwnd || GetForegroundWindow() != *_hostingHwnd ||
+            (_agentProfilesIntroductionPresentationGate && !_agentProfilesIntroductionPresentationGate()))
+        {
+            if (_agentProfilesIntroductionClaim)
+            {
+                if (const auto tip = AgentProfilesIntroductionTip())
+                {
+                    tip.IsOpen(false);
+                }
+                _ReleaseAgentProfilesIntroduction(false);
+            }
+            return;
+        }
+        for (auto ancestor = SettingsNav().as<DependencyObject>(); ancestor; ancestor = Media::VisualTreeHelper::GetParent(ancestor))
+        {
+            if (const auto element = ancestor.try_as<FrameworkElement>(); element && element.Visibility() != Visibility::Visible)
+            {
+                if (const auto tip = AgentProfilesIntroductionTip())
+                {
+                    tip.IsOpen(false);
+                }
+                _ReleaseAgentProfilesIntroduction(false);
+                return;
+            }
+        }
+        if (_agentProfilesIntroductionPresented)
+        {
+            const auto tip = AgentProfilesIntroductionTip();
+            _UpdateAgentProfilesIntroductionPopup();
+            const auto bounds = _GetAgentProfilesIntroductionTargetBounds();
+            if (_agentProfilesIntroductionDismissed || !tip.IsOpen() ||
+                (_agentProfilesIntroductionPopup && !_agentProfilesIntroductionPopup.IsOpen()) ||
+                !bounds || bounds != _agentProfilesIntroductionTargetBounds)
+            {
+                tip.IsOpen(false);
+                _ReleaseAgentProfilesIntroduction(false);
+            }
+            else
+            {
+                _agentProfilesIntroductionWindowSize = _GetAgentProfilesIntroductionWindowSize();
+            }
+            return;
+        }
+        if (state.AgentProfilesIntroductionShown())
+        {
+            _agentProfilesIntroductionTimer.Stop();
+            _ReleaseAgentProfilesIntroduction(false);
+            return;
+        }
+        const auto hasAgentProfiles = std::ranges::any_of(_profileVMs, [](const auto& profile) {
+            return profile.Source() == ::Microsoft::Terminal::AgentProfiles::Source &&
+                   profile.IsManagedAgentProfile() && !profile.Orphaned() && !profile.Hidden() && !profile.IsAgentProfilePolicyBlocked();
+        });
+        if (!hasAgentProfiles)
+        {
+            _ReleaseAgentProfilesIntroduction(false);
+            return;
+        }
+        const auto root = XamlRoot();
+        if (!root)
+        {
+            _ReleaseAgentProfilesIntroduction(false);
+            return;
+        }
+        const auto openPopups = Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root);
+        for (const auto& popup : openPopups)
+        {
+            const auto popupChild = popup.Child();
+            if (popupChild.try_as<ToolTip>())
+            {
+                continue;
+            }
+            // XAML's path-only light-dismiss mask is not competing popup content.
+            const auto panel = popupChild.try_as<Panel>();
+            if (!panel || !std::ranges::all_of(panel.Children(), [](const UIElement& child) {
+                    return child.try_as<Windows::UI::Xaml::Shapes::Path>() != nullptr;
+                }))
+            {
+                _ReleaseAgentProfilesIntroduction(false);
+                return;
+            }
+        }
+        // A manual collapse cancels automatic reveal, including after a later resize.
+        if (_agentProfilesIntroductionRevealRequested && !SettingsNav().IsPaneOpen())
+        {
+            _ReleaseAgentProfilesIntroduction(false);
+            return;
+        }
+        const auto target = ProfilesNavHeader();
+        if (_agentProfilesIntroductionRevealRequested &&
+            (target.ActualWidth() <= 0 || target.ActualHeight() <= 0 ||
+             (_agentProfilesIntroductionScrollRequested && !_GetAgentProfilesIntroductionTargetBounds())))
+        {
+            // Reveal/scroll have had a layout turn. Do not reserve other windows
+            // while placement is unavailable, or repeat scrolling on later retries.
+            _ReleaseAgentProfilesIntroduction(false, false);
+            return;
+        }
+        if (!_agentProfilesIntroductionClaim)
+        {
+            // Refresh shared eligibility before changing navigation in this window.
+            _agentProfilesIntroductionClaim = state.TryBeginAgentProfilesIntroduction();
+            if (!_agentProfilesIntroductionClaim)
+            {
+                return;
+            }
+            _agentProfilesIntroductionWindowSize = _GetAgentProfilesIntroductionWindowSize();
+        }
+        if (!_agentProfilesIntroductionRevealRequested)
+        {
+            _agentProfilesIntroductionRevealRequested = true;
+            SettingsNav().IsPaneOpen(true);
+            return;
+        }
+        if (!_agentProfilesIntroductionScrollRequested)
+        {
+            BringIntoViewOptions options;
+            options.AnimationDesired(false);
+            options.VerticalAlignmentRatio(0.5);
+            target.StartBringIntoView(options);
+            _agentProfilesIntroductionScrollRequested = true;
+            return;
+        }
+        const auto bounds = _GetAgentProfilesIntroductionTargetBounds();
+        if (!bounds)
+        {
+            _ReleaseAgentProfilesIntroduction(false, false);
+            return;
+        }
+        if (bounds != _agentProfilesIntroductionTargetBounds)
+        {
+            _agentProfilesIntroductionTargetBounds = bounds;
+            return;
+        }
+        const auto tip = FindName(L"AgentProfilesIntroductionTip").as<MUX::Controls::TeachingTip>();
+        tip.Target(target);
+        tip.RequestedTheme(ActualTheme());
+        Automation::AutomationProperties::SetName(tip, RS_(L"AgentProfilesIntroductionTitle/Text"));
+        Automation::AutomationProperties::SetHelpText(tip, RS_(L"AgentProfilesIntroductionDescription/Text"));
+        _agentProfilesIntroductionPresented = true;
+        _agentProfilesIntroductionLayoutRevoker = tip.Content().as<FrameworkElement>().LayoutUpdated(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get())
+            {
+                page->_UpdateAgentProfilesIntroductionPopup();
+            }
+        });
+        tip.IsOpen(true);
+        _UpdateAgentProfilesIntroductionPopup();
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        _ReleaseAgentProfilesIntroduction(false);
+    }
+
+    void MainPage::_UpdateAgentProfilesIntroductionPopup() noexcept
+    try
+    {
+        const auto root = XamlRoot();
+        if (!_agentProfilesIntroductionClaim || !root)
+        {
+            return;
+        }
+        const auto tip = AgentProfilesIntroductionTip();
+        tip.RequestedTheme(ActualTheme());
+        if (!_agentProfilesIntroductionPopup)
+        {
+            // The real popup opens asynchronously, alongside a light-dismiss helper.
+            for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
+            {
+                if (Automation::AutomationProperties::GetAutomationId(popup) == Automation::AutomationProperties::GetAutomationId(tip))
+                {
+                    _agentProfilesIntroductionPopup = popup;
+                    break;
+                }
+            }
+        }
+        if (_agentProfilesIntroductionPopup)
+        {
+            if (const auto popupChild = _agentProfilesIntroductionPopup.Child().try_as<FrameworkElement>())
+            {
+                popupChild.RequestedTheme(ActualTheme());
+                const auto header = AgentProfilesIntroductionHeader();
+                const auto closeButton = tip.as<IControlProtected>().GetTemplateChild(L"AlternateCloseButton").try_as<Button>();
+                if (closeButton && header.ActualHeight() > 0 && closeButton.ActualHeight() > 0)
+                {
+                    const auto headerBounds = header.TransformToVisual(closeButton.Parent().as<UIElement>()).TransformBounds(Windows::Foundation::Rect{ 0, 0, static_cast<float>(header.ActualWidth()), static_cast<float>(header.ActualHeight()) });
+                    auto margin = closeButton.Margin();
+                    const auto top = headerBounds.Y + (headerBounds.Height - closeButton.ActualHeight()) / 2;
+                    if (margin.Top != top)
+                    {
+                        margin.Top = top;
+                        closeButton.Margin(margin);
+                    }
+                    _agentProfilesIntroductionLayoutRevoker.revoke();
+                }
+            }
+        }
+    }
+    CATCH_LOG()
+
+    std::optional<Windows::Foundation::Rect> MainPage::_GetAgentProfilesIntroductionTargetBounds()
+    {
+        const auto root = XamlRoot();
+        const auto target = ProfilesNavHeader();
+        if (!IsLoaded() || !SettingsNav().IsPaneOpen() || !root ||
+            target.ActualWidth() <= 0 || target.ActualHeight() <= 0)
+        {
+            return std::nullopt;
+        }
+        const auto rootElement = root.Content().as<FrameworkElement>();
+        const auto bounds = target.TransformToVisual(rootElement).TransformBounds(Windows::Foundation::Rect{ 0, 0, static_cast<float>(target.ActualWidth()), static_cast<float>(target.ActualHeight()) });
+        for (auto ancestor = target.as<DependencyObject>(); ancestor; ancestor = Media::VisualTreeHelper::GetParent(ancestor))
+        {
+            if (const auto element = ancestor.try_as<FrameworkElement>())
+            {
+                if (element.Visibility() != Visibility::Visible)
+                {
+                    return std::nullopt;
+                }
+                if (element.try_as<ScrollViewer>() || element == rootElement)
+                {
+                    const auto viewport = element.TransformToVisual(rootElement).TransformBounds(Windows::Foundation::Rect{ 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+                    if (bounds.X < viewport.X || bounds.Y < viewport.Y ||
+                        bounds.X + bounds.Width > viewport.X + viewport.Width ||
+                        bounds.Y + bounds.Height > viewport.Y + viewport.Height)
+                    {
+                        return std::nullopt;
+                    }
+                }
+            }
+        }
+        return bounds;
+    }
+
+    std::optional<Windows::Foundation::Size> MainPage::_GetAgentProfilesIntroductionWindowSize() const noexcept
+    {
+        RECT bounds{};
+        if (_hostingHwnd && GetClientRect(*_hostingHwnd, &bounds))
+        {
+            return Windows::Foundation::Size{ static_cast<float>(bounds.right - bounds.left), static_cast<float>(bounds.bottom - bounds.top) };
+        }
+        return std::nullopt;
+    }
+
+    void MainPage::_ReleaseAgentProfilesIntroduction(const bool dismissed, const bool recoverNavigation) noexcept
+    try
+    {
+        _agentProfilesIntroductionLayoutRevoker.revoke();
+        _agentProfilesIntroductionDismissed |= dismissed;
+        if (_agentProfilesIntroductionClaim)
+        {
+            // Resizing light-dismisses compact navigation; it is not a user collapse.
+            if (const auto windowSize = _GetAgentProfilesIntroductionWindowSize();
+                recoverNavigation && !_agentProfilesIntroductionDismissed &&
+                (_agentProfilesIntroductionResizing || (windowSize && _agentProfilesIntroductionWindowSize && windowSize != _agentProfilesIntroductionWindowSize)))
+            {
+                _agentProfilesIntroductionRevealRequested = false;
+                _agentProfilesIntroductionScrollRequested = false;
+            }
+            ApplicationState::SharedInstance().EndAgentProfilesIntroduction(_agentProfilesIntroductionClaim, _agentProfilesIntroductionDismissed);
+            _agentProfilesIntroductionClaim = 0;
+            _agentProfilesIntroductionPresented = false;
+            _agentProfilesIntroductionResizing = false;
+            _agentProfilesIntroductionDismissed = false;
+            _agentProfilesIntroductionPopup = nullptr;
+            _agentProfilesIntroductionWindowSize.reset();
+        }
+        _agentProfilesIntroductionTargetBounds.reset();
+    }
+    CATCH_LOG()
+
+    void MainPage::AgentProfilesIntroductionTip_CloseButtonClick(const MUX::Controls::TeachingTip&, const IInspectable&)
+    {
+        _agentProfilesIntroductionDismissed = true;
+    }
+
+    void MainPage::AgentProfilesIntroductionTip_Closed(const MUX::Controls::TeachingTip&, const IInspectable&)
+    {
+        _ReleaseAgentProfilesIntroduction(false);
     }
 
     // Function Description:
