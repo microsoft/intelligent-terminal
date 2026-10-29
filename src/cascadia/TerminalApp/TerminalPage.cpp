@@ -18043,7 +18043,6 @@ namespace winrt::TerminalApp::implementation
         auto backgroundColor = accentColor;
         auto hoverColor = til::color{ ColorFix::AdjustLightness(accentColor, hoverColorAdjustment) };
         auto pressedColor = til::color{ ColorFix::AdjustLightness(accentColor, pressedColorAdjustment) };
-
         if (!winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
         {
             // Share the chrome background even when Acrylic is disabled or unfocused.
@@ -18091,6 +18090,12 @@ namespace winrt::TerminalApp::implementation
         // the resources.
         VisualStateManager::GoToState(_newTabButton, L"FlyoutOpen", true);
         VisualStateManager::GoToState(_newTabButton, L"Normal", true);
+
+        // A custom chrome background can differ from the inherited application theme.
+        // High contrast ignores RequestedTheme, retaining system resources without clearing this override.
+        const auto railToggle = winrt::get_self<TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const til::color chromeColor{ ThemeColor::ColorFromBrush(TitlebarBrush()) };
+        railToggle.RequestedTheme(ColorFix::GetLightness(chromeColor) >= lightnessThreshold ? ElementTheme::Light : ElementTheme::Dark);
     }
 
     // Method Description:
