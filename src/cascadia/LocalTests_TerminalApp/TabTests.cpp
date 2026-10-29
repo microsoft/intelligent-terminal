@@ -470,6 +470,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentChromeMirrorsWithoutChangingTerminalFlowDirection);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
         TEST_METHOD(SidebarHotkeyFocusesToggleAndReturnsToInput);
         TEST_METHOD(SidebarSearchShortcutFocusesSearchFromTerminal);
         TEST_METHOD(TabSearchShortcutPreservesQueryAndSelection);
@@ -5986,6 +5987,49 @@ namespace TerminalAppLocalTests
             actionMap.DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+shift+v"));
             page->_RefreshUIForSettingsReload();
             verifyFilterHints(L"Ctrl+Shift+W", L"Ctrl+Shift+X");
+        });
+    }
+
+    void TabTests::SidebarToggleBackgroundTracksCollapseAndPointerStates()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto button = row->VerticalRailToggleButton();
+            button.ApplyTemplate();
+            const auto root = Media::VisualTreeHelper::GetChild(button, 0).as<Grid>();
+            const auto background = root.FindName(L"CollapsedBackground").as<Border>();
+            const auto presenter = root.FindName(L"RailTogglePresenter").as<ContentPresenter>();
+
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                button.RequestedTheme(theme);
+                for (const auto collapsed : { false, true, false })
+                {
+                    row->SetVerticalRailState(true, collapsed, collapsed ? 40 : 220);
+                    for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Normal" })
+                    {
+                        VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
+                        button.UpdateLayout();
+                        VERIFY_ARE_EQUAL(collapsed ? Visibility::Visible : Visibility::Collapsed, background.Visibility());
+                        VERIFY_ARE_EQUAL(40.0, button.ActualWidth());
+                        VERIFY_ARE_EQUAL(40.0, button.ActualHeight());
+                        VERIFY_ARE_EQUAL(24.0, presenter.ActualWidth());
+                        VERIFY_ARE_EQUAL(24.0, presenter.ActualHeight());
+                        if (collapsed)
+                        {
+                            VERIFY_IS_TRUE(background.Background().as<Media::SolidColorBrush>().Color().A > 0);
+                            VERIFY_ARE_EQUAL(24.0, background.ActualWidth());
+                            VERIFY_ARE_EQUAL(24.0, background.ActualHeight());
+                            VERIFY_ARE_EQUAL(4.0, background.CornerRadius().TopLeft);
+                            VERIFY_ARE_EQUAL(1.0, background.Opacity());
+                        }
+                        const auto hovering = std::wstring_view{ state } != L"Normal";
+                        VERIFY_ARE_EQUAL(hovering, presenter.Background().as<Media::SolidColorBrush>().Color().A > 0);
+                    }
+                }
+            }
         });
     }
 
