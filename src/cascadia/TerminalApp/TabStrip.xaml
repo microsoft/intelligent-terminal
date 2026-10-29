@@ -576,10 +576,60 @@
                     Padding="0"
                     VerticalAlignment="Center"
                     Background="Transparent"
-                    BorderThickness="0">
+                    BorderThickness="0"
+                    CornerRadius="{ThemeResource ControlCornerRadius}"
+                    UseSystemFocusVisuals="True">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <!--  Match the search button's compact visual inside the larger hit target.  -->
+                        <Grid Background="Transparent">
+                            <ContentPresenter x:Name="FilterButtonPresenter"
+                                              Width="24"
+                                              Height="24"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              HorizontalContentAlignment="Center"
+                                              VerticalContentAlignment="Center"
+                                              Background="{TemplateBinding Background}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Control.IsTemplateFocusTarget="True"
+                                              CornerRadius="{TemplateBinding CornerRadius}"
+                                              FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                              FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                              FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                              FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                              FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="FilterButtonPresenter.Background" Value="{ThemeResource ButtonBackgroundPointerOver}" />
+                                            <Setter Target="FilterButtonPresenter.Foreground" Value="{ThemeResource ButtonForegroundPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="FilterButtonPresenter.Background" Value="{ThemeResource ButtonBackgroundPressed}" />
+                                            <Setter Target="FilterButtonPresenter.Foreground" Value="{ThemeResource ButtonForegroundPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="FilterButtonPresenter.Background" Value="{ThemeResource ButtonBackgroundDisabled}" />
+                                            <Setter Target="FilterButtonPresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Button.Template>
                 <Button.Content>
-                    <Grid Width="40"
-                          Height="40">
+                    <Grid Width="24"
+                          Height="24">
                         <PathIcon Width="16"
                                   Height="16"
                                   HorizontalAlignment="Center"
@@ -588,7 +638,7 @@
                         <Ellipse x:Name="AgentsOnlyIndicator"
                                  Width="4"
                                  Height="4"
-                                 Margin="0,9,11,0"
+                                 Margin="0,1,3,0"
                                  HorizontalAlignment="Right"
                                  VerticalAlignment="Top"
                                  Fill="{ThemeResource AgentsOnlyIndicatorBrush}"

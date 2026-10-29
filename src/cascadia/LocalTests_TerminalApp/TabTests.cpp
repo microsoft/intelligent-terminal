@@ -9199,6 +9199,7 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabStrip strip;
             const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             const auto search = stripImpl->SearchTabsButton();
+            const auto options = stripImpl->FilterTabsButton();
             const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
             for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
             {
@@ -9229,6 +9230,40 @@ namespace TerminalAppLocalTests
                     }
                 }
                 VERIFY_IS_TRUE(VisualStateManager::GoToState(search, L"Normal", false));
+
+                options.ApplyTemplate();
+                options.Measure({ 40, 40 });
+                options.Arrange({ 0, 0, 40, 40 });
+                options.UpdateLayout();
+                const auto optionsRoot = Media::VisualTreeHelper::GetChild(options, 0).as<Grid>();
+                const auto optionsPresenter = optionsRoot.FindName(L"FilterButtonPresenter").as<ContentPresenter>();
+                VERIFY_ARE_EQUAL(40.0, options.ActualWidth());
+                VERIFY_ARE_EQUAL(40.0, options.ActualHeight());
+                VERIFY_ARE_EQUAL(24.0, optionsPresenter.ActualWidth());
+                VERIFY_ARE_EQUAL(24.0, optionsPresenter.ActualHeight());
+                const auto optionsBounds = optionsPresenter.TransformToVisual(options).TransformBounds({ 0, 0, 24, 24 });
+                VERIFY_ARE_EQUAL(8.0f, optionsBounds.X);
+                VERIFY_ARE_EQUAL(8.0f, optionsBounds.Y);
+                VERIFY_IS_TRUE(options.UseSystemFocusVisuals());
+                const auto optionsContent = optionsPresenter.Content().as<Grid>();
+                const auto optionsIcon = optionsContent.Children().GetAt(0).as<PathIcon>();
+                const auto indicator = optionsContent.FindName(L"AgentsOnlyIndicator").as<Shapes::Ellipse>();
+                VERIFY_ARE_EQUAL(16.0, optionsIcon.Width());
+                VERIFY_ARE_EQUAL(16.0, optionsIcon.Height());
+                const auto optionsIconBounds = optionsIcon.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 16, 16 });
+                VERIFY_ARE_EQUAL(4.0f, optionsIconBounds.X);
+                VERIFY_ARE_EQUAL(4.0f, optionsIconBounds.Y);
+                indicator.Visibility(Visibility::Visible);
+                options.UpdateLayout();
+                const auto indicatorBounds = indicator.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 4, 4 });
+                VERIFY_ARE_EQUAL(17.0f, indicatorBounds.X);
+                VERIFY_ARE_EQUAL(1.0f, indicatorBounds.Y);
+                for (const auto state : { L"PointerOver", L"Pressed" })
+                {
+                    VERIFY_IS_TRUE(VisualStateManager::GoToState(options, state, false));
+                    VERIFY_IS_TRUE(optionsPresenter.Background().as<Media::SolidColorBrush>().Color().A > 0);
+                }
+                VERIFY_IS_TRUE(VisualStateManager::GoToState(options, L"Normal", false));
             }
             const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(search);
             const auto toggle = peer.GetPattern(Automation::Peers::PatternInterface::Toggle).as<Automation::Provider::IToggleProvider>();
