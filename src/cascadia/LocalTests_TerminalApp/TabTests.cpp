@@ -600,8 +600,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarUnreadGroupAndDismissSlotStayStable);
         TEST_METHOD(SessionCompletionSkipsNonOwnedAndClearedContent);
         TEST_METHOD(SessionCompletionTransferReadsAfterCommit);
+        TEST_METHOD(SessionCompletionTransferRefreshesUnreadAfterCommit);
         TEST_METHOD(SessionCompletionTransferPreservesUnreadWithoutFocus);
         TEST_METHOD(SessionCompletionTransferRollbackReadsRestoredSource);
+        TEST_METHOD(SessionCompletionTransferRollbackRefreshesUnread);
         TEST_METHOD(FailedAgentStatusRefreshDoesNotRestoreStaleCwds);
         TEST_METHOD(UnknownAgentSessionDoesNotReusePreviousCwd);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
@@ -943,7 +945,7 @@ namespace TerminalAppLocalTests
         void _closeContentTransferFixture(ContentTransferFixture& fixture, bool verify);
         winrt::TerminalApp::RequestMoveContentArgs _requestContentTransfer(const ContentTransferFixture& fixture);
         void _verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage);
-        void _verifyContentTransferCompletions(bool rollback, bool focused);
+        void _verifyContentTransferCompletions(bool rollback, bool focused, bool activePaneAlreadyRead = false);
         void _verifyContentTransferStartupGate(bool layoutFirst);
         void _verifyContentTransferSourceRejection(bool rejectWindow);
         NewTerminalArgs _storeOwnedAgentTransfer(
@@ -29206,7 +29208,7 @@ namespace TerminalAppLocalTests
         }
     }
 
-    void TabTests::_verifyContentTransferCompletions(bool rollback, bool focused)
+    void TabTests::_verifyContentTransferCompletions(bool rollback, bool focused, bool activePaneAlreadyRead)
     {
         using TransferState = winrt::Microsoft::Terminal::Control::ContentTransferState;
         auto fixture = _createContentTransferFixture(false, true, false, true);
@@ -29238,7 +29240,7 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(completionSession(leaf), paneId, "copilot", 2000, "Idle"));
                 }
             }
-            const auto alreadyReadContentId = focused ? std::optional{ sourceTab->GetActiveTerminalControl().ContentId() } : std::nullopt;
+            const auto alreadyReadContentId = activePaneAlreadyRead ? std::optional{ sourceTab->GetActiveTerminalControl().ContentId() } : std::nullopt;
             if (alreadyReadContentId)
             {
                 manager->MarkAgentCompletionRead(*alreadyReadContentId);
@@ -29333,6 +29335,11 @@ namespace TerminalAppLocalTests
         _verifyContentTransferCompletions(false, true);
     }
 
+    void TabTests::SessionCompletionTransferRefreshesUnreadAfterCommit()
+    {
+        _verifyContentTransferCompletions(false, true, true);
+    }
+
     void TabTests::SessionCompletionTransferPreservesUnreadWithoutFocus()
     {
         _verifyContentTransferCompletions(false, false);
@@ -29341,6 +29348,11 @@ namespace TerminalAppLocalTests
     void TabTests::SessionCompletionTransferRollbackReadsRestoredSource()
     {
         _verifyContentTransferCompletions(true, true);
+    }
+
+    void TabTests::SessionCompletionTransferRollbackRefreshesUnread()
+    {
+        _verifyContentTransferCompletions(true, true, true);
     }
 
     void TabTests::_verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage)
