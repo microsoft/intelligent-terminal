@@ -473,6 +473,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
         TEST_METHOD(SettingsProfileAgentIconAdaptsToTheme);
         TEST_METHOD(AgentProfileCommandlineCopies);
+        TEST_METHOD(AgentProfileInvalidArgumentsDisplayStartupFailure);
+        TEST_METHOD(ConptyStartupFailureDoesNotLaunchProcess);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
         TEST_METHOD(LiveTabLayoutRoundTripPreservesState);
@@ -7263,6 +7265,108 @@ namespace TerminalAppLocalTests
                 }
                 pane->Close();
             }
+        });
+    }
+
+    void TabTests::AgentProfileInvalidArgumentsDisplayStartupFailure()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            namespace fs = std::filesystem;
+            using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            const auto directory = fs::path{ winrt::Windows::Storage::ApplicationData::Current().TemporaryFolder().Path().c_str() } /
+                                   (L"NativeAgentStartup-" + std::wstring{ Utils::GuidToString(Utils::CreateGuid()) });
+            fs::create_directory(directory);
+            const auto executable = directory / L"copilot.exe";
+            const auto oldPath = wil::TryGetEnvironmentVariableW<std::wstring>(L"PATH");
+            const auto cleanup = wil::scope_exit([&]() {
+                LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"PATH", oldPath.empty() ? nullptr : oldPath.c_str()));
+                fs::remove(executable);
+                fs::remove(directory);
+            });
+            std::ofstream{ executable }.put('\n');
+            // Discovery must succeed even on machines without Copilot; the fake executable must never run.
+            VERIFY_IS_TRUE(SetEnvironmentVariableW(L"PATH", directory.c_str()));
+            const CascadiaSettings settings{
+                LR"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                     "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.arguments":"--yolo",
+                                  "closeOnExit":"always"}]})",
+                LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"copilot"}]})"
+            };
+            const auto profile = settings.ActiveProfiles().GetAt(0);
+            page->_settings = settings;
+            const auto controlSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile);
+            VERIFY_IS_TRUE(controlSettings.DefaultSettings()->UsesManagedAgentCommand());
+            const auto connection = page->_CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), false);
+            const auto close = wil::scope_exit([&]() { connection.Close(); });
+            std::wstring output;
+            const auto token = connection.TerminalOutput([&](const winrt::array_view<const char16_t> text) {
+                output.append(winrt_array_to_wstring_view(text));
+            });
+            const auto revoke = wil::scope_exit([&]() { connection.TerminalOutput(token); });
+            connection.Start();
+            VERIFY_ARE_EQUAL(State::Failed, connection.State());
+            VERIFY_IS_FALSE(connection.as<Conpty>().ProcessStarted());
+            VERIFY_IS_TRUE(output.find(L"0x80070057") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"Unsupported or conflicting native agent argument") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"--yolo") != std::wstring::npos);
+
+            const auto tabsBefore = page->_tabs.Size();
+            page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, false, false, false, false);
+            VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto failedTabConnection = tab->GetActiveTerminalControl().Connection();
+            if (failedTabConnection.State() == State::NotConnected)
+            {
+                failedTabConnection.Start();
+            }
+            VERIFY_ARE_EQUAL(State::Failed, failedTabConnection.State());
+            VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
+            const auto panesBefore = tab->GetLeafPaneCount();
+            page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, true, false, false, false);
+            const auto failedSplitConnection = tab->GetActiveTerminalControl().Connection();
+            if (failedSplitConnection.State() == State::NotConnected)
+            {
+                failedSplitConnection.Start();
+            }
+            VERIFY_ARE_EQUAL(State::Failed, failedSplitConnection.State());
+            VERIFY_ARE_EQUAL(panesBefore + 1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"--yolo" }, profile.AgentProfileArguments());
+
+            profile.AgentProfileArguments(L"--version");
+            const auto validSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile);
+            const auto valid = page->_CreateConnectionFromSettings(profile, *validSettings.DefaultSettings(), false);
+            VERIFY_ARE_EQUAL(State::NotConnected, valid.State());
+            VERIFY_IS_TRUE(std::wstring_view{ valid.as<Conpty>().Commandline() }.find(L"--version") != std::wstring_view::npos);
+            valid.Close();
+        });
+    }
+
+    void TabTests::ConptyStartupFailureDoesNotLaunchProcess()
+    {
+        TestOnUIThread([&]() {
+            using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            const auto connection = Conpty{};
+            const auto settings = Conpty::CreateSettings(L"cmd.exe /d /c exit 0", L".", L"", false, L"", nullptr, 30, 120, {}, {});
+            settings.Insert(L"startupError", winrt::box_value(static_cast<int32_t>(E_ACCESSDENIED)));
+            settings.Insert(L"startupErrorMessage", winrt::box_value(L"Managed native agent launch blocked by policy"));
+            connection.Initialize(settings);
+            const auto close = wil::scope_exit([&]() { connection.Close(); });
+            std::wstring output;
+            const auto token = connection.TerminalOutput([&](const winrt::array_view<const char16_t> text) {
+                output.append(winrt_array_to_wstring_view(text));
+            });
+            const auto revoke = wil::scope_exit([&]() { connection.TerminalOutput(token); });
+            connection.Start();
+            VERIFY_ARE_EQUAL(State::Failed, connection.State());
+            VERIFY_IS_FALSE(connection.ProcessStarted());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, connection.RootProcessHandle());
+            VERIFY_IS_TRUE(output.find(L"0x80070005") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"Managed native agent launch blocked by policy") != std::wstring::npos);
         });
     }
 
