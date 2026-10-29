@@ -200,6 +200,11 @@ void IslandWindow::SetSnapDimensionCallback(std::function<float(bool, float)> pf
     _pfnSnapDimensionCallback = pfn;
 }
 
+void IslandWindow::SetWorkAreaConstraintCallback(std::function<bool()> pfn) noexcept
+{
+    _pfnWorkAreaConstraintCallback = std::move(pfn);
+}
+
 // Method Description:
 // - Handles a WM_CREATE message. Calls our create callback, if one's been set.
 // Arguments:
@@ -301,7 +306,9 @@ LRESULT IslandWindow::_OnSizing(const WPARAM wParam, const LPARAM lParam)
     }
 
     MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
-    if (GetMonitorInfo(hmon, &monitorInfo))
+    if (_pfnWorkAreaConstraintCallback &&
+        _pfnWorkAreaConstraintCallback() &&
+        GetMonitorInfo(hmon, &monitorInfo))
     {
         switch (wParam)
         {

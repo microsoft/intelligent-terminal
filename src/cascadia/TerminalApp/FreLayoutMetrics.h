@@ -5,11 +5,6 @@
 
 #include <algorithm>
 
-namespace winrt::TerminalApp
-{
-    struct TerminalWindow;
-}
-
 namespace winrt::TerminalApp::implementation
 {
     struct FreWindowSize
@@ -60,8 +55,6 @@ namespace winrt::TerminalApp::implementation
     {
         return std::max(dimension, widthOrHeight ? 711.0 : 631.0);
     }
-
-    bool ShouldConstrainFreLaunchToWorkArea(const winrt::TerminalApp::TerminalWindow& window) noexcept;
 
     constexpr bool ShouldUseFreDefaultWindowSize(const bool freRequired,
                                                  const bool hasExplicitSize,

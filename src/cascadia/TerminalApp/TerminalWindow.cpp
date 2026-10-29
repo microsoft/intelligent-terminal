@@ -691,7 +691,7 @@ namespace winrt::TerminalApp::implementation
             };
         }
 
-        const bool freRequired = !ApplicationState::SharedInstance().AgentFreCompleted();
+        const bool freRequired = IsFreRequired();
         const bool isDefaultLaunchMode = GetLaunchMode() == LaunchMode::DefaultMode;
         if (ShouldUseFreDefaultWindowSize(freRequired,
                                           hasExplicitSize,
@@ -745,9 +745,9 @@ namespace winrt::TerminalApp::implementation
         return proposedSize;
     }
 
-    bool ShouldConstrainFreLaunchToWorkArea(const winrt::TerminalApp::TerminalWindow& window) noexcept
+    bool TerminalWindow::IsFreRequired() const noexcept
     {
-        return winrt::get_self<TerminalWindow>(window)->ShouldConstrainFreLaunchToWorkArea();
+        return !ApplicationState::SharedInstance().AgentFreCompleted();
     }
 
     // Method Description:
