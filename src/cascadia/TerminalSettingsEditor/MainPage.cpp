@@ -468,6 +468,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_agentProfilesIntroductionClaim)
         {
             const auto tip = AgentProfilesIntroductionTip();
+            _UpdateAgentProfilesIntroductionTheme();
             const auto bounds = _GetAgentProfilesIntroductionTargetBounds();
             if (_agentProfilesIntroductionDismissed || !tip.IsOpen() ||
                 (_agentProfilesIntroductionPopup && !_agentProfilesIntroductionPopup.IsOpen()) ||
@@ -554,23 +555,53 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return;
         }
-        tip.IsOpen(true);
-        _setThemeOnPopups(tip, ActualTheme());
-        for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
-        {
-            uint32_t index;
-            if (!openPopups.IndexOf(popup, index))
+        _agentProfilesIntroductionLayoutRevoker = tip.Content().as<FrameworkElement>().LayoutUpdated(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get())
             {
-                _agentProfilesIntroductionPopup = popup;
-                break;
+                page->_UpdateAgentProfilesIntroductionTheme();
             }
-        }
+        });
+        tip.IsOpen(true);
+        _UpdateAgentProfilesIntroductionTheme();
     }
     catch (...)
     {
         LOG_CAUGHT_EXCEPTION();
         _ReleaseAgentProfilesIntroduction(false);
     }
+
+    void MainPage::_UpdateAgentProfilesIntroductionTheme() noexcept
+    try
+    {
+        const auto root = XamlRoot();
+        if (!_agentProfilesIntroductionClaim || !root)
+        {
+            return;
+        }
+        const auto tip = AgentProfilesIntroductionTip();
+        tip.RequestedTheme(ActualTheme());
+        if (!_agentProfilesIntroductionPopup)
+        {
+            // The real popup opens asynchronously, alongside a light-dismiss helper.
+            for (const auto& popup : Media::VisualTreeHelper::GetOpenPopupsForXamlRoot(root))
+            {
+                if (Automation::AutomationProperties::GetAutomationId(popup) == Automation::AutomationProperties::GetAutomationId(tip))
+                {
+                    _agentProfilesIntroductionPopup = popup;
+                    break;
+                }
+            }
+        }
+        if (_agentProfilesIntroductionPopup)
+        {
+            if (const auto popupChild = _agentProfilesIntroductionPopup.Child().try_as<FrameworkElement>())
+            {
+                _agentProfilesIntroductionLayoutRevoker.revoke();
+                popupChild.RequestedTheme(ActualTheme());
+            }
+        }
+    }
+    CATCH_LOG()
 
     std::optional<Windows::Foundation::Rect> MainPage::_GetAgentProfilesIntroductionTargetBounds()
     {
@@ -609,6 +640,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void MainPage::_ReleaseAgentProfilesIntroduction(const bool dismissed) noexcept
     try
     {
+        _agentProfilesIntroductionLayoutRevoker.revoke();
         _agentProfilesIntroductionDismissed |= dismissed;
         if (_agentProfilesIntroductionClaim)
         {

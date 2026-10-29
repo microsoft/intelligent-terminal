@@ -111,6 +111,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         void _AnnounceNavPaneState(bool opened);
         void _TryShowAgentProfilesIntroduction();
+        void _UpdateAgentProfilesIntroductionTheme() noexcept;
         std::optional<Windows::Foundation::Rect> _GetAgentProfilesIntroductionTargetBounds();
         void _ReleaseAgentProfilesIntroduction(bool dismissed) noexcept;
 
@@ -138,6 +139,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         std::unordered_set<std::wstring> _availableHostAgents;
         Windows::UI::Xaml::DispatcherTimer _agentProfilesIntroductionTimer{ nullptr };
+        Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _agentProfilesIntroductionLayoutRevoker;
         Windows::UI::Xaml::Controls::Primitives::Popup _agentProfilesIntroductionPopup{ nullptr };
         uint64_t _agentProfilesIntroductionClaim{ 0 };
         bool _agentProfilesIntroductionDismissed{ false };
