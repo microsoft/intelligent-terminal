@@ -11913,6 +11913,12 @@ namespace winrt::TerminalApp::implementation
                                     winrt::to_hstring(resumeCommandline),
                                     bindingBackend,
                                     bindingCwd });
+                            if (control)
+                            {
+                                // Accepted ownership must fence parser receipts even before the receiver is ready.
+                                winrt::get_self<ContentManager>(_manager)->ConfirmNativeAgentOwner(
+                                    control.ContentId(), winrt::to_hstring(agent), agentSessionId, _NativeAgentObservationSource(control, bindingBackend));
+                            }
                             _agentPaneLog("OnPaneAgentSessionChanged: bound pane " + paneId + " to session " + agentSessionId);
                         }
                         else

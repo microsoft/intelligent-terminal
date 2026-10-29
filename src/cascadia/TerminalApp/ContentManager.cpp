@@ -116,7 +116,8 @@ namespace winrt::TerminalApp::implementation
                 connection && connection.SessionId() == paneId)
             {
                 it->second.parsedProgress = std::pair{ paneId, progressState };
-                if (it->second.observation.modeEpoch != 0)
+                if (it->second.observation.modeEpoch != 0 &&
+                    it->second.observationOwnerGeneration == it->second.ownerGeneration)
                 {
                     return it->second.observation;
                 }
@@ -168,6 +169,29 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
         return false;
+    }
+
+    void ContentManager::ConfirmNativeAgentOwner(
+        const uint64_t contentId,
+        const winrt::hstring& providerId,
+        const std::string& sessionId,
+        const std::string& location)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !it->second.agentHelper && !providerId.empty() && !sessionId.empty())
+        {
+            _ConfirmNativeAgentOwner(it->second, providerId, sessionId, location);
+            const auto& identity = it->second.observation;
+            const auto& observedSession = identity.agentSessionId.empty() ? identity.qualifiedSessionId : identity.agentSessionId;
+            const auto& observedLocation = identity.location.empty() ? identity.qualifiedLocation : identity.location;
+            if (!::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(identity.providerId, providerId) ||
+                observedSession != sessionId ||
+                (!observedLocation.empty() && !location.empty() && observedLocation != location))
+            {
+                it->second.observationOwnerGeneration.reset();
+            }
+        }
     }
 
     void ContentManager::_ConfirmNativeAgentOwner(
@@ -241,6 +265,7 @@ namespace winrt::TerminalApp::implementation
                 it->second.observationAdmitted = true;
             }
             identity.locationConfirmed = !location.empty();
+            it->second.observationOwnerGeneration = it->second.ownerGeneration;
             return identity;
         }
         return {};
@@ -252,11 +277,13 @@ namespace winrt::TerminalApp::implementation
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId);
             it != _content.end() && !it->second.agentHelper && modeEpoch != 0 &&
-            it->second.observation.modeEpoch == modeEpoch)
+            it->second.observation.modeEpoch == modeEpoch &&
+            it->second.observationOwnerGeneration == it->second.ownerGeneration)
         {
             _ConfirmNativeAgentOwner(it->second, it->second.observation.providerId, sessionId, location);
             it->second.observation.qualifiedSessionId = sessionId;
             it->second.observation.qualifiedLocation = location;
+            it->second.observationOwnerGeneration = it->second.ownerGeneration;
         }
     }
 

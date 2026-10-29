@@ -1068,6 +1068,9 @@ $hook agent.session.end
 "@
                 $fixtureStarted = $true
                 Assert-NativeStatus $sid $(if ($state -eq 3) { 'Working' } else { 'Idle' })
+                Wait-Until -TimeoutSec 10 -Because "OSC $state realizes the expected progress ring count in the emitting pane row" -Condition {
+                    @(Get-RowProgress (Get-PaneRow $script:titleA)).Count -eq $(if ($state -eq 3) { 1 } else { 0 })
+                } | Out-Null
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
                 Wait-Until -TimeoutSec 20 -Because 'live native identity replaces the profile raster' -Condition {
                     (Get-ProfileIconDigest "working-$state" -Progress:($state -eq 3)) -ne $script:profileIcon
