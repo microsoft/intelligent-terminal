@@ -1804,6 +1804,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::OnSidebarPointerExited(IInspectable const&, Input::PointerRoutedEventArgs const&)
+    {
+        _clearSidebarPointerOver();
+    }
+
     void TabStrip::OnSidebarRowGotFocus(IInspectable const& sender, RoutedEventArgs const&)
     {
         _updateSidebarRowToolTipPlacement(sender.as<FrameworkElement>());
@@ -4325,6 +4330,19 @@ namespace winrt::TerminalApp::implementation
             {
                 background.Opacity(0.0);
             }
+        }
+    }
+
+    void TabStrip::_clearSidebarPointerOver()
+    {
+        for (const auto& display : _displayItems)
+        {
+            winrt::get_self<TabStripDisplayItem>(display)->SetPointerOver(false, _isRailCollapsed);
+            for (const auto& pane : display.PaneItems())
+            {
+                winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);
+            }
+            _refreshDisplayItemVisuals(display);
         }
     }
 
