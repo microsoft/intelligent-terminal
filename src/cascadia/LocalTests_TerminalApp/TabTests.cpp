@@ -17555,7 +17555,22 @@ namespace TerminalAppLocalTests
             const auto secondPaneClose = secondPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneBackground.Visibility());
             VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 10, firstPaneBackground.ActualWidth());
-            VERIFY_IS_TRUE(std::abs(firstPaneRoot.ActualWidth() - paneCloseColumn - firstPaneActivateButton.ActualWidth()) <= 1.0);
+            const auto verifyPaneButtonWidths = [&]() {
+                for (const auto& paneRoot : { firstPaneRoot, secondPaneRoot })
+                {
+                    const auto button = paneRoot.FindName(L"PaneActivateButton").as<Button>();
+                    const auto closeColumn = paneRoot.ColumnDefinitions().GetAt(1).ActualWidth();
+                    VERIFY_IS_TRUE(std::abs(paneRoot.ActualWidth() - closeColumn - button.ActualWidth()) <= 1.0);
+                }
+            };
+            verifyPaneButtonWidths();
+            host.Width(480);
+            strip.Width(480);
+            host.UpdateLayout();
+            verifyPaneButtonWidths();
+            host.Width(240);
+            strip.Width(240);
+            host.UpdateLayout();
             const auto tabSelection = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
             VERIFY_ARE_EQUAL(tabSelection.Background().as<Media::SolidColorBrush>().Color(),
                              firstPaneBackground.Background().as<Media::SolidColorBrush>().Color());

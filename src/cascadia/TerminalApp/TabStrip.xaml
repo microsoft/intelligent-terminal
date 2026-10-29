@@ -916,6 +916,7 @@
                                         <Button x:Name="PaneActivateButton"
                                                 Grid.Column="0"
                                                 Padding="0"
+                                                HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Stretch"
                                                 VerticalContentAlignment="Stretch"
                                                 AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
