@@ -3016,13 +3016,17 @@ impl App {
                 }
 
                 if method == "agent_master_restarted" {
-                    let request_id = params
+                    let operation_id = params
                         .get("operation_id")
                         .and_then(|value| value.as_str())
                         .unwrap_or("");
-                    if request_id.is_empty() {
+                    if operation_id.is_empty() {
                         return;
                     }
+                    let request_id = params
+                        .get("request_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
                     let completes_auth_recovery = matches!(
                         &self.auth_recovery_state,
                         AuthRecoveryState::WaitingForMaster {
@@ -3044,6 +3048,7 @@ impl App {
                     if self.deferred_acp.is_none() {
                         tracing::warn!(
                             target: "helper",
+                            %operation_id,
                             %request_id,
                             "replacement master is ready but helper binding is unavailable"
                         );
@@ -3052,6 +3057,7 @@ impl App {
 
                     tracing::info!(
                         target: "helper",
+                        %operation_id,
                         %request_id,
                         "replacement master is ready; reconnecting retained helper"
                     );
