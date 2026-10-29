@@ -7887,13 +7887,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _tabSearchActive = false;
-        _tabSearchQuery.clear();
         if (_tabStrip)
         {
             _tabStrip.SearchActive(false);
             _tabStrip.SearchQuery(L"");
         }
+        _tabSearchActive = false;
+        _tabSearchQuery.clear();
     }
 
     void TerminalPage::_CancelRailSplitterDrag()
@@ -9408,7 +9408,10 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                _CreateNewTabFromPane(newPane);
+                if (_CreateNewTabFromPane(newPane) && _isVerticalLayout)
+                {
+                    _ClearTabSearch();
+                }
                 sessionType = "Tab";
             }
         }

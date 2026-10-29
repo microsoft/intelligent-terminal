@@ -2780,6 +2780,11 @@ namespace winrt::TerminalApp::implementation
         VisibleFieldsChanged.raise(*this, nullptr);
     }
 
+    void TabStrip::OnAgentsOnlyFilterMenuItemClick(IInspectable const&, WUX::RoutedEventArgs const&)
+    {
+        SearchActive(false);
+    }
+
     void TabStrip::OnDisplayOptionsOpened(IInspectable const&, IInspectable const&)
     {
         _displayOptionsKeyDownRevoker.revoke();

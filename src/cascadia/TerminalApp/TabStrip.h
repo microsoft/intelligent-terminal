@@ -478,6 +478,8 @@ namespace winrt::TerminalApp::implementation
                                                    winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabChangesVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                           winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnAgentsOnlyFilterMenuItemClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabMetadataFlyoutClosing(
             winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const& e);
