@@ -8024,6 +8024,10 @@ namespace TerminalAppLocalTests
             LOG_IF_FAILED(RunOnUIThread([&]() { Media::Animation::Timeline::AllowDependentAnimations(animations); }));
         });
         const auto processed = std::make_shared<::details::Event>();
+        const auto tabInitialized = std::make_shared<::details::Event>();
+        const auto splitInitialized = std::make_shared<::details::Event>();
+        VERIFY_IS_TRUE(tabInitialized->IsValid());
+        VERIFY_IS_TRUE(splitInitialized->IsValid());
         TestOnUIThread([&]() {
             namespace fs = std::filesystem;
             using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
@@ -8074,29 +8078,35 @@ namespace TerminalAppLocalTests
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, false, false, false, false);
             VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
             tab = page->_GetFocusedTabImpl();
-            const auto failedTabConnection = tab->GetActiveTerminalControl().Connection();
-            if (failedTabConnection.State() == State::NotConnected)
-            {
-                failedTabConnection.Start();
-            }
-            VERIFY_ARE_EQUAL(State::Failed, failedTabConnection.State());
+            const auto failedTabControl = tab->GetActiveTerminalControl();
+            failedTabControl.Initialized([tabInitialized](auto&&, auto&&) { tabInitialized->Set(); });
+            page->UpdateLayout();
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(tabInitialized->m_handle, 10000));
+        TestOnUIThread([&]() {
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            VERIFY_ARE_EQUAL(State::Failed, tab->GetActiveTerminalControl().Connection().State());
             panesBefore = tab->GetLeafPaneCount();
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, true, false, false, false);
-            const auto failedSplitConnection = tab->GetActiveTerminalControl().Connection();
-            if (failedSplitConnection.State() == State::NotConnected)
-            {
-                failedSplitConnection.Start();
-            }
-            VERIFY_ARE_EQUAL(State::Failed, failedSplitConnection.State());
+            const auto failedSplitControl = tab->GetActiveTerminalControl();
+            failedSplitControl.Initialized([splitInitialized](auto&&, auto&&) { splitInitialized->Set(); });
+            page->UpdateLayout();
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(splitInitialized->m_handle, 10000));
+        TestOnUIThread([&]() {
+            using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+            using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+            VERIFY_ARE_EQUAL(State::Failed, tab->GetActiveTerminalControl().Connection().State());
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"--yolo" }, profile.AgentProfileArguments());
 
             profile.AgentProfileArguments(L"--version");
-            const auto validSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, profile);
+            const auto validSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
             const auto valid = page->_CreateConnectionFromSettings(profile, *validSettings.DefaultSettings(), false);
             VERIFY_ARE_EQUAL(State::NotConnected, valid.State());
             VERIFY_IS_TRUE(std::wstring_view{ valid.as<Conpty>().Commandline() }.find(L"--version") != std::wstring_view::npos);
             valid.Close();
-            // Drain normal-priority failure handlers; disabled animations make any pane closes synchronous.
+            // Drain normal-priority handlers first; disabled animations keep pane closes synchronous.
             tab->TabViewItem().Dispatcher().RunAsync(CoreDispatcherPriority::Low, [processed]() { processed->Set(); });
         });
         VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(processed->m_handle, 10000));
