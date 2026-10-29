@@ -73,7 +73,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         static ProviderBroker& Instance();
 
-        AttachmentId Attach(SessionContext context, Callback callback);
+        AttachmentId Attach(SessionContext context, Callback callback, VisibleFieldMap visibleFields = {});
         void Detach(AttachmentId attachment);
         void UpdateContext(
             AttachmentId attachment,
@@ -94,6 +94,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::string_view providerId,
             std::unordered_map<std::string, std::string> displayNames);
         void SetVisibleFields(std::string_view providerId, std::vector<std::string> fields);
+        void SetVisibleFields(AttachmentId attachment, std::string_view providerId, std::vector<std::string> fields);
         std::optional<std::vector<std::string>> VisibleFields(std::string_view providerId) const;
 
         uint64_t ProcessEpoch() const noexcept;
@@ -134,6 +135,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             uint64_t updateSequence{ 0 };
             std::optional<std::chrono::steady_clock::time_point> detachedAt;
             std::unordered_map<AttachmentId, Callback> callbacks;
+            std::unordered_map<AttachmentId, VisibleFieldMap> visibleFieldsByAttachment;
             std::unordered_map<std::string, ProviderState> providers;
         };
 
@@ -154,7 +156,13 @@ namespace Microsoft::Terminal::RichTab::Provider
         BrokerUpdate _UpdateFor(
             const std::string& sessionId,
             const SessionState& state,
-            std::vector<std::string> diagnostics = {}) const;
+            std::vector<std::string> diagnostics = {},
+            AttachmentId attachment = 0) const;
+        std::vector<std::pair<Callback, BrokerUpdate>> _NotificationsFor(
+            const std::string& sessionId,
+            const SessionState& state,
+            const std::vector<std::string>& diagnostics = {}) const;
+        std::vector<std::string> _VisibleFieldsForSession(const SessionState& state, const Registration& provider) const;
         void _Enqueue(std::function<void()> work);
         void _PruneDetachedSessionsLocked();
         void _InvalidateGitStatusWorkingDirectoryLocked(SessionState& session);

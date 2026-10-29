@@ -129,7 +129,7 @@ agent.custom.auth_hint: "%{name}이(가) 설치되어 있고 PATH에 있는지 �
 agents.loading: "로드 중..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - 키 조합, 번역하지 마세요
 agents.footer_hint: "(↑ ↓ 탐색 • Enter 세션 시작 • Esc 종료 • F5 새로 고침 • / 검색)"
-agents.status.active: "활성"
+agents.status.active: "작업 중"
 agents.status.waiting_for_input: "입력 대기 중"
 agents.status.error: "오류"
 agents.status.idle: "유휴"

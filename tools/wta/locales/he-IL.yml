@@ -146,7 +146,7 @@ agent.custom.auth_hint: "ודא ש-%{name} מותקן ונמצא ב-PATH שלך.
 agents.loading: "טוען..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - צירופי מקשים, אין לתרגם
 agents.footer_hint: "(↑ ↓ לניווט • Enter להפעלת הפעלה • Esc ליציאה • F5 לרענון • / לחיפוש)"
-agents.status.active: "פעיל"
+agents.status.active: "עובד"
 agents.status.waiting_for_input: "ממתין לקלט"
 agents.status.error: "שגיאה"
 agents.status.idle: "לא פעיל"

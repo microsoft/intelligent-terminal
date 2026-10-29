@@ -72,6 +72,7 @@ use crate::protocol::acp::spawn::{
 pub(crate) mod config;
 mod history;
 mod session_mcp;
+mod shutdown;
 
 use config::MasterConfig;
 
@@ -1909,6 +1910,7 @@ struct AgentHistoryRefresh {
     target: OnceLock<history::HistoryTarget>,
     cancelled: tokio_util::sync::CancellationToken,
     worker_started: std::sync::atomic::AtomicBool,
+    retry_requested: tokio::sync::Notify,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1946,6 +1948,15 @@ struct HistoryRefreshState {
 }
 
 impl HistoryRefreshState {
+    fn retry_paused_history(&mut self) -> bool {
+        if !self.query.retry_paused() {
+            return false;
+        }
+        self.failures = 0;
+        self.next_refresh_at = None;
+        true
+    }
+
     fn observe_retry_epoch(&mut self, epoch: u64) {
         if epoch > self.retry_epoch {
             self.retry_epoch = epoch;
@@ -4565,7 +4576,7 @@ impl HelperHandler {
         // No torn-state window because the registry holds a
         // tokio::sync::Mutex<HashMap<...>> internally; each
         // upsert/remove/snapshot is one full hashmap op.
-        let snapshot = self.state.registry.snapshot().await;
+        let snapshot = self.state.registry.effective_snapshot().await;
         tracing::info!(
             target: "master",
             op = "list_sessions",
@@ -4767,12 +4778,6 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
         agent_cmd = %config.agent,
         "=== wta-master starting ==="
     );
-
-    if config.agent.is_empty() {
-        return Err(anyhow!(
-            "wta-master requires --agent <cmd>; nothing to multiplex onto"
-        ));
-    }
 
     if config.session_management_enabled {
         // Reconciliation is fire-and-forget so slow third-party plugin
@@ -4997,6 +5002,7 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> {
+    let shutdown = shutdown::ShutdownSignal::from_environment()?;
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
     // to Ended on pane-close even when no helper publishes a `PaneClosed`
@@ -5074,7 +5080,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         Err(error) => return Err(error).context("read WTA_MASTER_GENERATION"),
     };
     let inner = Arc::new(MasterStateInner {
-        startup_registry: Arc::new(crate::agent_lifecycle::StartupRegistry::runtime()?),
+        startup_registry: crate::agent_lifecycle::StartupRegistry::runtime(),
         native_observation_receiver_generation,
         native_observation_listener_ready: std::sync::atomic::AtomicBool::new(false),
         session_lifecycle_gates: Mutex::new(SessionLifecycleGateTable::default()),
@@ -5217,9 +5223,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // cannot delay helper connections. An individual agent CLI dying is handled by its reaper
     // (`spawn_one_agent`) — it removes that agent from the pool but the
     // master stays alive so sibling tabs on OTHER agents keep working.
-    // Only a fatal pipe error returns from this loop. SharedWta on the
-    // C++ side still owns the master's process lifetime (job object +
-    // pane refcount).
+    // Host shutdown or a fatal pipe error returns from this loop. SharedWta on the
+    // C++ side owns the process-scoped service lifetime and job object.
     // Tighten the pipe ACL (defense in depth — see
     // `build_pipe_security_attributes`). Held for the whole accept loop so
     // every follow-up instance inherits the same attributes; `None` means
@@ -5248,11 +5253,25 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // Both connect and disconnect log it, so a single grep on
     // "live_helpers=" reconstructs the timeline.
     let live_helpers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let shutdown_requested = async {
+        match &shutdown {
+            Some(signal) => signal.requested().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(shutdown_requested);
     loop {
-        server
-            .connect()
-            .await
-            .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_requested => {
+                drop(server);
+                shutdown_master(&inner).await;
+                return Ok(());
+            }
+            connected = server.connect() => {
+                connected.with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
+            }
+        }
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
@@ -5294,6 +5313,51 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
                 ),
             }
         });
+    }
+}
+
+async fn shutdown_master(state: &Arc<MasterStateInner>) {
+    const CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+    tracing::info!(target: "master", "Terminal requested master service shutdown");
+    let agents: Vec<_> = state
+        .agents
+        .lock()
+        .await
+        .values()
+        .filter_map(|cell| cell.get().cloned())
+        .collect();
+    let sessions: Vec<_> = state
+        .session_to_helper
+        .lock()
+        .await
+        .iter()
+        .filter_map(|(id, route)| {
+            agents
+                .iter()
+                .find(|agent| agent.instance_id == route.agent_instance_id)
+                .map(|agent| (id.clone(), route.helper_id, Arc::clone(agent)))
+        })
+        .collect();
+    let cleanup = async {
+        futures::future::join_all(sessions.iter().map(|(id, helper, agent)| async move {
+            if let Err(error) =
+                close_and_retire_replaced_session(state, *helper, agent, id, CLEANUP_TIMEOUT).await
+            {
+                tracing::warn!(target: "master", %error, "session cleanup failed during service shutdown");
+            }
+        }))
+        .await;
+        futures::future::join_all(agents.iter().map(|agent| retire_agent_history(agent))).await;
+    };
+    if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup)
+        .await
+        .is_err()
+    {
+        tracing::warn!(target: "master", "service cleanup deadline reached; closing owned transports");
+    }
+    for agent in agents {
+        agent.history_refresh.cancelled.cancel();
+        agent.conn.shutdown();
     }
 }
 
@@ -5738,14 +5802,8 @@ where
                 let result = match startup.begin() {
                     Ok(()) => match initialize(Arc::clone(&cell)).await {
                         Ok(agent) => {
-                            match startup.succeeded() {
-                                Ok(()) => Ok(agent),
-                                Err(error) => {
-                                    agent.conn.shutdown();
-                                    retire_agent_history(&agent).await;
-                                    Err(error)
-                                }
-                            }
+                            startup.succeeded();
+                            Ok(agent)
                         }
                         Err(error) => Err(startup.failed(error)),
                     },
@@ -5903,7 +5961,7 @@ async fn wait_for_agent_exit(
     child: &mut crate::protocol::acp::process::AgentProcess,
 ) -> Result<std::process::ExitStatus> {
     // Lease only retirement, not a healthy process's lifetime. Cleanup must
-    // still reclaim our owned process if the admission ledger is unavailable.
+    // still reclaim our owned process if the admission lease is unavailable.
     let exited = child.wait_for_exit_or_stop().await;
     let startup = state.startup_registry.lock(admission_key).await;
     let status = match exited {
@@ -6294,7 +6352,6 @@ async fn spawn_one_agent(
         .history_refresh
         .target
         .set(history::HistoryTarget {
-            startup_registry: Arc::clone(&state.startup_registry),
             command: agent_cmd.to_string(),
             agent_id: resolved_agent_id.clone(),
             source: source.clone(),
@@ -6995,7 +7052,7 @@ async fn broadcast_session_status_change(state: &MasterStateInner, session_id: O
 
 async fn publish_session_status_delta(state: &MasterStateInner, session_id: &str) -> bool {
     let sid = acp::schema::v1::SessionId::new(session_id.to_string());
-    let Some(row) = state.registry.lookup(&sid).await else {
+    let Some(row) = state.registry.lookup_effective(&sid).await else {
         return false;
     };
     let Some(status) = row.status.as_ref() else {
@@ -7852,6 +7909,7 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             tokio::select! {
                 _ = agent.history_refresh.cancelled.cancelled() => break,
                 _ = tokio::time::sleep_until(next) => {}
+                _ = agent.history_refresh.retry_requested.notified() => {}
             }
         }
     });
@@ -8121,6 +8179,88 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
     });
 }
 
+fn request_history_retry(state: &Arc<MasterStateInner>, agent: Option<Arc<AgentCli>>) {
+    use std::sync::atomic::Ordering;
+
+    let state = Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let discover = agent.is_none();
+        let retained: Vec<_> = if discover {
+            state
+                .history_queries
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let agents = match agent.as_ref() {
+            Some(agent) => vec![Arc::clone(agent)],
+            None => state
+                .agents
+                .lock()
+                .await
+                .values()
+                .filter_map(|cell| cell.get().cloned())
+                .collect(),
+        };
+        let mut gates = Vec::new();
+        for gate in retained.into_iter().chain(
+            agents
+                .iter()
+                .map(|agent| Arc::clone(&agent.history_refresh.gate)),
+        ) {
+            if !gates.iter().any(|known| Arc::ptr_eq(known, &gate)) {
+                gates.push(gate);
+            }
+        }
+        for gate in gates {
+            let state = Arc::clone(&state);
+            let bound = agent.clone();
+            tokio::task::spawn_local(async move {
+                let mut refresh = gate.lock().await;
+                if bound
+                    .as_ref()
+                    .is_some_and(|agent| agent.history_refresh.retired.load(Ordering::Acquire))
+                {
+                    return;
+                }
+                let reopened = refresh.retry_paused_history();
+                drop(refresh);
+                let agents = match bound {
+                    Some(agent) => vec![agent],
+                    None => state
+                        .agents
+                        .lock()
+                        .await
+                        .values()
+                        .filter_map(|cell| cell.get())
+                        .filter(|agent| Arc::ptr_eq(&agent.history_refresh.gate, &gate))
+                        .cloned()
+                        .collect(),
+                };
+                for agent in agents {
+                    if agent.history_refresh.retired.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    if reopened {
+                        tracing::info!(target: "master_history",
+                            agent_id = %agent.resolved_agent_id, agent_source = %agent.source,
+                            "explicit history retry reopened automatic recovery");
+                        agent.history_refresh.retry_requested.notify_one();
+                    }
+                    start_agent_history_worker(&state, &agent);
+                }
+            });
+        }
+        if discover {
+            request_host_history_refresh(&state);
+        }
+    });
+}
+
 /// Ordinary reads never contact agents. Only an explicit rescan may refresh.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
@@ -8144,8 +8284,13 @@ where
     F: FnOnce(Vec<crate::session_registry::SessionInfo>) -> Fut,
     Fut: std::future::Future<Output = Vec<crate::session_registry::SessionInfo>>,
 {
+    if parsed.retry_history && !parsed.rescan {
+        return Err(acp::Error::invalid_params().data("history retry requires an explicit rescan"));
+    }
     if parsed.rescan {
-        if let Some(agent) = agent {
+        if parsed.retry_history {
+            request_history_retry(state, agent.cloned());
+        } else if let Some(agent) = agent {
             // F5 shares the bound source's worker, but the helper's ACP
             // dispatch must never wait behind a slow history request.
             start_agent_history_worker(state, agent);
@@ -8182,7 +8327,7 @@ where
     // Reconcile before collecting panes: registrations made during the probe
     // need ownership queries too. Apply external evidence only to unchanged
     // historical rows, never resurrecting removed rows or overriding new bindings.
-    let mut sessions = state.registry.snapshot().await;
+    let mut sessions = state.registry.effective_snapshot().await;
     for row in &mut sessions {
         let identity = crate::session_registry::SessionIdentity::from_info(row);
         if evidence.get(&identity) == Some(row) {
@@ -10809,6 +10954,115 @@ async fn validate_master_hook_source(
 /// [`crate::app::plan_agent_event`], so the two can never disagree about what a
 /// hook means.
 async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde_json::Value) {
+    handle_master_agent_event_with_probe(
+        state,
+        params,
+        crate::session_watcher::copilot_status::owned_by_process,
+    )
+    .await;
+}
+
+async fn recover_copilot_prompt<F, Fut>(
+    state: &MasterStateInner,
+    row: crate::session_registry::SessionInfo,
+    pane_id: &str,
+    payload: &serde_json::Value,
+    probe: F,
+) -> bool
+where
+    F: FnOnce(crate::session_registry::SessionInfo, u32) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<bool, crate::session_watcher::copilot_status::ProbeError>,
+    >,
+{
+    if !row.can_recover_copilot_prompt() || uuid::Uuid::parse_str(pane_id).is_err() {
+        return false;
+    }
+    let Some(cwd) = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .filter(|cwd| !cwd.trim().is_empty())
+    else {
+        return false;
+    };
+    let Some(wt) = state.wt.as_ref().filter(|wt| wt.is_available()) else {
+        return false;
+    };
+    let context = match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        wt.request(
+            "get_pane_context",
+            serde_json::json!({ "session_id": pane_id, "max_lines": 0, "max_chars": 0 }),
+        ),
+    )
+    .await
+    {
+        Ok(Ok(context)) => context,
+        Ok(Err(error)) => {
+            tracing::debug!(target: "master_wt_event", %error, "prompt recovery pane context unavailable");
+            return false;
+        }
+        Err(_) => {
+            tracing::debug!(target: "master_wt_event", "prompt recovery pane context timed out");
+            return false;
+        }
+    };
+    let pane = &context["pane"];
+    if pane["session_id"]
+        .as_str()
+        .map(crate::agent_sessions::pane_key)
+        .as_deref()
+        != Some(crate::agent_sessions::pane_key(pane_id).as_str())
+        || pane["native_agent_provider_id"].as_str() != Some("copilot")
+        || pane["is_agent_pane"].as_bool() != Some(false)
+    {
+        return false;
+    }
+    let Some(pid) = pane["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .filter(|pid| *pid != 0)
+    else {
+        return false;
+    };
+    match probe(row.clone(), pid).await {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(error) => {
+            tracing::debug!(target: "master_wt_event", ?error, "prompt recovery lease unavailable");
+            return false;
+        }
+    }
+    let gate = session_lifecycle_gate(state, &row.session_id).await;
+    let _guard = gate.lock().await;
+    if !state
+        .registry
+        .recover_copilot_prompt(&row, pane_id, std::path::PathBuf::from(cwd))
+        .await
+    {
+        return false;
+    }
+    state.hook_owned.lock().await.insert(row.session_id.clone());
+    state.born_bound.lock().await.remove(&row.session_id);
+    tracing::info!(
+        target: "master_wt_event",
+        session_key = %row.session_id,
+        pane_id,
+        "recovered missing Copilot session-start from verified root prompt"
+    );
+    true
+}
+
+async fn handle_master_agent_event_with_probe<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    params: &serde_json::Value,
+    probe: F,
+) where
+    F: FnOnce(crate::session_registry::SessionInfo, u32) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<bool, crate::session_watcher::copilot_status::ProbeError>,
+    >,
+{
     use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
@@ -10989,9 +11243,22 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     if plan.events.is_empty() {
         return;
     }
-    let activity_only = plan.events.iter().all(session_event_is_activity_only);
-
     let mut changed = false;
+    if event == "agent.prompt.submit"
+        && cli_source == CliSource::Copilot
+        && session_known
+        && !pane_owned_by_other
+    {
+        if let Some(row) = rows
+            .iter()
+            .find(|row| row.session_id.0.as_ref() == session_key)
+        {
+            changed =
+                recover_copilot_prompt(state, row.clone(), &owner_pane, &payload, probe).await;
+        }
+    }
+    let activity_only = !changed && plan.events.iter().all(session_event_is_activity_only);
+
     let mut refresh_keys = HashSet::new();
     let transition_count = plan.events.len();
     for ev in plan.events {

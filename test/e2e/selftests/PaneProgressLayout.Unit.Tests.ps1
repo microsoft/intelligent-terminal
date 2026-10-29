@@ -2,6 +2,8 @@
 
 BeforeAll {
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    # Load UIA's geometry dependency without querying the desktop.
+    $null = [Windows.Automation.AutomationElement+AutomationElementInformation].GetProperty('BoundingRectangle').PropertyType
     $errors = $null
     $ast = [Management.Automation.Language.Parser]::ParseFile(
         (Join-Path $PSScriptRoot '..\tests\Feature.PaneProgress.Tests.ps1'), [ref]$null, [ref]$errors)
@@ -15,6 +17,12 @@ BeforeAll {
     }, $true)
     # Substitute the native owner observer only; selection, identity checks and invocation run unchanged.
     Invoke-Expression $script:source.Replace($owner.Extent.Text, '$ownedRoot = { Assert-TestLayoutOwner; $script:root }')
+    $slot = $ast.Find({ param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-LeadingSlot'
+    }, $true)
+    Invoke-Expression $slot.Extent.Text
+    function Get-PaneRow { param($Title) }
+    function Get-LeadingIdentityPeers { param($Row) }
     function Open-TabMenu {}
     function Assert-TestLayoutOwner {}
     function Get-OwnedElements { param($Property, $Value, $Parent) }
@@ -28,6 +36,7 @@ BeforeAll {
                 IsOffscreen = $false; IsEnabled = $true
                 BoundingRectangle = [pscustomobject]@{ Width = 100; Height = 30 }
             }
+
             RuntimeId = @(42, 1234, 4, 130)
         }
         $peer | Add-Member ScriptMethod GetRuntimeId { $this.RuntimeId }
@@ -44,6 +53,43 @@ BeforeAll {
             $invoker
         }
         $peer
+    }
+}
+
+Describe 'PaneProgress measured expanded identity slot' -Tag 'Unit' {
+    BeforeEach {
+        $script:scale = 1.5
+        $script:titleA = 'owned-title'
+        $script:tab = @{ tab_id = 2 }
+        $script:expandedSlotBaselines = @{}
+        $script:slotRow = [pscustomobject]@{ Current = [pscustomobject]@{
+            BoundingRectangle = [Windows.Rect]::new(328, 643, 292, 45)
+        } }
+        $script:slotIdentity = @([pscustomobject]@{ Current = [pscustomobject]@{
+            BoundingRectangle = [Windows.Rect]::new(360, 654, 24, 24)
+        } })
+        Mock Get-PaneRow { $script:slotRow }
+        Mock Get-LeadingIdentityPeers { $script:slotIdentity }
+        Mock Get-OwnedElements { @() }
+    }
+
+    It 'uses the actual original identity offset after progress changes row position and metadata height' {
+        $baseline = Get-LeadingSlot expanded
+        $baseline.slot.X | Should -Be 360
+        $script:slotIdentity = @()
+        $script:slotRow.Current.BoundingRectangle = [Windows.Rect]::new(378, 700, 292, 78)
+        $busy = Get-LeadingSlot expanded
+        $busy.slot.X | Should -Be 410
+        $busy.slot.Y | Should -Be 727
+        $busy.slot.Width | Should -Be 24
+    }
+
+    It 'never borrows another row or guesses a slot without measured identity evidence' {
+        Get-LeadingSlot expanded | Out-Null
+        $script:slotIdentity = @()
+        { Get-LeadingSlot expanded -Title 'another-owner' } | Should -Throw '*before starting progress*'
+        $script:expandedSlotBaselines.Clear()
+        { Get-LeadingSlot expanded } | Should -Throw '*before starting progress*'
     }
 }
 
@@ -144,7 +190,7 @@ Describe 'PaneProgress exact layout MenuItem invocation' -Tag 'Unit' {
     It 'retains original native root, process/start and exact case-sensitive run receipt guards' {
         foreach ($guard in @('GetAncestor', 'GetWindowProcessId', 'IsOwnedRootOrPopup', 'GetForegroundWindow',
             'OwnedProcess.StartTime', 'WindowsTerminal.exe', 'start_utc', 'UtcDateTime.Ticks',
-            'run_token -ceq', 'ITE2E_RUN_TOKEN -cne', 'ITE2E_OWNED_PROCESS_RECEIPT -cne')) {
+            'run_token -ceq', '$script:app.InputRunToken -cne', '$script:app.InputReceiptPath -cne')) {
             $script:source | Should -Match ([regex]::Escape($guard))
         }
         $script:source | Should -Not -Match 'Invoke-UiElement|Set-WtSetting|Diagnostic|Save-LayoutSwitchObservation'
