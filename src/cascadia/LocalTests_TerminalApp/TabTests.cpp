@@ -471,6 +471,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
+        TEST_METHOD(SidebarToggleFillsFollowEffectiveChromeBackground);
         TEST_METHOD(SidebarHotkeyFocusesToggleAndReturnsToInput);
         TEST_METHOD(SidebarSearchShortcutFocusesSearchFromTerminal);
         TEST_METHOD(TabSearchShortcutPreservesQueryAndSelection);
@@ -6027,6 +6028,68 @@ namespace TerminalAppLocalTests
                         }
                         const auto hovering = std::wstring_view{ state } != L"Normal";
                         VERIFY_ARE_EQUAL(hovering, presenter.Background().as<Media::SolidColorBrush>().Color().A > 0);
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::SidebarToggleFillsFollowEffectiveChromeBackground()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto button = row->VerticalRailToggleButton();
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
+
+            for (const auto inheritedTheme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                page->_tabRow.RequestedTheme(inheritedTheme);
+                for (const auto color : { winrt::Windows::UI::Colors::White(), winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                {
+                    button.RequestedTheme(ElementTheme::Default);
+                    page->TitlebarBrush(Media::SolidColorBrush{ color });
+                    page->_SetNewTabButtonColor(color, color);
+                    if (highContrast)
+                    {
+                        VERIFY_ARE_EQUAL(ElementTheme::Default, button.RequestedTheme());
+                        continue;
+                    }
+
+                    const auto brightBackground = color == winrt::Windows::UI::Colors::White();
+                    VERIFY_ARE_EQUAL(brightBackground ? ElementTheme::Light : ElementTheme::Dark, button.RequestedTheme());
+                    const auto expectedChannel = brightBackground ? uint8_t{ 0 } : uint8_t{ 255 };
+                    const auto verifyContrast = [&](const Media::Brush& brush) {
+                        const auto fill = brush.as<Media::SolidColorBrush>().Color();
+                        VERIFY_IS_TRUE(fill.A > 0);
+                        VERIFY_ARE_EQUAL(expectedChannel, fill.R);
+                        VERIFY_ARE_EQUAL(expectedChannel, fill.G);
+                        VERIFY_ARE_EQUAL(expectedChannel, fill.B);
+                    };
+                    verifyContrast(button.Foreground());
+
+                    button.ApplyTemplate();
+                    const auto root = Media::VisualTreeHelper::GetChild(button, 0).as<Grid>();
+                    const auto background = root.FindName(L"CollapsedBackground").as<Border>();
+                    const auto presenter = root.FindName(L"RailTogglePresenter").as<ContentPresenter>();
+                    for (const auto collapsed : { false, true, false })
+                    {
+                        row->SetVerticalRailState(true, collapsed, collapsed ? 40 : 220);
+                        for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Normal" })
+                        {
+                            VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
+                            VERIFY_ARE_EQUAL(collapsed ? Visibility::Visible : Visibility::Collapsed, background.Visibility());
+                            if (collapsed)
+                            {
+                                verifyContrast(background.Background());
+                            }
+                            if (std::wstring_view{ state } != L"Normal")
+                            {
+                                verifyContrast(presenter.Background());
+                                verifyContrast(presenter.Foreground());
+                            }
+                        }
                     }
                 }
             }
