@@ -604,6 +604,7 @@
                                         Style="{StaticResource RichTabMetadataSectionStyle}" />
                         <ToggleMenuFlyoutItem x:Name="AgentsOnlyFilterMenuItem"
                                               x:Uid="VerticalTabsFilterAgentsOnly"
+                                              Click="OnAgentsOnlyFilterMenuItemClick"
                                               IsChecked="{x:Bind SidebarFilters.ShowAgentsOnly, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem x:Name="RecentAgentSessionsFilterMenuItem"
                                               x:Uid="VerticalTabsSessionHistoryHeader"
