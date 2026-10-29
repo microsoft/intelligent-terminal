@@ -12,6 +12,7 @@
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
 #include "AgentPaneLog.h"
+#include "FreLayoutMetrics.h"
 #include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
 
@@ -52,6 +53,32 @@ namespace winrt::TerminalApp::implementation
         const auto theme = ActualTheme();
         SidebarImage().RequestedTheme(theme);
         AutofixImage().RequestedTheme(theme);
+    }
+
+    void FreOverlay::_OnRootGridSizeChanged(
+        const IInspectable& /*sender*/,
+        const SizeChangedEventArgs& args)
+    {
+        _UpdateWelcomeLayout(args.NewSize());
+    }
+
+    void FreOverlay::_UpdateWelcomeLayout(const Size& viewport)
+    {
+        if (viewport.Width <= 0)
+        {
+            return;
+        }
+
+        const auto layout = ResolveFreWelcomeLayout(viewport.Width, viewport.Height);
+        WelcomeCardsGrid().Width(layout.cardsWidth);
+        Grid::SetColumn(AutofixCard(), layout.autofixCardColumn);
+        Grid::SetColumn(SidebarCard(), layout.sidebarCardColumn);
+        AutofixCard().Width(layout.cardWidth);
+        SidebarCard().Width(layout.cardWidth);
+        SidebarCard().MinHeight(layout.cardMinHeight);
+        AutofixCard().MinHeight(layout.cardMinHeight);
+        WelcomeContentScroller().VerticalScrollBarVisibility(
+            layout.verticalScrolling ? ScrollBarVisibility::Auto : ScrollBarVisibility::Disabled);
     }
 
     void FreOverlay::_BeginProgressAttempt(const winrt::hstring& agentId)

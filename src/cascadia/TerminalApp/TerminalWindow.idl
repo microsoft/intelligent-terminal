@@ -81,7 +81,6 @@ namespace TerminalApp
         Boolean FocusTab(TerminalApp.Tab tab);
         void SetPersistedLayoutIdx(UInt32 idx);
         void RequestExitFullscreen();
-
         Windows.Foundation.Size GetLaunchDimensions(UInt32 dpi);
         Boolean CenterOnLaunch { get; };
 
