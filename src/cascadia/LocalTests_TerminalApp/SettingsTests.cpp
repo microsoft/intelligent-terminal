@@ -78,6 +78,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestNewTabMenuExcludesInternalAgentPaneProfile);
         TEST_METHOD(TestAgentSettingsReloadReusesUnchangedViewModel);
         TEST_METHOD(TestAgentSettingsReloadRejectsAgentConfigurationChanges);
+        TEST_METHOD(TestAgentSettingsReloadNormalizesLegacyCommands);
 
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
@@ -208,7 +209,8 @@ namespace TerminalAppLocalTests
             provider.Models(winrt::single_threaded_vector<CustomModel>({ CustomModel{ L"model", L"Model" } }));
             settings.GlobalSettings().CustomModelProviders(winrt::single_threaded_vector<CustomModelProvider>({ provider }));
             settings.GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ L"custom-agent --acp" }));
-            const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
+            const auto editing = settings.Copy();
+            const Editor::AIAgentsViewModel viewModel{ editing.GlobalSettings() };
             const auto agents = viewModel.AcpAgentList();
             const auto models = viewModel.AcpModelList();
             const Editor::AcpModelEntry model{ L"retained-model", L"Retained model", L"" };
@@ -250,7 +252,8 @@ namespace TerminalAppLocalTests
             provider.Models(winrt::single_threaded_vector<CustomModel>({ CustomModel{ L"model", L"Model" } }));
             settings.GlobalSettings().CustomModelProviders(winrt::single_threaded_vector<CustomModelProvider>({ provider }));
             settings.GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ L"custom-agent --acp" }));
-            const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
+            const auto editing = settings.Copy();
+            const Editor::AIAgentsViewModel viewModel{ editing.GlobalSettings() };
             const auto checkChanged = [&](const auto& change) {
                 const auto reloaded = settings.Copy();
                 change(reloaded.GlobalSettings());
@@ -258,7 +261,7 @@ namespace TerminalAppLocalTests
             };
             checkChanged([](const auto& globals) { globals.AcpAgent(L"copilot"); });
             checkChanged([](const auto& globals) { globals.AcpModel(L"changed-model"); });
-            checkChanged([](const auto& globals) { globals.AcpCustomCommand(L"custom-agent --acp"); });
+            checkChanged([](const auto& globals) { globals.AcpCustomCommand(L"custom-agent --changed-command"); });
             checkChanged([](const auto& globals) { globals.DelegateAgent(L"claude"); });
             checkChanged([](const auto& globals) { globals.AgentSessionManagementEnabled(false); });
             checkChanged([](const auto& globals) {
@@ -268,6 +271,83 @@ namespace TerminalAppLocalTests
             checkChanged([](const auto& globals) { globals.CustomModelProviders().GetAt(0).ApiKeyCredential(L"different-credential-reference"); });
             checkChanged([](const auto& globals) { globals.CustomModelProviders().GetAt(0).Models().GetAt(0).Name(L"Renamed model"); });
             checkChanged([](const auto& globals) { globals.RenderAgentMarkdown(true); });
+        }));
+    }
+
+    void SettingsTests::TestAgentSettingsReloadNormalizesLegacyCommands()
+    {
+        VERIFY_SUCCEEDED(RunOnUIThread([&]() {
+            for (const auto acp : { true, false })
+            {
+                const CascadiaSettings source{ LR"({"acpAgent":"","delegateAgent":"","profiles":[]})", {} };
+                const auto original = source.GlobalSettings();
+                const winrt::hstring command{ L"legacy-agent --acp" };
+                if (acp)
+                {
+                    original.AcpCustomCommand(command);
+                }
+                else
+                {
+                    original.DelegateCustomCommand(command);
+                }
+
+                const auto verifyRawSource = [&]() {
+                    VERIFY_IS_FALSE(original.HasAcpCustomCommands());
+                    VERIFY_IS_FALSE(original.HasDelegateCustomCommands());
+                    VERIFY_IS_TRUE(acp ? original.HasAcpCustomCommand() : original.HasDelegateCustomCommand());
+                    VERIFY_ARE_EQUAL(command, acp ? original.AcpCustomCommand() : original.DelegateCustomCommand());
+                };
+                const auto verifyNormalized = [&](const auto& globals) {
+                    const auto commands = acp ? globals.AcpCustomCommands() : globals.DelegateCustomCommands();
+                    VERIFY_IS_TRUE(acp ? globals.HasAcpCustomCommands() : globals.HasDelegateCustomCommands());
+                    VERIFY_ARE_EQUAL(1u, commands.Size());
+                    VERIFY_ARE_EQUAL(command, commands.GetAt(0));
+                    VERIFY_IS_FALSE(acp ? globals.HasAcpCustomCommand() : globals.HasDelegateCustomCommand());
+                };
+
+                const auto editing = source.Copy();
+                const Editor::AIAgentsViewModel viewModel{ editing.GlobalSettings() };
+                verifyRawSource();
+                verifyNormalized(editing.GlobalSettings());
+                const auto agents = acp ? viewModel.AcpAgentList() : viewModel.DelegateAgentList();
+                const auto firstAgent = agents.GetAt(0);
+                uint32_t preparationChanges = 0;
+                const auto token = viewModel.PropertyChanged([&](auto&&, const auto& args) {
+                    if (args.PropertyName() == L"IsAcpPreparing")
+                    {
+                        ++preparationChanges;
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { viewModel.PropertyChanged(token); });
+
+                for (const auto agentsOnly : { false, true, false })
+                {
+                    const auto reloaded = source.Copy();
+                    reloaded.GlobalSettings().SidebarShowAgentsOnly(agentsOnly);
+                    VERIFY_IS_TRUE(viewModel.TryUpdateSettings(reloaded.GlobalSettings()));
+                    verifyRawSource();
+                    verifyNormalized(reloaded.GlobalSettings());
+                    VERIFY_ARE_EQUAL(agents, acp ? viewModel.AcpAgentList() : viewModel.DelegateAgentList());
+                    VERIFY_ARE_EQUAL(firstAgent, agents.GetAt(0));
+                    VERIFY_ARE_EQUAL(0u, preparationChanges);
+                    viewModel.RenderAgentMarkdown(false);
+                    VERIFY_IS_FALSE(reloaded.GlobalSettings().RenderAgentMarkdown());
+                    VERIFY_IS_TRUE(original.RenderAgentMarkdown());
+                    reloaded.GlobalSettings().ClearRenderAgentMarkdown();
+                }
+
+                const auto changed = source.Copy();
+                if (acp)
+                {
+                    changed.GlobalSettings().AcpCustomCommand(L"legacy-agent --different-command");
+                }
+                else
+                {
+                    changed.GlobalSettings().DelegateCustomCommand(L"legacy-agent --different-command");
+                }
+                VERIFY_IS_FALSE(viewModel.TryUpdateSettings(changed.GlobalSettings()));
+                verifyRawSource();
+            }
         }));
     }
 

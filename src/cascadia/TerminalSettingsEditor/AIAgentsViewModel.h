@@ -296,7 +296,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             bool isAcpAgent);
-
+        void _NormalizeCustomAcpSettings(
+            const Model::GlobalAppSettings& settings,
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
+        void _NormalizeCustomDelegateSettings(
+            const Model::GlobalAppSettings& settings,
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
     };
 };
 
