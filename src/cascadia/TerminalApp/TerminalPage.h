@@ -1071,7 +1071,9 @@ namespace winrt::TerminalApp::implementation
         std::optional<_RichTabAgentInfo> _ManagedProfileLaunchInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateAgentCompletions();
-        void _ReadTabAgentCompletions(Tab& tab);
+        void _ReadFocusedPaneAgentActivity(Tab& tab);
+        bool _HasUnreadAgentActivity(const Microsoft::Terminal::Control::TermControl& control);
+        void _RefreshTabUnreadActivity(Tab& tab);
         void _AgentCompletionChanged(const winrt::guid& paneId);
         bool _HistoryItemHasUnreadCompletion(const TerminalApp::TabStripHistoryItem& item) const;
         std::string_view _AgentStatusForPresentation(const _RichTabAgentInfo& info) const;

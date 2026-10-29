@@ -72,6 +72,7 @@ namespace winrt::TerminalApp::implementation
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
         void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
+        void SetUnreadAgentActivity(bool unread, bool needsAttention = false);
 
         void Close();
         void Shutdown();
@@ -411,6 +412,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
         winrt::hstring _richTabTooltipText{};
         winrt::hstring _richTabAccessibilityText{};
+        bool _unreadAgentActivityNeedsAttention{ false };
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 

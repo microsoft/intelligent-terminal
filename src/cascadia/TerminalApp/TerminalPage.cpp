@@ -13097,6 +13097,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tab = _GetTabImpl(runtimeTab))
             {
+                const auto focusedControl = tab->IsFocused() ? tab->GetActiveTerminalControl() : nullptr;
                 if (const auto root = tab->GetRootPane())
                 {
                     root->WalkTree([&](const auto& pane) {
@@ -13105,29 +13106,52 @@ namespace winrt::TerminalApp::implementation
                             if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId,
-                                    info->providerId, info->status, tab->IsFocused());
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId());
                             }
                         }
                         return false;
                     });
                 }
+                _RefreshTabUnreadActivity(*tab);
             }
         }
     }
 
-    void TerminalPage::_ReadTabAgentCompletions(Tab& tab)
+    bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control)
     {
+        const auto info = control ? _RichTabAgentInfoForControl(control) : std::nullopt;
+        return info && info->paneSessionId &&
+               winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
+                   *info->paneSessionId, info->sessionId, info->providerId);
+    }
+
+    void TerminalPage::_RefreshTabUnreadActivity(Tab& tab)
+    {
+        bool unread = false;
+        bool needsAttention = false;
         if (const auto root = tab.GetRootPane())
         {
-            const auto manager = winrt::get_self<ContentManager>(_manager);
             root->WalkTree([&](const auto& pane) {
-                if (const auto control = pane->GetTerminalControl())
+                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control))
                 {
-                    manager->MarkAgentCompletionRead(control.ContentId());
+                    unread = true;
+                    const auto info = _RichTabAgentInfoForControl(control);
+                    needsAttention = needsAttention || (info && info->status == "Attention");
                 }
                 return false;
             });
+        }
+        tab.SetUnreadAgentActivity(unread, needsAttention);
+    }
+
+    void TerminalPage::_ReadFocusedPaneAgentActivity(Tab& tab)
+    {
+        if (tab.IsFocused())
+        {
+            if (const auto control = tab.GetActiveTerminalControl())
+            {
+                winrt::get_self<ContentManager>(_manager)->MarkAgentCompletionRead(control.ContentId());
+            }
         }
     }
 
@@ -13141,6 +13165,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto pane = root->FindPaneBySessionId(paneId))
                     {
+                        _RefreshTabUnreadActivity(*tab);
                         if (const auto control = pane->GetTerminalControl())
                         {
                             _UpdateRichTabFirstPartyFields(control);
@@ -13161,7 +13186,7 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_HistoryItemHasUnreadCompletion(const TerminalApp::TabStripHistoryItem& item) const
     {
         const auto paneId = _TryParsePaneSessionId(winrt::to_string(item.PaneSessionId()));
-        return item.IsLive() && item.Status() == L"Idle" && paneId &&
+        return item.IsLive() && (item.Status() == L"Idle" || item.Status() == L"Attention") && paneId &&
                winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
                    *paneId, winrt::to_string(item.SessionId()), winrt::to_string(item.AgentId()));
     }
@@ -15194,7 +15219,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (tab->IsFocused())
             {
-                _ReadTabAgentCompletions(*tab);
+                _ReadFocusedPaneAgentActivity(*tab);
             }
             const auto tabStrip = _isVerticalLayout && _tabStrip ?
                                       winrt::get_self<implementation::TabStrip>(_tabStrip) :
@@ -15255,6 +15280,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        _RefreshTabUnreadActivity(*tab);
         const auto visiblePanes = tab->GetVisiblePaneSnapshot();
         const auto activeSourcePane = _SourceTerminalPaneForTab(tab);
         const auto activeSourceContentId = activeSourcePane && activeSourcePane->ContentId() ?
@@ -15332,7 +15358,8 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             const auto sourcePane = tab->GetRootPane()->FindPaneByContentId(pane.ContentId);
-            const auto icon = _AgentIconForControl(sourcePane ? sourcePane->GetTerminalControl() : nullptr, pane.Icon);
+            const auto sourceControl = sourcePane ? sourcePane->GetTerminalControl() : nullptr;
+            const auto icon = _AgentIconForControl(sourceControl, pane.Icon);
             auto item = winrt::make<TabStripPaneItem>(
                 tab->TabViewItem(),
                 pane.ContentId,
@@ -15340,10 +15367,14 @@ namespace winrt::TerminalApp::implementation
                 pane.Title,
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
+            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourceControl));
             itemImpl->ProgressState(pane.ProgressState);
             itemImpl->IsProgressRingActive(pane.ProgressState != 0);
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
             itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
+            const auto agentInfo = itemImpl->HasUnreadActivity() ? _RichTabAgentInfoForControl(sourceControl) : std::nullopt;
+            const auto unreadStatus = agentInfo && agentInfo->status == "Attention" ? "Attention" : "Complete";
+            bool metadataIncludesUnreadStatus = false;
             std::wstring automationName{ pane.Title.c_str(), pane.Title.size() };
             if (pane.SessionId != winrt::guid{})
             {
@@ -15359,8 +15390,13 @@ namespace winrt::TerminalApp::implementation
                     if (!value.accessibilityText.empty())
                     {
                         appendAutomationSegment(automationName, value.accessibilityText);
+                        metadataIncludesUnreadStatus = value.agentStatus == unreadStatus;
                     }
                 }
+            }
+            if (itemImpl->HasUnreadActivity() && !metadataIncludesUnreadStatus)
+            {
+                appendAutomationSegment(automationName, _SidebarHistoryStatusText(unreadStatus));
             }
             if (const auto progressText = progressAutomationText(pane); !progressText.empty())
             {
@@ -15369,6 +15405,19 @@ namespace winrt::TerminalApp::implementation
             itemImpl->AutomationName(winrt::hstring{ automationName });
             items.emplace_back(std::move(item));
         }
+        bool unreadActivityProjectedToPaneRows = true;
+        if (const auto root = tab->GetRootPane())
+        {
+            root->WalkTree([&](const auto& pane) {
+                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control))
+                {
+                    unreadActivityProjectedToPaneRows = unreadActivityProjectedToPaneRows &&
+                                                        std::ranges::any_of(items, [&](const auto& item) { return item.ContentId() == control.ContentId(); });
+                }
+                return false;
+            });
+        }
+        display.Presentation().UnreadActivityProjectedToPaneRows(unreadActivityProjectedToPaneRows);
         tabStrip->SetTabPresentation(display, tab->Title(), tab->Icon(), true);
         tabStrip->SetPaneItems(
             display,
