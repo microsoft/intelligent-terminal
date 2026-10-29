@@ -589,7 +589,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 if ($peer -and -not $peer.Current.IsOffscreen -and $peer.Current.IsEnabled) { $peer }
             }
             $button.Current.ProcessId | Should -Be $script:app.Pid
-            $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            $openItem = Get-CombinedElement AgentsOnlyFilterMenuItem
+            if (-not $openItem -or $openItem.Current.IsOffscreen) {
+                $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            }
             try {
                 $state = @{}
                 foreach ($id in @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem')) {
@@ -615,7 +618,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             )) {
                 $state = Get-CombinedFilterState
                 if ($state[$entry.Id] -ne $entry.Value) {
-                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    $openItem = Get-CombinedElement $entry.Id
+                    if (-not $openItem -or $openItem.Current.IsOffscreen) {
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    }
                     $item = Wait-Until -TimeoutSec 30 -Because "$($entry.Id) is visible in the owned filter flyout" -Condition {
                         $peer = Get-CombinedElement $entry.Id
                         if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
@@ -1431,13 +1437,26 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
             }
         }
-        It 'Sidebar scope choices persist during global search' {
-            Set-CombinedQuery $script:scopeQuery
+        It 'Agent only menu closes search while Recent scope preserves global matches' {
+            Set-CombinedFilters -AgentsOnly $false -Recent $false
             foreach ($pair in @(@($false, $false), @($true, $false), @($true, $true),
                 @($false, $true), @($false, $false), @($true, $true))) {
+                Set-CombinedQuery $script:scopeQuery
+                $agentsChanged = (Get-CombinedFilterState).AgentsOnlyFilterMenuItem -ne $pair[0]
                 Set-CombinedFilters -AgentsOnly $pair[0] -Recent $pair[1]
-                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
-                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+                Assert-CombinedSearchState (-not $agentsChanged)
+                if ($agentsChanged) {
+                    $expected = @('agent')
+                    if (-not $pair[0]) { $expected += 'ordinary' }
+                    if ($pair[1]) { $expected += @('history', 'nonmatch') }
+                    Assert-CombinedScopeRows $expected
+                    Open-CombinedSearch
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
+                }
+                else {
+                    Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+                }
             }
             Set-CombinedQuery ''
             Assert-CombinedScopeRows @('agent', 'history', 'nonmatch')
@@ -1478,6 +1497,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             )) {
                 Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
                 (Get-CombinedFilterState)[$entry.Id] | Should -BeTrue
+                Assert-CombinedSearchState $true
                 Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
                 (Get-CombinedElement SearchTextBox).SetFocus()
                 Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
@@ -1526,6 +1546,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 } | Out-Null
                 $other.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
                     Should -Be ([Windows.Automation.ToggleState]::Off)
+                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                Assert-CombinedSearchState $true
+                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern |
+                    Should -Be $script:scopeQuery -Because 'shortcuts preserve active search'
+                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                $item = Wait-Until -TimeoutSec 5 -Because 'the menu item is visible for native activation' -Condition {
+                    $peer = Get-CombinedElement $entry.Id
+                    if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                }
                 $item.SetFocus()
                 $activationKey = if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') { 0x20 } else { 0x0D }
                 Send-WtWindowKey -App $script:app -Vk $activationKey -RequireForeground | Out-Null
@@ -1534,7 +1563,14 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                     $button = Get-CombinedElement FilterTabsButton
                     $button -and $button.Current.HasKeyboardFocus
                 } | Out-Null
-                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                Assert-CombinedSearchState ($entry.Id -ne 'AgentsOnlyFilterMenuItem')
+                if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') {
+                    Assert-CombinedScopeRows @('ordinary', 'agent')
+                } else {
+                    Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern |
+                        Should -Be $script:scopeQuery
+                }
             }
             Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
             $agentsItem = Wait-Until -TimeoutSec 5 -Because 'Display options reopens after native item activation' -Condition {
@@ -1547,7 +1583,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $button = Get-CombinedElement FilterTabsButton
                 $button -and $button.Current.HasKeyboardFocus
             } | Out-Null
-            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+            Open-CombinedSearch
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
             @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id }) | Should -Be $capture
         }
     }
@@ -2966,6 +3003,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
 
     It 'Combined sidebar search filters both sections and preserves the query' {
         Assert-CombinedSearchState $false
+        Set-CombinedView $false
         Open-CombinedSearch
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Set-CombinedQuery "$script:marker-open-00"
@@ -2977,8 +3015,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Assert-CombinedSearchState $true
         (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
         Set-CombinedView $true
-        Assert-CombinedSearchState $true
-        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
+        Assert-CombinedSearchState $false
+        Open-CombinedSearch
+        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be ''
         Set-CombinedQuery "$script:marker-history-00"
         Wait-Until -TimeoutSec 10 -Because 'history-only search leaves Agents active' -Condition {
             @(Get-CombinedRows Live).Count -eq 0 -and @(Get-CombinedRows Recent).Count -eq 1

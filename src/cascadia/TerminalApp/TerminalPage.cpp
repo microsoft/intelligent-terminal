@@ -7887,13 +7887,13 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        _tabSearchActive = false;
-        _tabSearchQuery.clear();
         if (_tabStrip)
         {
             _tabStrip.SearchActive(false);
             _tabStrip.SearchQuery(L"");
         }
+        _tabSearchActive = false;
+        _tabSearchQuery.clear();
     }
 
     void TerminalPage::_CancelRailSplitterDrag()

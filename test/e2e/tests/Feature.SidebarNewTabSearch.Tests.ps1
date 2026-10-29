@@ -20,6 +20,7 @@ Describe 'Feature: new tabs leave Sidebar search' -Tag @('Feature', 'SidebarNewT
             sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
         } -Settings @{
             language = 'en-US'; tabLayout = 'vertical'; defaultProfile = $profileId; startupActions = ''
+            sidebarShowAgentsOnly = $false
             firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
             profiles = @{ list = @(@{
                 guid = $profileId; name = $script:profileName
