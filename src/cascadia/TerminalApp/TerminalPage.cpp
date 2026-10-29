@@ -9485,17 +9485,41 @@ namespace winrt::TerminalApp::implementation
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
             auto environment = settingsInternal->EnvironmentVariables();
+            HRESULT startupError = S_OK;
+            winrt::hstring startupErrorMessage;
             if (settingsInternal->UsesManagedAgentCommand())
             {
-                ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
-                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
-                    profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
+                try
                 {
-                    managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
+                    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                    ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
+                        profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
+                    if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
+                    {
+                        managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
+                    }
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
+                        profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
                 }
-                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
-                    profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
+                catch (const wil::ResultException& e)
+                {
+                    startupError = e.GetErrorCode();
+                    if (const auto message = e.GetFailureInfo().pszMessage)
+                    {
+                        startupErrorMessage = message;
+                    }
+                }
+                catch (const winrt::hresult_error& e)
+                {
+                    startupError = e.code();
+                    startupErrorMessage = e.message();
+                }
+                catch (...)
+                {
+                    startupError = wil::ResultFromCaughtException();
+                    startupErrorMessage = winrt::hresult_error{ startupError }.message();
+                }
+                LOG_IF_FAILED(startupError);
             }
 
             // Update the path to be relative to whatever our CWD is.
@@ -9530,6 +9554,14 @@ namespace winrt::TerminalApp::implementation
                                                                             settings.InitialCols(),
                                                                             winrt::guid(),
                                                                             profile.Guid());
+
+            if (FAILED(startupError))
+            {
+                managedAgentSessionId.clear();
+                // Defer the failure until Start so the pane can display it without launching a process.
+                valueSet.Insert(L"startupError", Windows::Foundation::PropertyValue::CreateInt32(startupError));
+                valueSet.Insert(L"startupErrorMessage", Windows::Foundation::PropertyValue::CreateString(startupErrorMessage));
+            }
 
             if (inheritCursor)
             {
