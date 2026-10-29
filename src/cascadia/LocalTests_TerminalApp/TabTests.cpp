@@ -472,6 +472,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
         TEST_METHOD(SidebarToggleFillsFollowEffectiveChromeBackground);
+        TEST_METHOD(SidebarToggleUsesChromeFallbackWithoutPaneBackground);
         TEST_METHOD(SidebarHotkeyFocusesToggleAndReturnsToInput);
         TEST_METHOD(SidebarSearchShortcutFocusesSearchFromTerminal);
         TEST_METHOD(TabSearchShortcutPreservesQueryAndSelection);
@@ -6045,20 +6046,24 @@ namespace TerminalAppLocalTests
 
             for (const auto inheritedTheme : { ElementTheme::Light, ElementTheme::Dark })
             {
-                page->_tabRow.RequestedTheme(inheritedTheme);
+                page->_tabStrip.RequestedTheme(inheritedTheme);
+                button.RequestedTheme(ElementTheme::Default);
+                button.UpdateLayout();
+                if (!highContrast)
+                {
+                    VERIFY_ARE_EQUAL(inheritedTheme, button.ActualTheme());
+                }
                 for (const auto color : { winrt::Windows::UI::Colors::White(), winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
                 {
-                    button.RequestedTheme(ElementTheme::Default);
                     page->TitlebarBrush(Media::SolidColorBrush{ color });
                     page->_SetNewTabButtonColor(color, color);
+                    const auto brightBackground = color == winrt::Windows::UI::Colors::White();
+                    VERIFY_ARE_EQUAL(brightBackground ? ElementTheme::Light : ElementTheme::Dark, button.RequestedTheme());
                     if (highContrast)
                     {
-                        VERIFY_ARE_EQUAL(ElementTheme::Default, button.RequestedTheme());
                         continue;
                     }
 
-                    const auto brightBackground = color == winrt::Windows::UI::Colors::White();
-                    VERIFY_ARE_EQUAL(brightBackground ? ElementTheme::Light : ElementTheme::Dark, button.RequestedTheme());
                     const auto expectedChannel = brightBackground ? uint8_t{ 0 } : uint8_t{ 255 };
                     const auto verifyContrast = [&](const Media::Brush& brush) {
                         const auto fill = brush.as<Media::SolidColorBrush>().Color();
@@ -6091,6 +6096,57 @@ namespace TerminalAppLocalTests
                             }
                         }
                     }
+                }
+            }
+        });
+    }
+
+    void TabTests::SidebarToggleUsesChromeFallbackWithoutPaneBackground()
+    {
+        const CascadiaSettings settings{ LR"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "showTabsInTitlebar": false,
+            "tabLayout": "vertical",
+            "theme": "fallback-light",
+            "themes": [
+                {
+                    "name": "fallback-light",
+                    "window": { "applicationTheme": "light" },
+                    "tabRow": { "background": "terminalBackground", "unfocusedBackground": "terminalBackground" }
+                },
+                {
+                    "name": "fallback-dark",
+                    "window": { "applicationTheme": "dark" },
+                    "tabRow": { "background": "terminalBackground", "unfocusedBackground": "terminalBackground" }
+                }
+            ],
+            "profiles": [{
+                "name": "profile0",
+                "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                "closeOnExit": "never"
+            }]
+        })",
+                                         {} };
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings);
+
+        TestOnUIThread([&]() {
+            const auto content = winrt::make<TestSettingsPaneContent>();
+            page->_CreateNewTabFromPane(std::make_shared<Pane>(content));
+            VERIFY_IS_NULL(content.BackgroundBrush());
+            const auto globals = page->_settings.GlobalSettings();
+            globals.UseAcrylicInTabRow(false);
+            const auto button = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow)->VerticalRailToggleButton();
+            const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
+            for (const auto light : { true, false, true })
+            {
+                globals.Theme(ThemePair{ light ? L"fallback-light" : L"fallback-dark" });
+                page->_updateThemeColors();
+                VERIFY_ARE_EQUAL(uint8_t{ 255 }, page->TitlebarBrush().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_IS_TRUE(button.RequestedTheme() != ElementTheme::Default);
+                if (!highContrast)
+                {
+                    VERIFY_ARE_EQUAL(light ? ElementTheme::Light : ElementTheme::Dark, button.RequestedTheme());
                 }
             }
         });
