@@ -29219,16 +29219,35 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto sourceTab = fixture->original.tab;
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(fixture->source->_manager);
+            for (const auto& page : { fixture->source, fixture->destination })
+            {
+                VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+                page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+                VERIFY_IS_FALSE(page->_isVerticalLayout);
+            }
             sourceTab->Focus(FocusState::Unfocused);
+            const auto completionSession = [](const auto& leaf) {
+                return "transfer-completion-" + std::to_string(leaf.contentId);
+            };
             for (const auto& leaf : fixture->original.leaves)
             {
-                manager->UpdateAgentCompletion(leaf.contentId, leaf.connection.SessionId(), "transfer-completion", "copilot", "Working", false);
-                manager->UpdateAgentCompletion(leaf.contentId, leaf.connection.SessionId(), "transfer-completion", "copilot", "Idle", false);
+                const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(leaf.connection.SessionId()));
+                for (const auto& page : { fixture->source, fixture->destination })
+                {
+                    VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(completionSession(leaf), paneId, "copilot", 1000, "Working"));
+                    VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta(completionSession(leaf), paneId, "copilot", 2000, "Idle"));
+                }
+            }
+            const auto alreadyReadContentId = focused ? std::optional{ sourceTab->GetActiveTerminalControl().ContentId() } : std::nullopt;
+            if (alreadyReadContentId)
+            {
+                manager->MarkAgentCompletionRead(*alreadyReadContentId);
             }
             const auto verifyUnread = [&](const bool expected) {
                 for (const auto& leaf : fixture->original.leaves)
                 {
-                    VERIFY_ARE_EQUAL(expected, manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), "transfer-completion", "copilot"));
+                    VERIFY_ARE_EQUAL(expected && (!alreadyReadContentId || leaf.contentId != *alreadyReadContentId),
+                                     manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), completionSession(leaf), "copilot"));
                 }
             };
             verifyUnread(true);
@@ -29251,6 +29270,8 @@ namespace TerminalAppLocalTests
                 fixture->destination->_ReadFocusedPaneAgentActivity(*destinationTab);
                 fixture->destination->_UpdateAgentCompletions();
                 verifyUnread(true);
+                VERIFY_IS_FALSE(destinationTab->_headerControl.Presentation().HasUnreadActivity());
+                VERIFY_ARE_EQUAL(destinationTab->Title(), Automation::AutomationProperties::GetName(destinationTab->TabViewItem()));
                 if (rollback)
                 {
                     sourceTab->Focus(FocusState::Programmatic);
@@ -29279,12 +29300,16 @@ namespace TerminalAppLocalTests
                 _verifyTransferCommitted(*fixture);
                 VERIFY_ARE_EQUAL(focused, fixture->destination->_GetFocusedTabImpl()->IsFocused());
             }
+            const auto receivingTab = rollback ? sourceTab : fixture->destination->_GetFocusedTabImpl();
+            VERIFY_IS_TRUE(receivingTab->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring{ receivingTab->Title() } + L", " + RS_(L"VerticalTabsHistoryStatusComplete").c_str() },
+                             Automation::AutomationProperties::GetName(receivingTab->TabViewItem()));
             const auto verifyFocusedPaneRead = [&](const auto& tab) {
                 const auto focusedPaneId = tab->GetActiveTerminalControl().Connection().SessionId();
                 for (const auto& leaf : fixture->original.leaves)
                 {
                     VERIFY_ARE_EQUAL(leaf.connection.SessionId() != focusedPaneId,
-                                     manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), "transfer-completion", "copilot"));
+                                     manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), completionSession(leaf), "copilot"));
                 }
             };
             if (rollback || focused)

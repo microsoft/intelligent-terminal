@@ -15858,6 +15858,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     source._ReadFocusedPaneAgentActivity(*sourceTab);
                 }
+                source._RefreshTabUnreadActivity(*sourceTab);
             }
             CATCH_LOG()
             _agentPaneLog("content transfer rolled back source_tab=" + winrt::to_string(sourceTab->StableId()) +
@@ -16011,6 +16012,7 @@ namespace winrt::TerminalApp::implementation
             {
                 _ReadFocusedPaneAgentActivity(*destinationTab);
             }
+            _RefreshTabUnreadActivity(*destinationTab);
         }
         CATCH_LOG()
         return true;
