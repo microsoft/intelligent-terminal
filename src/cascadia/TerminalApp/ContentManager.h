@@ -66,7 +66,8 @@ namespace winrt::TerminalApp::implementation
         void SetExplicitNativeAgentProvider(uint64_t contentId, const winrt::hstring& providerId);
         bool RefineNativeAgentLaunchLocation(uint64_t contentId, const winrt::hstring& providerId, const std::string& location);
         std::optional<NativeAgentObservationIdentity> NativeAgentObservationForContent(uint64_t contentId) const;
-        void RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, const std::optional<NativeAgentObservationIdentity>& emissionIdentity = std::nullopt);
+        uint64_t NativeAgentOwnerGenerationForContent(uint64_t contentId) const;
+        std::optional<NativeAgentObservationIdentity> RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, uint64_t ownerGeneration);
         std::optional<uint64_t> NativeAgentProgressForContent(uint64_t contentId) const;
         NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0, const winrt::hstring& hookProviderId = {});
         void RetainQualifiedNativeAgentIdentity(uint64_t contentId, uint64_t modeEpoch, const std::string& sessionId, const std::string& location);
@@ -154,6 +155,7 @@ namespace winrt::TerminalApp::implementation
                 std::string sessionId;
                 std::string location;
             } lastConfirmedOwner;
+            uint64_t ownerGeneration{ 0 };
         };
         static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
         std::unordered_map<uint64_t, TerminalContent> _content;

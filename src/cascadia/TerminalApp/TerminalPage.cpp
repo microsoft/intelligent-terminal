@@ -13863,7 +13863,8 @@ namespace winrt::TerminalApp::implementation
                 if (const auto page = weakThis.get())
                 {
                     const auto nativeManager = winrt::get_self<ContentManager>(manager);
-                    const auto identity = nativeManager->NativeAgentObservationForContent(contentId);
+                    const auto ownerGeneration = attention ? 0 : nativeManager->NativeAgentOwnerGenerationForContent(contentId);
+                    auto identity = attention ? nativeManager->NativeAgentObservationForContent(contentId) : std::nullopt;
                     const auto control = weakTerm.get();
                     if (!control)
                     {
@@ -13878,7 +13879,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto paneId = _TryParsePaneSessionId(paneIdStr))
                         {
-                            nativeManager->RecordNativeAgentProgress(contentId, *paneId, progressState, identity);
+                            identity = nativeManager->RecordNativeAgentProgress(contentId, *paneId, progressState, ownerGeneration);
                         }
                     }
                     if (!identity)

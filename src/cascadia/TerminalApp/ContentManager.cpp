@@ -94,41 +94,35 @@ namespace winrt::TerminalApp::implementation
         return it->second.observation;
     }
 
-    void ContentManager::RecordNativeAgentProgress(
+    uint64_t ContentManager::NativeAgentOwnerGenerationForContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it == _content.end() ? 0 : it->second.ownerGeneration;
+    }
+
+    std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::RecordNativeAgentProgress(
         const uint64_t contentId,
         const winrt::guid& paneId,
         const uint64_t progressState,
-        const std::optional<NativeAgentObservationIdentity>& emissionIdentity)
+        const uint64_t ownerGeneration)
     {
         std::lock_guard lock{ _mutex };
-        if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper && progressState <= 4)
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !it->second.agentHelper && progressState <= 4 &&
+            it->second.ownerGeneration == ownerGeneration)
         {
-            const auto& owner = it->second.lastConfirmedOwner;
-            if (emissionIdentity && !owner.sessionId.empty())
-            {
-                const auto& sessionId = emissionIdentity->agentSessionId.empty() ?
-                                            emissionIdentity->qualifiedSessionId :
-                                            emissionIdentity->agentSessionId;
-                const auto useQualifiedLocation = (!emissionIdentity->locationConfirmed || emissionIdentity->agentSessionId.empty()) &&
-                                                  emissionIdentity->qualifiedSessionId == sessionId &&
-                                                  !emissionIdentity->qualifiedLocation.empty();
-                const auto& location = useQualifiedLocation ? emissionIdentity->qualifiedLocation : emissionIdentity->location;
-                const auto locationConfirmed = emissionIdentity->locationConfirmed || useQualifiedLocation;
-                // A parsed callback can outlive an owner change between its identity capture and this lock.
-                if (!emissionIdentity->providerId.empty() && !sessionId.empty() &&
-                    (!::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(owner.providerId, emissionIdentity->providerId) ||
-                     owner.sessionId != sessionId ||
-                     (locationConfirmed && !owner.location.empty() && !location.empty() && owner.location != location)))
-                {
-                    return;
-                }
-            }
             if (const auto connection = it->second.core.Core().Connection();
                 connection && connection.SessionId() == paneId)
             {
                 it->second.parsedProgress = std::pair{ paneId, progressState };
+                if (it->second.observation.modeEpoch != 0)
+                {
+                    return it->second.observation;
+                }
             }
         }
+        return std::nullopt;
     }
 
     std::optional<uint64_t> ContentManager::NativeAgentProgressForContent(const uint64_t contentId) const
@@ -194,6 +188,7 @@ namespace winrt::TerminalApp::implementation
         if (changed)
         {
             content.parsedProgress.reset();
+            ++content.ownerGeneration;
         }
         // Observation resets are routing changes, not evidence that the OSC owner changed.
         if (changed || owner.sessionId.empty())

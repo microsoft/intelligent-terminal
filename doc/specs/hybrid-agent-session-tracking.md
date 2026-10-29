@@ -73,7 +73,12 @@ precedence. Terminal retains the parsed progress receipt across same-owner
 admission/mode/routing changes, but clears it when the confirmed provider/session
 or known execution source changes, or the connection lifetime is replaced.
 Unknown identity/source does not erase the last confirmed owner; first-owner
-admission preserves any pre-admission receipt. The registry
+admission preserves any pre-admission receipt. A per-content confirmed-owner
+generation fences delayed parser writes even when no observation is admitted;
+same-owner routing resets do not advance it. Receipt storage acquires the current
+admission under the same lock, so first admission before storage can publish the
+receipt without another OSC, while deferred publication still checks its epoch.
+The registry
 retains raw hook activity
 separately from this shared read projection, so clearing progress restores Idle
 without waiting for another Stop. Complete/unread completion is derived only
