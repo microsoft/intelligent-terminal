@@ -18214,6 +18214,14 @@ namespace winrt::TerminalApp::implementation
         ChangeMaximizeRequested.raise(*this, nullptr);
     }
 
+    bool TerminalPage::_CanShowAgentProfilesIntroduction()
+    {
+        return _visible && _activated && !_windowPanesShutdown &&
+               !(CommandPaletteElement() && CommandPaletteElement().Visibility() == Visibility::Visible) &&
+               !(SuggestionsElement() && SuggestionsElement().Visibility() == Visibility::Visible) &&
+               !(FreOverlayElement() && FreOverlayElement().Visibility() == Visibility::Visible);
+    }
+
     TerminalApp::IPaneContent TerminalPage::_makeSettingsContent()
     {
         if (auto app{ winrt::Windows::UI::Xaml::Application::Current().try_as<winrt::TerminalApp::App>() })
@@ -18230,6 +18238,14 @@ namespace winrt::TerminalApp::implementation
         auto sui = settingsContent->SettingsUI();
         sui.FlowDirection(_isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight);
         _settingsMainPage = sui;
+
+        sui.SetAgentProfilesIntroductionPresentationGate([weak = get_weak()]() {
+            if (const auto page = weak.get())
+            {
+                return page->_CanShowAgentProfilesIntroduction();
+            }
+            return false;
+        });
 
         sui.InitShellIntegrationRequested({ get_weak(), &TerminalPage::_OnSettingsInitShellIntegration });
 

@@ -73,6 +73,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
         void NavigateToAIAgents();
+        void SetAgentProfilesIntroductionPresentationGate(const Editor::AgentProfilesIntroductionPresentationGate& gate);
 
         Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;
         Editor::ExtensionsViewModel ExtensionsVM() const noexcept { return _extensionsVM; }
@@ -114,7 +115,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _UpdateAgentProfilesIntroductionPopup() noexcept;
         std::optional<Windows::Foundation::Rect> _GetAgentProfilesIntroductionTargetBounds();
         std::optional<Windows::Foundation::Size> _GetAgentProfilesIntroductionWindowSize() const noexcept;
-        void _ReleaseAgentProfilesIntroduction(bool dismissed) noexcept;
+        void _ReleaseAgentProfilesIntroduction(bool dismissed, bool recoverNavigation = true) noexcept;
 
         void _UpdateBackgroundForMica();
         void _MoveXamlParsedNavItemsIntoItemSource();
@@ -143,6 +144,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _agentProfilesIntroductionLayoutRevoker;
         Windows::UI::Xaml::Controls::Primitives::Popup _agentProfilesIntroductionPopup{ nullptr };
         uint64_t _agentProfilesIntroductionClaim{ 0 };
+        Editor::AgentProfilesIntroductionPresentationGate _agentProfilesIntroductionPresentationGate{ nullptr };
+        bool _agentProfilesIntroductionPresented{ false };
+        bool _agentProfilesIntroductionResizing{ false };
         bool _agentProfilesIntroductionDismissed{ false };
         bool _agentProfilesIntroductionRevealRequested{ false };
         bool _agentProfilesIntroductionScrollRequested{ false };
