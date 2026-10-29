@@ -31,9 +31,17 @@ namespace winrt::TerminalApp::implementation
     constexpr FreWindowSize ClampFreWindowSizeToWorkArea(const FreWindowSize requested,
                                                          const FreWindowSize workArea) noexcept
     {
+        if (requested.width <= 0.0 || requested.height <= 0.0)
+        {
+            return {};
+        }
+
+        const auto widthScale = workArea.width / requested.width;
+        const auto heightScale = workArea.height / requested.height;
+        const auto scale = std::clamp(std::min(widthScale, heightScale), 0.0, 1.0);
         return {
-            std::min(requested.width, workArea.width),
-            std::min(requested.height, workArea.height),
+            requested.width * scale,
+            requested.height * scale,
         };
     }
 

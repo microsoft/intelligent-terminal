@@ -112,12 +112,16 @@ namespace TerminalAppUnitTests
 
     void FreLayoutMetricsTests::FreWindowSizeFitsMonitorWorkArea()
     {
-        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+        constexpr auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
             { 2260.0, 1342.0 },
             { 1920.0, 1040.0 });
+        static_assert(constrained.width > 1751.0 && constrained.width < 1752.0);
 
-        VERIFY_ARE_EQUAL(1920.0, constrained.width);
         VERIFY_ARE_EQUAL(1040.0, constrained.height);
+        VERIFY_IS_TRUE(std::abs(
+                           (constrained.width / constrained.height) -
+                           (2260.0 / 1342.0)) <
+                       0.000001);
 
         const auto position = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
             { 100.0, 100.0 },
