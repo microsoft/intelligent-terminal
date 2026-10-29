@@ -229,7 +229,16 @@ leave the existing status unchanged, including an unanswered approval/question.
 Both `notificationType` and `notification_type` are recognised. Its permission
 and question notifications still mark the session Attention (Waiting for input).
 
-**Copilot activity is hook-only once hooks own the session.** A notification
+**Hooks and OSC activity share one read projection.** Observed OSC 9;4 progress
+in the same confirmed agent pane takes precedence over hook Idle/Working:
+states 1/3 display Working and states 0/4 display Idle. An unobserved default zero
+does not override hooks. OSC never replaces hook Attention, Error, or
+ended/historical status. The shared
+registry applies this rule to pane metadata, session lists and status deltas
+without changing the underlying hook state or reading transcript activity.
+Complete is a UI projection of Idle, so it is withheld while OSC reports Working.
+
+A notification
 that enters Attention (Waiting for input) starts a 30-second receipt-time
 cooldown for that session. All successful `PostToolUse` returns during that
 window are ignored, regardless of tool name or provider timestamp. Another
@@ -237,7 +246,8 @@ blocking notification restarts the window; informational notifications do not.
 Ignored returns do not extend it or change the waiting reason, current tool,
 binding, or activity time. The deadline is retained in session snapshots.
 
-Only `Stop` ends the turn as Idle, including during the cooldown. A new prompt,
+Only `Stop` ends the hook turn as Idle, including during the cooldown; the
+OSC arbitration above determines effective Idle/Working activity. A new prompt,
 errors, and session/pane closure retain their normal transitions. Expiry alone
 does not change status: a subsequent successful tool return can restore Working
 (Active), but a source timestamp older than the newest waiting notification is

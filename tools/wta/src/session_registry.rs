@@ -481,7 +481,7 @@ pub struct PaneAgentStatus {
 }
 
 /// Terminal-authored observations, not ACP sessions. Only reset establishes an
-/// epoch; ON and removal retain a fence against queued OFF observations.
+/// epoch; ON progress arbitrates Idle/Working without taking native OFF ownership.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct NativeAgentObservation {
     pub pane_id: String,
@@ -501,6 +501,8 @@ pub struct NativeAgentObservation {
     pub pane_created_at_ms: Option<u64>,
     #[serde(default)]
     pub pane_creation_sequence: Option<u64>,
+    #[serde(default)]
+    pub current_progress_state: Option<u8>,
     #[serde(flatten)]
     pub event: NativeObservationKind,
 }
@@ -1875,6 +1877,15 @@ pub trait SessionRegistry: Send + Sync {
     /// cheap because `SessionInfo` is small (`Arc<str>` for the id).
     async fn snapshot(&self) -> Vec<SessionInfo>;
 
+    /// Read-side activity arbitration; raw hook state remains available to reducers.
+    async fn effective_snapshot(&self) -> Vec<SessionInfo> {
+        self.snapshot().await
+    }
+
+    async fn lookup_effective(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+        self.lookup(sid).await
+    }
+
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
     /// Recover only unchanged history on a connected, unowned native pane.
@@ -2027,6 +2038,7 @@ struct RegistryState {
     // their epoch fence; forgetting it would admit delayed reset replays.
     native_panes: HashMap<String, NativePaneState>,
     native_retired_epochs: HashMap<uuid::Uuid, u64>,
+    hook_pane_progress: HashMap<String, NativeAgentObservation>,
     next_cwd_revision: u64,
     known_raw_ids: HashSet<String>,
     native_listing_completed_at: HashMap<(String, SessionLocation), u64>,
@@ -2502,7 +2514,7 @@ impl SessionRegistry for InMemoryRegistry {
             else {
                 continue;
             };
-            let Some(status) = row.status.clone() else {
+            let Some(status) = effective_activity_locked(&state, row) else {
                 continue;
             };
             let cwd = pane_status_cwd(&provider_id, row.origin.as_ref(), Some(&row.cwd));
@@ -2602,6 +2614,24 @@ impl SessionRegistry for InMemoryRegistry {
     async fn snapshot(&self) -> Vec<SessionInfo> {
         let guard = self.inner.lock().await;
         guard.sessions.values().cloned().collect()
+    }
+
+    async fn effective_snapshot(&self) -> Vec<SessionInfo> {
+        let state = self.inner.lock().await;
+        state
+            .sessions
+            .values()
+            .map(|row| effective_session_locked(&state, row))
+            .collect()
+    }
+
+    async fn lookup_effective(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+        let state = self.inner.lock().await;
+        let identity = unique_identity_for_raw(&state, sid)?;
+        state
+            .sessions
+            .get(&identity)
+            .map(|row| effective_session_locked(&state, row))
     }
 
     async fn apply_event(&self, ev: SessionEvent) -> bool {
@@ -3023,6 +3053,54 @@ fn pane_status_cwd(
     cwd.filter(|cwd| !cwd.as_os_str().is_empty()).cloned()
 }
 
+fn effective_activity_locked(state: &RegistryState, row: &SessionInfo) -> Option<AgentStatus> {
+    let status = row.status.clone()?;
+    if !matches!(status, AgentStatus::Idle | AgentStatus::Working)
+        || row.origin == Some(SessionOrigin::AgentPane)
+    {
+        return Some(status);
+    }
+    let Some(pane) = row.pane_session_id.as_deref().map(pane_key) else {
+        return Some(status);
+    };
+    let Some(progress) = state.hook_pane_progress.get(&pane) else {
+        return Some(status);
+    };
+    if progress.agent_session_id.as_deref() == Some(row.session_id.0.as_ref())
+        && row
+            .provider_id
+            .clone()
+            .or_else(|| {
+                row.cli_source
+                    .as_ref()
+                    .and_then(CliSource::canonical_provider_id)
+            })
+            .is_some_and(|provider| provider.eq_ignore_ascii_case(&progress.provider_id))
+        && progress
+            .location
+            .as_ref()
+            .is_none_or(|location| *location == row.location)
+        && state.active_by_pane.get(&pane) == Some(&SessionIdentity::from_info(row))
+    {
+        return osc_activity(progress.current_progress_state).or(Some(status));
+    }
+    Some(status)
+}
+
+fn osc_activity(progress: Option<u8>) -> Option<AgentStatus> {
+    match progress {
+        Some(0 | 4) => Some(AgentStatus::Idle),
+        Some(1 | 3) => Some(AgentStatus::Working),
+        _ => None,
+    }
+}
+
+fn effective_session_locked(state: &RegistryState, row: &SessionInfo) -> SessionInfo {
+    let mut result = row.clone();
+    result.status = effective_activity_locked(state, row);
+    result
+}
+
 fn native_pane_observations_locked(state: &RegistryState) -> Vec<NativePaneObservation> {
     state
         .native_panes
@@ -3269,8 +3347,36 @@ fn apply_native_observation_locked(
         return false;
     }
     let pane = pane_id.to_string();
-    let old = state.native_panes.get(&pane);
     let reset = matches!(event.event, NativeObservationKind::Reset { .. });
+    if !reset {
+        if let Some(admission) = state.hook_pane_progress.get_mut(&pane) {
+            if admission.mode_epoch != event.mode_epoch
+                || admission.provider_id != provider
+                || admission.window_id != event.window_id
+                || admission.tab_id != event.tab_id
+                || admission.agent_session_id != event.agent_session_id
+                || admission.location != event.location
+            {
+                return false;
+            }
+            return match event.event {
+                NativeObservationKind::Progress {
+                    progress_state: progress_state @ 0..=4,
+                } => {
+                    let changed = osc_activity(admission.current_progress_state)
+                        != osc_activity(Some(progress_state));
+                    admission.current_progress_state = Some(progress_state);
+                    changed
+                }
+                NativeObservationKind::Removed => {
+                    state.hook_pane_progress.remove(&pane);
+                    true
+                }
+                _ => false,
+            };
+        }
+    }
+    let old = state.native_panes.get(&pane);
     if reset {
         if old.is_some_and(|old| event.mode_epoch <= old.observation.mode_epoch)
             || state
@@ -3305,6 +3411,13 @@ fn apply_native_observation_locked(
                 progress_state: 0 | 1 | 3 | 4
             }
     );
+    let hook_progress = matches!(
+        event.event,
+        NativeObservationKind::Reset {
+            tracking_enabled: true
+        }
+    )
+    .then(|| event.clone());
     let (status, active, removed) = match event.event {
         NativeObservationKind::Reset { tracking_enabled } => {
             (AgentStatus::Idle, !tracking_enabled, false)
@@ -3480,6 +3593,7 @@ fn apply_native_observation_locked(
         }
     }
     if active {
+        state.hook_pane_progress.remove(&pane);
         state.native_retired_epochs.remove(&pane_id);
         state.native_panes.insert(
             pane,
@@ -3491,6 +3605,11 @@ fn apply_native_observation_locked(
         );
     } else {
         state.native_panes.remove(&pane);
+        state.hook_pane_progress.remove(&pane);
+        if let Some(mut progress) = hook_progress {
+            progress.provider_id = observation.provider_id.clone();
+            state.hook_pane_progress.insert(pane, progress);
+        }
         state
             .native_retired_epochs
             .entry(pane_id)
@@ -6270,6 +6389,264 @@ mod tests {
                     .await
             );
         }
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_uses_one_effective_status_without_overwriting_hooks() {
+        let (registry, identity) = native_bound_registry().await;
+        let event = |kind| {
+            let mut event = native_event(kind, 1);
+            event.agent_session_id = Some("real-session".into());
+            event.location = Some(SessionLocation::Host);
+            event
+        };
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        assert!(
+            registry
+                .apply_native_observation(event(serde_json::json!({
+                    "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+                })))
+                .await
+        );
+        registry
+            .apply_event(SessionEvent::ToolCompleted {
+                key: "real-session".into(),
+            })
+            .await;
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry
+                .lookup_effective(&identity.session_id)
+                .await
+                .unwrap()
+                .status,
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            registry.pane_status_snapshot().await.0[0].status,
+            AgentStatus::Working
+        );
+        assert!(registry.native_pane_observations().await.is_empty());
+
+        for progress in [1, 0, 3, 4, 3, 2] {
+            registry
+                .apply_native_observation(event(serde_json::json!({
+                    "kind":"progress", "progress_state":progress
+                })))
+                .await;
+            let expected = if matches!(progress, 1 | 3) {
+                AgentStatus::Working
+            } else {
+                AgentStatus::Idle
+            };
+            assert_eq!(
+                registry.effective_snapshot().await[0].status,
+                Some(expected.clone())
+            );
+            assert_eq!(registry.pane_status_snapshot().await.0[0].status, expected);
+            assert_eq!(registry.snapshot().await[0].status, Some(AgentStatus::Idle));
+        }
+
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        registry
+            .apply_native_observation(event(serde_json::json!({
+                "kind":"progress", "progress_state":0
+            })))
+            .await;
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_requires_observed_idle_before_demoting_working() {
+        let (registry, identity) = native_bound_registry().await;
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        let mut event = native_event(
+            serde_json::json!({
+                "kind":"reset", "tracking_enabled":true
+            }),
+            1,
+        );
+        event.agent_session_id = Some("real-session".into());
+        event.location = Some(SessionLocation::Host);
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+
+        event.event = NativeObservationKind::Progress { progress_state: 0 };
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.pane_status_snapshot().await.0[0].status,
+            AgentStatus::Idle
+        );
+        assert_eq!(
+            registry
+                .lookup_effective(&identity.session_id)
+                .await
+                .unwrap()
+                .status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+        assert!(!registry.apply_native_observation(event.clone()).await);
+
+        event.mode_epoch = 2;
+        event.event = NativeObservationKind::Reset {
+            tracking_enabled: true,
+        };
+        event.current_progress_state = Some(4);
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        event.event = NativeObservationKind::Progress { progress_state: 3 };
+        assert!(registry.apply_native_observation(event).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_preserves_attention_errors_liveness_and_helpers() {
+        for status in [
+            AgentStatus::Attention,
+            AgentStatus::Error,
+            AgentStatus::Ended,
+            AgentStatus::Historical,
+            AgentStatus::Idle,
+            AgentStatus::Working,
+        ] {
+            let (registry, identity) = native_bound_registry().await;
+            let mut row = registry.lookup_identity(&identity).await.unwrap();
+            row.status = Some(status.clone());
+            row.current_tool = Some("AskUserQuestion".into());
+            row.attention_reason = Some("approval required".into());
+            row.last_error = Some("retained error".into());
+            row.last_activity_at_ms = Some(42);
+            if matches!(status, AgentStatus::Idle | AgentStatus::Working) {
+                row.origin = Some(SessionOrigin::AgentPane);
+            }
+            registry.upsert(row.clone()).await;
+            let mut event = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+                }),
+                1,
+            );
+            event.agent_session_id = Some("real-session".into());
+            event.location = Some(SessionLocation::Host);
+            assert!(registry.apply_native_observation(event.clone()).await);
+            assert_eq!(registry.effective_snapshot().await, [row.clone()]);
+            event.event = NativeObservationKind::Progress { progress_state: 0 };
+            assert!(registry.apply_native_observation(event).await);
+            assert_eq!(registry.effective_snapshot().await, [row.clone()]);
+            assert_eq!(registry.snapshot().await, [row]);
+        }
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_requires_current_admission_and_exact_owner() {
+        let (registry, identity) = native_bound_registry().await;
+        let mut reset = native_event(
+            serde_json::json!({
+                "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+            }),
+            1,
+        );
+        reset.agent_session_id = Some("real-session".into());
+        reset.location = Some(SessionLocation::Host);
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        let mut progress = reset.clone();
+        progress.event = NativeObservationKind::Progress { progress_state: 0 };
+        for mismatch in 0..8 {
+            let mut invalid = progress.clone();
+            match mismatch {
+                0 => invalid.mode_epoch += 1,
+                1 => invalid.window_id += 1,
+                2 => invalid.tab_id = "another-tab".into(),
+                3 => invalid.provider_id = "claude".into(),
+                4 => invalid.agent_session_id = Some("another-session".into()),
+                5 => {
+                    invalid.location = Some(SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    })
+                }
+                6 => invalid.pane_id = "11112233-4455-6677-8899-aabbccddeeff".into(),
+                _ => invalid.event = NativeObservationKind::Progress { progress_state: 9 },
+            }
+            assert!(!registry.apply_native_observation(invalid).await);
+            assert_eq!(
+                registry.effective_snapshot().await[0].status,
+                Some(AgentStatus::Working)
+            );
+        }
+        let mut removed = progress.clone();
+        removed.event = NativeObservationKind::Removed;
+        assert!(registry.apply_native_observation(removed).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert!(!registry.apply_native_observation(progress.clone()).await);
+        assert!(!registry.apply_native_observation(reset.clone()).await);
+        reset.mode_epoch = 2;
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        assert!(!registry.apply_native_observation(progress).await);
+
+        let mut replacement = registry.lookup_identity(&identity).await.unwrap();
+        replacement.session_id = "replacement-session".into();
+        registry.upsert(replacement).await;
+        assert!(registry
+            .effective_snapshot()
+            .await
+            .iter()
+            .all(|row| row.status != Some(AgentStatus::Working)));
+
+        reset.mode_epoch = 3;
+        reset.event = NativeObservationKind::Reset {
+            tracking_enabled: false,
+        };
+        assert!(registry.apply_native_observation(reset).await);
+        assert!(registry.inner.lock().await.hook_pane_progress.is_empty());
     }
 
     #[tokio::test]

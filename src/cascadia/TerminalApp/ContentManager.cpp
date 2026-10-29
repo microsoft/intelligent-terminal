@@ -94,6 +94,52 @@ namespace winrt::TerminalApp::implementation
         return it->second.observation;
     }
 
+    uint64_t ContentManager::NativeAgentOwnerGenerationForContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it == _content.end() ? 0 : it->second.ownerGeneration;
+    }
+
+    std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::RecordNativeAgentProgress(
+        const uint64_t contentId,
+        const winrt::guid& paneId,
+        const uint64_t progressState,
+        const uint64_t ownerGeneration)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !it->second.agentHelper && progressState <= 4 &&
+            it->second.ownerGeneration == ownerGeneration)
+        {
+            if (const auto connection = it->second.core.Core().Connection();
+                connection && connection.SessionId() == paneId)
+            {
+                it->second.parsedProgress = std::pair{ paneId, progressState };
+                if (it->second.observation.modeEpoch != 0 &&
+                    it->second.observationOwnerGeneration == it->second.ownerGeneration)
+                {
+                    return it->second.observation;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<uint64_t> ContentManager::NativeAgentProgressForContent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && it->second.parsedProgress)
+        {
+            if (const auto connection = it->second.core.Core().Connection();
+                connection && connection.SessionId() == it->second.parsedProgress->first)
+            {
+                return it->second.parsedProgress->second;
+            }
+        }
+        return std::nullopt;
+    }
+
     void ContentManager::SetExplicitNativeAgentProvider(const uint64_t contentId, const winrt::hstring& providerId)
     {
         std::lock_guard lock{ _mutex };
@@ -125,20 +171,86 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    void ContentManager::ConfirmNativeAgentOwner(
+        const uint64_t contentId,
+        const winrt::hstring& providerId,
+        const std::string& sessionId,
+        const std::string& location)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && !it->second.agentHelper && !providerId.empty() && !sessionId.empty())
+        {
+            _ConfirmNativeAgentOwner(it->second, providerId, sessionId, location);
+            const auto& identity = it->second.observation;
+            const auto& observedSession = identity.agentSessionId.empty() ? identity.qualifiedSessionId : identity.agentSessionId;
+            const auto& observedLocation = identity.location.empty() ? identity.qualifiedLocation : identity.location;
+            if (!::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(identity.providerId, providerId) ||
+                observedSession != sessionId ||
+                (!observedLocation.empty() && !location.empty() && observedLocation != location))
+            {
+                it->second.observationOwnerGeneration.reset();
+            }
+        }
+    }
+
+    void ContentManager::_ConfirmNativeAgentOwner(
+        TerminalContent& content,
+        const winrt::hstring& providerId,
+        const std::string& sessionId,
+        const std::string& location)
+    {
+        if (providerId.empty() || sessionId.empty())
+        {
+            return;
+        }
+        auto& owner = content.lastConfirmedOwner;
+        const auto changed = !owner.sessionId.empty() &&
+                             (!::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(owner.providerId, providerId) ||
+                              owner.sessionId != sessionId ||
+                              (!owner.location.empty() && !location.empty() && owner.location != location));
+        if (changed)
+        {
+            content.parsedProgress.reset();
+            ++content.ownerGeneration;
+        }
+        // Observation resets are routing changes, not evidence that the OSC owner changed.
+        if (changed || owner.sessionId.empty())
+        {
+            owner = { providerId, sessionId, location };
+        }
+        else if (!location.empty())
+        {
+            owner.location = location;
+        }
+    }
+
     ContentManager::NativeAgentObservationIdentity ContentManager::AdmitNativeAgentObservation(
-        const uint64_t contentId, const uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, const bool reset, const uint64_t receiverGeneration)
+        const uint64_t contentId,
+        const uint64_t windowId,
+        const std::string& tabId,
+        const std::string& agentSessionId,
+        const std::string& location,
+        const bool reset,
+        const uint64_t receiverGeneration,
+        const winrt::hstring& hookProviderId)
     {
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId); it != _content.end() && !it->second.agentHelper)
         {
-            const auto provider = it->second.explicitNativeAgentProviderId.empty() || agentSessionId.empty() ?
-                                      it->second.nativeAgentProviderId : it->second.explicitNativeAgentProviderId;
+            const auto provider = _nativeAgentSessionEventsEnabled && !hookProviderId.empty() && !agentSessionId.empty() ?
+                                      hookProviderId :
+                                  it->second.explicitNativeAgentProviderId.empty() || agentSessionId.empty() ?
+                                      it->second.nativeAgentProviderId :
+                                      it->second.explicitNativeAgentProviderId;
             if (provider.empty())
             {
                 return {};
             }
             auto& identity = it->second.observation;
             const auto& observationLocation = location.empty() ? it->second.nativeAgentLaunchLocation : location;
+            // A launch-location fallback is not a newly confirmed execution source.
+            _ConfirmNativeAgentOwner(it->second, provider, agentSessionId, location);
             if (reset || identity.modeEpoch == 0 || identity.providerId != provider ||
                 identity.windowId != windowId || identity.tabId != tabId ||
                 identity.agentSessionId != agentSessionId || identity.location != observationLocation ||
@@ -152,6 +264,8 @@ namespace winrt::TerminalApp::implementation
                 identity = { provider, ++_nativeAgentObservationGeneration, windowId, tabId, agentSessionId, observationLocation, !it->second.observationAdmitted, receiverGeneration, std::move(qualifiedSessionId), std::move(qualifiedLocation), it->second.paneCreatedAtMs, it->second.paneCreationSequence };
                 it->second.observationAdmitted = true;
             }
+            identity.locationConfirmed = !location.empty();
+            it->second.observationOwnerGeneration = it->second.ownerGeneration;
             return identity;
         }
         return {};
@@ -163,10 +277,13 @@ namespace winrt::TerminalApp::implementation
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId);
             it != _content.end() && !it->second.agentHelper && modeEpoch != 0 &&
-            it->second.observation.modeEpoch == modeEpoch)
+            it->second.observation.modeEpoch == modeEpoch &&
+            it->second.observationOwnerGeneration == it->second.ownerGeneration)
         {
+            _ConfirmNativeAgentOwner(it->second, it->second.observation.providerId, sessionId, location);
             it->second.observation.qualifiedSessionId = sessionId;
             it->second.observation.qualifiedLocation = location;
+            it->second.observationOwnerGeneration = it->second.ownerGeneration;
         }
     }
 
@@ -192,6 +309,8 @@ namespace winrt::TerminalApp::implementation
             it->second.observation = {};
             it->second.observationAdmitted = false;
             it->second.completion = {};
+            it->second.parsedProgress.reset();
+            it->second.lastConfirmedOwner = {};
             if (!_nativeAgentSessionEventsEnabled)
             {
                 it->second.explicitNativeAgentProviderId = winrt::hstring{};

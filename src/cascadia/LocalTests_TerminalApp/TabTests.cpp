@@ -539,6 +539,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
+        TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
+        TEST_METHOD(NativeAgentProgressFollowsConfirmedOwner);
+        TEST_METHOD(NativeAgentAcceptedOwnerSurvivesUnreadyReceiver);
         TEST_METHOD(NativeAgentSessionsOffObservesParsedSignals);
         TEST_METHOD(NativeAgentSessionsOffResumeUsesConnectionIdentity);
         TEST_METHOD(NativeAgentSessionsOffResumeUpdatesProviderIdentity);
@@ -22138,6 +22141,341 @@ namespace TerminalAppLocalTests
             snapshot.byPane.at(control.Connection().SessionId()));
         page->_PreserveNativeAgentIdentity(control);
         page->_agentSnapshotLoaded = true;
+    }
+
+    void TabTests::NativeAgentSessionsOnPublishesProgressForHookOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            const winrt::guid paneId{ L"{00112233-4455-6677-8899-AABBCCDDEEFF}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            const auto pane = page->_MakePane(NewTerminalArgs{}, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            const auto control = pane->GetTerminalControl();
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            std::vector<Json::Value> observations;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                Json::CharReaderBuilder builder;
+                std::istringstream stream{ winrt::to_string(json) };
+                std::string errors;
+                if (Json::parseFromStream(builder, stream, &event, &errors) &&
+                    event.get("method", "").asString() == "native_agent_observation")
+                {
+                    observations.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            const auto beforeHookAdmission = manager->NativeAgentOwnerGenerationForContent(control.ContentId());
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            const auto hook = _keepRunningHook(paneId, "agent.session.start", "hook-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(hook);
+            page->OnPaneAgentSessionChanged(hook);
+            VERIFY_IS_TRUE(manager->NativeAgentProviderId(control.ContentId()).empty());
+            VERIFY_IS_FALSE(observations.empty());
+            VERIFY_ARE_EQUAL(std::string{ "reset" }, observations.back()["kind"].asString());
+            VERIFY_IS_TRUE(observations.back()["tracking_enabled"].asBool());
+            VERIFY_ARE_EQUAL(std::string{ "hook-owner" }, observations.back()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "copilot" }, observations.back()["provider_id"].asString());
+            VERIFY_IS_FALSE(observations.back().isMember("current_progress_state"));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), winrt::guid{ L"{11112233-4455-6677-8899-AABBCCDDEEFF}" }, 0, manager->NativeAgentOwnerGenerationForContent(control.ContentId()));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            const auto admittedProgress = manager->RecordNativeAgentProgress(control.ContentId(), paneId, 0, beforeHookAdmission);
+            VERIFY_IS_TRUE(admittedProgress.has_value());
+            observations.clear();
+            page->_PublishNativeAgentSignal(control, false, 0);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_ARE_EQUAL(admittedProgress->modeEpoch, observations[0]["mode_epoch"].asUInt64());
+            VERIFY_ARE_EQUAL(0u, observations[0]["progress_state"].asUInt());
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "reset", true);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_IS_TRUE(observations[0].isMember("current_progress_state"));
+            VERIFY_ARE_EQUAL(0u, observations[0]["current_progress_state"].asUInt());
+
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "progress", true, 3);
+            VERIFY_ARE_EQUAL(size_t{ 2 }, observations.size());
+            VERIFY_ARE_EQUAL(3u, observations[0]["current_progress_state"].asUInt());
+            VERIFY_ARE_EQUAL(std::string{ "progress" }, observations[1]["kind"].asString());
+            const auto epoch = observations[1]["mode_epoch"].asUInt64();
+            observations.clear();
+            page->_PublishNativeAgentSignal(control, false, 1);
+            page->_PublishNativeAgentSignal(control, true, 0);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_ARE_EQUAL(_formatPaneId(paneId), observations[0]["pane_id"].asString());
+            VERIFY_ARE_EQUAL(epoch, observations[0]["mode_epoch"].asUInt64());
+            VERIFY_ARE_EQUAL(1u, observations[0]["progress_state"].asUInt());
+            VERIFY_ARE_EQUAL(std::string{ "hook-owner" }, observations[0]["agent_session_id"].asString());
+
+            const auto nested = _keepRunningHook(paneId, "agent.prompt.submit", "nested-agent", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(nested);
+            page->OnPaneAgentSessionChanged(nested);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"hook-owner" }, page->_paneAgentSessions.at(paneId).sessionId);
+            VERIFY_ARE_EQUAL(epoch, manager->NativeAgentObservationForContent(control.ContentId()).value().modeEpoch);
+            const auto ended = _keepRunningHook(paneId, "agent.session.end", "hook-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(ended);
+            page->OnPaneAgentSessionChanged(ended);
+            observations.clear();
+            page->_PublishNativeAgentObservation(control, "removed");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, observations.size());
+            VERIFY_ARE_EQUAL(std::string{ "removed" }, observations[0]["kind"].asString());
+            VERIFY_ARE_EQUAL(epoch, observations[0]["mode_epoch"].asUInt64());
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            observations.clear();
+            const auto next = _keepRunningHook(paneId, "agent.session.start", "next-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(next);
+            page->OnPaneAgentSessionChanged(next);
+            VERIFY_IS_FALSE(observations.empty());
+            VERIFY_ARE_EQUAL(std::string{ "next-owner" }, observations.back()["agent_session_id"].asString());
+            VERIFY_IS_FALSE(observations.back().isMember("current_progress_state"));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), paneId, 0, manager->NativeAgentOwnerGenerationForContent(control.ContentId()));
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+            page->_SyncNativeAgentStatusMode();
+            observations.clear();
+            page->_PublishNativeAgentSignal(control, false, 3);
+            VERIFY_IS_TRUE(observations.empty());
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(control.ContentId()).value());
+            const auto replacement = winrt::make_self<TestConnection>(winrt::guid{ L"{11112233-4455-6677-8899-AABBCCDDEEFF}" }, State::Connected);
+            control.Connection(*replacement);
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), paneId, 3, manager->NativeAgentOwnerGenerationForContent(control.ContentId()));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), replacement->SessionId(), 0, manager->NativeAgentOwnerGenerationForContent(control.ContentId()));
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(control.ContentId()).value());
+            manager->RestartNativeAgentConnectionTracking(control.ContentId());
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+        });
+    }
+
+    void TabTests::NativeAgentAcceptedOwnerSurvivesUnreadyReceiver()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Owner = winrt::TerminalApp::implementation::SharedWta;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            auto& owner = Owner::Instance();
+            VERIFY_IS_FALSE(owner.IsRunning());
+            const auto originalGeneration = owner.MasterGeneration();
+            const auto restoreGeneration = wil::scope_exit([&]() {
+                std::lock_guard lock{ owner._mtx };
+                owner._masterGeneration = originalGeneration;
+            });
+            {
+                std::lock_guard lock{ owner._mtx };
+                owner._masterGeneration = 6;
+            }
+            page->_lastReadyNativeAgentReceiverGeneration = 6;
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            page->_agentSnapshotRefreshInFlight = true;
+            const winrt::guid paneId{ L"{00112233-4455-6677-8899-AABBCCDDEEFF}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            const auto pane = page->_MakePane(NewTerminalArgs{}, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+            const auto control = pane->GetTerminalControl();
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto contentId = control.ContentId();
+            const auto accept = [&](const std::string& session) {
+                Json::Value event;
+                event["params"]["pane_id"] = _formatPaneId(paneId);
+                event["params"]["event"] = "agent.session.start";
+                event["params"]["agent_session_id"] = session;
+                event["params"]["agent"] = "copilot";
+                event["params"]["agent_backend"] = "host:copilot";
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            };
+            const auto initialGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, initialGeneration);
+            accept("owner-a");
+            _applyNativeRegistrySnapshot(page, control, "Working");
+            const auto previous = manager->NativeAgentObservationForContent(contentId).value();
+            VERIFY_ARE_EQUAL(initialGeneration, manager->NativeAgentOwnerGenerationForContent(contentId));
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            {
+                std::lock_guard lock{ owner._mtx };
+                owner._masterGeneration = 7;
+            }
+            std::vector<Json::Value> observations;
+            size_t births{ 0 };
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                Json::CharReaderBuilder builder;
+                std::istringstream stream{ winrt::to_string(json) };
+                std::string errors;
+                if (Json::parseFromStream(builder, stream, &event, &errors) &&
+                    event.get("method", "").asString() == "native_agent_observation")
+                {
+                    observations.push_back(event["params"]);
+                }
+                if (event.get("method", "").asString() == "session_born_bound")
+                {
+                    ++births;
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            accept("owner-b");
+            const auto generation = manager->NativeAgentOwnerGenerationForContent(contentId);
+            VERIFY_ARE_EQUAL(initialGeneration + 1, generation);
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 3, initialGeneration).has_value());
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(contentId).has_value());
+            page->_nativeAgentStatusSnapshotReceiverGeneration = previous.receiverGeneration;
+            VERIFY_ARE_EQUAL(std::string{ "owner-a" }, page->_richTabAgentStatusByPaneId.at(paneId).sessionId);
+            page->_PreserveNativeAgentIdentity(control);
+            VERIFY_ARE_EQUAL(generation, manager->NativeAgentOwnerGenerationForContent(contentId));
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 0, generation).has_value());
+            accept("owner-b");
+            VERIFY_ARE_EQUAL(generation, manager->NativeAgentOwnerGenerationForContent(contentId));
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(contentId).value());
+            VERIFY_ARE_EQUAL(previous.modeEpoch, manager->NativeAgentObservationForContent(contentId)->modeEpoch);
+            VERIFY_IS_TRUE(observations.empty());
+            VERIFY_ARE_EQUAL(size_t{ 0 }, births);
+            page->_ReplayNativeAgentObservationsForReceiver(7);
+            VERIFY_IS_FALSE(observations.empty());
+            VERIFY_ARE_EQUAL(std::string{ "owner-b" }, observations.back()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(0u, observations.back()["current_progress_state"].asUInt());
+            VERIFY_IS_TRUE(observations.back().isMember("current_progress_state"));
+            const auto compatible = manager->RecordNativeAgentProgress(contentId, paneId, 0, generation);
+            VERIFY_IS_TRUE(compatible.has_value());
+            VERIFY_ARE_EQUAL(std::string{ "owner-b" }, compatible->agentSessionId);
+        });
+    }
+
+    void TabTests::NativeAgentProgressFollowsConfirmedOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            const winrt::guid paneId{ L"{00112233-4455-6677-8899-AABBCCDDEEFF}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            NewTerminalArgs args;
+            auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+            const auto control = page->_CreateNewControlAndContent(settings, *connection, L"copilot");
+            const auto contentId = control.ContentId();
+            const auto admit = [&](const std::string& session, const std::string& source, const winrt::hstring& provider = L"copilot") {
+                return manager->AdmitNativeAgentObservation(contentId, 2, "moved-tab", session, source, true, 2, provider);
+            };
+            const auto record = [&]() { manager->RecordNativeAgentProgress(contentId, paneId, 0, manager->NativeAgentOwnerGenerationForContent(contentId)); };
+            const auto retained = [&]() { VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(contentId).value()); };
+            const auto cleared = [&]() { VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(contentId).has_value()); };
+            record();
+            const auto firstOwner = admit("first", "Host");
+            const auto firstOwnerGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            retained(); // First admission must preserve an earlier parser receipt.
+            manager->AdmitNativeAgentObservation(contentId, 1, "original-tab", "first", "Host", false, 1);
+            const auto routed = manager->RecordNativeAgentProgress(contentId, paneId, 3, firstOwnerGeneration);
+            VERIFY_IS_TRUE(routed.has_value());
+            VERIFY_ARE_NOT_EQUAL(firstOwner.modeEpoch, routed->modeEpoch);
+            VERIFY_ARE_EQUAL(manager->NativeAgentObservationForContent(contentId)->modeEpoch, routed->modeEpoch);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            const auto resetAfterStorage = admit("first", "Host");
+            VERIFY_ARE_NOT_EQUAL(routed->modeEpoch, resetAfterStorage.modeEpoch);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            manager->RemoveNativeAgentObservation(contentId);
+            admit({}, {});
+            retained();
+            admit("first", {});
+            retained();
+            manager->SetNativeAgentSessionEventsEnabled(false);
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            admit("first", "Host");
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, firstOwnerGeneration);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            manager->RemoveNativeAgentObservation(contentId);
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(contentId).has_value());
+            const auto absentGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            admit({}, {});
+            const auto unqualifiedGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            admit("second", "Host");
+            cleared();
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 0, absentGeneration).has_value());
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 0, unqualifiedGeneration).has_value());
+            cleared();
+            admit("first", "Host");
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 0, firstOwnerGeneration).has_value());
+            cleared(); // Returning to A must not accept a receipt captured before A -> B -> A.
+            admit("second", "Host");
+            const auto secondOwnerGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, firstOwnerGeneration);
+            cleared();
+            record();
+            admit("second", "Host", L"claude");
+            const auto hostOwnerGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            cleared();
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, secondOwnerGeneration);
+            cleared();
+            record();
+            admit("second", {}, L"claude");
+            retained();
+            admit("second", "wsl:Ubuntu", L"claude");
+            cleared();
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, hostOwnerGeneration);
+            cleared();
+            record();
+            admit("second", {}, L"claude");
+            const auto unknownSourceGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            retained();
+            const auto identity = admit("second", "wsl:Ubuntu", L"claude");
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, unknownSourceGeneration);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch + 1, "stale", "Host");
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, {}, {});
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "wsl:Ubuntu");
+            cleared();
+            record();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "wsl:Ubuntu");
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "Host");
+            cleared();
+            manager->RemoveNativeAgentObservation(contentId);
+            const auto unqualified = admit({}, {});
+            manager->RetainQualifiedNativeAgentIdentity(contentId, unqualified.modeEpoch, "qualified-first", "Host");
+            const auto qualifiedGeneration = manager->NativeAgentOwnerGenerationForContent(contentId);
+            manager->RetainQualifiedNativeAgentIdentity(contentId, unqualified.modeEpoch, "qualified-second", "Host");
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, qualifiedGeneration);
+            cleared();
+            manager->RestartNativeAgentConnectionTracking(contentId);
+            const auto beforeFirstAdmission = manager->NativeAgentOwnerGenerationForContent(contentId);
+            VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(contentId).has_value());
+            const auto firstAdmission = admit("after-restart", "Host");
+            cleared();
+            const auto publication = manager->RecordNativeAgentProgress(contentId, paneId, 0, beforeFirstAdmission);
+            VERIFY_IS_TRUE(publication.has_value());
+            VERIFY_ARE_EQUAL(firstAdmission.modeEpoch, publication->modeEpoch);
+            retained();
+            manager->RestartNativeAgentConnectionTracking(contentId);
+            const auto unknownOwner = admit({}, {});
+            const auto beforeFirstOwner = manager->NativeAgentOwnerGenerationForContent(contentId);
+            record();
+            manager->ConfirmNativeAgentOwner(contentId, L"copilot", "accepted-first", "Host");
+            manager->RetainQualifiedNativeAgentIdentity(contentId, unknownOwner.modeEpoch, "stale-snapshot", "Host");
+            VERIFY_ARE_EQUAL(beforeFirstOwner, manager->NativeAgentOwnerGenerationForContent(contentId));
+            retained();
+            VERIFY_IS_FALSE(manager->RecordNativeAgentProgress(contentId, paneId, 0, beforeFirstOwner).has_value());
+            const auto acceptedFirst = admit("accepted-first", "Host");
+            VERIFY_ARE_EQUAL(beforeFirstOwner, manager->NativeAgentOwnerGenerationForContent(contentId));
+            VERIFY_ARE_EQUAL(acceptedFirst.modeEpoch, manager->RecordNativeAgentProgress(contentId, paneId, 0, beforeFirstOwner)->modeEpoch);
+            control.Close();
+        });
     }
 
     void TabTests::NativeAgentSessionsOffStatusIsPaneLocal()
