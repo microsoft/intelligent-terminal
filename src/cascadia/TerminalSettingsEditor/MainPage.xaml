@@ -233,10 +233,13 @@
                 <muxc:TeachingTip.Content>
                     <StackPanel MaxWidth="330"
                                 Spacing="4">
-                        <StackPanel Orientation="Horizontal"
+                        <StackPanel x:Name="AgentProfilesIntroductionHeader"
+                                    MinHeight="40"
+                                    Orientation="Horizontal"
                                     Spacing="8">
                             <TextBlock x:Uid="AgentProfilesIntroductionTitle"
                                        MaxWidth="260"
+                                       VerticalAlignment="Center"
                                        FontSize="14"
                                        FontWeight="SemiBold"
                                        TextWrapping="Wrap" />

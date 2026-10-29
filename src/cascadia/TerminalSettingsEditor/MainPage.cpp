@@ -468,7 +468,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_agentProfilesIntroductionClaim)
         {
             const auto tip = AgentProfilesIntroductionTip();
-            _UpdateAgentProfilesIntroductionTheme();
+            _UpdateAgentProfilesIntroductionPopup();
             const auto bounds = _GetAgentProfilesIntroductionTargetBounds();
             if (_agentProfilesIntroductionDismissed || !tip.IsOpen() ||
                 (_agentProfilesIntroductionPopup && !_agentProfilesIntroductionPopup.IsOpen()) ||
@@ -555,14 +555,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return;
         }
+        _agentProfilesIntroductionWindowSize = _GetAgentProfilesIntroductionWindowSize();
         _agentProfilesIntroductionLayoutRevoker = tip.Content().as<FrameworkElement>().LayoutUpdated(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
             if (const auto page = weak.get())
             {
-                page->_UpdateAgentProfilesIntroductionTheme();
+                page->_UpdateAgentProfilesIntroductionPopup();
             }
         });
         tip.IsOpen(true);
-        _UpdateAgentProfilesIntroductionTheme();
+        _UpdateAgentProfilesIntroductionPopup();
     }
     catch (...)
     {
@@ -570,7 +571,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _ReleaseAgentProfilesIntroduction(false);
     }
 
-    void MainPage::_UpdateAgentProfilesIntroductionTheme() noexcept
+    void MainPage::_UpdateAgentProfilesIntroductionPopup() noexcept
     try
     {
         const auto root = XamlRoot();
@@ -596,8 +597,21 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             if (const auto popupChild = _agentProfilesIntroductionPopup.Child().try_as<FrameworkElement>())
             {
-                _agentProfilesIntroductionLayoutRevoker.revoke();
                 popupChild.RequestedTheme(ActualTheme());
+                const auto header = AgentProfilesIntroductionHeader();
+                const auto closeButton = tip.as<IControlProtected>().GetTemplateChild(L"AlternateCloseButton").try_as<Button>();
+                if (closeButton && header.ActualHeight() > 0 && closeButton.ActualHeight() > 0)
+                {
+                    const auto headerBounds = header.TransformToVisual(closeButton.Parent().as<UIElement>()).TransformBounds(Windows::Foundation::Rect{ 0, 0, static_cast<float>(header.ActualWidth()), static_cast<float>(header.ActualHeight()) });
+                    auto margin = closeButton.Margin();
+                    const auto top = headerBounds.Y + (headerBounds.Height - closeButton.ActualHeight()) / 2;
+                    if (margin.Top != top)
+                    {
+                        margin.Top = top;
+                        closeButton.Margin(margin);
+                    }
+                    _agentProfilesIntroductionLayoutRevoker.revoke();
+                }
             }
         }
     }
@@ -637,6 +651,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return bounds;
     }
 
+    std::optional<Windows::Foundation::Size> MainPage::_GetAgentProfilesIntroductionWindowSize() const noexcept
+    {
+        RECT bounds{};
+        if (_hostingHwnd && GetClientRect(*_hostingHwnd, &bounds))
+        {
+            return Windows::Foundation::Size{ static_cast<float>(bounds.right - bounds.left), static_cast<float>(bounds.bottom - bounds.top) };
+        }
+        return std::nullopt;
+    }
+
     void MainPage::_ReleaseAgentProfilesIntroduction(const bool dismissed) noexcept
     try
     {
@@ -644,10 +668,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _agentProfilesIntroductionDismissed |= dismissed;
         if (_agentProfilesIntroductionClaim)
         {
+            // Resizing light-dismisses compact navigation; it is not a user collapse.
+            if (const auto windowSize = _GetAgentProfilesIntroductionWindowSize();
+                !_agentProfilesIntroductionDismissed && windowSize && _agentProfilesIntroductionWindowSize && windowSize != _agentProfilesIntroductionWindowSize)
+            {
+                _agentProfilesIntroductionRevealRequested = false;
+                _agentProfilesIntroductionScrollRequested = false;
+            }
             ApplicationState::SharedInstance().EndAgentProfilesIntroduction(_agentProfilesIntroductionClaim, _agentProfilesIntroductionDismissed);
             _agentProfilesIntroductionClaim = 0;
             _agentProfilesIntroductionDismissed = false;
             _agentProfilesIntroductionPopup = nullptr;
+            _agentProfilesIntroductionWindowSize.reset();
         }
         _agentProfilesIntroductionTargetBounds.reset();
     }

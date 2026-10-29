@@ -111,8 +111,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         void _AnnounceNavPaneState(bool opened);
         void _TryShowAgentProfilesIntroduction();
-        void _UpdateAgentProfilesIntroductionTheme() noexcept;
+        void _UpdateAgentProfilesIntroductionPopup() noexcept;
         std::optional<Windows::Foundation::Rect> _GetAgentProfilesIntroductionTargetBounds();
+        std::optional<Windows::Foundation::Size> _GetAgentProfilesIntroductionWindowSize() const noexcept;
         void _ReleaseAgentProfilesIntroduction(bool dismissed) noexcept;
 
         void _UpdateBackgroundForMica();
@@ -146,6 +147,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _agentProfilesIntroductionRevealRequested{ false };
         bool _agentProfilesIntroductionScrollRequested{ false };
         std::optional<Windows::Foundation::Rect> _agentProfilesIntroductionTargetBounds;
+        std::optional<Windows::Foundation::Size> _agentProfilesIntroductionWindowSize;
     };
 }
 
