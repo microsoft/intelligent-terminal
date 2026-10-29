@@ -10996,8 +10996,8 @@ namespace winrt::TerminalApp::implementation
             true,
             tabIds,
             "restart_agent_stack",
-            std::move(requestId),
-            [weakThis = get_weak(), tabIds](const std::string_view operationId) {
+            requestId,
+            [weakThis = get_weak(), tabIds, requestId](const std::string_view operationId) {
                 if (const auto strongThis = weakThis.get())
                 {
                     auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
@@ -11011,6 +11011,7 @@ namespace winrt::TerminalApp::implementation
                         {
                             Json::Value params{ Json::objectValue };
                             params["operation_id"] = std::string{ operationId };
+                            params["request_id"] = requestId;
                             strongThis->_RaiseProtocolEvent("agent_master_restarted", params);
                         }
                     }
