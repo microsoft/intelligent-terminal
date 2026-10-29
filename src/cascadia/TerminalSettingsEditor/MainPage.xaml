@@ -234,7 +234,6 @@
                     <StackPanel MaxWidth="330"
                                 Spacing="4">
                         <StackPanel x:Name="AgentProfilesIntroductionHeader"
-                                    MinHeight="40"
                                     Orientation="Horizontal"
                                     Spacing="8">
                             <TextBlock x:Uid="AgentProfilesIntroductionTitle"
