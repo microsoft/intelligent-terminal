@@ -468,6 +468,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
         TEST_METHOD(FreWelcomeMinimumLayoutScrollsWithStickyFooter);
         TEST_METHOD(FreWelcomeLayoutSupportsEnlargedText);
+        TEST_METHOD(FreWelcomeCardRadiusUsesInitialWindowScale);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
@@ -7339,6 +7340,38 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(title.ActualHeight() > 72.0);
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
             VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
+        });
+    }
+
+    void TabTests::FreWelcomeCardRadiusUsesInitialWindowScale()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            fre.Measure({ 990, 548 });
+            fre.Arrange({ 0, 0, 990, 548 });
+            fre.UpdateLayout();
+
+            const auto sidebarCard = fre.FindName(L"SidebarCard").as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").as<Border>();
+            const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").as<Border>();
+            const auto autofixImageFrame = fre.FindName(L"AutofixImageFrame").as<Border>();
+            const auto initialRadius = sidebarCard.CornerRadius().TopLeft;
+            VERIFY_IS_TRUE(std::abs(initialRadius - 6.13) < 0.01);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
+
+            fre.Measure({ 1130, 631 });
+            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(initialRadius, sidebarCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
         });
     }
 

@@ -46,6 +46,7 @@ public:
 
     void SetSnapDimensionCallback(std::function<float(bool widthOrHeight, float dimension)> pfn) noexcept;
     void SetWorkAreaConstraintCallback(std::function<bool()> pfn) noexcept;
+    void SetMinimumSizeOverride(std::optional<til::size> size) noexcept;
 
     void FocusModeChanged(const bool focusMode);
     void FullscreenChanged(const bool fullscreen);
@@ -104,6 +105,7 @@ protected:
     std::function<void(const HWND, const til::rect&)> _pfnCreateCallback;
     std::function<float(bool, float)> _pfnSnapDimensionCallback;
     std::function<bool()> _pfnWorkAreaConstraintCallback;
+    std::optional<til::size> _minimumSizeOverride;
 
     void _HandleCreateWindow(const WPARAM wParam, const LPARAM lParam) noexcept;
     [[nodiscard]] LRESULT _OnSizing(const WPARAM wParam, const LPARAM lParam);

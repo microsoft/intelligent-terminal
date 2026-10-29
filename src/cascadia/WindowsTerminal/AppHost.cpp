@@ -635,8 +635,8 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
             { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
             { static_cast<double>(desktopDimensions.width), static_cast<double>(desktopDimensions.height) });
         dimensions = {
-            gsl::narrow<til::CoordType>(constrained.width),
-            gsl::narrow<til::CoordType>(constrained.height),
+            Utils::ClampToShortMax(lrint(constrained.width), 1),
+            Utils::ClampToShortMax(lrint(constrained.height), 1),
         };
     }
 
@@ -687,6 +687,16 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     }
 
     const til::rect newRect{ origin, dimensions };
+    if (constrainFreLaunchToWorkArea)
+    {
+        _window->SetMinimumSizeOverride(dimensions);
+    }
+    const auto clearMinimumSizeOverride = wil::scope_exit([&]() {
+        if (constrainFreLaunchToWorkArea)
+        {
+            _window->SetMinimumSizeOverride(std::nullopt);
+        }
+    });
     bool succeeded = SetWindowPos(hwnd,
                                   nullptr,
                                   newRect.left,
@@ -1160,6 +1170,11 @@ void AppHost::_ShowWindowChanged(const winrt::Windows::Foundation::IInspectable&
 void AppHost::_WindowSizeChanged(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                  const winrt::Microsoft::Terminal::Control::WindowSizeChangedEventArgs& args)
 {
+    if (_windowLogic.IsFreRequired())
+    {
+        return;
+    }
+
     _resizeWindow(_window->GetHandle(), { args.Width(), args.Height() });
 }
 

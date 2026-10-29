@@ -28,6 +28,21 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
+    constexpr double ResolveFreCardCornerRadius(const double viewportWidth,
+                                                const double viewportHeight) noexcept
+    {
+        constexpr double designWidth = 1130.0;
+        constexpr double designContentHeight = 631.0;
+        constexpr double hostedTitlebarHeight = 40.0;
+        constexpr double designCornerRadius = 7.0;
+
+        const auto widthScale = viewportWidth / designWidth;
+        const auto heightScale = (viewportHeight + hostedTitlebarHeight) /
+                                 (designContentHeight + hostedTitlebarHeight);
+        const auto scale = std::clamp(std::min(widthScale, heightScale), 0.0, 1.0);
+        return designCornerRadius * scale;
+    }
+
     constexpr FreWindowSize ClampFreWindowSizeToWorkArea(const FreWindowSize requested,
                                                          const FreWindowSize workArea) noexcept
     {

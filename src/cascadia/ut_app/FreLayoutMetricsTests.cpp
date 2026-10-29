@@ -17,6 +17,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(FreDefaultWindowSizeHonorsLaunchOverrides);
         TEST_METHOD(FreMinimumWindowSizeMatchesFigma);
         TEST_METHOD(FreWindowSizeFitsMonitorWorkArea);
+        TEST_METHOD(FreCardCornerRadiusScalesWithLaunchWindow);
         TEST_METHOD(WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint);
         TEST_METHOD(WelcomeLayoutScrollsWhenWideWindowIsTooShort);
     };
@@ -118,6 +119,8 @@ namespace TerminalAppUnitTests
         static_assert(constrained.width > 1751.0 && constrained.width < 1752.0);
 
         VERIFY_ARE_EQUAL(1040.0, constrained.height);
+        VERIFY_ARE_EQUAL(1752l, lrint(constrained.width));
+        VERIFY_ARE_EQUAL(1040l, lrint(constrained.height));
         VERIFY_IS_TRUE(std::abs(
                            (constrained.width / constrained.height) -
                            (2260.0 / 1342.0)) <
@@ -130,6 +133,16 @@ namespace TerminalAppUnitTests
             { 1920.0, 1040.0 });
         VERIFY_ARE_EQUAL(0.0, position.x);
         VERIFY_ARE_EQUAL(0.0, position.y);
+    }
+
+    void FreLayoutMetricsTests::FreCardCornerRadiusScalesWithLaunchWindow()
+    {
+        VERIFY_ARE_EQUAL(7.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(1130.0, 631.0));
+        VERIFY_ARE_EQUAL(7.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(1400.0, 800.0));
+        VERIFY_ARE_EQUAL(0.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(0.0, 0.0));
+
+        const auto constrainedRadius = winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(990.0, 548.0);
+        VERIFY_IS_TRUE(std::abs(constrainedRadius - 6.13) < 0.01);
     }
 
     void FreLayoutMetricsTests::WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint()

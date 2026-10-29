@@ -77,6 +77,27 @@ namespace winrt::TerminalApp::implementation
         SidebarCard().MinHeight(layout.cardMinHeight);
         AutofixCard().MinHeight(layout.cardMinHeight);
         WelcomeContentScroller().VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+
+        if (!_welcomeCardCornerRadius && viewport.Height > 0)
+        {
+            _welcomeCardCornerRadius = ResolveFreCardCornerRadius(viewport.Width, viewport.Height);
+        }
+        if (_welcomeCardCornerRadius)
+        {
+            const auto radius = *_welcomeCardCornerRadius;
+            const winrt::Windows::UI::Xaml::CornerRadius cardRadius{ radius, radius, radius, radius };
+            const winrt::Windows::UI::Xaml::CornerRadius imageRadius{ radius, radius, 0.0, 0.0 };
+            SidebarCard().CornerRadius(cardRadius);
+            AutofixCard().CornerRadius(cardRadius);
+            if (const auto frame = FindName(L"SidebarImageFrame").try_as<Border>())
+            {
+                frame.CornerRadius(imageRadius);
+            }
+            if (const auto frame = FindName(L"AutofixImageFrame").try_as<Border>())
+            {
+                frame.CornerRadius(imageRadius);
+            }
+        }
     }
 
     void FreOverlay::_BeginProgressAttempt(const winrt::hstring& agentId)
@@ -470,6 +491,7 @@ namespace winrt::TerminalApp::implementation
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
         _autoInstallCopilotAfterCompletion = false;
+        _welcomeCardCornerRadius.reset();
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
         _agentSelectionExplicitlyChanged = false;

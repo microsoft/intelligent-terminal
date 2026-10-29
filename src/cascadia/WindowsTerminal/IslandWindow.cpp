@@ -205,6 +205,11 @@ void IslandWindow::SetWorkAreaConstraintCallback(std::function<bool()> pfn) noex
     _pfnWorkAreaConstraintCallback = std::move(pfn);
 }
 
+void IslandWindow::SetMinimumSizeOverride(std::optional<til::size> size) noexcept
+{
+    _minimumSizeOverride = size;
+}
+
 // Method Description:
 // - Handles a WM_CREATE message. Calls our create callback, if one's been set.
 // Arguments:
@@ -527,6 +532,16 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
         const auto workHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
         lpMinMaxInfo->ptMinTrackSize.x = std::min(lpMinMaxInfo->ptMinTrackSize.x, workWidth);
         lpMinMaxInfo->ptMinTrackSize.y = std::min(lpMinMaxInfo->ptMinTrackSize.y, workHeight);
+    }
+
+    if (_minimumSizeOverride)
+    {
+        lpMinMaxInfo->ptMinTrackSize.x = std::min<LONG>(
+            lpMinMaxInfo->ptMinTrackSize.x,
+            _minimumSizeOverride->width);
+        lpMinMaxInfo->ptMinTrackSize.y = std::min<LONG>(
+            lpMinMaxInfo->ptMinTrackSize.y,
+            _minimumSizeOverride->height);
     }
 }
 

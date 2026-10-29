@@ -61,6 +61,7 @@ namespace winrt::TerminalApp::implementation
         bool _updatingAgentComboBox{ false };
         bool _agentSelectionExplicitlyChanged{ false };
         bool _autoInstallCopilotAfterCompletion{ false };
+        std::optional<double> _welcomeCardCornerRadius;
 
         void _UpdateWelcomeLayout(const winrt::Windows::Foundation::Size& viewport);
 
