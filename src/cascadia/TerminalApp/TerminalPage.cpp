@@ -13878,7 +13878,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto paneId = _TryParsePaneSessionId(paneIdStr))
                         {
-                            nativeManager->RecordNativeAgentProgress(contentId, *paneId, progressState);
+                            nativeManager->RecordNativeAgentProgress(contentId, *paneId, progressState, identity);
                         }
                     }
                     if (!identity)

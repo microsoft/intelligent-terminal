@@ -61,11 +61,12 @@ namespace winrt::TerminalApp::implementation
             std::string qualifiedLocation;
             uint64_t paneCreatedAtMs{ 0 };
             uint64_t paneCreationSequence{ 0 };
+            bool locationConfirmed{ false };
         };
         void SetExplicitNativeAgentProvider(uint64_t contentId, const winrt::hstring& providerId);
         bool RefineNativeAgentLaunchLocation(uint64_t contentId, const winrt::hstring& providerId, const std::string& location);
         std::optional<NativeAgentObservationIdentity> NativeAgentObservationForContent(uint64_t contentId) const;
-        void RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState);
+        void RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, const std::optional<NativeAgentObservationIdentity>& emissionIdentity = std::nullopt);
         std::optional<uint64_t> NativeAgentProgressForContent(uint64_t contentId) const;
         NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0, const winrt::hstring& hookProviderId = {});
         void RetainQualifiedNativeAgentIdentity(uint64_t contentId, uint64_t modeEpoch, const std::string& sessionId, const std::string& location);
@@ -147,7 +148,14 @@ namespace winrt::TerminalApp::implementation
             bool agentHelper{ false };
             AgentCompletionState completion;
             std::optional<std::pair<winrt::guid, uint64_t>> parsedProgress;
+            struct ConfirmedOwner
+            {
+                winrt::hstring providerId;
+                std::string sessionId;
+                std::string location;
+            } lastConfirmedOwner;
         };
+        static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
         std::unordered_map<uint64_t, TerminalContent> _content;
         bool _nativeAgentSessionEventsEnabled{ true };
         uint64_t _nativeAgentObservationGeneration{ 0 };

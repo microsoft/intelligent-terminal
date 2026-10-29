@@ -69,8 +69,11 @@ With Sessions ON, observed OSC 9;4 progress takes precedence over hook
 Idle/Working only for the same confirmed pane/provider/session owner: states
 1/3 map to Working and states 0/4 map to Idle. An unobserved default zero is not
 an OSC Idle signal. Attention, Error and terminal liveness states retain hook
-precedence. Terminal retains the parsed progress receipt across admission/mode
-changes, but clears it when the connection lifetime is replaced. The registry
+precedence. Terminal retains the parsed progress receipt across same-owner
+admission/mode/routing changes, but clears it when the confirmed provider/session
+or known execution source changes, or the connection lifetime is replaced.
+Unknown identity/source does not erase the last confirmed owner; first-owner
+admission preserves any pre-admission receipt. The registry
 retains raw hook activity
 separately from this shared read projection, so clearing progress restores Idle
 without waiting for another Stop. Complete/unread completion is derived only

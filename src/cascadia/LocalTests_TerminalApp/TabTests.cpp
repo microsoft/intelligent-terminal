@@ -540,6 +540,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
+        TEST_METHOD(NativeAgentProgressFollowsConfirmedOwner);
         TEST_METHOD(NativeAgentSessionsOffObservesParsedSignals);
         TEST_METHOD(NativeAgentSessionsOffResumeUsesConnectionIdentity);
         TEST_METHOD(NativeAgentSessionsOffResumeUpdatesProviderIdentity);
@@ -22217,6 +22218,15 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(std::string{ "removed" }, observations[0]["kind"].asString());
             VERIFY_ARE_EQUAL(epoch, observations[0]["mode_epoch"].asUInt64());
             VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+            observations.clear();
+            const auto next = _keepRunningHook(paneId, "agent.session.start", "next-owner", "copilot");
+            page->_manager.OnPaneAgentSessionChanged(next);
+            page->OnPaneAgentSessionChanged(next);
+            VERIFY_IS_FALSE(observations.empty());
+            VERIFY_ARE_EQUAL(std::string{ "next-owner" }, observations.back()["agent_session_id"].asString());
+            VERIFY_IS_FALSE(observations.back().isMember("current_progress_state"));
+            VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+            manager->RecordNativeAgentProgress(control.ContentId(), paneId, 0);
             page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
             page->_SyncNativeAgentStatusMode();
             observations.clear();
@@ -22233,6 +22243,96 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(control.ContentId()).value());
             manager->RestartNativeAgentConnectionTracking(control.ContentId());
             VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(control.ContentId()).has_value());
+        });
+    }
+
+    void TabTests::NativeAgentProgressFollowsConfirmedOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            const winrt::guid paneId{ L"{00112233-4455-6677-8899-AABBCCDDEEFF}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            NewTerminalArgs args;
+            auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+            const auto control = page->_CreateNewControlAndContent(settings, *connection, L"copilot");
+            const auto contentId = control.ContentId();
+            const auto admit = [&](const std::string& session, const std::string& source, const winrt::hstring& provider = L"copilot") {
+                return manager->AdmitNativeAgentObservation(contentId, 2, "moved-tab", session, source, true, 2, provider);
+            };
+            const auto record = [&]() { manager->RecordNativeAgentProgress(contentId, paneId, 0); };
+            const auto retained = [&]() { VERIFY_ARE_EQUAL(uint64_t{ 0 }, manager->NativeAgentProgressForContent(contentId).value()); };
+            const auto cleared = [&]() { VERIFY_IS_FALSE(manager->NativeAgentProgressForContent(contentId).has_value()); };
+            record();
+            const auto firstOwner = admit("first", "Host");
+            retained(); // First admission must preserve an earlier parser receipt.
+            manager->AdmitNativeAgentObservation(contentId, 1, "original-tab", "first", "Host", false, 1);
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, firstOwner);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            manager->RemoveNativeAgentObservation(contentId);
+            admit({}, {});
+            retained();
+            admit("first", {});
+            retained();
+            manager->SetNativeAgentSessionEventsEnabled(false);
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            admit("first", "Host");
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, firstOwner);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            const auto secondOwner = admit("second", "Host");
+            cleared();
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, firstOwner);
+            cleared();
+            record();
+            const auto hostOwner = admit("second", "Host", L"claude");
+            cleared();
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, secondOwner);
+            cleared();
+            record();
+            admit("second", {}, L"claude");
+            retained();
+            admit("second", "wsl:Ubuntu", L"claude");
+            cleared();
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, hostOwner);
+            cleared();
+            record();
+            const auto unknownSourceOwner = admit("second", {}, L"claude");
+            retained();
+            const auto identity = admit("second", "wsl:Ubuntu", L"claude");
+            manager->RecordNativeAgentProgress(contentId, paneId, 3, unknownSourceOwner);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, manager->NativeAgentProgressForContent(contentId).value());
+            record();
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch + 1, "stale", "Host");
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, {}, {});
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "wsl:Ubuntu");
+            cleared();
+            record();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "wsl:Ubuntu");
+            retained();
+            manager->RetainQualifiedNativeAgentIdentity(contentId, identity.modeEpoch, "third", "Host");
+            cleared();
+            manager->RemoveNativeAgentObservation(contentId);
+            const auto unqualified = admit({}, {});
+            manager->RetainQualifiedNativeAgentIdentity(contentId, unqualified.modeEpoch, "qualified-first", "Host");
+            const auto qualifiedOwner = manager->NativeAgentObservationForContent(contentId);
+            manager->RetainQualifiedNativeAgentIdentity(contentId, unqualified.modeEpoch, "qualified-second", "Host");
+            manager->RecordNativeAgentProgress(contentId, paneId, 0, qualifiedOwner);
+            cleared();
+            manager->RestartNativeAgentConnectionTracking(contentId);
+            record();
+            admit("after-restart", "Host");
+            retained();
+            control.Close();
         });
     }
 
