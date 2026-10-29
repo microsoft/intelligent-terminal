@@ -1437,7 +1437,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
             }
         }
-        It 'Agent only menu closes search while Recent scope preserves global matches' {
+        It 'Agent only menu exits global search; Recent scope preserves it' {
             Set-CombinedFilters -AgentsOnly $false -Recent $false
             foreach ($pair in @(@($false, $false), @($true, $false), @($true, $true),
                 @($false, $true), @($false, $false), @($true, $true))) {
