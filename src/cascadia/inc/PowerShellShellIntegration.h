@@ -1033,7 +1033,8 @@ if (-not $Global:__ShellInteg_Installed) {
         }
         return -1
     }
-
+)"
+            R"(
     function prompt {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
         $gle           = $(__ShellInteg_GetLastExitCode)
