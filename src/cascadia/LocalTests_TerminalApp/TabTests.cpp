@@ -598,6 +598,10 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SessionCompletionHistoryPreservesCanonicalStatusAndRows);
         TEST_METHOD(SessionAttentionUnreadIsPaneLocal);
         TEST_METHOD(SidebarUnreadGroupAndDismissSlotStayStable);
+        TEST_METHOD(SessionCompletionSkipsNonOwnedAndClearedContent);
+        TEST_METHOD(SessionCompletionTransferReadsAfterCommit);
+        TEST_METHOD(SessionCompletionTransferPreservesUnreadWithoutFocus);
+        TEST_METHOD(SessionCompletionTransferRollbackReadsRestoredSource);
         TEST_METHOD(FailedAgentStatusRefreshDoesNotRestoreStaleCwds);
         TEST_METHOD(UnknownAgentSessionDoesNotReusePreviousCwd);
         TEST_METHOD(LatestBuiltinAgentReportWinsForPane);
@@ -939,6 +943,7 @@ namespace TerminalAppLocalTests
         void _closeContentTransferFixture(ContentTransferFixture& fixture, bool verify);
         winrt::TerminalApp::RequestMoveContentArgs _requestContentTransfer(const ContentTransferFixture& fixture);
         void _verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage);
+        void _verifyContentTransferCompletions(bool rollback, bool focused);
         void _verifyContentTransferStartupGate(bool layoutFirst);
         void _verifyContentTransferSourceRejection(bool rejectWindow);
         NewTerminalArgs _storeOwnedAgentTransfer(
@@ -10619,6 +10624,59 @@ namespace TerminalAppLocalTests
                 const auto closePosition = closeSlot.TransformToVisual(row).TransformPoint({ 0, 0 });
                 VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
             }
+        });
+    }
+
+    void TabTests::SessionCompletionSkipsNonOwnedAndClearedContent()
+    {
+        using TransferState = winrt::Microsoft::Terminal::Control::ContentTransferState;
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"64911111-2222-3333-4444-555555555555" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        winrt::Microsoft::Terminal::Control::TermControl receiver{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                if (receiver)
+                {
+                    receiver.Close();
+                    receiver = nullptr;
+                }
+                page = nullptr;
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto control = tab->GetActiveTerminalControl();
+            const auto contentId = control.ContentId();
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            tab->Focus(FocusState::Unfocused);
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(connection->SessionId()));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("transfer-completion", paneId, "copilot", 1000, "Working"));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("transfer-completion", paneId, "copilot", 2000, "Idle"));
+            const auto verifySkipped = [&]() {
+                page->_ReadFocusedPaneAgentActivity(*tab);
+                page->_UpdateAgentCompletions();
+                VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(connection->SessionId(), "transfer-completion", "copilot"));
+            };
+            control.SuspendContentTransfer();
+            tab->Focus(FocusState::Programmatic);
+            verifySkipped();
+            receiver = winrt::Microsoft::Terminal::Control::TermControl::PrepareControlByAttachingContent(page->_manager.TryLookupCore(contentId));
+            receiver.CommitContentTransfer();
+            control.CommitContentDetach();
+            VERIFY_IS_TRUE(control.TransferState() == TransferState::Detached);
+            verifySkipped();
+
+            uint32_t focused = 0;
+            const auto token = tab->Focused([&]() { ++focused; });
+            const auto revoke = wil::scope_exit([&]() { tab->Focused(token); });
+            tab->Content(nullptr);
+            VERIFY_ARE_EQUAL(0u, focused);
+            verifySkipped();
+            control.Close();
+            VERIFY_IS_TRUE(control.TransferState() == TransferState::Closed);
+            verifySkipped();
         });
     }
 
@@ -29146,6 +29204,118 @@ namespace TerminalAppLocalTests
                 }
             }
         }
+    }
+
+    void TabTests::_verifyContentTransferCompletions(bool rollback, bool focused)
+    {
+        using TransferState = winrt::Microsoft::Terminal::Control::ContentTransferState;
+        auto fixture = _createContentTransferFixture(false, true, false, true);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto sourceTab = fixture->original.tab;
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(fixture->source->_manager);
+            sourceTab->Focus(FocusState::Unfocused);
+            for (const auto& leaf : fixture->original.leaves)
+            {
+                manager->UpdateAgentCompletion(leaf.contentId, leaf.connection.SessionId(), "transfer-completion", "copilot", "Working", false);
+                manager->UpdateAgentCompletion(leaf.contentId, leaf.connection.SessionId(), "transfer-completion", "copilot", "Idle", false);
+            }
+            const auto verifyUnread = [&](const bool expected) {
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    VERIFY_ARE_EQUAL(expected, manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), "transfer-completion", "copilot"));
+                }
+            };
+            verifyUnread(true);
+            bool checkedPreparation = false;
+            fixture->destination->_contentTransferTestHook = [&](TransferStage stage, uint64_t, uint32_t) {
+                if (stage != TransferStage::BeforeSplitInsertion)
+                {
+                    return;
+                }
+                checkedPreparation = true;
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    VERIFY_IS_TRUE(leaf.control.TransferState() == TransferState::Suspended);
+                }
+                const auto destinationTab = fixture->destination->_GetFocusedTabImpl();
+                VERIFY_IS_TRUE(destinationTab->GetActiveTerminalControl().TransferState() == TransferState::Prepared);
+                fixture->source->_ReadFocusedPaneAgentActivity(*sourceTab);
+                fixture->source->_UpdateAgentCompletions();
+                destinationTab->Focus(FocusState::Programmatic);
+                fixture->destination->_ReadFocusedPaneAgentActivity(*destinationTab);
+                fixture->destination->_UpdateAgentCompletions();
+                verifyUnread(true);
+                if (rollback)
+                {
+                    sourceTab->Focus(FocusState::Programmatic);
+                    verifyUnread(true);
+                    winrt::throw_hresult(E_ABORT);
+                }
+            };
+            const auto token = fixture->destination->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                if (!focused && winrt::to_string(json).find("\"tab_renamed\"") != std::string::npos)
+                {
+                    fixture->destination->_GetFocusedTabImpl()->Focus(FocusState::Unfocused);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { fixture->destination->ProtocolVtSequenceReceived(token); });
+            const auto request = _requestContentTransfer(*fixture);
+            VERIFY_ARE_EQUAL(!rollback, fixture->destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 1, request.TransferId()));
+            VERIFY_IS_TRUE(checkedPreparation);
+            fixture->destination->_contentTransferTestHook = {};
+            if (rollback)
+            {
+                _verifyTransferRollback(*fixture);
+                VERIFY_IS_TRUE(sourceTab->IsFocused());
+            }
+            else
+            {
+                _verifyTransferCommitted(*fixture);
+                VERIFY_ARE_EQUAL(focused, fixture->destination->_GetFocusedTabImpl()->IsFocused());
+            }
+            const auto verifyFocusedPaneRead = [&](const auto& tab) {
+                const auto focusedPaneId = tab->GetActiveTerminalControl().Connection().SessionId();
+                for (const auto& leaf : fixture->original.leaves)
+                {
+                    VERIFY_ARE_EQUAL(leaf.connection.SessionId() != focusedPaneId,
+                                     manager->HasUnreadAgentCompletion(leaf.connection.SessionId(), "transfer-completion", "copilot"));
+                }
+            };
+            if (rollback || focused)
+            {
+                verifyFocusedPaneRead(rollback ? sourceTab : fixture->destination->_GetFocusedTabImpl());
+            }
+            if (!rollback && !focused)
+            {
+                fixture->source->_ReadFocusedPaneAgentActivity(*sourceTab);
+                fixture->source->_UpdateAgentCompletions();
+                verifyUnread(true);
+                fixture->destination->_GetFocusedTabImpl()->Focus(FocusState::Programmatic);
+                verifyFocusedPaneRead(fixture->destination->_GetFocusedTabImpl());
+            }
+            _closeContentTransferFixture(*fixture, true);
+        });
+    }
+
+    void TabTests::SessionCompletionTransferReadsAfterCommit()
+    {
+        _verifyContentTransferCompletions(false, true);
+    }
+
+    void TabTests::SessionCompletionTransferPreservesUnreadWithoutFocus()
+    {
+        _verifyContentTransferCompletions(false, false);
+    }
+
+    void TabTests::SessionCompletionTransferRollbackReadsRestoredSource()
+    {
+        _verifyContentTransferCompletions(true, true);
     }
 
     void TabTests::_verifyContentTransferFailure(bool agentFirst, bool hidden, TransferStage stage)

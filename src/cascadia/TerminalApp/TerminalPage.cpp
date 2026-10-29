@@ -13143,12 +13143,13 @@ namespace winrt::TerminalApp::implementation
                 if (const auto root = tab->GetRootPane())
                 {
                     root->WalkTree([&](const auto& pane) {
-                        if (const auto control = pane->GetTerminalControl())
+                        if (const auto control = pane->GetTerminalControl();
+                            control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
                         {
                             if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId());
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned && focusedControl.ContentId() == control.ContentId());
                             }
                         }
                         return false;
@@ -13161,7 +13162,9 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control)
     {
-        const auto info = control ? _RichTabAgentInfoForControl(control) : std::nullopt;
+        const auto info = control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned ?
+                              _RichTabAgentInfoForControl(control) :
+                              std::nullopt;
         return info && info->paneSessionId &&
                winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
                    *info->paneSessionId, info->sessionId, info->providerId);
@@ -13188,9 +13191,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ReadFocusedPaneAgentActivity(Tab& tab)
     {
-        if (tab.IsFocused())
+        if (_GetTabIndex(tab) && tab.Content() && tab.IsFocused())
         {
-            if (const auto control = tab.GetActiveTerminalControl())
+            if (const auto control = tab.GetActiveTerminalControl();
+                control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
             {
                 winrt::get_self<ContentManager>(_manager)->MarkAgentCompletionRead(control.ContentId());
             }
@@ -14360,9 +14364,8 @@ namespace winrt::TerminalApp::implementation
                         if (auto content = tab->Content())
                         {
                             page->_tabContent.Children().Append(std::move(content));
+                            tab->Focus(FocusState::Programmatic);
                         }
-
-                        tab->Focus(FocusState::Programmatic);
                     }
                 }
             }
@@ -15849,6 +15852,14 @@ namespace winrt::TerminalApp::implementation
             {
                 _SelectTab(*index);
             }
+            try
+            {
+                if (sourceTab->IsFocused())
+                {
+                    source._ReadFocusedPaneAgentActivity(*sourceTab);
+                }
+            }
+            CATCH_LOG()
             _agentPaneLog("content transfer rolled back source_tab=" + winrt::to_string(sourceTab->StableId()) +
                           " action_index=" + std::to_string(transfer.actionIndex));
             return false;
@@ -15993,6 +16004,15 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         }
+        try
+        {
+            // Focus events during preparation cannot mark borrowed content read.
+            if (destinationTab->IsFocused())
+            {
+                _ReadFocusedPaneAgentActivity(*destinationTab);
+            }
+        }
+        CATCH_LOG()
         return true;
     }
 
