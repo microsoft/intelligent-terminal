@@ -210,7 +210,8 @@
     <value>Buscar pestañas</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Buscar pestañas</value>
+    <value>Buscar</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Buscar pestañas</value>
@@ -1666,7 +1667,7 @@ Para todas las opciones disponibles, ejecute 'wt new-tab --help'.</value>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Buscar pestañas y sesiones recientes de agentes</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · En otra ventana</value>

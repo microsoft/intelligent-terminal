@@ -81,18 +81,22 @@ namespace winrt::TerminalApp::implementation
             std::string providerId;
             bool wasActive{ false };
             bool unread{ false };
-
-            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider,
-                        const std::string_view status, const bool focused)
+            bool wasAttention{ false };
+            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider, const std::string_view status, const bool focused)
             {
                 const auto wasUnread = unread;
-                if (paneId != pane || sessionId != session || providerId != provider)
+                const auto identityChanged = paneId != pane || sessionId != session || providerId != provider;
+                if (identityChanged)
                 {
                     *this = { pane, std::string{ session }, std::string{ provider } };
                 }
-                unread = status == "Idle" && !focused && (unread || wasActive);
+                const auto attention = status == "Attention";
+                const auto newAttention = attention && !wasAttention;
+                unread = !focused && ((attention && (unread || newAttention)) ||
+                                      (status == "Idle" && (unread || wasActive)));
                 wasActive = status == "Working" || status == "Attention";
-                return wasUnread != unread;
+                wasAttention = attention;
+                return wasUnread != unread || (identityChanged && (wasUnread || unread));
             }
         };
         void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);

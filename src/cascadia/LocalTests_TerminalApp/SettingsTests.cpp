@@ -1709,6 +1709,20 @@ namespace TerminalAppLocalTests
             ChangeKind::ModelHotUpdate,
             Page::_ClassifyAgentSettingsChange(native, nativeHotUpdate));
 
+        auto restricted = native;
+        restricted.allowedAgentIds = { L"copilot" };
+        auto expanded = restricted;
+        expanded.allowedAgentIds.push_back(L"claude");
+        VERIFY_ARE_EQUAL(ChangeKind::RecreatePane, Page::_ClassifyAgentSettingsChange(restricted, expanded));
+        VERIFY_ARE_EQUAL(ChangeKind::RecreatePane, Page::_ClassifyAgentSettingsChange(expanded, restricted));
+        VERIFY_ARE_NOT_EQUAL(Page::_AgentSettingsRequestIdentity(restricted), Page::_AgentSettingsRequestIdentity(expanded));
+        auto customBlocked = expanded;
+        customBlocked.customAgentsAllowed = false;
+        VERIFY_ARE_EQUAL(ChangeKind::RecreatePane, Page::_ClassifyAgentSettingsChange(expanded, customBlocked));
+        VERIFY_ARE_NOT_EQUAL(Page::_AgentSettingsRequestIdentity(expanded), Page::_AgentSettingsRequestIdentity(customBlocked));
+        nativeHotUpdate.allowedAgentIds = { L"copilot" };
+        VERIFY_ARE_EQUAL(ChangeKind::RecreatePane, Page::_ClassifyAgentSettingsChange(native, nativeHotUpdate));
+
         auto nativeReset = native;
         nativeReset.acpModel.clear();
         VERIFY_ARE_EQUAL(

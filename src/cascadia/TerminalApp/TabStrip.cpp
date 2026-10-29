@@ -127,15 +127,19 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
-    bool TabStripHistoryItem::SetUnreadCompletion(const bool unread)
+    bool TabStripHistoryItem::SetUnreadActivity(const bool unread)
     {
-        const auto previous = _hasUnreadCompletion;
-        _hasUnreadCompletion = unread && Status() == L"Idle";
-        if (previous || _hasUnreadCompletion)
+        const auto previous = _hasUnreadActivity;
+        _hasUnreadActivity = unread && (Status() == L"Idle" || Status() == L"Attention");
+        if (previous || _hasUnreadActivity)
         {
             UpdateStatusText(TerminalPage::_SidebarHistoryStatusText(winrt::to_string(StatusForPresentation())));
         }
-        return previous != _hasUnreadCompletion;
+        if (previous != _hasUnreadActivity)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"HasUnreadActivity" });
+        }
+        return previous != _hasUnreadActivity;
     }
 
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
@@ -688,6 +692,24 @@ namespace winrt::TerminalApp::implementation
         _viewportItems = single_threaded_observable_vector<IInspectable>();
 
         InitializeComponent();
+        _searchTooltipLabel = TextBlock{};
+        _searchTooltipShortcut = TextBlock{};
+        for (const auto& text : { _searchTooltipLabel, _searchTooltipShortcut })
+        {
+            text.FontFamily(WUX::Media::FontFamily{ L"Segoe UI Variable" });
+            text.FontSize(12);
+            text.FontWeight(Windows::UI::Text::FontWeights::Normal());
+            text.LineHeight(16);
+        }
+        _searchTooltipShortcut.Opacity(0.7);
+        StackPanel searchTooltipContent;
+        searchTooltipContent.Orientation(WUX::Controls::Orientation::Horizontal);
+        searchTooltipContent.Spacing(8);
+        searchTooltipContent.Children().Append(_searchTooltipLabel);
+        searchTooltipContent.Children().Append(_searchTooltipShortcut);
+        ToolTip searchTooltip;
+        searchTooltip.Content(searchTooltipContent);
+        ToolTipService::SetToolTip(SearchTabsButton(), searchTooltip);
         _sidebarFiltersChanged = _sidebarFilters.PropertyChanged(auto_revoke, { get_weak(), &TabStrip::_onSidebarFiltersChanged });
 
         // ItemsControl handles a UIElement item as its own content; it must not
@@ -1009,6 +1031,7 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataHighlightColor(pane.MetadataHighlightColor());
                 existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
+                existing.HasUnreadActivity(pane.HasUnreadActivity());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
                 existing.ProgressState(pane.ProgressState());
@@ -1374,17 +1397,20 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto groupIndicatorVisible = isGroup && display.ChildrenVisibility() == Visibility::Visible;
-            const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible;
+            const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
+            const auto customHover = !_highContrast || searchFocused;
+            const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
-                hoverBackground.Opacity(!_highContrast && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
+                hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
                 colorHover.Background(hoverBrush);
                 colorHover.Opacity(!_highContrast && !selected && pointerOver && hoverBrush ? 1.0 : 0.0);
             }
+            auto searchForeground = searchFocused ? ItemsList().Foreground() : nullptr;
             if (const auto container = ItemsList().ContainerFromItem(display);
                 container)
             {
@@ -1393,10 +1419,10 @@ namespace winrt::TerminalApp::implementation
                     if (Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
                             L"Windows.UI.Xaml.Controls.Primitives.ListViewItemPresenter", L"SelectionIndicatorVisualEnabled"))
                     {
-                        presenter.SelectionIndicatorVisualEnabled(!groupIndicatorVisible);
+                        presenter.SelectionIndicatorVisualEnabled(!groupIndicatorVisible && !searchFocused);
                     }
                     const auto marker = box_value(L"SidebarThemedHover");
-                    if (!_highContrast)
+                    if (customHover)
                     {
                         presenter.PointerOverBackground(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
                         if (!presenter.Resources().HasKey(marker))
@@ -1411,6 +1437,10 @@ namespace winrt::TerminalApp::implementation
                         {
                             presenter.Resources().Remove(marker);
                         }
+                    }
+                    if (_highContrast && searchFocused && pointerOver)
+                    {
+                        searchForeground = presenter.PointerOverForeground();
                     }
                 }
             }
@@ -1468,7 +1498,14 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (control)
                     {
-                        control.ClearValue(WUX::Controls::Control::ForegroundProperty());
+                        if (searchFocused)
+                        {
+                            control.Foreground(searchForeground);
+                        }
+                        else
+                        {
+                            control.ClearValue(WUX::Controls::Control::ForegroundProperty());
+                        }
                     }
                 }
             }
@@ -1492,10 +1529,12 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto button = root.FindName(L"PaneActivateButton").try_as<WUX::Controls::Control>();
-        const auto active = pane.ActiveIndicatorVisibility() == Visibility::Visible;
+        const auto searchFocused = SearchTextBox().FocusState() != WUX::FocusState::Unfocused;
+        const auto active = pane.ActiveIndicatorVisibility() == Visibility::Visible && !searchFocused;
         const auto color = active ? _tabSelectionBrush(pane.Tab(), true) : nullptr;
         const auto hoverBrush = !active && !highContrastActive ? _tabHoverBrush(pane.Tab()) : nullptr;
-        const auto hovered = hoverBrush && winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+        const auto pointerOver = winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+        const auto hovered = hoverBrush && pointerOver;
         if (const auto background = root.FindName(L"PaneColorSelectionBackground").try_as<WUX::Controls::Border>())
         {
             WUX::Media::SolidColorBrush brush{ color ? color.Color() : Windows::UI::Colors::Transparent() };
@@ -1510,9 +1549,23 @@ namespace winrt::TerminalApp::implementation
             nativeSelection.Visibility(active && !color ? Visibility::Visible : Visibility::Collapsed);
         }
         const auto foregroundBrush = color ? color : hovered ? hoverBrush : nullptr;
-        const auto foreground = foregroundBrush ?
-                                    WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, _sidebarBackdropColor(Background(), root.ActualTheme())) } :
-                                    nullptr;
+        WUX::Media::Brush foreground = foregroundBrush ?
+                                           WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, _sidebarBackdropColor(Background(), root.ActualTheme())) } :
+                                           nullptr;
+        if (!foreground && searchFocused)
+        {
+            foreground = ItemsList().Foreground();
+            if (highContrastActive && pointerOver)
+            {
+                if (const auto container = ItemsList().ContainerFromItem(_displayItemForTab(pane.Tab())))
+                {
+                    if (const auto palette = _findNamedElement(container, L"SidebarItemPresenter").try_as<Primitives::ListViewItemPresenter>())
+                    {
+                        foreground = palette.PointerOverForeground();
+                    }
+                }
+            }
+        }
         for (const auto name : { L"PaneActivateButton", L"PaneCloseButton", L"PaneTitleText", L"PaneMetadataText" })
         {
             if (const auto control = root.FindName(name).try_as<WUX::Controls::Control>())
@@ -1531,7 +1584,7 @@ namespace winrt::TerminalApp::implementation
         _bindMonochromeIconForeground(presenter, button);
         if (const auto hover = root.FindName(L"PaneHoverBackground").try_as<UIElement>())
         {
-            const auto showHover = !active && winrt::get_self<TabStripPaneItem>(pane)->IsPointerOver();
+            const auto showHover = !active && pointerOver;
             hover.Opacity(showHover && !hoverBrush ? 1.0 : 0.0);
             if (const auto colorHover = root.FindName(L"PaneColorHoverBackground").try_as<WUX::Controls::Border>())
             {
@@ -1634,6 +1687,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1659,10 +1713,66 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::_updateSidebarActionLayout(const FrameworkElement& row)
+    {
+        ListViewItem container{ nullptr };
+        for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
+        {
+            container = current.try_as<ListViewItem>();
+        }
+        if (!container || container.ActualWidth() <= 0)
+        {
+            return;
+        }
+
+        const auto rowMargin = container.Margin();
+        const auto width = container.ActualWidth() + rowMargin.Left + rowMargin.Right;
+        // Figma's 272-DIP row has a 15-DIP trailing inset.
+        // Scale the outer inset, not the 24-DIP controls.
+        const auto inset = std::max(0.0, width * 15.0 / 272.0 - rowMargin.Right);
+        for (const auto name : { L"TabCloseButtonSlot", L"PaneCloseButtonSlot" })
+        {
+            if (const auto slot = row.FindName(name).try_as<FrameworkElement>())
+            {
+                FrameworkElement title{ nullptr };
+                if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
+                {
+                    title = header.FindName(L"HeaderTextBlock").try_as<FrameworkElement>();
+                }
+                else
+                {
+                    title = row.FindName(L"PaneTitleText").try_as<FrameworkElement>();
+                }
+                auto margin = slot.Margin();
+                margin.Right = inset;
+                if (title && title.ActualHeight() > 0)
+                {
+                    const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                    margin.Top = std::max(0.0, position.Y + title.ActualHeight() / 2.0 - 12.0);
+                }
+                if (slot.Margin() != margin)
+                {
+                    slot.Margin(margin);
+                }
+                return;
+            }
+        }
+        if (const auto titleGroup = row.FindName(L"HistoryTitleGroup").try_as<FrameworkElement>())
+        {
+            auto margin = titleGroup.Margin();
+            margin.Right = 24.0 + inset - row.as<Grid>().Padding().Right;
+            if (titleGroup.Margin() != margin)
+            {
+                titleGroup.Margin(margin);
+            }
+        }
+    }
+
     void TabStrip::OnSidebarRowSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
         }
     }
@@ -1769,6 +1879,14 @@ namespace winrt::TerminalApp::implementation
         header.RenameEnded({ get_weak(), &TabStrip::OnHeaderRenameEnded });
     }
 
+    void TabStrip::OnRowHeaderSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
+    {
+        if (const auto row = WUX::Media::VisualTreeHelper::GetParent(sender.as<DependencyObject>()).try_as<FrameworkElement>())
+        {
+            _updateSidebarActionLayout(row);
+        }
+    }
+
     void TabStrip::OnHeaderRenameEnded(IInspectable const& sender, IInspectable const&)
     {
         const auto view = sender.try_as<FrameworkElement>();
@@ -1782,6 +1900,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);
@@ -1957,7 +2076,7 @@ namespace winrt::TerminalApp::implementation
     bool TabStrip::_updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item)
     {
         const auto nativeItem = winrt::get_self<TabStripHistoryItem>(item);
-        const auto changed = nativeItem->SetUnreadCompletion(_agentCompletionResolver && _agentCompletionResolver(item));
+        const auto changed = nativeItem->SetUnreadActivity(_agentCompletionResolver && _agentCompletionResolver(item));
         const auto style = _historyStatusTextStyle(nativeItem->StatusForPresentation());
         const auto styleChanged = item.StatusTextStyle() != style;
         item.StatusTextStyle(style);
@@ -2733,6 +2852,14 @@ namespace winrt::TerminalApp::implementation
         SearchQuery(SearchTextBox().Text());
     }
 
+    void TabStrip::OnSearchBoxFocusChanged(IInspectable const&, RoutedEventArgs const&)
+    {
+        for (const auto& display : _displayItems)
+        {
+            _refreshDisplayItemVisuals(display);
+        }
+    }
+
     void TabStrip::OnSearchBoxKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
     {
         if (e.OriginalKey() == Windows::System::VirtualKey::Escape)
@@ -2805,6 +2932,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnHistoryRowLoaded(IInspectable const& sender, RoutedEventArgs const&)
     {
         const auto root = sender.as<FrameworkElement>();
+        _updateSidebarActionLayout(root);
         _updateSidebarRowToolTipPlacement(root);
         const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
         if (const auto icon = root.FindName(L"HistoryKeepRunningIcon").try_as<FontIcon>())
@@ -3136,16 +3264,34 @@ namespace winrt::TerminalApp::implementation
         storyboard.Begin();
     }
 
+    void TabStrip::SearchKeyChordText(winrt::hstring const& value)
+    {
+        std::wstring display{ value };
+        bool keyStart = true;
+        for (auto& character : display)
+        {
+            if (keyStart)
+            {
+                character = til::toupper_ascii(character);
+            }
+            keyStart = character == L'+';
+        }
+        _searchKeyChordText = display;
+        _updateSearchVisualState();
+    }
+
     void TabStrip::_updateSearchVisualState()
     {
         const auto searchLabel = RS_(L"VerticalTabsAgentsSearch/Text");
-        SearchTextBox().PlaceholderText(searchLabel);
         WUX::Automation::AutomationProperties::SetName(
             SearchTextBox(), searchLabel);
         WUX::Automation::AutomationProperties::SetName(
             SearchTabsButton(), searchLabel);
-        ToolTipService::SetToolTip(
-            SearchTabsButton(), box_value(searchLabel));
+        _searchTooltipLabel.Text(searchLabel);
+        _searchTooltipShortcut.Text(_searchKeyChordText);
+        _searchTooltipShortcut.Visibility(_searchKeyChordText.empty() ? Visibility::Collapsed : Visibility::Visible);
+        WUX::Automation::AutomationProperties::SetAcceleratorKey(
+            SearchTabsButton(), _searchKeyChordText);
         WUX::Automation::AutomationProperties::SetHelpText(
             SearchTabsButton(), searchLabel);
 
@@ -3240,7 +3386,7 @@ namespace winrt::TerminalApp::implementation
                 left.IconTemplate() == right.IconTemplate() &&
                 (!includeStatus ||
                  (left.Status() == right.Status() &&
-                  winrt::get_self<TabStripHistoryItem>(left)->HasUnreadCompletion() == winrt::get_self<TabStripHistoryItem>(right)->HasUnreadCompletion() &&
+                  winrt::get_self<TabStripHistoryItem>(left)->HasUnreadActivity() == winrt::get_self<TabStripHistoryItem>(right)->HasUnreadActivity() &&
                   left.StatusText() == right.StatusText() &&
                   left.PaneSessionId() == right.PaneSessionId() &&
                   left.IsLive() == right.IsLive() &&
@@ -3420,7 +3566,7 @@ namespace winrt::TerminalApp::implementation
                             current.IsHistorical(incoming.IsHistorical());
                             nativeCurrent->BackgroundTab(nativeIncoming->BackgroundTab());
                             nativeCurrent->OtherWindow(nativeIncoming->OtherWindow());
-                            nativeCurrent->SetUnreadCompletion(nativeIncoming->HasUnreadCompletion());
+                            nativeCurrent->SetUnreadActivity(nativeIncoming->HasUnreadActivity());
                             if (paneChanged)
                             {
                                 nativeCurrent->UpdateHeadlessState(false);

@@ -22,6 +22,11 @@
                           x:DataType="local:AgentEntry">
                 <TextBlock Text="{x:Bind DisplayLabel}" />
             </DataTemplate>
+            <DataTemplate x:Key="ProfileAgentHeaderTemplate"
+                          x:DataType="local:AgentEntry">
+                <TextBlock Text="{x:Bind DisplayLabel}"
+                           TextWrapping="Wrap" />
+            </DataTemplate>
         </ResourceDictionary>
     </Page.Resources>
 
@@ -138,10 +143,10 @@
                                     ClearSettingValue="{x:Bind Profile.ClearAgentPaneBackend}"
                                     CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend, Mode=OneWay}"
                                     CurrentValueAccessibleName="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
-                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentHeaderTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
                 <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
                           ItemsSource="{x:Bind Profile.AgentPaneBackendList, Mode=OneWay}"
                           SelectedItem="{x:Bind Profile.CurrentAgentPaneBackend, Mode=TwoWay}"
@@ -155,10 +160,10 @@
                                     ClearSettingValue="{x:Bind Profile.ClearCommandPaletteAgent}"
                                     CurrentValue="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=OneWay}"
                                     CurrentValueAccessibleName="{x:Bind Profile.CurrentCommandPaletteAgent.DisplayLabel, Mode=OneWay}"
-                                    CurrentValueTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                                    CurrentValueTemplate="{StaticResource ProfileAgentHeaderTemplate}"
                                     HasSettingValue="{x:Bind Profile.HasCommandPaletteAgent, Mode=OneWay}"
                                     SettingOverrideSource="{x:Bind Profile.CommandPaletteAgentOverrideSource, Mode=OneWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}">
                 <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
                           ItemsSource="{x:Bind Profile.CommandPaletteAgentList, Mode=OneWay}"
                           SelectedItem="{x:Bind Profile.CurrentCommandPaletteAgent, Mode=TwoWay}"

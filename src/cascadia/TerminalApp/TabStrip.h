@@ -111,15 +111,15 @@ namespace winrt::TerminalApp::implementation
         bool RefreshAge(uint64_t nowMs);
         void UpdateStatusText(winrt::hstring const& text);
         bool UpdateHeadlessState(bool headless);
-        bool SetUnreadCompletion(bool unread);
-        bool HasUnreadCompletion() const noexcept { return _hasUnreadCompletion; }
-        winrt::hstring StatusForPresentation() const { return _hasUnreadCompletion ? winrt::hstring{ L"Complete" } : Status(); }
+        bool SetUnreadActivity(bool unread);
+        bool HasUnreadActivity() const noexcept { return _hasUnreadActivity; }
+        winrt::hstring StatusForPresentation() const { return _hasUnreadActivity && Status() == L"Idle" ? winrt::hstring{ L"Complete" } : Status(); }
         til::property_changed_event PropertyChanged;
 
     private:
         std::optional<std::pair<uint64_t, uint64_t>> _ageKey;
         bool _locallyHeadless{ false };
-        bool _hasUnreadCompletion{ false };
+        bool _hasUnreadActivity{ false };
     };
 
     struct TabStripHistoryActivationEventArgs : TabStripHistoryActivationEventArgsT<TabStripHistoryActivationEventArgs>
@@ -153,6 +153,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, MetadataVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, MetadataHighlightRanges, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(bool, HasUnreadActivity, PropertyChanged.raise, false);
 
     public:
         winrt::Windows::UI::Xaml::Controls::IconElement Icon() const;
@@ -373,6 +374,7 @@ namespace winrt::TerminalApp::implementation
         void SearchActive(bool value);
         winrt::hstring SearchQuery() const { return _sidebarFilters.SearchQuery(); }
         void SearchQuery(winrt::hstring const& value);
+        void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
@@ -489,6 +491,8 @@ namespace winrt::TerminalApp::implementation
                                     winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSearchTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& e);
+        void OnSearchBoxFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void OnHistoryExpandedChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -519,6 +523,8 @@ namespace winrt::TerminalApp::implementation
                                        winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRowHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnRowHeaderSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
         void OnHeaderRenameEnded(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::Foundation::IInspectable const& args);
         void OnPaneRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -590,6 +596,9 @@ namespace winrt::TerminalApp::implementation
         bool _isRailCollapsed{ false };
         bool _isVerticalPresentation{ true };
         bool _searchActive{ false };
+        winrt::hstring _searchKeyChordText;
+        winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipLabel{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipShortcut{ nullptr };
         bool _syncingSearchState{ false };
         bool _searchPanelExpanded{ false };
         bool _searchAnimationEnabled{ false };
@@ -710,6 +719,7 @@ namespace winrt::TerminalApp::implementation
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         winrt::Windows::UI::Xaml::Style _historyStatusTextStyle(winrt::hstring const& status);
         bool _updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item);
+        void _updateSidebarActionLayout(const winrt::Windows::UI::Xaml::FrameworkElement& row);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();

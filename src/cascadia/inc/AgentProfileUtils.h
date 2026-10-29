@@ -150,18 +150,36 @@ namespace Microsoft::Terminal::AgentProfiles
         }
     }
 
+    inline bool CanPinNewSession(const std::wstring_view id, const std::wstring_view arguments)
+    {
+        if (id != L"copilot" && id != L"claude" && id != L"gemini")
+        {
+            return false;
+        }
+        return std::ranges::none_of(ParseArguments(arguments), [](const auto& argument) {
+            const auto flag = std::wstring_view{ argument }.substr(0, argument.find(L'='));
+            return flag == L"--resume" || flag == L"--continue" || flag == L"--help" || flag == L"--version";
+        });
+    }
+
     inline std::wstring BuildCommand(const std::wstring_view executable,
                                      const std::wstring_view id,
                                      const std::wstring_view model,
                                      const std::wstring_view permissionMode,
                                      const std::wstring_view arguments,
-                                     const bool validate = true)
+                                     const bool validate = true,
+                                     const std::wstring_view sessionId = {})
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(id));
         auto values = ParseArguments(arguments);
         if (validate)
         {
             ValidateArguments(id, values);
+        }
+        if (!sessionId.empty())
+        {
+            THROW_HR_IF(E_INVALIDARG, !CanPinNewSession(id, arguments));
+            values.insert(values.begin(), { L"--session-id", std::wstring{ sessionId } });
         }
         if (!permissionMode.empty())
         {
@@ -249,7 +267,7 @@ namespace Microsoft::Terminal::AgentProfiles
     }
 
     template<typename Profile>
-    std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
+    std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath(), const std::wstring_view sessionId = {})
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
         std::filesystem::path executable;
@@ -271,7 +289,6 @@ namespace Microsoft::Terminal::AgentProfiles
             // Orphaned profiles must remain editable without an installed CLI.
             executable = std::wstring{ Settings::Model::AgentRegistry::CliExecutable(std::wstring_view{ profile.AgentProfileId() }) } + L".exe";
         }
-        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(),
-                            profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
+        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable, sessionId);
     }
 }

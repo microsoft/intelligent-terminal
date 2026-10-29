@@ -29,6 +29,8 @@
                     <ResourceDictionary.ThemeDictionaries>
                         <ResourceDictionary x:Key="Light">
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#005FB7" />
+                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                             Color="#005FB7" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -40,6 +42,8 @@
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="Dark">
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#60CDFF" />
+                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
+                                             Color="#60CDFF" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -51,6 +55,8 @@
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="HighContrast">
                             <StaticResource x:Key="AgentsOnlyIndicatorBrush"
+                                            ResourceKey="SystemColorWindowTextColorBrush" />
+                            <StaticResource x:Key="AgentCompletionIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
@@ -275,18 +281,35 @@
                                     Content="{Binding Foreground, ElementName=HistoryTitleText}"
                                     ContentTemplate="{x:Bind IconTemplate}"
                                     IsTabStop="False" />
-                    <Grid Grid.Column="1"
-                          HorizontalAlignment="Left">
+                    <Grid x:Name="HistoryTitleGroup"
+                          Grid.Column="1"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <local:HighlightedTextControl x:Name="HistoryTitleText"
+                                                      VerticalAlignment="Center"
                                                       SearchText="{x:Bind SearchQuery}"
                                                       Text="{x:Bind Title}"
                                                       TextBlockStyle="{StaticResource HistoryTitleTextStyle}" />
+                        <Grid x:Name="HistoryCompletionIndicator"
+                              Grid.Column="1"
+                              Width="24"
+                              Height="24"
+                              Margin="12,0,0,0"
+                              VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw"
+                              IsHitTestVisible="False"
+                              Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
+                            <Ellipse Width="4"
+                                     Height="4"
+                                     Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                        </Grid>
                         <FontIcon x:Name="HistoryKeepRunningIcon"
-                                  Grid.Column="1"
+                                  Grid.Column="2"
                                   Margin="12,0,0,0"
                                   VerticalAlignment="Center"
                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -427,8 +450,117 @@
                           VerticalAlignment="Center"
                           Background="Transparent"
                           BorderThickness="0"
+                          Click="OnSearchToggleClick"
+                          CornerRadius="{ThemeResource ControlCornerRadius}"
                           PointerPressed="OnSearchPointerPressed"
-                          Click="OnSearchToggleClick">
+                          UseSystemFocusVisuals="True">
+                <ToggleButton.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Dark">
+                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
+                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
+                                                ResourceKey="ControlFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
+                                                ResourceKey="ControlFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundChecked"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed"
+                                                ResourceKey="TextFillColorSecondaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Light">
+                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
+                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
+                                                ResourceKey="ControlFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
+                                                ResourceKey="ControlFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundChecked"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver"
+                                                ResourceKey="TextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="ToggleButtonForegroundCheckedPressed"
+                                                ResourceKey="TextFillColorSecondaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="HighContrast" />
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                </ToggleButton.Resources>
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <!--  Keep the hit target larger than the visible toolbar affordance.  -->
+                        <Grid Background="Transparent">
+                            <ContentPresenter x:Name="SearchButtonPresenter"
+                                              Width="24"
+                                              Height="24"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              HorizontalContentAlignment="Center"
+                                              VerticalContentAlignment="Center"
+                                              Background="{TemplateBinding Background}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Control.IsTemplateFocusTarget="True"
+                                              CornerRadius="{TemplateBinding CornerRadius}"
+                                              FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                              FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                              FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                              FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                              FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundPointerOver}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundPressed}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundDisabled}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundDisabled}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundChecked}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundChecked}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundCheckedPointerOver}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundCheckedPointerOver}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundCheckedPressed}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundCheckedPressed}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedDisabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="SearchButtonPresenter.Background" Value="{ThemeResource ToggleButtonBackgroundDisabled}" />
+                                            <Setter Target="SearchButtonPresenter.Foreground" Value="{ThemeResource ToggleButtonForegroundDisabled}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </ToggleButton.Template>
                 <PathIcon Width="16"
                           Height="16"
                           Data="M11.0195 11.7266C10.0658 12.5217 8.83875 13 7.5 13C4.46243 13 2 10.5376 2 7.5C2 4.46243 4.46243 2 7.5 2C10.5376 2 13 4.46243 13 7.5C13 8.83875 12.5217 10.0658 11.7266 11.0195L14.8535 14.1464C15.0488 14.3417 15.0488 14.6583 14.8535 14.8536C14.6583 15.0488 14.3417 15.0488 14.1464 14.8536L11.0195 11.7266ZM12 7.5C12 5.01472 9.98528 3 7.5 3C5.01472 3 3 5.01472 3 7.5C3 9.98528 5.01472 12 7.5 12C9.98528 12 12 9.98528 12 7.5Z" />
@@ -509,15 +641,26 @@
               Height="0"
               Opacity="0"
               Visibility="Collapsed">
-            <Grid Margin="6,4">
+            <Grid Margin="20,4">
                 <TextBox x:Name="SearchTextBox"
                          x:Uid="VerticalTabsSearchBox"
                          Height="32"
-                         Padding="8,6,8,0"
+                         Padding="36,6,8,0"
                          VerticalAlignment="Center"
                          VerticalContentAlignment="Center"
+                         GotFocus="OnSearchBoxFocusChanged"
                          KeyDown="OnSearchBoxKeyDown"
+                         LostFocus="OnSearchBoxFocusChanged"
                          TextChanged="OnSearchTextChanged" />
+                <PathIcon Width="16"
+                          Height="16"
+                          Margin="12,0,0,0"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          AutomationProperties.AccessibilityView="Raw"
+                          Data="M11.0195 11.7266C10.0658 12.5217 8.83875 13 7.5 13C4.46243 13 2 10.5376 2 7.5C2 4.46243 4.46243 2 7.5 2C10.5376 2 13 4.46243 13 7.5C13 8.83875 12.5217 10.0658 11.7266 11.0195L14.8535 14.1464C15.0488 14.3417 15.0488 14.6583 14.8535 14.8536C14.6583 15.0488 14.3417 15.0488 14.1464 14.8536L11.0195 11.7266ZM12 7.5C12 5.01472 9.98528 3 7.5 3C5.01472 3 3 5.01472 3 7.5C3 9.98528 5.01472 12 7.5 12C9.98528 12 12 9.98528 12 7.5Z"
+                          Foreground="{Binding Foreground, ElementName=SearchTextBox, Mode=OneWay}"
+                          IsHitTestVisible="False" />
             </Grid>
         </Grid>
 
@@ -675,29 +818,36 @@
                                                     Margin="0,3"
                                                     HorizontalAlignment="Stretch"
                                                     VerticalAlignment="Center"
-                                                    Loaded="OnRowHeaderLoaded"
-                                                    Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     IsMetadataVisible="{x:Bind IsMetadataVisible, Mode=OneWay}"
+                                                    Loaded="OnRowHeaderLoaded"
+                                                    PaneRowsVisibility="{x:Bind ChildrenVisibility, Mode=OneWay}"
+                                                    Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     ShowProgressRing="False"
+                                                    SizeChanged="OnRowHeaderSizeChanged"
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
-                            <Button x:Name="TabCloseButton"
-                                    Grid.Column="2"
-                                    Width="28"
-                                    Height="28"
-                                    MinWidth="0"
-                                    MinHeight="0"
-                                    Margin="0,4,4,0"
-                                    Padding="0"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    CornerRadius="4"
-                                    Click="OnTabCloseClick"
-                                    VerticalAlignment="Top"
-                                    Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
-                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="10"
-                                          Glyph="&#xE711;" />
-                            </Button>
+                            <Grid x:Name="TabCloseButtonSlot"
+                                  Grid.Column="2"
+                                  Width="24"
+                                  Height="24"
+                                  VerticalAlignment="Top"
+                                  Visibility="{x:Bind HeaderVisibility, Mode=OneWay}">
+                                <Button x:Name="TabCloseButton"
+                                        Width="24"
+                                        Height="24"
+                                        MinWidth="0"
+                                        MinHeight="0"
+                                        Padding="0"
+                                        VerticalAlignment="Top"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Click="OnTabCloseClick"
+                                        CornerRadius="4"
+                                        Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
+                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="10"
+                                              Glyph="&#xE711;" />
+                                </Button>
+                            </Grid>
                         </Grid>
                         <ItemsControl x:Name="TabPaneItems"
                                       Margin="10,0,0,0"
@@ -730,10 +880,10 @@
                                           PointerExited="OnPanePointerExited"
                                           PointerPressed="OnPanePointerPressed"
                                           RightTapped="OnPaneRightTapped"
+                                          SizeChanged="OnSidebarRowSizeChanged"
                                           Unloaded="OnPaneRowUnloaded">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <!-- The pane dismiss button remains wired below; its collapsed state makes this Auto column zero-width. -->
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <Border x:Name="PaneActiveBackground"
@@ -824,32 +974,52 @@
                                                                   IsActive="{x:Bind IsProgressRingActive, Mode=OneWay}"
                                                                   Visibility="{x:Bind IsProgressRingIndeterminate, Mode=OneWay}" />
                                                 </Grid>
-                                                <local:HighlightedTextControl x:Name="PaneTitleText"
-                                                                              Grid.Column="2"
-                                                                              Margin="2,3,0,0"
-                                                                              VerticalAlignment="Center"
-                                                                              SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
-                                                                              Text="{x:Bind Title, Mode=OneWay}">
-                                                    <local:HighlightedTextControl.TextBlockStyle>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                                        </Style>
-                                                    </local:HighlightedTextControl.TextBlockStyle>
-                                                </local:HighlightedTextControl>
+                                                <Grid Grid.Column="2"
+                                                      Margin="2,3,0,0"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <local:HighlightedTextControl x:Name="PaneTitleText"
+                                                                                  VerticalAlignment="Center"
+                                                                                  SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                                  Text="{x:Bind Title, Mode=OneWay}">
+                                                        <local:HighlightedTextControl.TextBlockStyle>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                            </Style>
+                                                        </local:HighlightedTextControl.TextBlockStyle>
+                                                    </local:HighlightedTextControl>
+                                                    <Grid x:Name="PaneCompletionIndicator"
+                                                          Grid.Column="1"
+                                                          Width="24"
+                                                          Height="24"
+                                                          Margin="12,0,0,0"
+                                                          VerticalAlignment="Center"
+                                                          AutomationProperties.AccessibilityView="Raw"
+                                                          IsHitTestVisible="False"
+                                                          Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
+                                                        <Ellipse Width="4"
+                                                                 Height="4"
+                                                                 Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                                    </Grid>
+                                                </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneMetadataText"
                                                                               Grid.Row="1"
                                                                               Grid.Column="2"
                                                                               Margin="2,1,0,3"
-                                                                              TextOpacity="0.72"
+                                                                              AutomationProperties.AccessibilityView="Raw"
+                                                                              CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
                                                                               ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
                                                                               ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
-                                                                              SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
-                                                                              CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
                                                                               CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                                                               SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
+                                                                              SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
                                                                               Text="{x:Bind MetadataText, Mode=OneWay}"
-                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}"
-                                                                              AutomationProperties.AccessibilityView="Raw">
+                                                                              TextOpacity="0.72"
+                                                                              Visibility="{x:Bind MetadataVisibility, Mode=OneWay}">
                                                     <local:HighlightedTextControl.TextBlockStyle>
                                                         <Style TargetType="TextBlock">
                                                             <Setter Property="MaxLines" Value="2" />
@@ -860,24 +1030,28 @@
                                                 </local:HighlightedTextControl>
                                             </Grid>
                                         </Button>
-                                        <Button x:Name="PaneCloseButton"
-                                                Grid.Column="1"
-                                                Width="26"
-                                                Height="26"
-                                                MinWidth="0"
-                                                MinHeight="0"
-                                                Margin="0,4,4,0"
-                                                Padding="0"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                CornerRadius="4"
-                                                Click="OnPaneCloseClick"
-                                                VerticalAlignment="Top"
-                                                Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
-                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                      FontSize="10"
-                                                      Glyph="&#xE711;" />
-                                        </Button>
+                                        <Grid x:Name="PaneCloseButtonSlot"
+                                              Grid.Column="1"
+                                              Width="24"
+                                              Height="24"
+                                              VerticalAlignment="Top">
+                                            <Button x:Name="PaneCloseButton"
+                                                    Width="24"
+                                                    Height="24"
+                                                    MinWidth="0"
+                                                    MinHeight="0"
+                                                    Padding="0"
+                                                    VerticalAlignment="Top"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Click="OnPaneCloseClick"
+                                                    CornerRadius="4"
+                                                    Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
+                                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="10"
+                                                          Glyph="&#xE711;" />
+                                            </Button>
+                                        </Grid>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
