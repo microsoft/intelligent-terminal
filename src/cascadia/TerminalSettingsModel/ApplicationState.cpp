@@ -122,7 +122,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool pendingIntroduction = false;
         {
             const std::scoped_lock guard{ _sidebarIntroductionMutex };
-            pendingIntroduction = _sidebarIntroductionLock && _sidebarIntroductionPresented;
+            pendingIntroduction = (_sidebarIntroductionLock && _sidebarIntroductionPresented) ||
+                                  (_agentProfilesIntroductionLock && _agentProfilesIntroductionDismissed);
         }
         if (pendingIntroduction)
         {
@@ -258,6 +259,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             {
                 root["sidebarIntroductionShown"] = true;
             }
+            if (_agentProfilesIntroductionDismissed)
+            {
+                root["agentProfilesIntroductionShown"] = true;
+            }
             _writeSharedContents(Json::writeString(wbuilder, root));
 
             // Finally, write our Local properties back to elevated-state.json
@@ -272,6 +277,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             {
                 root["sidebarIntroductionShown"] = true;
             }
+            if (_agentProfilesIntroductionDismissed)
+            {
+                root["agentProfilesIntroductionShown"] = true;
+            }
             _writeLocalContents(Json::writeString(wbuilder, root));
         }
         if (_sidebarIntroductionLock && _sidebarIntroductionPresented)
@@ -281,6 +290,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             _state.lock()->SidebarIntroductionShown = true;
             _sidebarIntroductionPresented = false;
             _sidebarIntroductionLock.reset();
+        }
+        if (_agentProfilesIntroductionLock && _agentProfilesIntroductionDismissed)
+        {
+            _state.lock()->AgentProfilesIntroductionShown = true;
+            _agentProfilesIntroductionDismissed = false;
+            _agentProfilesIntroductionLock.reset();
         }
     }
     CATCH_LOG()
@@ -337,7 +352,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     {
         // A stale window (or the other elevation level) must never erase a
         // completed once-only operation when it saves unrelated state.
-        for (const auto key : { "sidebarLayoutMigrationCompleted", "sidebarIntroductionShown" })
+        for (const auto key : { "sidebarLayoutMigrationCompleted", "sidebarIntroductionShown", "agentProfilesIntroductionShown" })
         {
             if (previous[key].isBool() && previous[key].asBool())
             {
@@ -521,6 +536,57 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
         _sidebarIntroductionPresented = false;
         _sidebarIntroductionLock.reset();
+    }
+
+    uint64_t ApplicationState::TryBeginAgentProfilesIntroduction()
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (_agentProfilesIntroductionLock || AgentProfilesIntroductionShown())
+        {
+            return 0;
+        }
+        auto lock = _lockSidebarFile(L".agent-profiles.introduction.lock", false);
+        if (!lock)
+        {
+            return 0;
+        }
+        const auto stateLock = LockSidebarState(false);
+        if (!stateLock)
+        {
+            return 0;
+        }
+        const auto root = _readSharedJson();
+        const auto dismissed = JsonUtils::GetValueForKey<bool>(root, "agentProfilesIntroductionShown");
+        _state.lock()->AgentProfilesIntroductionShown = dismissed;
+        if (dismissed)
+        {
+            return 0;
+        }
+        // Verify persistence before showing a once-only introduction.
+        _writeSharedContents(Json::writeString(Json::StreamWriterBuilder{}, root));
+        _agentProfilesIntroductionLock = std::move(lock);
+        return ++_agentProfilesIntroductionClaim;
+    }
+
+    void ApplicationState::EndAgentProfilesIntroduction(const uint64_t claim, const bool dismissed)
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (!_agentProfilesIntroductionLock || claim != _agentProfilesIntroductionClaim)
+        {
+            return;
+        }
+        if (dismissed)
+        {
+            _agentProfilesIntroductionDismissed = true;
+            AgentProfilesIntroductionShown(true);
+        }
+        if (_agentProfilesIntroductionDismissed)
+        {
+            const auto stateLock = LockSidebarState();
+            _persistSidebarFlag("agentProfilesIntroductionShown");
+        }
+        _agentProfilesIntroductionDismissed = false;
+        _agentProfilesIntroductionLock.reset();
     }
 
     // Returns the application-global ApplicationState object.

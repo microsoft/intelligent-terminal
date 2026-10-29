@@ -52,7 +52,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, bool, SidebarIntroductionShown, "sidebarIntroductionShown", false)                                                                              \
     X(FileSource::Shared, winrt::guid, FeatureRolloutId, "featureRolloutId")                                                                                              \
     X(FileSource::Shared, uint32_t, SidebarRolloutVersion, "sidebarRolloutVersion", 0)                                                                                    \
-    X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")
+    X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")                                                                           \
+    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)
 
     struct WindowLayout : WindowLayoutT<WindowLayout>
     {
@@ -95,6 +96,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
         uint64_t TryBeginSidebarIntroduction();
         void EndSidebarIntroduction(uint64_t claim, bool shown);
+        uint64_t TryBeginAgentProfilesIntroduction();
+        void EndAgentProfilesIntroduction(uint64_t claim, bool dismissed);
 
         // Hold this lock across reading settings, migration, and recording completion.
         wil::unique_handle LockSidebarState(bool wait = true) const;
@@ -130,6 +133,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         wil::unique_handle _sidebarIntroductionLock;
         uint64_t _sidebarIntroductionClaim{ 0 };
         bool _sidebarIntroductionPresented{ false };
+        wil::unique_handle _agentProfilesIntroductionLock;
+        uint64_t _agentProfilesIntroductionClaim{ 0 };
+        bool _agentProfilesIntroductionDismissed{ false };
 
         void _write() noexcept;
         void _read() const noexcept;
