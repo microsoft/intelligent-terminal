@@ -2807,6 +2807,15 @@ namespace winrt::TerminalApp::implementation
         _displayOptionsKeyDownRevoker.revoke();
     }
 
+    void TabStrip::DismissDisplayOptions()
+    {
+        _keepRichTabMetadataFlyoutOpen = false;
+        if (const auto flyout = FilterTabsButton().Flyout())
+        {
+            flyout.Hide();
+        }
+    }
+
     void TabStrip::OnRichTabMetadataFlyoutClosing(
         IInspectable const&,
         WUX::Controls::Primitives::FlyoutBaseClosingEventArgs const& e)

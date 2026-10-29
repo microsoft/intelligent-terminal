@@ -9793,6 +9793,24 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, closingCount);
             VERIFY_IS_FALSE(closeCanceled);
             VERIFY_IS_FALSE(flyout.IsOpen());
+
+            flyout.ShowAt(filterButton);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+            stripImpl->DismissDisplayOptions();
+            VERIFY_ARE_EQUAL(3u, closingCount);
+            VERIFY_IS_FALSE(closeCanceled);
+            VERIFY_IS_FALSE(flyout.IsOpen());
+        });
+
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto stripImpl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto filterButton = stripImpl->FilterTabsButton();
+            const auto flyout = filterButton.Flyout();
+            flyout.ShowAt(filterButton);
+            VERIFY_IS_TRUE(flyout.IsOpen());
+            page->TitlebarClicked();
+            VERIFY_IS_FALSE(flyout.IsOpen());
         });
     }
 
