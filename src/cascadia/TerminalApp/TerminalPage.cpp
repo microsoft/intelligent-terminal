@@ -9408,7 +9408,10 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                _CreateNewTabFromPane(newPane);
+                if (_CreateNewTabFromPane(newPane) && _isVerticalLayout)
+                {
+                    _ClearTabSearch();
+                }
                 sessionType = "Tab";
             }
         }
