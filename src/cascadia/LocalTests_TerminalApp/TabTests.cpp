@@ -462,6 +462,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(FreHidesAndRestoresTabChrome);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
         TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
@@ -7034,6 +7035,32 @@ namespace TerminalAppLocalTests
             const auto minimizeBounds = minimize.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(minimize.ActualWidth()), static_cast<float>(minimize.ActualHeight()) });
             const auto closeBounds = close.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(close.ActualWidth()), static_cast<float>(close.ActualHeight()) });
             VERIFY_IS_TRUE(closeBounds.X < minimizeBounds.X);
+        });
+    }
+
+    void TabTests::FreHidesAndRestoresTabChrome()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto verticalTitlebar = row->VerticalTitleBarContent();
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(false);
+            page->_UpdateTabView();
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(true);
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
         });
     }
 

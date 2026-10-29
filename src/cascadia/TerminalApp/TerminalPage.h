@@ -687,6 +687,7 @@ namespace winrt::TerminalApp::implementation
         bool _startupStructureSettleQueued{ false };
         bool _pendingFreEnsureAgentPaneVisible{ false };
         bool _pendingFreAutoInstallCopilot{ false };
+        bool _freChromeVisible{ true };
         winrt::hstring _freAutoInstallTargetTabId;
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
@@ -1512,6 +1513,7 @@ namespace winrt::TerminalApp::implementation
 
         // First-run experience
         bool _IsFreRequired() const;
+        void _SetFreChromeVisible(bool visible);
         void _ShowFreOverlay();
         void _OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender, const winrt::Windows::Foundation::IInspectable& args);
 
