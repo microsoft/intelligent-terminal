@@ -7271,6 +7271,18 @@ namespace TerminalAppLocalTests
     void TabTests::AgentProfileInvalidArgumentsDisplayStartupFailure()
     {
         auto page = _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        uint32_t tabsBefore{};
+        int panesBefore{};
+        bool animations{};
+        TestOnUIThread([&]() {
+            animations = Media::Animation::Timeline::AllowDependentAnimations();
+            Media::Animation::Timeline::AllowDependentAnimations(false);
+        });
+        const auto restoreAnimations = wil::scope_exit([&]() {
+            LOG_IF_FAILED(RunOnUIThread([&]() { Media::Animation::Timeline::AllowDependentAnimations(animations); }));
+        });
+        const auto processed = std::make_shared<::details::Event>();
         TestOnUIThread([&]() {
             namespace fs = std::filesystem;
             using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
@@ -7314,18 +7326,17 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(output.find(L"Unsupported or conflicting native agent argument") != std::wstring::npos);
             VERIFY_IS_TRUE(output.find(L"--yolo") != std::wstring::npos);
 
-            const auto tabsBefore = page->_tabs.Size();
+            tabsBefore = page->_tabs.Size();
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, false, false, false, false);
             VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
-            const auto tab = page->_GetFocusedTabImpl();
+            tab = page->_GetFocusedTabImpl();
             const auto failedTabConnection = tab->GetActiveTerminalControl().Connection();
             if (failedTabConnection.State() == State::NotConnected)
             {
                 failedTabConnection.Start();
             }
             VERIFY_ARE_EQUAL(State::Failed, failedTabConnection.State());
-            VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
-            const auto panesBefore = tab->GetLeafPaneCount();
+            panesBefore = tab->GetLeafPaneCount();
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, true, false, false, false);
             const auto failedSplitConnection = tab->GetActiveTerminalControl().Connection();
             if (failedSplitConnection.State() == State::NotConnected)
@@ -7333,7 +7344,6 @@ namespace TerminalAppLocalTests
                 failedSplitConnection.Start();
             }
             VERIFY_ARE_EQUAL(State::Failed, failedSplitConnection.State());
-            VERIFY_ARE_EQUAL(panesBefore + 1, tab->GetLeafPaneCount());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"--yolo" }, profile.AgentProfileArguments());
 
             profile.AgentProfileArguments(L"--version");
@@ -7342,6 +7352,13 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(State::NotConnected, valid.State());
             VERIFY_IS_TRUE(std::wstring_view{ valid.as<Conpty>().Commandline() }.find(L"--version") != std::wstring_view::npos);
             valid.Close();
+            // Drain normal-priority failure handlers; disabled animations make any pane closes synchronous.
+            tab->TabViewItem().Dispatcher().RunAsync(CoreDispatcherPriority::Low, [processed]() { processed->Set(); });
+        });
+        VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(processed->m_handle, 10000));
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(panesBefore + 1, tab->GetLeafPaneCount());
         });
     }
 
