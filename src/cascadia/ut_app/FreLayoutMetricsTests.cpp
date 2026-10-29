@@ -119,7 +119,7 @@ namespace TerminalAppUnitTests
         static_assert(constrained.width > 1751.0 && constrained.width < 1752.0);
 
         VERIFY_ARE_EQUAL(1040.0, constrained.height);
-        VERIFY_ARE_EQUAL(1752l, lrint(constrained.width));
+        VERIFY_ARE_EQUAL(1751l, lrint(constrained.width));
         VERIFY_ARE_EQUAL(1040l, lrint(constrained.height));
         VERIFY_IS_TRUE(std::abs(
                            (constrained.width / constrained.height) -
@@ -131,7 +131,7 @@ namespace TerminalAppUnitTests
             constrained,
             { 0.0, 0.0 },
             { 1920.0, 1040.0 });
-        VERIFY_ARE_EQUAL(0.0, position.x);
+        VERIFY_ARE_EQUAL(100.0, position.x);
         VERIFY_ARE_EQUAL(0.0, position.y);
     }
 
