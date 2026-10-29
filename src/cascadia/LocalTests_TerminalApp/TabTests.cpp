@@ -9796,6 +9796,7 @@ namespace TerminalAppLocalTests
 
             flyout.ShowAt(filterButton);
             VERIFY_IS_TRUE(flyout.IsOpen());
+            stripImpl->OnRichTabWorkingDirectoryVisibleClick(nullptr, {});
             stripImpl->DismissDisplayOptions();
             VERIFY_ARE_EQUAL(3u, closingCount);
             VERIFY_IS_FALSE(closeCanceled);
@@ -9809,6 +9810,7 @@ namespace TerminalAppLocalTests
             const auto flyout = filterButton.Flyout();
             flyout.ShowAt(filterButton);
             VERIFY_IS_TRUE(flyout.IsOpen());
+            stripImpl->OnRichTabWorkingDirectoryVisibleClick(nullptr, {});
             page->TitlebarClicked();
             VERIFY_IS_FALSE(flyout.IsOpen());
         });
