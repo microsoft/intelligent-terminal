@@ -11,6 +11,7 @@
 #include "VirtualDesktopUtils.h"
 #include "WindowEmperor.h"
 #include "TerminalProtocolComServer.h"
+#include "../TerminalApp/FreLayoutMetrics.h"
 #include "../types/inc/utils.hpp"
 
 using namespace winrt::Windows::UI;
@@ -625,6 +626,17 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     GetMonitorInfo(hMonNearest, &nearestMonitorInfo);
     const til::size desktopDimensions{ nearestMonitorInfo.rcWork.right - nearestMonitorInfo.rcWork.left,
                                        nearestMonitorInfo.rcWork.bottom - nearestMonitorInfo.rcWork.top };
+
+    if (!ApplicationState::SharedInstance().AgentFreCompleted())
+    {
+        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+            { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
+            { static_cast<double>(desktopDimensions.width), static_cast<double>(desktopDimensions.height) });
+        dimensions = {
+            gsl::narrow<til::CoordType>(constrained.width),
+            gsl::narrow<til::CoordType>(constrained.height),
+        };
+    }
 
     // GH#10583 - Adjust the position of the rectangle to account for the size
     // of the invisible borders on the left/right. We DON'T want to adjust this

@@ -467,6 +467,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
         TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
         TEST_METHOD(FreWelcomeMinimumLayoutScrollsWithStickyFooter);
+        TEST_METHOD(FreWelcomeLayoutSupportsEnlargedText);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
@@ -7175,6 +7176,8 @@ namespace TerminalAppLocalTests
     {
         TestOnUIThread([]() {
             winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
             fre.Measure({ 1130, 631 });
             fre.Arrange({ 0, 0, 1130, 631 });
             fre.UpdateLayout();
@@ -7218,6 +7221,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(36.0, title.LineHeight());
             VERIFY_ARE_EQUAL(16.0, subtitle.FontSize());
             VERIFY_ARE_EQUAL(22.0, subtitle.LineHeight());
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
 
             VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 1032.0) <= 0.5);
             VERIFY_ARE_EQUAL(3u, cards.ColumnDefinitions().Size());
@@ -7252,7 +7256,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(footer.ActualHeight() - 80.0) <= 0.5);
             VERIFY_IS_TRUE(std::abs(next.ActualWidth() - 120.0) <= 0.5);
             VERIFY_IS_TRUE(std::abs(next.ActualHeight() - 32.0) <= 0.5);
-            VERIFY_ARE_EQUAL(ScrollBarVisibility::Disabled, scroller.VerticalScrollBarVisibility());
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
 
             const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
             VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 551.0f) <= 0.5f);
@@ -7263,6 +7267,8 @@ namespace TerminalAppLocalTests
     {
         TestOnUIThread([]() {
             winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
             fre.Measure({ 711, 631 });
             fre.Arrange({ 0, 0, 711, 631 });
             fre.UpdateLayout();
@@ -7309,6 +7315,29 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(nextOrigin.Y >= footerOrigin.Y);
             VERIFY_IS_TRUE(nextOrigin.X + next.ActualWidth() <= 711.0);
             VERIFY_IS_TRUE(nextOrigin.Y + next.ActualHeight() <= 631.0);
+        });
+    }
+
+    void TabTests::FreWelcomeLayoutSupportsEnlargedText()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            const auto title = fre.FindName(L"WelcomeTitle").as<TextBlock>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").as<ScrollViewer>();
+            title.FontSize(56);
+            title.LineHeight(72);
+
+            fre.Measure({ 1130, 631 });
+            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
+            VERIFY_IS_TRUE(title.ActualHeight() > 72.0);
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
         });
     }
 

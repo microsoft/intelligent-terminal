@@ -17,14 +17,23 @@ namespace winrt::TerminalApp::implementation
     {
         return {
             1130.0 * scale,
-            671.0 * scale,
+            631.0 * scale,
+        };
+    }
+
+    constexpr FreWindowSize ClampFreWindowSizeToWorkArea(const FreWindowSize requested,
+                                                         const FreWindowSize workArea) noexcept
+    {
+        return {
+            std::min(requested.width, workArea.width),
+            std::min(requested.height, workArea.height),
         };
     }
 
     constexpr double ClampFreMinimumWindowDimension(const bool widthOrHeight,
                                                      const double dimension) noexcept
     {
-        return std::max(dimension, widthOrHeight ? 711.0 : 671.0);
+        return std::max(dimension, widthOrHeight ? 711.0 : 631.0);
     }
 
     constexpr bool ShouldUseFreDefaultWindowSize(const bool freRequired,
@@ -81,14 +90,12 @@ namespace winrt::TerminalApp::implementation
         double cardTextSpacing{ 10.0 };
         int autofixCardColumn{ 0 };
         int sidebarCardColumn{ 2 };
-        bool verticalScrolling{};
     };
 
     constexpr FreWelcomeLayout ResolveFreWelcomeLayout(const double viewportWidth,
-                                                        const double viewportHeight = 671.0) noexcept
+                                                        const double /*viewportHeight*/ = 631.0) noexcept
     {
         constexpr double wideBreakpoint = 1020.0;
-        constexpr double minimumViewportHeight = 631.0;
         constexpr double maximumCardsWidth = 1032.0;
         constexpr double wideHorizontalPadding = 48.0;
         constexpr double compactHorizontalPadding = 46.0;
@@ -102,7 +109,6 @@ namespace winrt::TerminalApp::implementation
         result.cardWidth = std::max(0.0, (cardsWidth - result.cardSpacing) / 2.0);
         result.horizontalPadding = horizontalPadding;
         result.cardMinHeight = 370.0;
-        result.verticalScrolling = compact || viewportHeight < minimumViewportHeight;
         return result;
     }
 }

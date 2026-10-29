@@ -91,7 +91,7 @@
                 <ScrollViewer x:Name="WelcomeContentScroller"
                               Grid.Row="0"
                               HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Disabled">
+                              VerticalScrollBarVisibility="Auto">
                     <Border Padding="0,47,0,0">
                         <StackPanel HorizontalAlignment="Stretch">
                             <!--  Title + Subtitle  -->
@@ -105,7 +105,7 @@
                                            FontFamily="Segoe UI Variable Display, Segoe UI"
                                            FontSize="28" FontWeight="SemiBold"
                                            Foreground="White" TextAlignment="Center"
-                                           LineHeight="36" />
+                                           LineHeight="36" TextWrapping="Wrap" />
                                 <TextBlock x:Name="WelcomeSubtitle"
                                            FontFamily="Segoe UI Variable Small, Segoe UI"
                                            FontSize="16" Foreground="#B3FFFFFF"

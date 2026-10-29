@@ -472,6 +472,15 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
     auto lpMinMaxInfo = reinterpret_cast<LPMINMAXINFO>(lParam);
     lpMinMaxInfo->ptMinTrackSize.x = lroundf(width * pxPerDip) + nonClientSizeScaled.width;
     lpMinMaxInfo->ptMinTrackSize.y = lroundf(height * pxPerDip) + nonClientSizeScaled.height;
+
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (GetMonitorInfo(hmon, &monitorInfo))
+    {
+        const auto workWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+        const auto workHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
+        lpMinMaxInfo->ptMinTrackSize.x = std::min(lpMinMaxInfo->ptMinTrackSize.x, workWidth);
+        lpMinMaxInfo->ptMinTrackSize.y = std::min(lpMinMaxInfo->ptMinTrackSize.y, workHeight);
+    }
 }
 
 [[nodiscard]] LRESULT IslandWindow::MessageHandler(UINT const message, WPARAM const wparam, LPARAM const lparam) noexcept

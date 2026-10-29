@@ -76,8 +76,7 @@ namespace winrt::TerminalApp::implementation
         SidebarCard().Width(layout.cardWidth);
         SidebarCard().MinHeight(layout.cardMinHeight);
         AutofixCard().MinHeight(layout.cardMinHeight);
-        WelcomeContentScroller().VerticalScrollBarVisibility(
-            layout.verticalScrolling ? ScrollBarVisibility::Auto : ScrollBarVisibility::Disabled);
+        WelcomeContentScroller().VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
     }
 
     void FreOverlay::_BeginProgressAttempt(const winrt::hstring& agentId)

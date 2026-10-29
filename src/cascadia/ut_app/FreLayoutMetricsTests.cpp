@@ -16,6 +16,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(WelcomeTypographyAndCardContentMatchFigma);
         TEST_METHOD(FreDefaultWindowSizeHonorsLaunchOverrides);
         TEST_METHOD(FreMinimumWindowSizeMatchesFigma);
+        TEST_METHOD(FreWindowSizeFitsMonitorWorkArea);
         TEST_METHOD(WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint);
         TEST_METHOD(WelcomeLayoutScrollsWhenWideWindowIsTooShort);
     };
@@ -43,7 +44,6 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(551.0, layout.footerTop);
         VERIFY_ARE_EQUAL(591.0, layout.footerWindowTop);
         VERIFY_ARE_EQUAL(3.0, layout.footerOverlap);
-        VERIFY_IS_FALSE(layout.verticalScrolling);
     }
 
     void FreLayoutMetricsTests::MinimumWelcomeLayoutMatchesFigma()
@@ -56,7 +56,6 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(46.0, layout.horizontalPadding);
         VERIFY_ARE_EQUAL(370.0, layout.cardMinHeight);
         VERIFY_ARE_EQUAL(80.0, layout.footerHeight);
-        VERIFY_IS_TRUE(layout.verticalScrolling);
     }
 
     void FreLayoutMetricsTests::WelcomeTypographyAndCardContentMatchFigma()
@@ -88,9 +87,9 @@ namespace TerminalAppUnitTests
         const auto scaledSize = winrt::TerminalApp::implementation::ResolveFreDefaultWindowSize(1.5);
 
         VERIFY_ARE_EQUAL(1130.0, defaultSize.width);
-        VERIFY_ARE_EQUAL(671.0, defaultSize.height);
+        VERIFY_ARE_EQUAL(631.0, defaultSize.height);
         VERIFY_ARE_EQUAL(1695.0, scaledSize.width);
-        VERIFY_ARE_EQUAL(1006.5, scaledSize.height);
+        VERIFY_ARE_EQUAL(946.5, scaledSize.height);
 
         VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(true, false, false, false, false, true));
         VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(false, false, false, false, false, true));
@@ -105,8 +104,18 @@ namespace TerminalAppUnitTests
     {
         VERIFY_ARE_EQUAL(711.0, winrt::TerminalApp::implementation::ClampFreMinimumWindowDimension(true, 460.0));
         VERIFY_ARE_EQUAL(900.0, winrt::TerminalApp::implementation::ClampFreMinimumWindowDimension(true, 900.0));
-        VERIFY_ARE_EQUAL(671.0, winrt::TerminalApp::implementation::ClampFreMinimumWindowDimension(false, 300.0));
+        VERIFY_ARE_EQUAL(631.0, winrt::TerminalApp::implementation::ClampFreMinimumWindowDimension(false, 300.0));
         VERIFY_ARE_EQUAL(800.0, winrt::TerminalApp::implementation::ClampFreMinimumWindowDimension(false, 800.0));
+    }
+
+    void FreLayoutMetricsTests::FreWindowSizeFitsMonitorWorkArea()
+    {
+        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+            { 2260.0, 1342.0 },
+            { 1920.0, 1040.0 });
+
+        VERIFY_ARE_EQUAL(1920.0, constrained.width);
+        VERIFY_ARE_EQUAL(1040.0, constrained.height);
     }
 
     void FreLayoutMetricsTests::WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint()
@@ -114,8 +123,6 @@ namespace TerminalAppUnitTests
         const auto wide = winrt::TerminalApp::implementation::ResolveFreWelcomeLayout(1020.0);
         const auto compact = winrt::TerminalApp::implementation::ResolveFreWelcomeLayout(1019.0);
 
-        VERIFY_IS_FALSE(wide.verticalScrolling);
-        VERIFY_IS_TRUE(compact.verticalScrolling);
         VERIFY_ARE_EQUAL(12.0, wide.cardSpacing);
         VERIFY_ARE_EQUAL(12.0, compact.cardSpacing);
         VERIFY_ARE_EQUAL((wide.cardsWidth - wide.cardSpacing) / 2.0, wide.cardWidth);
@@ -126,6 +133,6 @@ namespace TerminalAppUnitTests
     {
         const auto layout = winrt::TerminalApp::implementation::ResolveFreWelcomeLayout(1130.0, 630.0);
 
-        VERIFY_IS_TRUE(layout.verticalScrolling);
+        VERIFY_ARE_EQUAL(370.0, layout.cardMinHeight);
     }
 }
