@@ -25,6 +25,19 @@ namespace
     constexpr std::wstring_view AutoErrorHandlingDetect{ L"detect" };
     constexpr std::wstring_view AutoErrorHandlingSuggest{ L"suggest" };
     constexpr std::wstring_view AutoErrorHandlingOff{ L"off" };
+
+    auto CaptureAgentPolicyState(const GlobalAppSettings& settings)
+    {
+        return std::tuple{
+            settings.IsAgentPolicyLocked(),
+            settings.IsCustomAgentPolicyLocked(),
+            settings.IsAutoFixPolicyLocked(),
+            settings.IsAgentSessionHooksPolicyLocked(),
+            settings.IsYoloModePolicyLocked(),
+            settings.EffectiveAcpAgent(),
+            settings.EffectiveDelegateAgent(),
+        };
+    }
 }
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
@@ -365,7 +378,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // ── ViewModel ────────────────────────────────────────────────────────
 
     AIAgentsViewModel::AIAgentsViewModel(Model::GlobalAppSettings globalSettings) :
-        _GlobalSettings{ globalSettings }
+        _GlobalSettings{ globalSettings },
+        _agentPolicySnapshot{ ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() },
+        _agentPolicyState{ CaptureAgentPolicyState(globalSettings) }
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
@@ -618,6 +633,68 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             Model::AcpRuntimeState::Current().Changed(_acpRuntimeChangedToken);
         }
+    }
+
+    bool AIAgentsViewModel::TryUpdateSettings(const Model::GlobalAppSettings& globalSettings)
+    {
+        if (_agentPolicySnapshot != ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() ||
+            _agentPolicyState != CaptureAgentPolicyState(globalSettings))
+        {
+            return false;
+        }
+
+        // Keep the live catalog/probe and editing state for unrelated reloads,
+        // but retain normal page reconstruction when an agent setting changes.
+#define CHECK_AGENT_SETTING(name)                                  \
+    if (_GlobalSettings.name() != globalSettings.name() ||         \
+        _GlobalSettings.Has##name() != globalSettings.Has##name()) \
+    {                                                              \
+        return false;                                              \
+    }
+        CHECK_AGENT_SETTING(AcpAgent);
+        CHECK_AGENT_SETTING(AcpModel);
+        CHECK_AGENT_SETTING(AcpCustomCommand);
+        CHECK_AGENT_SETTING(DelegateAgent);
+        CHECK_AGENT_SETTING(DelegateModel);
+        CHECK_AGENT_SETTING(DelegateCustomCommand);
+        CHECK_AGENT_SETTING(CustomModelSelection);
+        CHECK_AGENT_SETTING(AutoErrorDetectionEnabled);
+        CHECK_AGENT_SETTING(AutoFixEnabled);
+        CHECK_AGENT_SETTING(AgentSessionManagementEnabled);
+        CHECK_AGENT_SETTING(ShowTokenUsageAndCost);
+        CHECK_AGENT_SETTING(RenderAgentMarkdown);
+        CHECK_AGENT_SETTING(AgentPanePosition);
+        CHECK_AGENT_SETTING(AgentPaneYoloMode);
+#undef CHECK_AGENT_SETTING
+
+        const auto listsEqual = [](const auto& left, const auto& right, const auto& equal) {
+            if (!left || !right)
+            {
+                return !left && !right;
+            }
+            return std::ranges::equal(left, right, equal);
+        };
+        const auto providersEqual = [&](const Model::CustomModelProvider& left, const Model::CustomModelProvider& right) {
+            return std::tuple{ left.Id(), left.Name(), left.BaseUrl(), left.ApiContract(), left.Location(), left.ApiKeyCredential(), left.ApiKeyRequired() } ==
+                       std::tuple{ right.Id(), right.Name(), right.BaseUrl(), right.ApiContract(), right.Location(), right.ApiKeyCredential(), right.ApiKeyRequired() } &&
+                   listsEqual(left.Models(), right.Models(), [](const auto& leftModel, const auto& rightModel) {
+                       return leftModel.Id() == rightModel.Id() && leftModel.Name() == rightModel.Name();
+                   });
+        };
+        if (_GlobalSettings.HasAcpCustomCommands() != globalSettings.HasAcpCustomCommands() ||
+            _GlobalSettings.HasDelegateCustomCommands() != globalSettings.HasDelegateCustomCommands() ||
+            _GlobalSettings.HasCustomModelProviders() != globalSettings.HasCustomModelProviders() ||
+            !listsEqual(_GlobalSettings.AcpCustomCommands(), globalSettings.AcpCustomCommands(), std::equal_to{}) ||
+            !listsEqual(_GlobalSettings.DelegateCustomCommands(), globalSettings.DelegateCustomCommands(), std::equal_to{}) ||
+            !listsEqual(_GlobalSettings.CustomModelProviders(), globalSettings.CustomModelProviders(), providersEqual))
+        {
+            return false;
+        }
+
+        // MainPage saves its new clone, so subsequent edits must target that
+        // clone rather than the previous one retained by this view model.
+        _GlobalSettings = globalSettings;
+        return true;
     }
 
     void AIAgentsViewModel::_LoadCustomModelProviders()

@@ -10,6 +10,7 @@
 #include "../inc/AgentAvailability.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+#include "CppWinrtTailored.h"
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -75,6 +76,8 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TestIterableColorSchemeCommands);
         TEST_METHOD(TestNewTabMenuExcludesInternalAgentPaneProfile);
+        TEST_METHOD(TestAgentSettingsReloadReusesUnchangedViewModel);
+        TEST_METHOD(TestAgentSettingsReloadRejectsAgentConfigurationChanges);
 
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
@@ -194,6 +197,78 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(0u, viewModel.AvailableProfiles().Size());
         VERIFY_IS_NULL(viewModel.SelectedProfile());
         VERIFY_IS_NULL(viewModel.RequestAddSelectedProfileEntry());
+    }
+
+    void SettingsTests::TestAgentSettingsReloadReusesUnchangedViewModel()
+    {
+        VERIFY_SUCCEEDED(RunOnUIThread([&]() {
+            const CascadiaSettings settings{ LR"({"acpAgent":"","delegateAgent":"","profiles":[]})", {} };
+            const CustomModelProvider provider{ L"provider", L"Provider", L"http://localhost:1234" };
+            provider.ApiKeyRequired(false);
+            provider.Models(winrt::single_threaded_vector<CustomModel>({ CustomModel{ L"model", L"Model" } }));
+            settings.GlobalSettings().CustomModelProviders(winrt::single_threaded_vector<CustomModelProvider>({ provider }));
+            settings.GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ L"custom-agent --acp" }));
+            const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
+            const auto agents = viewModel.AcpAgentList();
+            const auto models = viewModel.AcpModelList();
+            const Editor::AcpModelEntry model{ L"retained-model", L"Retained model", L"" };
+            models.Append(model);
+            uint32_t preparationChanges = 0;
+            const auto token = viewModel.PropertyChanged([&](auto&&, const auto& args) {
+                if (args.PropertyName() == L"IsAcpPreparing")
+                {
+                    ++preparationChanges;
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { viewModel.PropertyChanged(token); });
+
+            for (const auto agentsOnly : { false, true, false })
+            {
+                const auto reloaded = settings.Copy();
+                reloaded.GlobalSettings().SidebarShowAgentsOnly(agentsOnly);
+                reloaded.GlobalSettings().SidebarShowRecentAgentSessions(!agentsOnly);
+                VERIFY_IS_TRUE(viewModel.TryUpdateSettings(reloaded.GlobalSettings()));
+                VERIFY_ARE_EQUAL(agents, viewModel.AcpAgentList());
+                VERIFY_ARE_EQUAL(models, viewModel.AcpModelList());
+                VERIFY_ARE_EQUAL(model, models.GetAt(0));
+                VERIFY_ARE_EQUAL(0u, preparationChanges);
+
+                viewModel.RenderAgentMarkdown(false);
+                VERIFY_IS_FALSE(reloaded.GlobalSettings().RenderAgentMarkdown());
+                VERIFY_IS_TRUE(settings.GlobalSettings().RenderAgentMarkdown());
+                reloaded.GlobalSettings().ClearRenderAgentMarkdown();
+            }
+        }));
+    }
+
+    void SettingsTests::TestAgentSettingsReloadRejectsAgentConfigurationChanges()
+    {
+        VERIFY_SUCCEEDED(RunOnUIThread([&]() {
+            const CascadiaSettings settings{ LR"({"acpAgent":"","delegateAgent":"","profiles":[]})", {} };
+            const CustomModelProvider provider{ L"provider", L"Provider", L"http://localhost:1234" };
+            provider.ApiKeyRequired(false);
+            provider.Models(winrt::single_threaded_vector<CustomModel>({ CustomModel{ L"model", L"Model" } }));
+            settings.GlobalSettings().CustomModelProviders(winrt::single_threaded_vector<CustomModelProvider>({ provider }));
+            settings.GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ L"custom-agent --acp" }));
+            const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
+            const auto checkChanged = [&](const auto& change) {
+                const auto reloaded = settings.Copy();
+                change(reloaded.GlobalSettings());
+                VERIFY_IS_FALSE(viewModel.TryUpdateSettings(reloaded.GlobalSettings()));
+            };
+            checkChanged([](const auto& globals) { globals.AcpAgent(L"copilot"); });
+            checkChanged([](const auto& globals) { globals.AcpModel(L"changed-model"); });
+            checkChanged([](const auto& globals) { globals.AcpCustomCommand(L"custom-agent --acp"); });
+            checkChanged([](const auto& globals) { globals.DelegateAgent(L"claude"); });
+            checkChanged([](const auto& globals) { globals.AgentSessionManagementEnabled(false); });
+            checkChanged([](const auto& globals) {
+                globals.AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ L"different-agent --acp" }));
+            });
+            checkChanged([](const auto& globals) { globals.CustomModelProviders().GetAt(0).BaseUrl(L"http://localhost:5678"); });
+            checkChanged([](const auto& globals) { globals.CustomModelProviders().GetAt(0).ApiKeyCredential(L"different-credential-reference"); });
+            checkChanged([](const auto& globals) { globals.CustomModelProviders().GetAt(0).Models().GetAt(0).Name(L"Renamed model"); });
+            checkChanged([](const auto& globals) { globals.RenderAgentMarkdown(true); });
+        }));
     }
 
     void SettingsTests::TestIterateCommands()

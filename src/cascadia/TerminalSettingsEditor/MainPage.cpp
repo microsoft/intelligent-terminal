@@ -207,6 +207,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // - <none>
     void MainPage::UpdateSettings(const Model::CascadiaSettings& settings)
     {
+        // Reset reuses the source object and must still discard page editing state.
+        const auto externalReload = settings != _settingsSource;
         _settingsSource = settings;
         _settingsClone = settings.Copy();
 
@@ -289,6 +291,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
                 if (foundNavigationParams)
                 {
+                    if (const auto agentsPage = contentFrame().Content().try_as<Editor::AIAgents>();
+                        externalReload && agentsPage && tag.try_as<hstring>() == hstring{ aiAgentsTag } &&
+                        agentsPage.ViewModel().TryUpdateSettings(_settingsClone.GlobalSettings()))
+                    {
+                        SettingsNav().SelectedItem(item);
+                        return;
+                    }
+
                     // found the one that was selected before the refresh
                     _Navigate(destination, subPage);
                     return;

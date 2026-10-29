@@ -13,6 +13,8 @@
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
+#include <tuple>
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     struct AgentEntry : AgentEntryT<AgentEntry>
@@ -97,6 +99,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     public:
         AIAgentsViewModel(Model::GlobalAppSettings globalSettings);
         ~AIAgentsViewModel();
+        bool TryUpdateSettings(const Model::GlobalAppSettings& globalSettings);
         bool IsAcpPreparing() const noexcept { return _acpPreparing; }
         bool AcpPreparationFailed() const noexcept { return _acpPreparationFailed; }
         winrt::hstring AcpPreparationErrorText() const { return _acpPreparationErrorText; }
@@ -196,6 +199,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
+        std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> _agentPolicySnapshot;
+        std::tuple<bool, bool, bool, bool, bool, winrt::hstring, winrt::hstring> _agentPolicyState;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
