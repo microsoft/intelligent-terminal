@@ -17929,6 +17929,10 @@ namespace winrt::TerminalApp::implementation
         {
             _newTabButton.Flyout().Hide();
         }
+        if (_tabStrip)
+        {
+            winrt::get_self<implementation::TabStrip>(_tabStrip)->DismissDisplayOptions();
+        }
         _DismissTabContextMenus();
     }
 

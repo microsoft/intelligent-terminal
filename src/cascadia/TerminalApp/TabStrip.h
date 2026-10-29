@@ -376,6 +376,7 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
+        void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
         void SetAgentCompletionResolver(std::function<bool(const TerminalApp::TabStripHistoryItem&)> resolver);
