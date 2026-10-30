@@ -203,14 +203,16 @@ namespace winrt::TerminalApp::implementation
         _verticalNewTabButton.Content(box_value(L"\xE710"));
         _verticalNewTabButton.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
         _verticalNewTabButton.FontSize(12);
+        _verticalNewTabButton.IsTabStop(false);
         WUX::Automation::AutomationProperties::SetAccessibilityView(_verticalNewTabButton, WUX::Automation::Peers::AccessibilityView::Control);
         const auto newTabName = WUX::Automation::AutomationProperties::GetName(NewTabButton());
         const auto newTabHelpText = WUX::Automation::AutomationProperties::GetHelpText(NewTabButton());
+        const auto newTabMenuName = RS_(L"CompactNewTabMenuButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name");
         WUX::Automation::AutomationProperties::SetName(_verticalNewTabButton, newTabName);
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
-        _verticalNewTabButton.Loaded([](const auto& sender, const auto&) {
+        _verticalNewTabButton.Loaded([newTabName, newTabMenuName](const auto& sender, const auto&) {
             const auto button = sender.template as<MUX::Controls::SplitButton>();
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
@@ -222,8 +224,21 @@ namespace winrt::TerminalApp::implementation
                         background.CornerRadius(button.CornerRadius());
                     }
                 }
+                if (const auto primary = root.FindName(L"PrimaryButton").template try_as<WUX::Controls::Button>())
+                {
+                    primary.IsTabStop(true);
+                    primary.CornerRadius(button.CornerRadius());
+                    primary.FocusVisualMargin(WUX::Thickness{});
+                    WUX::Automation::AutomationProperties::SetName(primary, newTabName);
+                    WUX::Automation::AutomationProperties::SetAccessibilityView(primary, WUX::Automation::Peers::AccessibilityView::Control);
+                }
                 if (const auto secondary = root.FindName(L"SecondaryButton").template try_as<WUX::Controls::Button>())
                 {
+                    secondary.IsTabStop(true);
+                    secondary.CornerRadius(button.CornerRadius());
+                    secondary.FocusVisualMargin(WUX::Thickness{});
+                    WUX::Automation::AutomationProperties::SetName(secondary, newTabMenuName);
+                    WUX::Automation::AutomationProperties::SetAccessibilityView(secondary, WUX::Automation::Peers::AccessibilityView::Control);
                     secondary.Padding(WUX::Thickness{});
                     secondary.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
                     if (const auto icon = secondary.Content().template try_as<WUX::FrameworkElement>())

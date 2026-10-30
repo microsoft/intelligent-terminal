@@ -7131,6 +7131,12 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(newTab.CornerRadius().TopLeft > 0);
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), primaryBackground.CornerRadius());
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), secondaryBackground.CornerRadius());
+                    VERIFY_ARE_EQUAL(primaryBackground.CornerRadius(), primaryButton.CornerRadius());
+                    VERIFY_ARE_EQUAL(secondaryBackground.CornerRadius(), secondaryButton.CornerRadius());
+                    VERIFY_ARE_EQUAL(Thickness{}, primaryButton.FocusVisualMargin());
+                    VERIFY_ARE_EQUAL(Thickness{}, secondaryButton.FocusVisualMargin());
+                    VERIFY_ARE_EQUAL(primaryBounds, bounds(primaryButton));
+                    VERIFY_ARE_EQUAL(secondaryBounds, bounds(secondaryButton));
                     VERIFY_ARE_EQUAL(Thickness{}, primaryButton.Padding());
                     VERIFY_ARE_EQUAL(Thickness{}, secondaryButton.Padding());
                     const auto chevron = secondaryButton.Content().as<FrameworkElement>();

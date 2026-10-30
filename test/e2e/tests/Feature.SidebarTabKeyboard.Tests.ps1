@@ -734,6 +734,73 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab wraps from the rail toggle to the last row'
     }
 
+    It 'Sidebar new tab and dropdown are separate keyboard stops' -Tag 'SidebarNewTabSplitFocus' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $baseline = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
+        Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        (Test-Until -TimeoutSec 5 -Condition {
+            [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Collapse sidebar'
+        }) | Should -BeTrue
+        $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+        $toggle.Current.Name | Should -Be 'Collapse sidebar'
+
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $primary = [Windows.Automation.AutomationElement]::FocusedElement
+        $primary.Current.ProcessId | Should -Be $script:app.Pid
+        $primary.Current.Name | Should -Be 'New tab'
+        $primary.Current.BoundingRectangle.Width |
+            Should -BeLessOrEqual $toggle.Current.BoundingRectangle.Width -Because 'focus must cover only the plus, not the entire split button'
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'split-primary-focus.png') | Out-Null
+
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $dropdown = [Windows.Automation.AutomationElement]::FocusedElement
+        $dropdown.Current.ProcessId | Should -Be $script:app.Pid
+        $dropdown.Current.Name | Should -Be 'New tab menu'
+        $dropdown.Current.BoundingRectangle.Left |
+            Should -BeGreaterOrEqual $primary.Current.BoundingRectangle.Right
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'split-dropdown-focus.png') | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $primary) |
+            Should -BeTrue -Because 'Shift+Tab returns from the dropdown to the plus'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $dropdown) |
+            Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+        (Test-Until -TimeoutSec 5 -Condition {
+            -not $dropdown.Current.HasKeyboardFocus -and
+            [Windows.Automation.AutomationElement]::FocusedElement.Current.ControlType -eq
+                [Windows.Automation.ControlType]::MenuItem
+        }) | Should -BeTrue -Because 'Enter on the dropdown opens its menu'
+        @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count |
+            Should -Be $baseline -Because 'Enter on the dropdown must not create the default tab'
+        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+
+        $toggle.SetFocus()
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $primary) |
+            Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+        try {
+            (Test-Until -TimeoutSec 6 -Condition {
+                @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count -eq $baseline + 1
+            }) | Should -BeTrue -Because 'Enter on the plus creates one default tab'
+        }
+        finally {
+            $created = Get-ActivePane -App $script:app
+            if ($created -and $created.session_id -ne $script:tabB.session_id) {
+                Close-WtPane -App $script:app -SessionId $created.session_id
+            }
+        }
+    }
+
     It 'Sidebar reverse Tab skips an empty Recent Sessions heading' -Tag 'SidebarHistoryFocusCycle' {
         $script:app.Launched | Should -BeTrue
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
