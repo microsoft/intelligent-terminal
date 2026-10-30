@@ -127,12 +127,18 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <local:HighlightedTextControl x:Name="HeaderTextBlock"
+            <TextBlock x:Name="HeaderTextBlock"
+                       MinWidth="0"
+                       VerticalAlignment="Center"
+                       Text="{x:Bind Title, Mode=OneWay}"
+                       TextTrimming="CharacterEllipsis" />
+            <local:HighlightedTextControl x:Name="HeaderHighlightedTextBlock"
                                           MinWidth="0"
                                           VerticalAlignment="Center"
+                                          x:Load="False"
                                           SearchText="{x:Bind SearchText, Mode=OneWay}"
                                           Text="{x:Bind Title, Mode=OneWay}"
-                                          Visibility="Visible">
+                                          Visibility="{x:Bind IsTitleHighlighted, Mode=OneWay}">
                 <local:HighlightedTextControl.TextBlockStyle>
                     <Style TargetType="TextBlock">
                         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -191,6 +197,7 @@
                                       Grid.Row="1"
                                       Grid.ColumnSpan="2"
                                       Margin="0,1,0,0"
+                                      x:Load="False"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
                                       ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"

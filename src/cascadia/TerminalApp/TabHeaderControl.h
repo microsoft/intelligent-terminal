@@ -39,6 +39,7 @@ namespace winrt::TerminalApp::implementation
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         bool InRename();
+        bool IsTitleHighlighted();
         bool IsMetadataVisible() const noexcept;
         void IsMetadataVisible(bool value);
         bool ShowProgressRing() const noexcept;
@@ -86,11 +87,14 @@ namespace winrt::TerminalApp::implementation
         // This view remains owned here when its visual parent is the native slot.
         winrt::Windows::UI::Xaml::Controls::Grid _progressRingPresenter{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _compactCompletionIndicator{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl _highlightedTitle{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl _metadataTextBlock{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::UIElement> _nativeHeaderPresenter;
         int64_t _nativeHeaderVisibilityToken{ 0 };
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _UpdateTitleVisibility();
         void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();
         void _ClearNativeHeaderObserver();

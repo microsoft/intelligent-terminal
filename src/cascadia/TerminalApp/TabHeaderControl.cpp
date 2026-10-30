@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "TabHeaderControl.h"
+#include <winrt/Windows.UI.Xaml.Markup.h>
 
 #include "TabHeaderControl.g.cpp"
 #include "TabHeaderPresentation.g.cpp"
@@ -26,6 +27,7 @@ namespace winrt::TerminalApp::implementation
             Windows::UI::Xaml::Shapes::Shape::FillProperty(), completionBrush);
         _initialized = true;
         _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
 
         Loaded([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self = weakThis.get())
@@ -197,6 +199,10 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->PropertyChanged.raise(*self, args);
+                if (args.PropertyName() == L"SearchText")
+                {
+                    self->_UpdateTitleVisibility();
+                }
                 if (args.PropertyName() == L"HasUnreadActivity" || args.PropertyName() == L"UnreadActivityProjectedToPaneRows")
                 {
                     self->_UpdateUnreadActivityVisibility();
@@ -208,6 +214,7 @@ namespace winrt::TerminalApp::implementation
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
         }
         _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
     }
 
     void TabHeaderControl::PaneRowsVisibility(const Windows::UI::Xaml::Visibility value)
@@ -275,6 +282,35 @@ namespace winrt::TerminalApp::implementation
         return Windows::UI::Xaml::Visibility::Visible == HeaderRenamerTextBox().Visibility();
     }
 
+    bool TabHeaderControl::IsTitleHighlighted()
+    {
+        return !SearchText().empty() && !InRename();
+    }
+
+    void TabHeaderControl::_UpdateTitleVisibility()
+    {
+        if (_initialized)
+        {
+            HeaderTextBlock().Visibility(InRename() || IsTitleHighlighted() ?
+                                             Windows::UI::Xaml::Visibility::Collapsed :
+                                             Windows::UI::Xaml::Visibility::Visible);
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsTitleHighlighted" });
+            // Bound x:Load emits an unavailable projected UnloadObject call; realize static stubs explicitly.
+            if (IsTitleHighlighted())
+            {
+                if (!_highlightedTitle)
+                {
+                    _highlightedTitle = FindName(L"HeaderHighlightedTextBlock").as<TerminalApp::HighlightedTextControl>();
+                }
+            }
+            else if (_highlightedTitle)
+            {
+                Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_highlightedTitle);
+                _highlightedTitle = nullptr;
+            }
+        }
+    }
+
     bool TabHeaderControl::IsMetadataVisible() const noexcept
     {
         return _isMetadataVisible;
@@ -306,9 +342,21 @@ namespace winrt::TerminalApp::implementation
 
     void TabHeaderControl::_UpdateMetadataVisibility()
     {
-        HeaderMetadataTextBlock().Visibility(_isMetadataVisible && !InRename() ?
-                                                 Windows::UI::Xaml::Visibility::Visible :
-                                                 Windows::UI::Xaml::Visibility::Collapsed);
+        if (_isMetadataVisible)
+        {
+            if (!_metadataTextBlock)
+            {
+                _metadataTextBlock = FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+            }
+            _metadataTextBlock.Visibility(!InRename() ?
+                                              Windows::UI::Xaml::Visibility::Visible :
+                                              Windows::UI::Xaml::Visibility::Collapsed);
+        }
+        else if (_metadataTextBlock)
+        {
+            Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_metadataTextBlock);
+            _metadataTextBlock = nullptr;
+        }
     }
 
     // Method Description:
@@ -319,8 +367,8 @@ namespace winrt::TerminalApp::implementation
         _receivedKeyDown = false;
         _renameCancelled = false;
 
-        HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
         HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Visible);
+        _UpdateTitleVisibility();
         _UpdateMetadataVisibility();
 
         HeaderRenamerTextBox().Text(Title());
@@ -385,7 +433,7 @@ namespace winrt::TerminalApp::implementation
         if (HeaderRenamerTextBox().Visibility() == Windows::UI::Xaml::Visibility::Visible)
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
-            HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
+            _UpdateTitleVisibility();
             _UpdateMetadataVisibility();
             if (notify)
             {

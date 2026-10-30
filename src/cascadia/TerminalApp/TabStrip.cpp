@@ -1737,7 +1737,7 @@ namespace winrt::TerminalApp::implementation
                 FrameworkElement title{ nullptr };
                 if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
                 {
-                    title = header.FindName(L"HeaderTextBlock").try_as<FrameworkElement>();
+                    title = header.FindName(header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" : L"HeaderTextBlock").try_as<FrameworkElement>();
                 }
                 else
                 {
