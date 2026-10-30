@@ -15446,6 +15446,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, list.Items().Size());
             VERIFY_IS_TRUE(list.Items().GetAt(0) == stripImpl->_historySectionItem);
             VERIFY_IS_NULL(list.Items().GetAt(0).try_as<UIElement>());
+            const auto chevron = stripImpl->HistoryChevron();
+            const auto chevronPosition = chevron.TransformToVisual(stripImpl->HistoryHeader()).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(chevron.ActualWidth() > 0);
+            VERIFY_IS_TRUE(chevronPosition.X + chevron.ActualWidth() < 0);
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().IsChecked().Value());
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().IsTabStop());
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().Focus(FocusState::Keyboard));

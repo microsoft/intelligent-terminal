@@ -163,20 +163,20 @@
                                 <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="Transparent" />
                             </ResourceDictionary>
                         </local:TabStripHistoryHeader.Resources>
-                        <Grid>
+                        <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="28" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <FontIcon x:Name="HistoryChevron"
+                                      AutomationProperties.AccessibilityView="Raw"
+                                      FontSize="10"
+                                      Glyph="&#xE70D;" />
                             <TextBlock x:Name="HistoryHeader"
                                        x:Uid="VerticalTabsSessionHistoryHeader"
+                                       Grid.Column="1"
                                        VerticalAlignment="Center"
                                        FontWeight="SemiBold" />
-                            <FontIcon x:Name="HistoryChevron"
-                                      Grid.Column="1"
-                                      FontSize="10"
-                                      Glyph="&#xE70D;"
-                                      AutomationProperties.AccessibilityView="Raw" />
                         </Grid>
                     </local:TabStripHistoryHeader>
                     <Grid x:Name="HistoryStatusPanel" Grid.Row="1">
