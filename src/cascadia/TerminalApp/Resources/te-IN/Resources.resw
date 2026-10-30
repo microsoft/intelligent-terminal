@@ -748,6 +748,7 @@
   <data name="ExportTabText"><value>పాఠ్యాన్ని ఎగుమతి చేయండి</value></data>
   <data name="FindText"><value>శోధన</value></data>
   <data name="RestartConnectionText"><value>సెషన్‌ను పునఃప్రారంభించండి</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} పేన్‌లు</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>మూసివేయండి</value></data>
   <data name="TabClose"><value>ట్యాబ్‌ను మూసివేయండి</value></data>
   <data name="MoveTabToNewWindowText"><value>ట్యాబ్‌ను కొత్త విండోకు తరలించండి</value></data>

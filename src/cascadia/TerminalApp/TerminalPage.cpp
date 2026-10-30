@@ -623,6 +623,18 @@ namespace winrt::TerminalApp::implementation
         });
 
         _UpdateTabLayoutHost();
+        _highContrastChangedRevoker = Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
+            try
+            {
+                dispatcher.RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, [weakThis]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        self->_updateThemeColors();
+                    }
+                });
+            }
+            CATCH_LOG();
+        });
         _updateThemeColors();
 
         // Initialize the state of the CloseButtonOverlayMode property of
@@ -779,10 +791,6 @@ namespace winrt::TerminalApp::implementation
                 const auto wasAgentScopeEffective = page->_IsAgentScopeEffective();
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
-                if (wasSearchActive != page->_tabSearchActive)
-                {
-                    page->_sidebarHotkeyReturnControl = {};
-                }
                 page->_ApplyTabListProjection(nullptr, wasAgentScopeEffective != page->_IsAgentScopeEffective());
                 page->_UpdateRecentAgentSessionsVisibility();
                 page->_suppressTabFocusRequests = false;
@@ -6563,7 +6571,6 @@ namespace winrt::TerminalApp::implementation
         if (succeeded && !targetVertical)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
 
         _changingTabLayout = false;
@@ -6660,6 +6667,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return false;
+    }
+
+    bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
+    {
+        const auto titlebar = _tabRow ?
+                                  winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent() :
+                                  nullptr;
+        return _IsVisibleControlInSubtree(control, _tabStrip) ||
+               _IsVisibleControlInSubtree(control, titlebar);
     }
 
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
@@ -6772,7 +6788,6 @@ namespace winrt::TerminalApp::implementation
         if (!visible)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
         _isVerticalRailVisible = visible;
 
@@ -6860,51 +6875,9 @@ namespace winrt::TerminalApp::implementation
             }
             _SetVerticalRailColumnWidth(0);
         }
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
-        }
-    }
-
-    void TerminalPage::_ToggleSidebarHotkey()
-    {
-        if (!_isVerticalLayout || !_isVerticalRailVisible)
-        {
-            return;
-        }
-
-        if (!_isVerticalRailCollapsed && _SidebarFocusedControl())
-        {
-            const auto source = std::exchange(_sidebarHotkeyReturnControl, {});
-            if (!_TryFocusSidebarInput(source.get()) &&
-                !_TryFocusSidebarInput(_GetActiveControl()))
-            {
-                _FocusSidebarTerminalFallback();
-            }
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-            return;
-        }
-
-        winrt::weak_ref<TermControl> returnControl;
-        if (const auto source = _GetActiveControl();
-            source && _IsVisibleControlInSubtree(source, _tabContent))
-        {
-            returnControl = winrt::make_weak(source);
-        }
-        _sidebarHotkeyReturnControl = {};
-
-        if (_isVerticalRailCollapsed)
-        {
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-        }
-        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
-        if (toggle && toggle.Focus(FocusState::Programmatic))
-        {
-            _sidebarHotkeyReturnControl = std::move(returnControl);
-        }
-        else
-        {
-            LOG_HR(E_FAIL);
         }
     }
 
@@ -6919,13 +6892,12 @@ namespace winrt::TerminalApp::implementation
         const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
-            _sidebarHotkeyReturnControl = {};
             _ClearTabSearch();
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
         }
@@ -7902,7 +7874,6 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ClearTabSearch()
     {
-        _sidebarHotkeyReturnControl = {};
         if (!_tabSearchActive && _tabSearchQuery.empty())
         {
             return;
@@ -9481,7 +9452,6 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
-        winrt::hstring managedAgentSessionId;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9515,12 +9485,7 @@ namespace winrt::TerminalApp::implementation
                     ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
                     ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
                         profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                    if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
-                    {
-                        managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
-                    }
-                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
-                        profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
                 }
                 catch (const wil::ResultException& e)
                 {
@@ -9578,7 +9543,6 @@ namespace winrt::TerminalApp::implementation
 
             if (FAILED(startupError))
             {
-                managedAgentSessionId.clear();
                 // Defer the failure until Start so the pane can display it without launching a process.
                 valueSet.Insert(L"startupError", Windows::Foundation::PropertyValue::CreateInt32(startupError));
                 valueSet.Insert(L"startupErrorMessage", Windows::Foundation::PropertyValue::CreateString(startupErrorMessage));
@@ -9605,25 +9569,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
-
-        if (!managedAgentSessionId.empty())
-        {
-            const auto agent = profile.AgentProfileId();
-            const auto backend = winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ agent }) };
-            const auto cwd = connection.as<TerminalConnection::ConptyConnection>().StartingDirectory();
-            _explicitNativeAgentSessions.insert(connection.SessionId());
-            _paneAgentSessions.insert_or_assign(
-                connection.SessionId(),
-                _PaneAgentSession{
-                    managedAgentSessionId,
-                    agent,
-                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, managedAgentSessionId) },
-                    backend,
-                    cwd });
-            _pendingRestoredSessionBindings.insert_or_assign(
-                connection.SessionId(),
-                _PendingRestoredSessionBinding{ managedAgentSessionId, agent, cwd, backend });
-        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -17633,13 +17578,27 @@ namespace winrt::TerminalApp::implementation
         std::optional<_PaneAgentSession> resumeBinding;
         std::string resumeLocation;
         const auto oldPaneId = _FindSessionIdForControl(termControl);
+        const auto managedAgentLaunch = winrt::get_self<Settings::TerminalSettings>(termControl.Settings())->UsesManagedAgentCommand();
+        auto freshManagedLaunch = managedAgentLaunch;
+        if (const auto profile = paneContent.GetProfile(); freshManagedLaunch && profile)
+        {
+            try
+            {
+                freshManagedLaunch = std::ranges::none_of(
+                    ::Microsoft::Terminal::AgentProfiles::ParseArguments(profile.AgentProfileArguments()), [](const auto& argument) {
+                        const auto flag = std::wstring_view{ argument }.substr(0, argument.find(L'='));
+                        return flag == L"--resume" || flag == L"--continue" || flag == L"--session" || flag == L"--conversation";
+                    });
+            }
+            CATCH_LOG()
+        }
         if (nativeFallback)
         {
             const auto oldConnection = termControl.Connection().try_as<TerminalConnection::ConptyConnection>();
             const auto newConnection = connection.try_as<TerminalConnection::ConptyConnection>();
             if (const auto paneId = _TryParsePaneSessionId(oldPaneId))
             {
-                if (oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
+                if (!freshManagedLaunch && oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
                 {
                     _PreserveNativeAgentIdentity(termControl);
                     const auto identity = manager->NativeAgentObservationForContent(termControl.ContentId());
@@ -17676,16 +17635,15 @@ namespace winrt::TerminalApp::implementation
         else
         {
             _PublishNativeAgentObservation(termControl, "removed");
-            if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId() &&
+                (managedAgentLaunch || _paneAgentSessions.contains(*oldPaneSessionId) ||
+                 _pendingRestoredSessionBindings.contains(connection.SessionId())))
             {
-                if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
-                    oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
-                {
-                    // Replacement retires the old lifetime even if a failure was already reported.
-                    _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
-                    _panesWithEmittedTerminalEndState.emplace(oldPaneId);
-                    _ForgetPaneAgentIdentity(*oldPaneSessionId);
-                }
+                // Replacement retires the old lifetime even if a failure was already reported.
+                _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
+                _panesWithEmittedTerminalEndState.emplace(oldPaneId);
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
             }
         }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
@@ -18983,6 +18941,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_updateThemeColors()
     {
+        _updateThemeColors(Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast());
+    }
+
+    void TerminalPage::_updateThemeColors(const bool highContrast)
+    {
         if (_settings == nullptr)
         {
             return;
@@ -19009,9 +18972,11 @@ namespace winrt::TerminalApp::implementation
 
         const auto res = Application::Current().Resources();
 
-        // Use our helper to lookup the theme-aware version of the resource.
+        // High contrast must bypass explicit Light/Dark and custom tab-row backgrounds.
         const auto tabViewBackgroundKey = winrt::box_value(L"TabViewBackground");
-        const auto backgroundSolidBrush = ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
+        const auto backgroundSolidBrush = highContrast ?
+                                              res.Lookup(box_value(L"SystemColorButtonFaceColorBrush")).as<Media::SolidColorBrush>() :
+                                              ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
 
         til::color bgColor = backgroundSolidBrush.Color();
 
@@ -19032,7 +18997,11 @@ namespace winrt::TerminalApp::implementation
                                                             theme.TabRow().UnfocusedBackground()) :
                                               ThemeColor{ nullptr } };
 
-        if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
+        if (highContrast)
+        {
+            TitlebarBrush(backgroundSolidBrush);
+        }
+        else if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
         {
             if (tabRowBg)
             {

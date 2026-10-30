@@ -765,6 +765,7 @@
   <data name="ExportTabText"><value>Vie teksti</value></data>
   <data name="FindText"><value>Etsi</value></data>
   <data name="RestartConnectionText"><value>Käynnistä istunto uudelleen</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} ruutua</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Sulje</value></data>
   <data name="TabClose"><value>Sulje välilehti</value></data>
   <data name="MoveTabToNewWindowText"><value>Siirrä välilehti uuteen ikkunaan</value></data>

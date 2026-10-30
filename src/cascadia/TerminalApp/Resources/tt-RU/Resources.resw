@@ -745,6 +745,7 @@
   <data name="ExportTabText"><value>Текстны экспортлау</value></data>
   <data name="FindText"><value>Эзләү</value></data>
   <data name="RestartConnectionText"><value>Сессияне яңадан башлау</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} панель</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Ябу</value></data>
   <data name="TabClose"><value>Кыстыргычны ябу</value></data>
   <data name="MoveTabToNewWindowText"><value>Кыстыргычны яңа тәрәзәгә күчерү</value></data>

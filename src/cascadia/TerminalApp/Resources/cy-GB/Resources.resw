@@ -652,6 +652,7 @@
   <data name="ExportTabText"><value>Allforio testun</value></data>
   <data name="FindText"><value>Chwilio</value></data>
   <data name="RestartConnectionText"><value>Ailgychwyn y sesiwn</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} cwarel</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Cau</value></data>
   <data name="TabClose"><value>Cau'r tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Symud y tab i ffenestr newydd</value></data>

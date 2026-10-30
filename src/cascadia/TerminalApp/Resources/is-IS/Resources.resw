@@ -766,6 +766,7 @@
   <data name="ExportTabText"><value>Flytja út texta</value></data>
   <data name="FindText"><value>Finna</value></data>
   <data name="RestartConnectionText"><value>Endurræsa lotu</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} rúður</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Loka</value></data>
   <data name="TabClose"><value>Loka flipa</value></data>
   <data name="MoveTabToNewWindowText"><value>Færa flipa í nýjan glugga</value></data>

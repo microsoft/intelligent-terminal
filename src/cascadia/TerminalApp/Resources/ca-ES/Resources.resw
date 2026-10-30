@@ -584,6 +584,7 @@
   <data name="ExportTabText"><value>Exporta el text</value></data>
   <data name="FindText"><value>Cerca</value></data>
   <data name="RestartConnectionText"><value>Reinicia la sessió</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} subfinestres</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Tanca</value></data>
   <data name="TabClose"><value>Tanca la pestanya</value></data>
   <data name="MoveTabToNewWindowText"><value>Mou la pestanya a una finestra nova</value></data>

@@ -748,6 +748,7 @@
   <data name="ExportTabText"><value>உரையை ஏற்றுமதி செய்</value></data>
   <data name="FindText"><value>தேடு</value></data>
   <data name="RestartConnectionText"><value>அமர்வை மறுதொடக்கம் செய்</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} பலகங்கள்</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>மூடு</value></data>
   <data name="TabClose"><value>தாவலை மூடு</value></data>
   <data name="MoveTabToNewWindowText"><value>தாவலைப் புதிய சாளரத்திற்கு நகர்த்து</value></data>

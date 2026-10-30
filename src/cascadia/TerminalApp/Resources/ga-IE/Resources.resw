@@ -653,6 +653,7 @@
   <data name="ExportTabText"><value>Easpórtáil téacs</value></data>
   <data name="FindText"><value>Aimsigh</value></data>
   <data name="RestartConnectionText"><value>Atosaigh an seisiún</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} phána</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Dún</value></data>
   <data name="TabClose"><value>Dún an cluaisín</value></data>
   <data name="MoveTabToNewWindowText"><value>Bog an cluaisín go fuinneog nua</value></data>
