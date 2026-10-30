@@ -767,6 +767,8 @@ namespace winrt::TerminalApp::implementation
         _historySectionItem = box_value(RS_(L"VerticalTabsSessionHistoryHeader/Text"));
         _historyStatusItem = Windows::Foundation::Collections::PropertySet{};
         _historyStatusPanel = Resources().Lookup(box_value(L"HistoryStatusTemplate")).as<DataTemplate>().LoadContent().as<Grid>();
+        _historyLoadingIndicator = _historyStatusPanel.FindName(L"HistoryLoadingIndicator").as<ProgressRing>();
+        _historyMessage = _historyStatusPanel.FindName(L"HistoryMessage").as<TextBlock>();
         const auto selector = winrt::make_self<TabStripItemTemplateSelector>();
         selector->StatusItem = _historyStatusItem;
         selector->StatusTemplate = Resources().Lookup(box_value(L"HistoryStatusTemplate")).as<DataTemplate>();
@@ -923,30 +925,31 @@ namespace winrt::TerminalApp::implementation
 
     IInspectable TabStrip::SelectedItem()
     {
-        return _tabFromItem(ItemsList().SelectedItem());
+        uint32_t index{};
+        return _selectedTabItem && _tabItems.IndexOf(_selectedTabItem, index) ? _selectedTabItem : nullptr;
     }
     void TabStrip::SelectedItem(IInspectable const& value)
     {
-        if (!value)
+        uint32_t index{};
+        if (value && !_tabItems.IndexOf(value, index))
         {
-            ItemsList().SelectedItem(nullptr);
             return;
         }
-
-        uint32_t index{};
-        if (_tabItems.IndexOf(value, index))
         {
-            ItemsList().SelectedItem(_displayItems.GetAt(index));
+            const auto previousSync = std::exchange(_syncingViewportSelection, true);
+            const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = previousSync; });
+            ItemsList().SelectedItem(value ? _displayItems.GetAt(index) : nullptr);
         }
+        _setSelectedTabItem(value.try_as<MUX::Controls::TabViewItem>());
     }
     int32_t TabStrip::SelectedIndex()
     {
-        const auto index = ItemsList().SelectedIndex();
-        return index < static_cast<int32_t>(_tabItems.Size()) ? index : -1;
+        uint32_t index{};
+        return _selectedTabItem && _tabItems.IndexOf(_selectedTabItem, index) ? static_cast<int32_t>(index) : -1;
     }
     void TabStrip::SelectedIndex(int32_t value)
     {
-        ItemsList().SelectedIndex(value < static_cast<int32_t>(_tabItems.Size()) ? value : -1);
+        SelectedItem(value >= 0 && value < static_cast<int32_t>(_tabItems.Size()) ? _tabItems.GetAt(value) : nullptr);
     }
     DependencyObject TabStrip::ContainerFromIndex(int32_t index)
     {
@@ -3078,6 +3081,8 @@ namespace winrt::TerminalApp::implementation
             if (container && container.ContentTemplateRoot() == root)
             {
                 _historyStatusPanel = root;
+                _historyLoadingIndicator = root.FindName(L"HistoryLoadingIndicator").as<ProgressRing>();
+                _historyMessage = root.FindName(L"HistoryMessage").as<TextBlock>();
                 const auto previousSync = std::exchange(_syncingHistorySection, true);
                 const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
                 _updateHistoryVisualState();
@@ -4432,23 +4437,31 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (e.AddedItems().Size() && !_tabFromItem(e.AddedItems().GetAt(0)))
+        const auto added = e.AddedItems().Size() ? _tabFromItem(e.AddedItems().GetAt(0)) : nullptr;
+        if (!added && (e.AddedItems().Size() || SelectedItem()))
         {
-            // Focusing/resuming history must not change the canonical tab selection.
+            // History projection and hidden/recycled rows can clear native selection.
             _syncingViewportSelection = true;
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = false; });
-            ItemsList().SelectedItem(e.RemovedItems().Size() ? e.RemovedItems().GetAt(0) : nullptr);
+            ItemsList().SelectedItem(DisplayItemForTab(SelectedItem()));
             return;
         }
+        _setSelectedTabItem(added);
+    }
+
+    void TabStrip::_setSelectedTabItem(MUX::Controls::TabViewItem const& item)
+    {
+        if (_selectedTabItem == item)
+        {
+            return;
+        }
+        const auto previous = std::exchange(_selectedTabItem, item);
         // Keep TabViewItem selection synchronized for close-button and
         // accessibility behavior. ListView renders the interaction states.
-        for (const auto& removed : e.RemovedItems())
+        if (previous)
         {
-            if (auto item = _tabFromItem(removed))
-            {
-                item.IsSelected(false);
-            }
-            if (const auto display = removed.try_as<TerminalApp::TabStripDisplayItem>())
+            previous.IsSelected(false);
+            if (const auto display = DisplayItemForTab(previous))
             {
                 display.SelectionVisibility(Visibility::Collapsed);
                 winrt::get_self<TabStripDisplayItem>(display)->UpdateCloseVisibility(_isRailCollapsed);
@@ -4456,13 +4469,10 @@ namespace winrt::TerminalApp::implementation
                 _refreshDisplayItemVisuals(display);
             }
         }
-        for (const auto& added : e.AddedItems())
+        if (item)
         {
-            if (auto item = _tabFromItem(added))
-            {
-                item.IsSelected(true);
-            }
-            if (const auto display = added.try_as<TerminalApp::TabStripDisplayItem>())
+            item.IsSelected(true);
+            if (const auto display = DisplayItemForTab(item))
             {
                 display.SelectionVisibility(Visibility::Visible);
                 winrt::get_self<TabStripDisplayItem>(display)->UpdateCloseVisibility(_isRailCollapsed);
@@ -4471,9 +4481,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        IInspectable added = e.AddedItems().Size() > 0 ? _tabFromItem(e.AddedItems().GetAt(0)) : nullptr;
-        IInspectable removed = e.RemovedItems().Size() > 0 ? _tabFromItem(e.RemovedItems().GetAt(0)) : nullptr;
-        auto args = winrt::make_self<TabStripSelectionChangedEventArgs>(std::move(added), std::move(removed));
+        auto args = winrt::make_self<TabStripSelectionChangedEventArgs>(item, previous);
         SelectionChanged.raise(*this, *args);
     }
 

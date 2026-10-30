@@ -420,8 +420,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryHeader() { return _historyElement(L"HistoryHeader").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryChevron();
         winrt::Windows::UI::Xaml::Controls::Grid HistoryStatusPanel() const { return _historyStatusPanel; }
-        winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() { return _historyStatusPanel.FindName(L"HistoryLoadingIndicator").as<winrt::Windows::UI::Xaml::Controls::ProgressRing>(); }
-        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() { return _historyStatusPanel.FindName(L"HistoryMessage").as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
+        winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() const { return _historyLoadingIndicator; }
+        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() const { return _historyMessage; }
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoadPending && _historyItems.Size() == 0; }
         void HistoryLoading(bool value);
@@ -652,11 +652,16 @@ namespace winrt::TerminalApp::implementation
         winrt::weak_ref<TerminalApp::TabStripDisplayItem> _focusedCloseDisplay;
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _viewportItems{ nullptr };
         winrt::Windows::UI::Xaml::Controls::ListView _itemsList{ nullptr };
+        winrt::Microsoft::UI::Xaml::Controls::TabViewItem _selectedTabItem{ nullptr };
+        void _setSelectedTabItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         winrt::Microsoft::UI::Xaml::Controls::TreeViewNode _historyNode{ nullptr };
         bool _syncingTree{ false };
         winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
         winrt::Windows::Foundation::IInspectable _historyStatusItem{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _historyStatusPanel{ nullptr };
+        // Recycling can clear the template root's namescope; retain its named controls too.
+        winrt::Windows::UI::Xaml::Controls::ProgressRing _historyLoadingIndicator{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
         bool _historyExpanded{ true };
         bool _syncingHistorySection{ false };

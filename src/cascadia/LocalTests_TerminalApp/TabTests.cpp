@@ -17399,6 +17399,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == item);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, impl->HistoryMessage().Visibility());
         });
+        _waitForContentTransferReviewUI([&]() {
+            strip.UpdateLayout();
+            return impl->ItemsList().ContainerFromItem(impl->_historyStatusItem) == nullptr;
+        });
+        TestOnUIThread([&]() {
+            strip.HistoryError(L"History retry after recycling");
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"History retry after recycling" }, impl->HistoryMessage().Text());
+            strip.HistoryError(L"");
+            impl->CommitHistorySnapshot({}, false);
+            strip.HistoryLoading(true);
+            VERIFY_IS_TRUE(impl->HistoryLoadingIndicator().IsActive());
+            strip.HistoryLoading(false);
+        });
     }
 
     void TabTests::VerticalTabSearchEmptyStateTracksBothSources()
@@ -17420,6 +17434,10 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(empty ? Visibility::Collapsed : Visibility::Visible, impl->ItemsList().Visibility());
                 VERIFY_IS_TRUE(strip.SelectedItem() == tab);
             };
+            impl->ItemsList().SelectedItem(nullptr);
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+            VERIFY_ARE_EQUAL(0, strip.SelectedIndex());
+            VERIFY_IS_TRUE(tab.IsSelected());
             const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
                                        .MainResourceMap()
                                        .GetSubtree(L"TerminalApp/Resources");
