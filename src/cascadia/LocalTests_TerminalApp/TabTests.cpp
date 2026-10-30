@@ -9551,8 +9551,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(-8.0, toolbar.Margin().Right);
             VERIFY_ARE_EQUAL(12.0, toolbar.Padding().Left);
             VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
-            VERIFY_ARE_EQUAL(160.0f, searchBounds.X);
-            VERIFY_ARE_EQUAL(200.0f, optionsBounds.X);
+            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 80.0), searchBounds.X);
+            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 40.0), optionsBounds.X);
             VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
             VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
             stripImpl->ProjectionControlsEnabled(false);
