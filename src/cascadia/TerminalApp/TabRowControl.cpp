@@ -21,10 +21,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static constexpr double NewTabRegionWidth = 46.02;
-    static constexpr double NewTabButtonHeight = 36.81;
     static constexpr double SidebarToggleIconSize = 14.0;
-    static constexpr double NewTabIconSize = 16.0;
 
     static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
     {
@@ -117,7 +114,7 @@ namespace winrt::TerminalApp::implementation
         titlebarGrid.HorizontalAlignment(WUX::HorizontalAlignment::Left);
 
         WUX::Controls::ColumnDefinition toggleColumn;
-        toggleColumn.Width(WUX::GridLengthHelper::FromValueAndType(40, WUX::GridUnitType::Pixel));
+        toggleColumn.Width(unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.ColumnDefinitions().Append(toggleColumn);
         titlebarGrid.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
         WUX::Controls::ColumnDefinition newTabColumn;
@@ -129,7 +126,7 @@ namespace winrt::TerminalApp::implementation
         railToggle.Width(40);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
-        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Center);
         railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
         railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         railToggle.BorderThickness(WUX::Thickness{});
@@ -203,6 +200,7 @@ namespace winrt::TerminalApp::implementation
 
         WUX::Controls::Grid topChromeContainer;
         topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
+        topChromeContainer.Margin(unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarTrailingActionMargin"))));
         WUX::Controls::Grid::SetColumn(topChromeContainer, 2);
         expandedChrome.Children().Append(topChromeContainer);
 
@@ -210,17 +208,21 @@ namespace winrt::TerminalApp::implementation
         // the horizontal button leaves its automation peer attached to the
         // old subtree and hides the client UIA tree after a layout round trip.
         _verticalNewTabButton = MUX::Controls::SplitButton{};
-        _verticalNewTabButton.Width(NewTabRegionWidth * 2);
-        _verticalNewTabButton.Height(NewTabButtonHeight);
+        const auto actionExtent = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
+        const auto actionSpacing = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing")));
+        const auto glyphSize = unbox_value<double>(Resources().Lookup(box_value(L"SidebarNewTabGlyphSize")));
+        // Scope native template sizing to this button, leaving horizontal chrome unchanged.
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonPrimaryButtonSize"), box_value(actionExtent));
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonSecondaryButtonSize"), box_value(actionExtent));
+        _verticalNewTabButton.Width(2 * actionExtent + actionSpacing);
+        _verticalNewTabButton.Height(unbox_value<double>(Resources().Lookup(box_value(L"SidebarNewTabHeight"))));
         _verticalNewTabButton.Padding(WUX::Thickness{});
         _verticalNewTabButton.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
         _verticalNewTabButton.VerticalAlignment(WUX::VerticalAlignment::Center);
         _verticalNewTabButton.AllowDrop(true);
         _verticalNewTabButton.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         _verticalNewTabButton.BorderThickness(WUX::Thickness{});
-        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonPrimaryButtonSize"), box_value(NewTabRegionWidth));
-        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonSecondaryButtonSize"), box_value(NewTabRegionWidth));
-        const auto newTabGlyph = _titlebarFontIcon(L"\xE710", NewTabIconSize);
+        const auto newTabGlyph = _titlebarFontIcon(L"\xE710", glyphSize);
         newTabGlyph.HorizontalAlignment(WUX::HorizontalAlignment::Center);
         newTabGlyph.VerticalAlignment(WUX::VerticalAlignment::Center);
         _verticalNewTabButton.Content(newTabGlyph);
@@ -231,7 +233,7 @@ namespace winrt::TerminalApp::implementation
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
-        _verticalNewTabButton.Loaded([](const auto& sender, const auto&) {
+        _verticalNewTabButton.Loaded([glyphSize](const auto& sender, const auto&) {
             const auto button = sender.template as<MUX::Controls::SplitButton>();
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
@@ -252,7 +254,7 @@ namespace winrt::TerminalApp::implementation
                         splitRegion.VerticalContentAlignment(WUX::VerticalAlignment::Center);
                         if (std::wstring_view{ name } == L"SecondaryButton")
                         {
-                            const auto dropdownGlyph = _titlebarFontIcon(L"\xE70D", NewTabIconSize);
+                            const auto dropdownGlyph = _titlebarFontIcon(L"\xE70D", glyphSize);
                             splitRegion.Content(dropdownGlyph);
                         }
                         if (const auto icon = splitRegion.Content().template try_as<WUX::FrameworkElement>())
@@ -332,6 +334,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         titlebarGrid.Width(width);
+        titlebarGrid.as<WUX::Controls::Grid>().ColumnDefinitions().GetAt(0).Width(
+            unbox_value<WUX::GridLength>(Resources().Lookup(box_value(
+                collapsed ? L"SidebarCompactLeadingColumnWidth" : L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.Visibility(visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         if (_verticalExpandedChrome)
         {

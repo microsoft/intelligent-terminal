@@ -49,6 +49,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed);
     void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
     {
         if (_showAgentsOnly != value)
@@ -1753,7 +1754,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root);
+            _updateSidebarActionLayout(root, _isRailCollapsed);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1779,7 +1780,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TabStrip::_updateSidebarActionLayout(const FrameworkElement& row)
+    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed)
     {
         ListViewItem container{ nullptr };
         for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
@@ -1806,14 +1807,14 @@ namespace winrt::TerminalApp::implementation
                     title = header.FindName(header.InRename() ? L"HeaderRenamerTextBox" : L"HeaderTextBlock").try_as<FrameworkElement>();
                     if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
                     {
-                        const auto alignment = _isRailCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
+                        const auto alignment = railCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
                         if (leading.VerticalAlignment() != alignment)
                         {
                             leading.VerticalAlignment(alignment);
                         }
                         auto leadingMargin = leading.Margin();
                         leadingMargin.Top = 0;
-                        if (!_isRailCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
+                        if (!railCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
                         {
                             const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
                             leadingMargin.Top = position.Y + title.ActualHeight() / 2.0 - leading.ActualHeight() / 2.0;
@@ -1839,6 +1840,20 @@ namespace winrt::TerminalApp::implementation
                 {
                     slot.Margin(margin);
                 }
+                if (const auto activate = row.FindName(L"PaneActivateButton").try_as<Button>())
+                {
+                    const auto closeExtent = slot.Width() + margin.Left + margin.Right;
+                    const Thickness padding{ 0, 0, closeExtent, 0 };
+                    const Thickness focusInset{ 7, 0, closeExtent, 0 };
+                    if (activate.Padding() != padding)
+                    {
+                        activate.Padding(padding);
+                    }
+                    if (activate.FocusVisualMargin() != focusInset)
+                    {
+                        activate.FocusVisualMargin(focusInset);
+                    }
+                }
                 return;
             }
         }
@@ -1857,8 +1872,9 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root);
-            _updateSidebarRowToolTipPlacement(root);
+            const auto row = root.Name() == L"TabLeadingContent" ? root.Parent().as<FrameworkElement>() : root;
+            _updateSidebarActionLayout(row, _isRailCollapsed);
+            _updateSidebarRowToolTipPlacement(row);
         }
     }
 
@@ -1980,14 +1996,6 @@ namespace winrt::TerminalApp::implementation
         header.RenameEnded({ get_weak(), &TabStrip::OnHeaderRenameEnded });
     }
 
-    void TabStrip::OnRowHeaderSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
-    {
-        if (const auto row = WUX::Media::VisualTreeHelper::GetParent(sender.as<DependencyObject>()).try_as<FrameworkElement>())
-        {
-            _updateSidebarActionLayout(row);
-        }
-    }
-
     void TabStrip::OnHeaderRenameEnded(IInspectable const& sender, IInspectable const&)
     {
         const auto view = sender.try_as<FrameworkElement>();
@@ -2001,7 +2009,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root);
+            _updateSidebarActionLayout(root, _isRailCollapsed);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);
@@ -3047,7 +3055,6 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnHistoryRowLoaded(IInspectable const& sender, RoutedEventArgs const&)
     {
         const auto root = sender.as<FrameworkElement>();
-        _updateSidebarActionLayout(root);
         _updateSidebarRowToolTipPlacement(root);
         const auto item = root.DataContext().try_as<TerminalApp::TabStripHistoryItem>();
         if (const auto icon = root.FindName(L"HistoryKeepRunningIcon").try_as<FontIcon>())
@@ -3075,6 +3082,9 @@ namespace winrt::TerminalApp::implementation
         const auto display = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripDisplayItem>();
         const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
         const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
+        container.Style(header ?
+                            Resources().Lookup(box_value(L"SidebarHistoryHeaderContainerStyle")).as<WUX::Style>() :
+                            ItemsList().ItemContainerStyle());
         if (!display)
         {
             if (const auto presenter = _findNamedElement(container, L"SidebarItemPresenter").try_as<Primitives::ListViewItemPresenter>();
@@ -3094,7 +3104,8 @@ namespace winrt::TerminalApp::implementation
         }
         container.IsTabStop(!header);
         // History keeps the previous row geometry; it isn't indented under the header.
-        container.Margin(history || header ? Thickness{ 0 } : Thickness{ 6, 4, 6, 4 });
+        container.Margin(history || header ? Thickness{ 0 } :
+                                             unbox_value<Thickness>(Resources().Lookup(box_value(L"SidebarLiveRowMargin"))));
         _applyHistoryRowAutomation(container, history);
         _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), history);
         if (display)
@@ -3175,15 +3186,20 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
-        VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(true);
         SearchTabsButton().IsEnabled(_projectionControlsEnabled);
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
-        TabsToolbar().Margin(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 0, 0, -8, 0 });
-        TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
+        TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} :
+                                                 unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarToolbarPadding"))));
+        TabsToolbar().ColumnSpacing(_isRailCollapsed ? 0.0 :
+                                                       unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing"))));
+        const auto actionColumn = _isRailCollapsed ? WUX::GridLengthHelper::FromValueAndType(0, WUX::GridUnitType::Pixel) :
+                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarActionCellWidth")));
+        TabsToolbar().ColumnDefinitions().GetAt(1).Width(actionColumn);
+        TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
         SearchTabsButton().Width(40.0);

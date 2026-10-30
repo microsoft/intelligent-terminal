@@ -65,6 +65,16 @@ Use the explicit worktree path when combining `cd` and a build in `cmd /c`;
 - Run TerminalApp native tests through TAEF from the TestHost output directory.
   Select the changed regression first, not the entire suite.
 
+## Sidebar visual iteration
+
+For sidebar control, layout, or theme changes, use the existing TestHost's
+`--visual-page=sidebar` mode with `winapp` before building the full application.
+Inspect the whole sidebar across all four named theme presets, narrow widths,
+RTL, hover, and keyboard focus; do not rely on geometry assertions alone.
+Follow [the TestHost sidebar guide](../../src/cascadia/LocalTests_TerminalApp/TestHostApp/AGENTS.md#sidebar-visual-iteration)
+for build, isolation, and evidence limits. Finish with focused
+verification in an isolated full application package.
+
 ## Payload freshness
 
 - Verify that recipes reference the active worktree, not a canonical or older

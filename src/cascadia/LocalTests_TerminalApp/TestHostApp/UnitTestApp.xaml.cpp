@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All Rights Reserved.
 //-----------------------------------------------------------
 #include "pch.h"
+#include <windows.h>
 
 namespace TestHostApp
 {
@@ -44,6 +45,41 @@ namespace TestHostApp
     /// <param name="e">Details about the launch request and process.</param>
     void App::OnLaunched(Windows::ApplicationModel::Activation::LaunchActivatedEventArgs ^ e)
     {
+        if (_IsAccessibilitySurface(e->Arguments, L"--visual-page=sidebar"))
+        {
+            _PrepareAccessibilityWindow(L"Visual Test Host - Sidebar");
+            try
+            {
+                static const auto fixtureModule = LoadPackagedLibrary(L"TerminalApp.LocalTests.dll", 0);
+                if (!fixtureModule)
+                {
+                    throw Platform::Exception::CreateException(HRESULT_FROM_WIN32(GetLastError()));
+                }
+                const auto initialize = reinterpret_cast<HRESULT(__stdcall*)(wchar_t*, unsigned int)>(
+                    GetProcAddress(fixtureModule, "InitializeSidebarVisualFixture"));
+                if (!initialize)
+                {
+                    throw Platform::Exception::CreateException(HRESULT_FROM_WIN32(GetLastError()));
+                }
+                wchar_t errorMessage[1024]{};
+                const auto result = initialize(errorMessage, ARRAYSIZE(errorMessage));
+                if (FAILED(result))
+                {
+                    if (errorMessage[0] != L'\0')
+                    {
+                        throw ref new Platform::COMException(result, ref new Platform::String(errorMessage));
+                    }
+                    throw Platform::Exception::CreateException(result);
+                }
+            }
+            catch (Platform::Exception ^ error)
+            {
+                _ShowAccessibilityStartupError(error);
+            }
+            Windows::UI::Xaml::Window::Current->Activate();
+            return;
+        }
+
         if (_IsAccessibilitySurface(e->Arguments, L"--accessibility-page=fre"))
         {
             _PrepareAccessibilityWindow(L"Accessibility Test Host - FRE");
