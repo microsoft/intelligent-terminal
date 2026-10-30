@@ -2109,8 +2109,7 @@ namespace winrt::TerminalApp::implementation
         if (_tabsVisible != value)
         {
             _tabsVisible = value;
-            const auto historyVisible = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
-            ItemsList().Visibility(value || historyVisible ? Visibility::Visible : Visibility::Collapsed);
+            _updateSearchEmptyState();
         }
     }
     void TabStrip::IsRailCollapsed(bool value)
@@ -3765,9 +3764,21 @@ namespace winrt::TerminalApp::implementation
                                const auto stored = found->second.Item.get();
                                return !stored || winrt::get_abi(stored) != winrt::get_abi(tab) || found->second.Visible;
                            });
+        const auto wasEmpty = SearchEmptyState().Visibility() == Visibility::Visible;
         SearchEmptyState().Visibility(empty ? Visibility::Visible : Visibility::Collapsed);
         const auto historyVisible = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
         ItemsList().Visibility(!empty && (historyVisible || _tabsVisible) ? Visibility::Visible : Visibility::Collapsed);
+        if (empty && !wasEmpty)
+        {
+            if (const auto automationPeer = WUX::Automation::Peers::FrameworkElementAutomationPeer::FromElement(SearchTextBox()))
+            {
+                automationPeer.RaiseNotificationEvent(
+                    WUX::Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                    WUX::Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                    SearchNoResultsText().Text(),
+                    L"TabStripSearchResultAnnouncement");
+            }
+        }
     }
 
     void TabStrip::_updateHistoryVisualState()

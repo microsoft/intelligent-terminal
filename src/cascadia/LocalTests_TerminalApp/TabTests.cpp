@@ -10328,6 +10328,11 @@ namespace TerminalAppLocalTests
             historyRequested = false;
             historyClosed = false;
 
+            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history.SessionId(L"sidebar-layout");
+            history.Title(L"PowerShell layout session");
+            history.Status(L"Idle");
+            stripImpl->CommitHistorySnapshot({ history });
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             strip.HistoryActive(true);
@@ -10547,11 +10552,14 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent query" }, strip.SearchQuery());
             VERIFY_ARE_EQUAL(focusState, stripImpl->SearchTextBox().FocusState());
             VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == stripImpl->SearchTextBox());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchEmptyState().Visibility());
             VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
             VERIFY_IS_NOT_NULL(stripImpl->HistorySection());
             VERIFY_IS_FALSE(recent.IsChecked());
             strip.SearchQuery(L"");
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchEmptyState().Visibility());
             VERIFY_IS_NULL(stripImpl->HistorySection());
             VERIFY_IS_TRUE(stripImpl->ItemsList().Parent() == stripImpl->ContentGrid());
             uint32_t tabIndex{};
@@ -17378,6 +17386,11 @@ namespace TerminalAppLocalTests
                                        .MainResourceMap()
                                        .GetSubtree(L"TerminalApp/Resources");
             VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsSearchNoMatches/Text").ValueAsString(), impl->SearchNoResultsText().Text());
+            verifyEmpty(true);
+
+            strip.TabsVisible(false);
+            verifyEmpty(true);
+            strip.TabsVisible(true);
             verifyEmpty(true);
 
             impl->SetTabItemVisibility(tab, true);
