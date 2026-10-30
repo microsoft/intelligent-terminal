@@ -722,20 +722,15 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         $lastRow = @(Get-VisibleTabRows)[2]
         $lastRow.SetFocus()
         Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the last row is the forward Tab boundary'
-        $wrapped = $false
-        for ($step = 0; $step -lt 6; $step++) {
-            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-            $focused = [Windows.Automation.AutomationElement]::FocusedElement
-            $focused.Current.ProcessId | Should -Be $script:app.Pid
-            $focused.Current.ClassName | Should -Not -Be 'TermControl' -Because 'Tab must not strand focus in terminal input'
-            if ($focused.Current.Name -eq 'Collapse sidebar') {
-                $wrapped = $true
-                break
-            }
-            (Get-FocusedTabRowIndex) | Should -BeGreaterOrEqual 0 -Because 'Tab stays within the Sidebar until it wraps'
-        }
-        $wrapped | Should -BeTrue -Because 'Tab from the last Sidebar control wraps to the rail toggle'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $focused = [Windows.Automation.AutomationElement]::FocusedElement
+        $focused.Current.ProcessId | Should -Be $script:app.Pid
+        $focused.Current.Name | Should -Be 'Collapse sidebar' -Because 'one Tab skips row dismiss buttons and reaches the rail toggle'
+        $focused.Current.HasKeyboardFocus | Should -BeTrue
         Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $lastRow) |
+            Should -BeTrue -Because 'reverse Tab focuses the row itself, not its dismiss button'
         Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab wraps from the rail toggle to the last row'
     }
 
