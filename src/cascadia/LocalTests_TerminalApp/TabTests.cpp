@@ -6201,6 +6201,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_tabSearchActive);
             VERIFY_IS_TRUE(page->_SidebarFocusedControl() == railButton);
 
+            toggle();
+            VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == railButton);
+
+            toggle();
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == railButton);
+
             VERIFY_IS_TRUE(strip->FilterTabsButton().Focus(FocusState::Programmatic));
             VERIFY_IS_TRUE(page->_SidebarFocusedControl() == strip->FilterTabsButton());
             toggle();

@@ -6638,8 +6638,11 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
     {
+        const auto titlebar = _tabRow ?
+                                  winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent() :
+                                  nullptr;
         return _IsVisibleControlInSubtree(control, _tabStrip) ||
-               _IsVisibleControlInSubtree(control, _tabRow);
+               _IsVisibleControlInSubtree(control, titlebar);
     }
 
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const

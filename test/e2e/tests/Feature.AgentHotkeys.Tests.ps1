@@ -1139,13 +1139,6 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                 return
             }
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
-            $pane = Get-ActivePane -App $vertical
-            Set-WtPaneFocus -App $vertical -SessionId $pane.session_id
-            $shellFocus = Wait-Until -TimeoutSec 5 -Because 'the original shell to have keyboard focus' -Condition {
-                $focused = [Windows.Automation.AutomationElement]::FocusedElement
-                if ($focused -and $focused.Current.ProcessId -eq $vertical.Pid -and
-                    $focused.Current.ClassName -eq 'TermControl') { $focused }
-            }
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$vertical.Hwnd))
             $nameCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
@@ -1161,10 +1154,6 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
             & $script:ToggleSidebarHotkey $vertical
             Save-UiScreenshot -App $vertical -Path (Join-Path $script:evidenceDir 'titlebar-after-shortcut.png') | Out-Null
             Wait-UiElement -App $vertical -Selector CompactNewTabButton | Out-Null
-            (Test-Until -TimeoutSec 6 -Condition {
-                [Windows.Automation.Automation]::Compare(
-                    $shellFocus, [Windows.Automation.AutomationElement]::FocusedElement)
-            }) | Should -BeTrue -Because 'collapsing must move focus from hidden titlebar controls to a visible terminal'
 
             $expandNameCondition = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::NameProperty, 'Expand sidebar')
@@ -1173,8 +1162,10 @@ Describe 'Feature: layout-aware agent history and sidebar hotkeys' -Tag @('Featu
                     [Windows.Automation.AndCondition]::new($expandNameCondition, $typeCondition))
             }
             $expandButton.Current.IsOffscreen | Should -BeFalse
-            $expandButton.SetFocus()
-            $expandButton.Current.HasKeyboardFocus | Should -BeTrue
+            (Test-Until -TimeoutSec 6 -Condition {
+                [Windows.Automation.Automation]::Compare(
+                    $expandButton, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'collapsing must preserve focus on the still-visible titlebar toggle'
             & $script:ToggleSidebarHotkey $vertical
             Wait-UiElement -App $vertical -Selector 'Collapse sidebar' | Out-Null
             (Test-Until -TimeoutSec 6 -Condition {
