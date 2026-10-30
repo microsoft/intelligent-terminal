@@ -455,6 +455,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>M’hemm l-ebda sessjoni tal-aġent li taqbel.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>M’hemm l-ebda tab miftuħa jew sessjoni preċedenti tal-aġenti li taqbel mat-tfittxija tiegħek.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Ma setgħux jitgħabbew is-sessjonijiet tal-aġent.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>

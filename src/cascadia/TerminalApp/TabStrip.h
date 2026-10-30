@@ -616,6 +616,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipLabel{ nullptr };
         winrt::Windows::UI::Xaml::Controls::TextBlock _searchTooltipShortcut{ nullptr };
         bool _syncingSearchState{ false };
+        bool _updatingSidebarFilters{ false };
         bool _searchPanelExpanded{ false };
         bool _searchAnimationEnabled{ false };
         uint64_t _searchAnimationGeneration{ 0 };
@@ -740,6 +741,7 @@ namespace winrt::TerminalApp::implementation
         void _pruneTabItemVisibility();
         void _setSearchPanelExpanded(bool expanded, bool animate);
         void _updateSearchVisualState();
+        void _updateSearchEmptyState();
         static std::vector<winrt::hstring> _buildHistorySearchTerms(TerminalApp::TabStripHistoryItem const& item);
         winrt::Windows::UI::Xaml::Style _historyStatusTextStyle(winrt::hstring const& status);
         bool _updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item);

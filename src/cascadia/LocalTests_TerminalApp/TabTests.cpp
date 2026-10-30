@@ -709,6 +709,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
         TEST_METHOD(VerticalTabHistorySearchProjection);
         TEST_METHOD(VerticalTabHistoryDeduplicatedEmptyState);
+        TEST_METHOD(VerticalTabSearchEmptyStateTracksBothSources);
         TEST_METHOD(VerticalTabHistoryPreservesLiveSearch);
         TEST_METHOD(VerticalTabSearchToggleClearsHistoryProjection);
         TEST_METHOD(VerticalTabProgrammaticSearchQueryFiltersHistory);
@@ -10329,6 +10330,11 @@ namespace TerminalAppLocalTests
             historyRequested = false;
             historyClosed = false;
 
+            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history.SessionId(L"sidebar-layout");
+            history.Title(L"PowerShell layout session");
+            history.Status(L"Idle");
+            stripImpl->CommitHistorySnapshot({ history });
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             strip.HistoryActive(true);
@@ -10401,7 +10407,7 @@ namespace TerminalAppLocalTests
                         return direction == FlowDirection::LeftToRight ? rect.X : width - rect.X - rect.Width;
                     };
                     VERIFY_IS_TRUE(std::abs(leadingEdge(tabsHeading) - 12) <= 1.0);
-                    VERIFY_IS_TRUE(leadingEdge(recentHeading) > leadingEdge(chevron));
+                    VERIFY_IS_TRUE(leadingEdge(chevron) + chevron.Width < leadingEdge(recentHeading));
                     const auto split = chrome->VerticalNewTabButton();
                     split.ApplyTemplate();
                     const auto splitRoot = Media::VisualTreeHelper::GetChild(split, 0).as<Grid>();
@@ -10411,7 +10417,6 @@ namespace TerminalAppLocalTests
                     const auto center = [](const auto& rect) { return rect.X + rect.Width / 2; };
                     VERIFY_IS_TRUE(std::abs(center(primary) - center(searchAction)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(center(secondary) - center(filter)) <= 1.0);
-                    VERIFY_IS_TRUE(leadingEdge(chevron) < leadingEdge(recentHeading));
                     const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
                     VERIFY_IS_TRUE(std::abs(center(filter) - (direction == FlowDirection::LeftToRight ? width - cell / 2 : cell / 2)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(search.X - 20) <= 1.0);
@@ -10420,6 +10425,7 @@ namespace TerminalAppLocalTests
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
                     const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
                     VERIFY_ARE_EQUAL(40.0f, toggle.Width);
+                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(chevron)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(center(toggle) - center(groupToggle)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
                                                 center(toggle) - 26 :
@@ -10548,11 +10554,14 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent query" }, strip.SearchQuery());
             VERIFY_ARE_EQUAL(focusState, stripImpl->SearchTextBox().FocusState());
             VERIFY_IS_TRUE(winrt::Windows::UI::Xaml::Input::FocusManager::GetFocusedElement(strip.XamlRoot()) == stripImpl->SearchTextBox());
-            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchEmptyState().Visibility());
             VERIFY_IS_TRUE(filters.RecentAgentSessionsVisible());
             VERIFY_IS_NOT_NULL(stripImpl->HistorySection());
             VERIFY_IS_FALSE(recent.IsChecked());
             strip.SearchQuery(L"");
+            VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->SearchEmptyState().Visibility());
             VERIFY_IS_NULL(stripImpl->HistorySection());
             VERIFY_IS_TRUE(stripImpl->SidebarTree().Parent() == stripImpl->ContentGrid());
             uint32_t tabIndex{};
@@ -17392,6 +17401,75 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabSearchEmptyStateTracksBothSources()
+    {
+        HistoryTestView view;
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        TestOnUIThread([&]() {
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Open tab"));
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            impl->CommitHistorySnapshot({}, true);
+            strip.SearchQuery(L"missing");
+            impl->SetTabItemVisibility(tab, false);
+
+            const auto verifyEmpty = [&](const bool empty) {
+                VERIFY_ARE_EQUAL(empty ? Visibility::Visible : Visibility::Collapsed, impl->SearchEmptyState().Visibility());
+                VERIFY_ARE_EQUAL(empty ? Visibility::Collapsed : Visibility::Visible, impl->ItemsList().Visibility());
+                VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+            };
+            const auto resources = winrt::Windows::ApplicationModel::Resources::Core::ResourceManager::Current()
+                                       .MainResourceMap()
+                                       .GetSubtree(L"TerminalApp/Resources");
+            VERIFY_ARE_EQUAL(resources.GetValue(L"VerticalTabsSearchNoMatches/Text").ValueAsString(), impl->SearchNoResultsText().Text());
+            verifyEmpty(true);
+
+            strip.TabsVisible(false);
+            verifyEmpty(true);
+            strip.TabsVisible(true);
+            verifyEmpty(true);
+
+            impl->SetTabItemVisibility(tab, true);
+            verifyEmpty(false);
+            impl->SetTabItemVisibility(tab, false);
+            verifyEmpty(true);
+
+            strip.HistoryLoading(true);
+            verifyEmpty(false);
+            strip.HistoryLoading(false);
+            verifyEmpty(true);
+            strip.HistoryError(L"History unavailable");
+            verifyEmpty(false);
+            strip.HistoryError(L"");
+            verifyEmpty(true);
+
+            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history.SessionId(L"matching-history");
+            history.Title(L"missing historical task");
+            history.AgentId(L"copilot");
+            history.Status(L"Idle");
+            impl->CommitHistorySnapshot({ history }, true);
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            verifyEmpty(false);
+            impl->CommitHistorySnapshot({}, true);
+            verifyEmpty(true);
+
+            winrt::MUX::Controls::TabViewItem added;
+            added.Header(winrt::box_value(L"missing new tab"));
+            strip.TabItems().Append(added);
+            verifyEmpty(false);
+            strip.TabItems().RemoveAt(1);
+            verifyEmpty(true);
+
+            strip.SearchQuery(L" \t ");
+            verifyEmpty(false);
+            strip.SearchQuery(L"");
+            verifyEmpty(false);
+        });
+    }
+
     void TabTests::VerticalTabHistorySearchProjection()
     {
         HistoryTestView view;
@@ -17760,6 +17838,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, stripImpl->_historyNode.Children().Size());
             VERIFY_IS_TRUE(stripImpl->_historyNode.Children().GetAt(0).Content() == strip.HistoryItems().GetAt(0));
             VERIFY_IS_TRUE(stripImpl->_historyNode.Children().GetAt(0).Parent() == stripImpl->_historyNode);
+            const auto chevron = stripImpl->HistoryChevron();
+            const auto chevronPosition = chevron.TransformToVisual(stripImpl->HistoryHeader()).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(chevron.ActualWidth() > 0);
+            VERIFY_IS_TRUE(chevronPosition.X + chevron.ActualWidth() < 0);
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().IsTabStop());
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().Focus(FocusState::Keyboard));
             const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(stripImpl->HistoryHeaderButton());
@@ -17810,7 +17892,9 @@ namespace TerminalAppLocalTests
         });
         TestOnUIThread([&]() {
             const auto list = stripImpl->ItemsList();
-            VERIFY_IS_TRUE(list.ContainerFromIndex(1).as<ListViewItem>().Margin() == Thickness{ 0 });
+            const auto historyContainer = list.ContainerFromIndex(1).as<ListViewItem>();
+            VERIFY_IS_TRUE(historyContainer.Margin() == Thickness{ 0 });
+            VERIFY_IS_NOT_NULL(Media::VisualTreeHelper::GetChild(historyContainer, 0).try_as<Grid>());
             winrt::MUX::Controls::TabViewItem tab;
             tab.Header(winrt::box_value(L"Live agent"));
             strip.TabItems().Append(tab);
@@ -17840,6 +17924,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(header.TransformToVisual(list).TransformPoint({ 0, 0 }).Y < 100);
             const auto history = strip.HistoryItems().GetAt(0);
             const auto historyContainer = list.ContainerFromItem(history).as<ListViewItem>();
+            const auto headerButton = stripImpl->HistoryHeaderButton();
+            const auto headerBounds = headerButton.TransformToVisual(list).TransformBounds(
+                { 0, 0, static_cast<float>(headerButton.ActualWidth()), static_cast<float>(headerButton.ActualHeight()) });
+            const auto liveBounds = live.TransformToVisual(list).TransformBounds(
+                { 0, 0, static_cast<float>(live.ActualWidth()), static_cast<float>(live.ActualHeight()) });
+            VERIFY_IS_TRUE(std::abs(headerBounds.X - liveBounds.X) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(headerBounds.X + headerBounds.Width - liveBounds.X - liveBounds.Width) <= 1.0);
+            const auto historyIcon = historyContainer.ContentTemplateRoot().as<FrameworkElement>().FindName(L"HistoryProviderIcon").as<FrameworkElement>();
+            const auto chevron = stripImpl->HistoryChevron();
+            const auto iconCenter = historyIcon.TransformToVisual(list).TransformPoint(
+                { static_cast<float>(historyIcon.ActualWidth() / 2), 0 });
+            const auto chevronCenter = chevron.TransformToVisual(list).TransformPoint(
+                { static_cast<float>(chevron.ActualWidth() / 2), 0 });
+            VERIFY_IS_TRUE(std::abs(iconCenter.X - chevronCenter.X) <= 1.0);
             VERIFY_IS_TRUE(historyContainer.Focus(FocusState::Keyboard));
         });
         _waitForContentTransferReviewUI([&]() {
@@ -17991,6 +18089,38 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(first.Parent() == firstParent);
             VERIFY_IS_TRUE(second.Parent() == secondParent);
         });
+        const auto verifyTransparentBackgrounds = [](auto&& self, const DependencyObject& element) -> void {
+            if (const auto visual = element.try_as<UIElement>();
+                visual && (visual.Visibility() == Visibility::Collapsed || visual.Opacity() == 0))
+            {
+                return;
+            }
+            Media::Brush background{ nullptr };
+            if (const auto control = element.try_as<Control>())
+            {
+                background = control.Background();
+            }
+            else if (const auto presenter = element.try_as<ContentPresenter>())
+            {
+                background = presenter.Background();
+            }
+            else if (const auto border = element.try_as<Border>())
+            {
+                background = border.Background();
+            }
+            else if (const auto panel = element.try_as<Panel>())
+            {
+                background = panel.Background();
+            }
+            if (background && background.Opacity() > 0)
+            {
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, background.as<Media::SolidColorBrush>().Color().A);
+            }
+            for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+            {
+                self(self, Media::VisualTreeHelper::GetChild(element, index));
+            }
+        };
         for (const auto theme : { ElementTheme::Dark, ElementTheme::Light, ElementTheme::Dark })
         {
             TestOnUIThread([&]() {
@@ -18012,6 +18142,7 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(expectedChannel, color.R);
                     VERIFY_ARE_EQUAL(expectedChannel, color.G);
                     VERIFY_ARE_EQUAL(expectedChannel, color.B);
+                    verifyTransparentBackgrounds(verifyTransparentBackgrounds, heading.Parent());
                 }
             });
         }

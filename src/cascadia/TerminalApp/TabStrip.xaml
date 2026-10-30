@@ -96,8 +96,9 @@
                    BasedOn="{StaticResource SidebarHistoryContainerStyle}"
                    TargetType="mux:TreeViewItem">
                 <Setter Property="MinHeight" Value="44" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="0,1,0,0" />
+                <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
             </Style>
             <Style x:Key="SidebarHistoryStatusContainerStyle"
                    BasedOn="{StaticResource SidebarHistoryContainerStyle}"
@@ -186,6 +187,7 @@
                     <TextBlock x:Name="HistoryHeader"
                                x:Uid="VerticalTabsSessionHistoryHeader"
                                MinHeight="44"
+                               Margin="4,0,0,0"
                                Padding="0,12,12,12"
                                VerticalAlignment="Center"
                                FontWeight="SemiBold"
@@ -443,7 +445,7 @@
               Grid.Row="2"
               Height="40"
               Padding="{StaticResource SidebarToolbarPadding}"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1"
               ColumnSpacing="{StaticResource SidebarActionColumnSpacing}">
             <Grid.ColumnDefinitions>
@@ -735,6 +737,24 @@
                           IsHitTestVisible="False" />
             </Grid>
         </Grid>
+
+        <Border x:Name="SearchEmptyState"
+                Grid.Row="4"
+                Padding="16"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="Collapsed">
+            <TextBlock x:Name="SearchNoResultsText"
+                       x:Uid="VerticalTabsSearchNoMatches"
+                       VerticalAlignment="Top"
+                       AutomationProperties.AutomationId="SidebarSearchNoMatches"
+                       FontSize="14"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                       LineHeight="20"
+                       LineStackingStrategy="BlockLineHeight"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+        </Border>
 
         <!--
             One display descriptor per canonical tab. The hosted TabViewItem
