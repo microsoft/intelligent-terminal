@@ -3087,7 +3087,7 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Margin(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 0, 0, -8, 0 });
-        TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 0, 0 });
+        TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
         SearchTabsButton().Width(40.0);

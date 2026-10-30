@@ -9496,9 +9496,9 @@ namespace TerminalAppLocalTests
                 const auto optionsBounds = options.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
                 VERIFY_ARE_EQUAL(40.0, toolbar.ActualHeight());
                 VERIFY_ARE_EQUAL(-8.0, toolbar.Margin().Right);
-                VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
-                VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 80.0), searchBounds.X);
-                VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 40.0), optionsBounds.X);
+                VERIFY_ARE_EQUAL(8.0, toolbar.Padding().Right);
+                VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 88.0), searchBounds.X);
+                VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 48.0), optionsBounds.X);
                 VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
                 VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
                 const auto panel = stripImpl->SearchPanel();
@@ -9550,9 +9550,9 @@ namespace TerminalAppLocalTests
             const auto optionsBounds = options.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
             VERIFY_ARE_EQUAL(-8.0, toolbar.Margin().Right);
             VERIFY_ARE_EQUAL(12.0, toolbar.Padding().Left);
-            VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
-            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 80.0), searchBounds.X);
-            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 40.0), optionsBounds.X);
+            VERIFY_ARE_EQUAL(8.0, toolbar.Padding().Right);
+            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 88.0), searchBounds.X);
+            VERIFY_ARE_EQUAL(static_cast<float>(toolbar.ActualWidth() - 48.0), optionsBounds.X);
             VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
             VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
             stripImpl->ProjectionControlsEnabled(false);
