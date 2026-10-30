@@ -8,6 +8,9 @@
     <Thickness x:Key="SidebarTrailingActionMargin">0,0,20,0</Thickness>
     <Thickness x:Key="SidebarLiveRowMargin">6,4</Thickness>
     <x:Double x:Key="SidebarToolbarActionExtent">40</x:Double>
+    <!--  Center a forty-DIP action on the live-row icon axis: 6 + 20 = 26.  -->
+    <GridLength x:Key="SidebarExpandedLeadingColumnWidth">52</GridLength>
+    <GridLength x:Key="SidebarCompactLeadingColumnWidth">40</GridLength>
     <!--  Preserve the pane icon/text positions formerly supplied by 12 + 3 DIPs of inner spacing.  -->
     <GridLength x:Key="SidebarPaneGutterWidth">15</GridLength>
     <!--  Reserve the close cell (40) and its inner trailing inset (14) for content/focus, not input.  -->

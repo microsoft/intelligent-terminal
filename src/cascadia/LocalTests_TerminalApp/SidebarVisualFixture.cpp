@@ -110,7 +110,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         stage = L"creating production TabStrip";
         const winrt::TerminalApp::TabStrip strip;
         Automation::AutomationProperties::SetAutomationId(strip, L"FixtureSidebar");
-        Automation::AutomationProperties::SetItemStatus(strip, L"PaneRequest:None");
+        Automation::AutomationProperties::SetItemStatus(strip, L"PaneRequest:None;activations=0;closes=0");
         strip.Width(272);
         strip.HorizontalAlignment(HorizontalAlignment::Left);
         const winrt::TerminalApp::TabRowControl chrome;
@@ -248,10 +248,21 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         history.Subtitle(L"1h");
         stripImpl->CommitHistorySnapshot({ history }, true);
 
-        strip.PaneActivationRequested([weakStrip = make_weak(strip)](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
+        const auto paneEventCounts = std::make_shared<std::pair<uint64_t, uint64_t>>();
+        const auto recordPaneEvent = [weakStrip = make_weak(strip), paneEventCounts](bool activation, uint32_t contentId) {
             if (const auto sidebar = weakStrip.get())
             {
-                Automation::AutomationProperties::SetItemStatus(sidebar, L"PaneActivationRequested:" + to_hstring(args.ContentId()));
+                ++(activation ? paneEventCounts->first : paneEventCounts->second);
+                Automation::AutomationProperties::SetItemStatus(
+                    sidebar,
+                    hstring{ activation ? L"PaneActivationRequested:" : L"PaneCloseRequested:" } + to_hstring(contentId) +
+                        L";activations=" + to_hstring(paneEventCounts->first) + L";closes=" + to_hstring(paneEventCounts->second));
+            }
+        };
+        strip.PaneActivationRequested([weakStrip = make_weak(strip), recordPaneEvent](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
+            if (const auto sidebar = weakStrip.get())
+            {
+                recordPaneEvent(true, args.ContentId());
                 const auto display = get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->DisplayItemForTab(args.Tab());
                 const auto panes = single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>();
                 for (const auto& pane : display.PaneItems())
@@ -263,11 +274,8 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
                 sidebar.SetPaneItems(args.Tab(), panes, true);
             }
         });
-        strip.PaneCloseRequested([weakStrip = make_weak(strip)](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
-            if (const auto sidebar = weakStrip.get())
-            {
-                Automation::AutomationProperties::SetItemStatus(sidebar, L"PaneCloseRequested:" + to_hstring(args.ContentId()));
-            }
+        strip.PaneCloseRequested([recordPaneEvent](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
+            recordPaneEvent(false, args.ContentId());
         });
 
         stage = L"loading built-in theme presets";

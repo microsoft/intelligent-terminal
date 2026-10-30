@@ -7107,7 +7107,7 @@ namespace TerminalAppLocalTests
             for (const auto elevated : { false, true })
             {
                 row->ShowElevationShield(elevated);
-                for (const auto width : { 180.0, 220.0, 333.0, 480.0 })
+                for (const auto width : { 180.0, 220.0, 272.0, 333.0, 480.0 })
                 {
                     row->SetVerticalRailState(true, false, width);
                     titlebar.UpdateLayout();
@@ -7115,7 +7115,11 @@ namespace TerminalAppLocalTests
                     const auto buttonBounds = bounds(row->VerticalNewTabButton());
                     VERIFY_IS_TRUE(dragBounds.Width > 0);
                     VERIFY_ARE_EQUAL(40.0f, dragBounds.Height);
-                    VERIFY_IS_TRUE(dragBounds.X >= 40.0f);
+                    VERIFY_IS_TRUE(dragBounds.X >= 52.0f);
+                    const auto toggleBounds = bounds(row->VerticalRailToggleButton());
+                    VERIFY_ARE_EQUAL(40.0f, toggleBounds.Width);
+                    VERIFY_ARE_EQUAL(26.0f, toggleBounds.X + toggleBounds.Width / 2);
+                    VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
                     VERIFY_ARE_EQUAL(81.0f, buttonBounds.Width);
                     VERIFY_IS_TRUE(row->VerticalNewTabButton().IsHitTestVisible());
@@ -7164,14 +7168,17 @@ namespace TerminalAppLocalTests
                     }
                     else
                     {
-                        VERIFY_ARE_EQUAL(40.0f, dragBounds.X);
-                        VERIFY_ARE_EQUAL(static_cast<float>(width - 111), dragBounds.Width);
+                        VERIFY_ARE_EQUAL(52.0f, dragBounds.X);
+                        VERIFY_ARE_EQUAL(static_cast<float>(width - 153), dragBounds.Width);
                     }
                 }
             }
 
             row->SetVerticalRailState(true, true, 40);
             titlebar.UpdateLayout();
+            const auto compactToggleBounds = bounds(row->VerticalRailToggleButton());
+            VERIFY_ARE_EQUAL(0.0f, compactToggleBounds.X);
+            VERIFY_ARE_EQUAL(40.0f, compactToggleBounds.Width);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, area.Parent().as<UIElement>().Visibility());
             row->SetVerticalRailState(false, false, 333);
             titlebar.UpdateLayout();
@@ -9898,10 +9905,23 @@ namespace TerminalAppLocalTests
                                                 filter.X - search.X) <= 1.0);
                     const auto rows = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
                     const auto tabRoot = rows.Children().GetAt(0).as<Grid>();
+                    const auto toggle = bounds(chrome->VerticalRailToggleButton());
+                    const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
+                    VERIFY_ARE_EQUAL(40.0f, toggle.Width);
+                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(groupToggle)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
+                                                center(toggle) - 26 :
+                                                width - center(toggle) - 26) <= 1.0);
+                    const auto drag = bounds(winrt::TerminalApp::TitlebarControl::GetContentDragArea(chrome->VerticalTitleBarContent().as<FrameworkElement>()));
+                    VERIFY_IS_TRUE(drag.Width > 0);
+                    VERIFY_IS_TRUE(toggle.X + toggle.Width <= drag.X || drag.X + drag.Width <= toggle.X);
+                    const auto splitBounds = bounds(split);
+                    VERIFY_IS_TRUE(splitBounds.X + splitBounds.Width <= drag.X || drag.X + drag.Width <= splitBounds.X);
                     const auto tabSlot = bounds(tabRoot.FindName(L"TabCloseButtonSlot").as<Grid>());
                     VERIFY_IS_TRUE(std::abs(center(tabSlot) - center(filter)) <= 1.0);
                     const auto panes = rows.Children().GetAt(1).as<ItemsControl>();
                     const auto rail = bounds(Media::VisualTreeHelper::GetChild(panes, 0).as<FrameworkElement>().FindName(L"PaneGroupIndicator").as<FrameworkElement>());
+                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(rail)) <= 1.0);
                     for (uint32_t index = 0; index < 2; ++index)
                     {
                         const auto paneRoot = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(index), 0).as<Grid>();
@@ -9962,6 +9982,20 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                strip.FlowDirection(direction);
+                strip.IsRailCollapsed(true);
+                strip.Width(40);
+                chrome->SetVerticalRailState(true, true, 40);
+                strip.UpdateLayout();
+                const auto toggle = bounds(chrome->VerticalRailToggleButton());
+                VERIFY_ARE_EQUAL(40.0f, toggle.Width);
+                VERIFY_ARE_EQUAL(20.0f, toggle.X + toggle.Width / 2);
+                const auto glyph = bounds(chrome->VerticalRailToggleButton().Content().as<FrameworkElement>());
+                VERIFY_IS_TRUE(std::abs(glyph.X + glyph.Width / 2 - toggle.X - toggle.Width / 2) <= 1.0);
+            }
+            strip.IsRailCollapsed(false);
             strip.SetPaneItems(liveTab, nullptr, false);
             strip.TabItems().RemoveAtEnd();
             strip.TopChromeContent(nullptr);

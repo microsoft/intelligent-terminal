@@ -99,7 +99,7 @@ namespace winrt::TerminalApp::implementation
         titlebarGrid.HorizontalAlignment(WUX::HorizontalAlignment::Left);
 
         WUX::Controls::ColumnDefinition toggleColumn;
-        toggleColumn.Width(WUX::GridLengthHelper::FromValueAndType(40, WUX::GridUnitType::Pixel));
+        toggleColumn.Width(unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.ColumnDefinitions().Append(toggleColumn);
         titlebarGrid.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
         WUX::Controls::ColumnDefinition newTabColumn;
@@ -111,7 +111,7 @@ namespace winrt::TerminalApp::implementation
         railToggle.Width(40);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
-        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Center);
         railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
         railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         railToggle.BorderThickness(WUX::Thickness{});
@@ -307,6 +307,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         titlebarGrid.Width(width);
+        titlebarGrid.as<WUX::Controls::Grid>().ColumnDefinitions().GetAt(0).Width(
+            unbox_value<WUX::GridLength>(Resources().Lookup(box_value(
+                collapsed ? L"SidebarCompactLeadingColumnWidth" : L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.Visibility(visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         if (_verticalExpandedChrome)
         {

@@ -68,7 +68,9 @@ header chevron, and the separate pane-group rail gutter as one composition.
 The native new-tab SplitButton retains its 32-DIP height: its two 40-DIP-wide
 cells are not 40-by-40 targets. Pane activation and close requests report
 `PaneActivationRequested:<contentId>` or `PaneCloseRequested:<contentId>` in the
-sidebar's UIA ItemStatus (`FixtureSidebar` automation ID). Pane dismiss
+sidebar's UIA ItemStatus (`FixtureSidebar` automation ID), followed by
+`;activations=<count>;closes=<count>`. These cumulative counts expose both
+callbacks even when one gesture raises more than one event. Pane dismiss
 availability still follows production feature gating; the fixture does not
 enable hidden actions.
 
