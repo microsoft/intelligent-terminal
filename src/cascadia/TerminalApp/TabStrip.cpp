@@ -145,6 +145,10 @@ namespace winrt::TerminalApp::implementation
 
     DataTemplate TabStripItemTemplateSelector::SelectTemplateCore(IInspectable const& item)
     {
+        if (item == StatusItem)
+        {
+            return StatusTemplate;
+        }
         return item.try_as<TerminalApp::TabStripDisplayItem>() ? LiveTemplate :
                item.try_as<TerminalApp::TabStripHistoryItem>() ? HistoryTemplate :
                                                                  HeaderTemplate;
@@ -757,7 +761,11 @@ namespace winrt::TerminalApp::implementation
         // ItemsControl handles a UIElement item as its own content; it must not
         // also be the data item for the section's DataTemplate.
         _historySectionItem = box_value(RS_(L"VerticalTabsSessionHistoryHeader/Text"));
+        _historyStatusItem = Windows::Foundation::Collections::PropertySet{};
+        _historyStatusPanel = Resources().Lookup(box_value(L"HistoryStatusTemplate")).as<DataTemplate>().LoadContent().as<Grid>();
         const auto selector = winrt::make_self<TabStripItemTemplateSelector>();
+        selector->StatusItem = _historyStatusItem;
+        selector->StatusTemplate = Resources().Lookup(box_value(L"HistoryStatusTemplate")).as<DataTemplate>();
         selector->LiveTemplate = ItemsList().ItemTemplate();
         selector->HistoryTemplate = Resources().Lookup(box_value(L"HistoryRowTemplate")).as<DataTemplate>();
         selector->HeaderTemplate = Resources().Lookup(box_value(L"HistoryHeaderTemplate")).as<DataTemplate>();
@@ -3054,6 +3062,21 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TabStrip::OnHistoryStatusLoaded(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (const auto root = sender.try_as<Grid>())
+        {
+            const auto container = ItemsList().ContainerFromItem(_historyStatusItem).try_as<ListViewItem>();
+            if (container && container.ContentTemplateRoot() == root)
+            {
+                _historyStatusPanel = root;
+                const auto previousSync = std::exchange(_syncingHistorySection, true);
+                const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
+                _updateHistoryVisualState();
+            }
+        }
+    }
+
     TextBlock TabStrip::HistoryChevron()
     {
         const auto header = HistoryHeaderButton();
@@ -3139,8 +3162,12 @@ namespace winrt::TerminalApp::implementation
         const auto display = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripDisplayItem>();
         const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
         const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
-        container.Style(header || history ?
-                            Resources().Lookup(box_value(header ? L"SidebarHistoryHeaderContainerStyle" : L"SidebarHistoryContainerStyle")).as<WUX::Style>() :
+        const auto status = !e.InRecycleQueue() && e.Item() == _historyStatusItem;
+        container.Style(header || history || status ?
+                            Resources().Lookup(box_value(status ? L"SidebarHistoryStatusContainerStyle" :
+                                                         header ? L"SidebarHistoryHeaderContainerStyle" :
+                                                                  L"SidebarHistoryContainerStyle"))
+                                .as<WUX::Style>() :
                             ItemsList().ItemContainerStyle());
         container.AllowDrop(false);
         const auto treeItem = container.as<MUX::Controls::TreeViewItem>();
@@ -3171,9 +3198,11 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        container.IsTabStop(true);
-        container.Margin(history || header ? Thickness{ 0 } :
-                                             unbox_value<Thickness>(Resources().Lookup(box_value(L"SidebarLiveRowMargin"))));
+        container.IsTabStop(!status);
+        container.IsEnabled(!status);
+        container.IsHitTestVisible(!status);
+        container.Margin(history || header || status ? Thickness{ 0 } :
+                                                       unbox_value<Thickness>(Resources().Lookup(box_value(L"SidebarLiveRowMargin"))));
         _applyHistoryRowAutomation(container, history);
         _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), history);
         if (display)
@@ -3821,38 +3850,38 @@ namespace winrt::TerminalApp::implementation
         {
             const auto previousSync = std::exchange(_syncingHistorySection, true);
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingHistorySection = previousSync; });
-            HistoryStatusPanel().Visibility(expanded ? Visibility::Visible : Visibility::Collapsed);
-            HistoryLoadingIndicator().IsActive(visible && expanded && loading);
-            HistoryLoadingIndicator().Visibility(visible && loading ? Visibility::Visible : Visibility::Collapsed);
             WUX::Automation::AutomationProperties::SetName(HistoryHeaderButton(), HistoryHeader().Text());
             const auto historyAction = expanded ?
                                            RS_(L"VerticalTabsCollapseRecentSessions") :
                                            RS_(L"VerticalTabsExpandRecentSessions");
             ToolTipService::SetToolTip(HistoryHeaderButton(), box_value(historyAction));
             WUX::Automation::AutomationProperties::SetHelpText(HistoryHeaderButton(), historyAction);
-            if (!visible || loading)
-            {
-                HistoryMessage().Visibility(Visibility::Collapsed);
-            }
-            else if (const auto error = HistoryError(); !error.empty())
-            {
-                HistoryMessage().Text(error);
-                HistoryMessage().Visibility(Visibility::Visible);
-            }
-            else if (_historyItems.Size() == 0)
-            {
-                const auto searchQuery = SearchQuery();
-                const std::wstring_view query{ searchQuery.c_str(), searchQuery.size() };
-                const auto hasSearchQuery = query.find_first_not_of(L" \t\r\n") != std::wstring_view::npos;
-                HistoryMessage().Text(_historySnapshot.empty() || !hasSearchQuery ?
-                                          RS_(L"VerticalTabsHistoryEmpty") :
-                                          RS_(L"VerticalTabsHistoryNoMatches"));
-                HistoryMessage().Visibility(Visibility::Visible);
-            }
-            else
-            {
-                HistoryMessage().Visibility(Visibility::Collapsed);
-            }
+        }
+        HistoryStatusPanel().Visibility(visible && expanded ? Visibility::Visible : Visibility::Collapsed);
+        HistoryLoadingIndicator().IsActive(visible && expanded && loading);
+        HistoryLoadingIndicator().Visibility(visible && loading ? Visibility::Visible : Visibility::Collapsed);
+        if (!visible || loading)
+        {
+            HistoryMessage().Visibility(Visibility::Collapsed);
+        }
+        else if (const auto error = HistoryError(); !error.empty())
+        {
+            HistoryMessage().Text(error);
+            HistoryMessage().Visibility(Visibility::Visible);
+        }
+        else if (_historyItems.Size() == 0)
+        {
+            const auto searchQuery = SearchQuery();
+            const std::wstring_view query{ searchQuery.c_str(), searchQuery.size() };
+            const auto hasSearchQuery = query.find_first_not_of(L" \t\r\n") != std::wstring_view::npos;
+            HistoryMessage().Text(_historySnapshot.empty() || !hasSearchQuery ?
+                                      RS_(L"VerticalTabsHistoryEmpty") :
+                                      RS_(L"VerticalTabsHistoryNoMatches"));
+            HistoryMessage().Visibility(Visibility::Visible);
+        }
+        else
+        {
+            HistoryMessage().Visibility(Visibility::Collapsed);
         }
         if (!_syncingHistorySection)
         {
@@ -3906,9 +3935,19 @@ namespace winrt::TerminalApp::implementation
             }
             _historyNode = SidebarTree().RootNodes().GetAt(headerIndex);
             const auto children = _historyNode.Children();
-            std::unordered_set<::IUnknown*> retainedItems;
-            retainedItems.reserve(_historyItems.Size());
+            std::vector<IInspectable> childItems;
+            childItems.reserve(_historyItems.Size() + 1);
+            if (HistoryLoading() || !HistoryError().empty() || _historyItems.Size() == 0)
+            {
+                childItems.push_back(_historyStatusItem);
+            }
             for (const auto& item : _historyItems)
+            {
+                childItems.push_back(item);
+            }
+            std::unordered_set<::IUnknown*> retainedItems;
+            retainedItems.reserve(childItems.size());
+            for (const auto& item : childItems)
             {
                 retainedItems.emplace(item.as<::IUnknown>().get());
             }
@@ -3919,9 +3958,9 @@ namespace winrt::TerminalApp::implementation
                     children.RemoveAt(index - 1);
                 }
             }
-            for (uint32_t index = 0; index < _historyItems.Size(); ++index)
+            for (uint32_t index = 0; index < childItems.size(); ++index)
             {
-                const auto item = _historyItems.GetAt(index);
+                const auto& item = childItems[index];
                 if (index < children.Size() && children.GetAt(index).Content() == item)
                 {
                     continue;
@@ -4385,6 +4424,7 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnDragItemsStarting(IInspectable const& /*sender*/,
                                        DragItemsStartingEventArgs const& e)
     {
+        _rejectingHistoryDrop = false;
         // ListView packs the dragged items into e.Items(); for SelectionMode=Single
         // there's at most one. Wrap it in a TabView-shaped args object so
         // TerminalPage's tearoff-setup code can look identical to the horizontal path.
@@ -4640,7 +4680,13 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnDragItemsCompleted(ListViewBase const& /*sender*/,
                                         DragItemsCompletedEventArgs const& e)
     {
-        if (e.DropResult() == Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move &&
+        _completeDrag(e.DropResult());
+    }
+
+    void TabStrip::_completeDrag(Windows::ApplicationModel::DataTransfer::DataPackageOperation result)
+    {
+        const auto rejectedHistoryDrop = std::exchange(_rejectingHistoryDrop, false);
+        if (result == Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move &&
             _draggingItem &&
             !_dragCollectionChanged)
         {
@@ -4690,7 +4736,7 @@ namespace winrt::TerminalApp::implementation
 
         // Tearoff signal: dropped where nobody accepted it. Mirrors MUX
         // TabView.TabDroppedOutside — TerminalPage will create a new window.
-        if (e.DropResult() == Windows::ApplicationModel::DataTransfer::DataPackageOperation::None && _draggingItem)
+        if (result == Windows::ApplicationModel::DataTransfer::DataPackageOperation::None && _draggingItem && !rejectedHistoryDrop)
         {
             auto tab = _draggingItem.try_as<MUX::Controls::TabViewItem>();
             auto args = winrt::make_self<TabStripDroppedOutsideEventArgs>(tab, _draggingItem);
@@ -4704,17 +4750,42 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnListDragOver(IInspectable const& /*sender*/,
                                   WUX::DragEventArgs const& e)
     {
-        if (_draggingItem)
+        if (_updateDragRejection(e.GetPosition(ItemsList())))
         {
-            if (const auto header = HistoryHeaderButton();
-                header && e.GetPosition(header).Y >= 0)
-            {
-                e.AcceptedOperation(Windows::ApplicationModel::DataTransfer::DataPackageOperation::None);
-                e.Handled(true);
-                return;
-            }
+            e.AcceptedOperation(Windows::ApplicationModel::DataTransfer::DataPackageOperation::None);
+            e.Handled(true);
+            return;
         }
         TabStripDragOver.raise(*this, e);
+    }
+
+    void TabStrip::OnListDragLeave(IInspectable const&, WUX::DragEventArgs const& e)
+    {
+        _updateDragRejection(e.GetPosition(ItemsList()));
+    }
+
+    bool TabStrip::_updateDragRejection(Windows::Foundation::Point const& position)
+    {
+        _rejectingHistoryDrop = false;
+        const auto list = ItemsList();
+        uint32_t headerIndex{};
+        if (!_draggingItem || !_historyNode ||
+            position.X < 0 || position.Y < 0 ||
+            position.X >= list.ActualWidth() || position.Y >= list.ActualHeight() ||
+            !list.Items().IndexOf(_historySectionItem, headerIndex))
+        {
+            return false;
+        }
+        if (const auto header = HistoryHeaderButton(); header && header.IsLoaded())
+        {
+            _rejectingHistoryDrop = position.Y >= header.TransformToVisual(list).TransformPoint({ 0, 0 }).Y;
+        }
+        else if (const auto panel = list.ItemsPanelRoot().try_as<ItemsStackPanel>())
+        {
+            // A recycled header has no container, but its flattened index still bounds the history viewport.
+            _rejectingHistoryDrop = panel.FirstVisibleIndex() > gsl::narrow_cast<int32_t>(headerIndex);
+        }
+        return _rejectingHistoryDrop;
     }
 
     void TabStrip::OnListDrop(IInspectable const& /*sender*/,

@@ -99,6 +99,22 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="0,1,0,0" />
             </Style>
+            <Style x:Key="SidebarHistoryStatusContainerStyle"
+                   BasedOn="{StaticResource SidebarHistoryContainerStyle}"
+                   TargetType="mux:TreeViewItem">
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="mux:TreeViewItem">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style BasedOn="{StaticResource DefaultButtonStyle}"
                    TargetType="Button">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -167,10 +183,6 @@
                       Background="Transparent"
                       Loaded="OnHistorySectionLoaded"
                       Unloaded="OnHistorySectionUnloaded">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
                     <TextBlock x:Name="HistoryHeader"
                                x:Uid="VerticalTabsSessionHistoryHeader"
                                MinHeight="44"
@@ -179,27 +191,27 @@
                                FontWeight="SemiBold"
                                MaxLines="1"
                                TextTrimming="CharacterEllipsis" />
-                    <Grid x:Name="HistoryStatusPanel"
-                          Grid.Row="1">
-                        <ProgressRing x:Name="HistoryLoadingIndicator"
-                                      Width="24"
-                                      Height="24"
-                                      Margin="0,8"
-                                      HorizontalAlignment="Center"
-                                      IsActive="False"
-                                      Visibility="Collapsed" />
-                        <TextBlock x:Name="HistoryMessage"
-                                   Margin="16,0"
-                                   HorizontalAlignment="Center"
-                                   LineHeight="20"
-                                   LineStackingStrategy="BlockLineHeight"
-                                   MaxLines="3"
-                                   TextAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextWrapping="Wrap"
-                                   ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
-                                   Visibility="Collapsed" />
-                    </Grid>
+                </Grid>
+            </DataTemplate>
+            <DataTemplate x:Key="HistoryStatusTemplate">
+                <Grid x:Name="HistoryStatusPanel"
+                      Padding="50,8,12,12"
+                      Loaded="OnHistoryStatusLoaded">
+                    <ProgressRing x:Name="HistoryLoadingIndicator"
+                                  Width="16"
+                                  Height="16"
+                                  HorizontalAlignment="Left"
+                                  IsActive="False"
+                                  Visibility="Collapsed" />
+                    <TextBlock x:Name="HistoryMessage"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               LineHeight="20"
+                               LineStackingStrategy="BlockLineHeight"
+                               MaxLines="3"
+                               TextTrimming="CharacterEllipsis"
+                               TextWrapping="Wrap"
+                               ToolTipService.ToolTip="{Binding Text, ElementName=HistoryMessage}"
+                               Visibility="Collapsed" />
                 </Grid>
             </DataTemplate>
             <DataTemplate x:Key="HistoryRowTemplate"
@@ -749,6 +761,7 @@
                                       ContainerContentChanging="OnContainerContentChanging"
                                       DragItemsCompleted="OnDragItemsCompleted"
                                       DragItemsStarting="OnDragItemsStarting"
+                                      DragLeave="OnListDragLeave"
                                       DragOver="OnListDragOver"
                                       Drop="OnListDrop"
                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"

@@ -55,6 +55,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::DataTemplate LiveTemplate{ nullptr };
         winrt::Windows::UI::Xaml::DataTemplate HistoryTemplate{ nullptr };
         winrt::Windows::UI::Xaml::DataTemplate HeaderTemplate{ nullptr };
+        winrt::Windows::UI::Xaml::DataTemplate StatusTemplate{ nullptr };
+        winrt::Windows::Foundation::IInspectable StatusItem{ nullptr };
         winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item);
         winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item,
                                                                   winrt::Windows::UI::Xaml::DependencyObject const&);
@@ -417,9 +419,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::UI::Xaml::Controls::TreeViewItem HistoryHeaderButton() { return SidebarTree().ContainerFromItem(_historySectionItem).try_as<winrt::Microsoft::UI::Xaml::Controls::TreeViewItem>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryHeader() { return _historyElement(L"HistoryHeader").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryChevron();
-        winrt::Windows::UI::Xaml::Controls::Grid HistoryStatusPanel() { return _historyElement(L"HistoryStatusPanel").try_as<winrt::Windows::UI::Xaml::Controls::Grid>(); }
-        winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() { return _historyElement(L"HistoryLoadingIndicator").try_as<winrt::Windows::UI::Xaml::Controls::ProgressRing>(); }
-        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() { return _historyElement(L"HistoryMessage").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
+        winrt::Windows::UI::Xaml::Controls::Grid HistoryStatusPanel() const { return _historyStatusPanel; }
+        winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() { return _historyStatusPanel.FindName(L"HistoryLoadingIndicator").as<winrt::Windows::UI::Xaml::Controls::ProgressRing>(); }
+        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() { return _historyStatusPanel.FindName(L"HistoryMessage").as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
         void HistoryActive(bool value);
         bool HistoryLoading() const noexcept { return _historyLoadPending && _historyItems.Size() == 0; }
         void HistoryLoading(bool value);
@@ -462,6 +464,8 @@ namespace winrt::TerminalApp::implementation
         // OnDragOver on the Control base class, which have different parameter types.
         void OnListDragOver(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::DragEventArgs const& e);
+        void OnListDragLeave(winrt::Windows::Foundation::IInspectable const& sender,
+                             winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,
                         winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnRailToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
@@ -507,6 +511,8 @@ namespace winrt::TerminalApp::implementation
                              winrt::Microsoft::UI::Xaml::Controls::TreeViewExpandingEventArgs const& e);
         void OnTreeCollapsed(winrt::Microsoft::UI::Xaml::Controls::TreeView const& sender,
                              winrt::Microsoft::UI::Xaml::Controls::TreeViewCollapsedEventArgs const& e);
+        void OnHistoryStatusLoaded(winrt::Windows::Foundation::IInspectable const& sender,
+                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnTreeItemInvoked(winrt::Microsoft::UI::Xaml::Controls::TreeView const& sender,
                                winrt::Microsoft::UI::Xaml::Controls::TreeViewItemInvokedEventArgs const& e);
         void OnHistorySectionLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -648,6 +654,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::UI::Xaml::Controls::TreeViewNode _historyNode{ nullptr };
         bool _syncingTree{ false };
         winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
+        winrt::Windows::Foundation::IInspectable _historyStatusItem{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::Grid _historyStatusPanel{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
         bool _historyExpanded{ true };
         bool _syncingHistorySection{ false };
@@ -701,12 +709,15 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _draggingIndex;
         bool _syncingNativeReorder{ false };
         bool _dragCollectionChanged{ false };
+        bool _rejectingHistoryDrop{ false };
         bool _keepRichTabMetadataFlyoutOpen{ false };
         winrt::weak_ref<winrt::Microsoft::UI::Xaml::Controls::TabViewItem> _pressedHeaderTab;
         bool _pressedHeaderWasSelected{ false };
 
         void _onListKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        bool _updateDragRejection(winrt::Windows::Foundation::Point const& position);
+        void _completeDrag(winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation result);
         void _onHistoryPreviewKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,
