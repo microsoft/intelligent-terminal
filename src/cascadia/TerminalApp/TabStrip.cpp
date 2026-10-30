@@ -3016,7 +3016,6 @@ namespace winrt::TerminalApp::implementation
         MinWidth(_isRailCollapsed ? 40.0 : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
-        VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(true);
         SearchTabsButton().IsEnabled(_projectionControlsEnabled);
         FilterTabsButton().Visibility(_richTabMetadataControlsVisible ? expandedVisibility : Visibility::Collapsed);
@@ -3024,7 +3023,13 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} :
-                                                  unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarSectionPadding"))));
+                                                 unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarToolbarPadding"))));
+        TabsToolbar().ColumnSpacing(_isRailCollapsed ? 0.0 :
+                                                       unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing"))));
+        const auto actionColumn = _isRailCollapsed ? WUX::GridLengthHelper::FromValueAndType(0, WUX::GridUnitType::Pixel) :
+                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarActionCellWidth")));
+        TabsToolbar().ColumnDefinitions().GetAt(1).Width(actionColumn);
+        TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
         SearchTabsButton().Width(40.0);
