@@ -9814,7 +9814,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": "unrelated-restart" }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": "unrelated-restart",
+        }),
     });
     assert!(
         !app.pending_acp_start,
@@ -9824,7 +9827,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": restart_request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": restart_request_id,
+        }),
     });
     assert!(!app.pending_acp_start);
     assert!(app.reconnect_after_transport_retired);
@@ -9895,6 +9901,33 @@ fn start_timed_auth_recovery() -> (App, String) {
 }
 
 #[test]
+fn auth_recovery_ignores_restart_without_matching_request() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let generation = app.auth_recovery_generation;
+    for params in [
+        json!({ "operation_id": request_id }),
+        json!({ "operation_id": request_id, "request_id": "unrelated-request" }),
+        json!({ "operation_id": "retirement-operation", "request_id": "" }),
+        json!({ "operation_id": "", "request_id": request_id }),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_master_restarted".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params,
+        });
+
+        assert!(!app.pending_acp_start);
+        assert!(!app.reconnect_after_transport_retired);
+        assert_eq!(app.auth_recovery_generation, generation);
+        assert!(matches!(
+            &app.auth_recovery_state,
+            AuthRecoveryState::WaitingForMaster { request_id: expected } if expected == &request_id
+        ));
+    }
+}
+
+#[test]
 fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
     let (mut app, request_id) = start_timed_auth_recovery();
     let readiness_generation = app.auth_recovery_generation;
@@ -9908,7 +9941,10 @@ fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
 
     assert!(!app.pending_acp_start);
@@ -9951,7 +9987,10 @@ fn auth_recovery_connection_timeout_starts_when_master_is_ready() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
     let connection_generation = app.auth_recovery_generation;
     assert_eq!(

@@ -25,6 +25,29 @@ namespace
     constexpr std::wstring_view AutoErrorHandlingDetect{ L"detect" };
     constexpr std::wstring_view AutoErrorHandlingSuggest{ L"suggest" };
     constexpr std::wstring_view AutoErrorHandlingOff{ L"off" };
+
+    auto CaptureModelSettings(const GlobalAppSettings& settings)
+    {
+        return std::tuple{
+            settings.AcpModel(),
+            settings.HasAcpModel(),
+            settings.CustomModelSelection(),
+            settings.HasCustomModelSelection(),
+        };
+    }
+
+    auto CaptureAgentPolicyState(const GlobalAppSettings& settings)
+    {
+        return std::tuple{
+            settings.IsAgentPolicyLocked(),
+            settings.IsCustomAgentPolicyLocked(),
+            settings.IsAutoFixPolicyLocked(),
+            settings.IsAgentSessionHooksPolicyLocked(),
+            settings.IsYoloModePolicyLocked(),
+            settings.EffectiveAcpAgent(),
+            settings.EffectiveDelegateAgent(),
+        };
+    }
 }
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
@@ -362,10 +385,149 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::_NormalizeCustomAcpSettings(
+        const Model::GlobalAppSettings& settings,
+        IObservableVector<Editor::AgentEntry>& list)
+    {
+        const bool hasLocalCommands = settings.HasAcpCustomCommands();
+        const bool hasLocalLegacyCommand = settings.HasAcpCustomCommand();
+        const bool hasLocalAgent = settings.HasAcpAgent();
+        auto commands = _NormalizeCustomCommands(settings.AcpCustomCommands());
+        const auto effectiveLegacyCommand = settings.AcpCustomCommand();
+        if (!effectiveLegacyCommand.empty())
+        {
+            const auto legacyId = winrt::hstring{
+                L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+            };
+            commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
+        }
+        const bool hasLocalLegacyValue =
+            hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
+        if (hasLocalCommands || hasLocalLegacyValue)
+        {
+            auto localCommands = hasLocalCommands ?
+                                     _NormalizeCustomCommands(settings.AcpCustomCommands()) :
+                                     winrt::single_threaded_vector<winrt::hstring>();
+            if (hasLocalLegacyValue)
+            {
+                const auto legacyId = winrt::hstring{
+                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+                };
+                localCommands = _UpdateCustomCommands(
+                    localCommands,
+                    legacyId,
+                    effectiveLegacyCommand);
+            }
+            settings.AcpCustomCommands(localCommands);
+        }
+        const auto selectedId = settings.AcpAgent();
+        const auto selectedCommand = _FindCustomCommand(commands, selectedId);
+        if (!selectedCommand.empty())
+        {
+            const bool hasExplicitEmptyLegacy =
+                hasLocalLegacyCommand && effectiveLegacyCommand.empty();
+            if (!hasExplicitEmptyLegacy &&
+                (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
+            {
+                settings.AcpCustomCommand(selectedCommand);
+            }
+        }
+        else if (hasLocalLegacyValue)
+        {
+            settings.ClearAcpCustomCommand();
+        }
+        _RebuildCustomEntries(list, commands, true);
+        if (_StartsWithCustom(selectedId) && selectedCommand.empty())
+        {
+            const auto idStr = winrt::to_string(selectedId);
+            const auto bareId = winrt::to_hstring(idStr.substr(7));
+            if (const auto replacement = _FindReplacementAgent(list, bareId))
+            {
+                settings.AcpAgent(replacement.Id());
+                settings.AcpCustomCommand(replacement.CustomCommand());
+            }
+            else
+            {
+                settings.AcpAgent(L"");
+            }
+            settings.AcpModel(L"");
+        }
+    }
+
+    void AIAgentsViewModel::_NormalizeCustomDelegateSettings(
+        const Model::GlobalAppSettings& settings,
+        IObservableVector<Editor::AgentEntry>& list)
+    {
+        const bool hasLocalCommands = settings.HasDelegateCustomCommands();
+        const bool hasLocalLegacyCommand = settings.HasDelegateCustomCommand();
+        const bool hasLocalAgent = settings.HasDelegateAgent();
+        auto commands = _NormalizeCustomCommands(settings.DelegateCustomCommands());
+        const auto effectiveLegacyCommand = settings.DelegateCustomCommand();
+        if (!effectiveLegacyCommand.empty())
+        {
+            const auto legacyId = winrt::hstring{
+                L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+            };
+            commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
+        }
+        const bool hasLocalLegacyValue =
+            hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
+        if (hasLocalCommands || hasLocalLegacyValue)
+        {
+            auto localCommands = hasLocalCommands ?
+                                     _NormalizeCustomCommands(settings.DelegateCustomCommands()) :
+                                     winrt::single_threaded_vector<winrt::hstring>();
+            if (hasLocalLegacyValue)
+            {
+                const auto legacyId = winrt::hstring{
+                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+                };
+                localCommands = _UpdateCustomCommands(
+                    localCommands,
+                    legacyId,
+                    effectiveLegacyCommand);
+            }
+            settings.DelegateCustomCommands(localCommands);
+        }
+        const auto selectedId = settings.DelegateAgent();
+        const auto selectedCommand = _FindCustomCommand(commands, selectedId);
+        if (!selectedCommand.empty())
+        {
+            const bool hasExplicitEmptyLegacy =
+                hasLocalLegacyCommand && effectiveLegacyCommand.empty();
+            if (!hasExplicitEmptyLegacy &&
+                (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
+            {
+                settings.DelegateCustomCommand(selectedCommand);
+            }
+        }
+        else if (hasLocalLegacyValue)
+        {
+            settings.ClearDelegateCustomCommand();
+        }
+        _RebuildCustomEntries(list, commands, false);
+        if (_StartsWithCustom(selectedId) && selectedCommand.empty())
+        {
+            const auto idStr = winrt::to_string(selectedId);
+            const auto bareId = winrt::to_hstring(idStr.substr(7));
+            if (const auto replacement = _FindReplacementAgent(list, bareId))
+            {
+                settings.DelegateAgent(replacement.Id());
+                settings.DelegateCustomCommand(replacement.CustomCommand());
+            }
+            else
+            {
+                settings.DelegateAgent(L"");
+            }
+        }
+    }
+
     // ── ViewModel ────────────────────────────────────────────────────────
 
     AIAgentsViewModel::AIAgentsViewModel(Model::GlobalAppSettings globalSettings) :
-        _GlobalSettings{ globalSettings }
+        _GlobalSettings{ globalSettings },
+        _agentPolicySnapshot{ ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() },
+        _sourceModelSettings{ CaptureModelSettings(globalSettings) }
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
@@ -404,69 +566,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Only show custom entry and "Add New" if custom agents are allowed by policy.
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
-            const bool hasLocalCommands = _GlobalSettings.HasAcpCustomCommands();
-            const bool hasLocalLegacyCommand = _GlobalSettings.HasAcpCustomCommand();
-            const bool hasLocalAgent = _GlobalSettings.HasAcpAgent();
-            auto commands = _NormalizeCustomCommands(_GlobalSettings.AcpCustomCommands());
-            const auto effectiveLegacyCommand = _GlobalSettings.AcpCustomCommand();
-            if (!effectiveLegacyCommand.empty())
-            {
-                const auto legacyId = winrt::hstring{
-                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
-                };
-                commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
-            }
-            const bool hasLocalLegacyValue =
-                hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
-            if (hasLocalCommands || hasLocalLegacyValue)
-            {
-                auto localCommands = hasLocalCommands ?
-                                         _NormalizeCustomCommands(_GlobalSettings.AcpCustomCommands()) :
-                                         winrt::single_threaded_vector<winrt::hstring>();
-                if (hasLocalLegacyValue)
-                {
-                    const auto legacyId = winrt::hstring{
-                        L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
-                    };
-                    localCommands = _UpdateCustomCommands(
-                        localCommands,
-                        legacyId,
-                        effectiveLegacyCommand);
-                }
-                _GlobalSettings.AcpCustomCommands(localCommands);
-            }
-            const auto selectedId = _GlobalSettings.AcpAgent();
-            const auto selectedCommand = _FindCustomCommand(commands, selectedId);
-            if (!selectedCommand.empty())
-            {
-                const bool hasExplicitEmptyLegacy =
-                    hasLocalLegacyCommand && effectiveLegacyCommand.empty();
-                if (!hasExplicitEmptyLegacy &&
-                    (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
-                {
-                    _GlobalSettings.AcpCustomCommand(selectedCommand);
-                }
-            }
-            else if (hasLocalLegacyValue)
-            {
-                _GlobalSettings.ClearAcpCustomCommand();
-            }
-            _RebuildCustomEntries(_acpAgentList, commands, true);
-            if (_StartsWithCustom(selectedId) && selectedCommand.empty())
-            {
-                const auto idStr = winrt::to_string(selectedId);
-                const auto bareId = winrt::to_hstring(idStr.substr(7));
-                if (const auto replacement = _FindReplacementAgent(_acpAgentList, bareId))
-                {
-                    _GlobalSettings.AcpAgent(replacement.Id());
-                    _GlobalSettings.AcpCustomCommand(replacement.CustomCommand());
-                }
-                else
-                {
-                    _GlobalSettings.AcpAgent(L"");
-                }
-                _GlobalSettings.AcpModel(L"");
-            }
+            _NormalizeCustomAcpSettings(_GlobalSettings, _acpAgentList);
             _AppendAddNewEntry(_acpAgentList);
         }
 
@@ -509,68 +609,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _delegateAgentList = winrt::single_threaded_observable_vector(std::move(delegateEntries));
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
-            const bool hasLocalCommands = _GlobalSettings.HasDelegateCustomCommands();
-            const bool hasLocalLegacyCommand = _GlobalSettings.HasDelegateCustomCommand();
-            const bool hasLocalAgent = _GlobalSettings.HasDelegateAgent();
-            auto commands = _NormalizeCustomCommands(_GlobalSettings.DelegateCustomCommands());
-            const auto effectiveLegacyCommand = _GlobalSettings.DelegateCustomCommand();
-            if (!effectiveLegacyCommand.empty())
-            {
-                const auto legacyId = winrt::hstring{
-                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
-                };
-                commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
-            }
-            const bool hasLocalLegacyValue =
-                hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
-            if (hasLocalCommands || hasLocalLegacyValue)
-            {
-                auto localCommands = hasLocalCommands ?
-                                         _NormalizeCustomCommands(_GlobalSettings.DelegateCustomCommands()) :
-                                         winrt::single_threaded_vector<winrt::hstring>();
-                if (hasLocalLegacyValue)
-                {
-                    const auto legacyId = winrt::hstring{
-                        L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
-                    };
-                    localCommands = _UpdateCustomCommands(
-                        localCommands,
-                        legacyId,
-                        effectiveLegacyCommand);
-                }
-                _GlobalSettings.DelegateCustomCommands(localCommands);
-            }
-            const auto selectedId = _GlobalSettings.DelegateAgent();
-            const auto selectedCommand = _FindCustomCommand(commands, selectedId);
-            if (!selectedCommand.empty())
-            {
-                const bool hasExplicitEmptyLegacy =
-                    hasLocalLegacyCommand && effectiveLegacyCommand.empty();
-                if (!hasExplicitEmptyLegacy &&
-                    (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
-                {
-                    _GlobalSettings.DelegateCustomCommand(selectedCommand);
-                }
-            }
-            else if (hasLocalLegacyValue)
-            {
-                _GlobalSettings.ClearDelegateCustomCommand();
-            }
-            _RebuildCustomEntries(_delegateAgentList, commands, false);
-            if (_StartsWithCustom(selectedId) && selectedCommand.empty())
-            {
-                const auto idStr = winrt::to_string(selectedId);
-                const auto bareId = winrt::to_hstring(idStr.substr(7));
-                if (const auto replacement = _FindReplacementAgent(_delegateAgentList, bareId))
-                {
-                    _GlobalSettings.DelegateAgent(replacement.Id());
-                    _GlobalSettings.DelegateCustomCommand(replacement.CustomCommand());
-                }
-                else
-                {
-                    _GlobalSettings.DelegateAgent(L"");
-                }
-            }
+            _NormalizeCustomDelegateSettings(_GlobalSettings, _delegateAgentList);
             _AppendAddNewEntry(_delegateAgentList);
         }
 
@@ -610,6 +649,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 winrt::box_value(winrt::hstring{ value })));
         }
         _autoErrorHandlingList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(autoErrorHandlingEntries));
+        _agentPolicyState = CaptureAgentPolicyState(_GlobalSettings);
     }
 
     AIAgentsViewModel::~AIAgentsViewModel()
@@ -618,6 +658,89 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             Model::AcpRuntimeState::Current().Changed(_acpRuntimeChangedToken);
         }
+    }
+
+    bool AIAgentsViewModel::TryUpdateSettings(const Model::GlobalAppSettings& globalSettings)
+    {
+        // Catalog cleanup must not hide a real change to the persisted model settings.
+        if (_agentPolicySnapshot != ::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot() ||
+            _sourceModelSettings != CaptureModelSettings(globalSettings))
+        {
+            return false;
+        }
+
+        globalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
+        if (!globalSettings.IsCustomAgentPolicyLocked())
+        {
+            // Normalize the replacement editing clone without changing the live pickers.
+            auto acpAgents = winrt::single_threaded_observable_vector(
+                std::vector<Editor::AgentEntry>{ _acpAgentList.begin(), _acpAgentList.end() });
+            auto delegateAgents = winrt::single_threaded_observable_vector(
+                std::vector<Editor::AgentEntry>{ _delegateAgentList.begin(), _delegateAgentList.end() });
+            _NormalizeCustomAcpSettings(globalSettings, acpAgents);
+            _NormalizeCustomDelegateSettings(globalSettings, delegateAgents);
+        }
+        if (_agentPolicyState != CaptureAgentPolicyState(globalSettings))
+        {
+            return false;
+        }
+
+        // Keep the live catalog/probe and editing state for unrelated reloads,
+        // but retain normal page reconstruction when an agent setting changes.
+#define CHECK_AGENT_SETTING(name)                                  \
+    if (_GlobalSettings.name() != globalSettings.name() ||         \
+        _GlobalSettings.Has##name() != globalSettings.Has##name()) \
+    {                                                              \
+        return false;                                              \
+    }
+        CHECK_AGENT_SETTING(AcpAgent);
+        CHECK_AGENT_SETTING(AcpCustomCommand);
+        CHECK_AGENT_SETTING(DelegateAgent);
+        CHECK_AGENT_SETTING(DelegateModel);
+        CHECK_AGENT_SETTING(DelegateCustomCommand);
+        CHECK_AGENT_SETTING(AutoErrorDetectionEnabled);
+        CHECK_AGENT_SETTING(AutoFixEnabled);
+        CHECK_AGENT_SETTING(AgentSessionManagementEnabled);
+        CHECK_AGENT_SETTING(ShowTokenUsageAndCost);
+        CHECK_AGENT_SETTING(RenderAgentMarkdown);
+        CHECK_AGENT_SETTING(AgentPanePosition);
+        CHECK_AGENT_SETTING(AgentPaneYoloMode);
+#undef CHECK_AGENT_SETTING
+
+        const auto listsEqual = [](const auto& left, const auto& right, const auto& equal) {
+            if (!left || !right)
+            {
+                return !left && !right;
+            }
+            return std::ranges::equal(left, right, equal);
+        };
+        const auto providersEqual = [&](const Model::CustomModelProvider& left, const Model::CustomModelProvider& right) {
+            return std::tuple{ left.Id(), left.Name(), left.BaseUrl(), left.ApiContract(), left.Location(), left.ApiKeyCredential(), left.ApiKeyRequired() } ==
+                       std::tuple{ right.Id(), right.Name(), right.BaseUrl(), right.ApiContract(), right.Location(), right.ApiKeyCredential(), right.ApiKeyRequired() } &&
+                   listsEqual(left.Models(), right.Models(), [](const auto& leftModel, const auto& rightModel) {
+                       return leftModel.Id() == rightModel.Id() && leftModel.Name() == rightModel.Name();
+                   });
+        };
+        if (_GlobalSettings.HasAcpCustomCommands() != globalSettings.HasAcpCustomCommands() ||
+            _GlobalSettings.HasDelegateCustomCommands() != globalSettings.HasDelegateCustomCommands() ||
+            _GlobalSettings.HasCustomModelProviders() != globalSettings.HasCustomModelProviders() ||
+            !listsEqual(_GlobalSettings.AcpCustomCommands(), globalSettings.AcpCustomCommands(), std::equal_to{}) ||
+            !listsEqual(_GlobalSettings.DelegateCustomCommands(), globalSettings.DelegateCustomCommands(), std::equal_to{}) ||
+            !listsEqual(_GlobalSettings.CustomModelProviders(), globalSettings.CustomModelProviders(), providersEqual))
+        {
+            return false;
+        }
+
+        _ReconcileAcpModelSelection(globalSettings);
+        if (CaptureModelSettings(_GlobalSettings) != CaptureModelSettings(globalSettings))
+        {
+            return false;
+        }
+
+        // MainPage saves its new clone, so subsequent edits must target that
+        // clone rather than the previous one retained by this view model.
+        _GlobalSettings = globalSettings;
+        return true;
     }
 
     void AIAgentsViewModel::_LoadCustomModelProviders()
@@ -919,54 +1042,40 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         //
         // Empty is already the legitimate "use whatever default the agent
         // picks" sentinel, so the empty case needs no reconciliation.
-        if (_acpModelList.Size() > 0)
-        {
-            const auto current = supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty() ?
-                                     _GlobalSettings.CustomModelSelection() :
-                                     _GlobalSettings.AcpModel();
-            if (!current.empty())
-            {
-                bool matched = false;
-                for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
-                {
-                    if (_acpModelList.GetAt(i).Id() == current)
-                    {
-                        matched = true;
-                        break;
-                    }
-                }
-                if (!matched)
-                {
-                    const bool persistedCustomSelectionStillExists =
-                        supportsCustomModels &&
-                        ::Microsoft::Terminal::CustomModels::IsCustomSelection(
-                            std::wstring_view{ current }) &&
-                        ::Microsoft::Terminal::CustomModels::SelectionExists(
-                            _GlobalSettings.CustomModelProviders(),
-                            std::wstring_view{ current });
-                    if (!persistedCustomSelectionStillExists)
-                    {
-                        // Stale leftover id this agent doesn't advertise → reset
-                        // to the empty "agent default" sentinel (send no model
-                        // override), which renders as the "Default" placeholder.
-                        if (supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty())
-                        {
-                            _GlobalSettings.CustomModelSelection(L"");
-                        }
-                        else
-                        {
-                            _GlobalSettings.AcpModel(L"");
-                        }
-                    }
-                }
-            }
-        }
+        _ReconcileAcpModelSelection(_GlobalSettings);
 
         _NotifyChanges(L"AcpModelList",
                        L"HasAcpModelList",
                        L"ShowAcpModelTextBox",
                        L"AcpModel",
                        L"CurrentAcpModelEntry");
+    }
+
+    void AIAgentsViewModel::_ReconcileAcpModelSelection(const Model::GlobalAppSettings& settings) const
+    {
+        const auto reset = ::Microsoft::Terminal::AcpModels::ReconcileModelSelection(
+            std::wstring_view{ settings.AcpModel() },
+            std::wstring_view{ settings.CustomModelSelection() },
+            ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsByok(
+                std::wstring_view{ settings.EffectiveAcpAgent() }),
+            _acpModelList && _acpModelList.Size() > 0,
+            [&](const std::wstring_view id) {
+                return std::ranges::any_of(_acpModelList, [&](const auto& model) {
+                    return std::wstring_view{ model.Id() } == id;
+                });
+            },
+            [&](const std::wstring_view id) {
+                return ::Microsoft::Terminal::CustomModels::SelectionExists(
+                    settings.CustomModelProviders(), id);
+            });
+        if (reset.customModelSelection)
+        {
+            settings.CustomModelSelection(L"");
+        }
+        if (reset.acpModel)
+        {
+            settings.AcpModel(L"");
+        }
     }
 
     bool AIAgentsViewModel::HasAcpModelList() const
