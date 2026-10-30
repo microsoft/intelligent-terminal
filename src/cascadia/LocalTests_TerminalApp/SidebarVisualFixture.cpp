@@ -223,13 +223,14 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
             if (const auto sidebar = weakStrip.get())
             {
                 const auto display = get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->DisplayItemForTab(args.Tab());
+                const auto panes = single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>();
                 for (const auto& pane : display.PaneItems())
                 {
-                    const auto active = pane.ContentId() == args.ContentId();
-                    pane.IsActive(active);
-                    pane.ActiveIndicatorVisibility(active ? Visibility::Visible : Visibility::Collapsed);
+                    pane.IsActive(pane.ContentId() == args.ContentId());
+                    panes.Append(pane);
                 }
                 sidebar.SelectedItem(args.Tab());
+                sidebar.SetPaneItems(args.Tab(), panes, true);
             }
         });
 
