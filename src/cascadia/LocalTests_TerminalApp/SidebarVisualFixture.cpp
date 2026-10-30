@@ -85,8 +85,31 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         dictionary.SetAttribute(L"xmlns:x", L"http://schemas.microsoft.com/winfx/2006/xaml");
         dictionary.SetAttribute(L"xmlns:primitives", L"using:Microsoft.UI.Xaml.Controls.Primitives");
         stage = L"instantiating production resource dictionary";
-        Application::Current().Resources().MergedDictionaries().Append(
-            Markup::XamlReader::Load(dictionary.GetXml()).as<ResourceDictionary>());
+        const auto productionResources = Markup::XamlReader::Load(dictionary.GetXml()).as<ResourceDictionary>();
+        const auto applicationResources = Application::Current().Resources();
+        const auto mergedResources = productionResources.MergedDictionaries();
+        ResourceDictionary productionThemes{ nullptr };
+        // ThemeLookup inspects immediate merged children, matching the production App.xaml shape.
+        while (mergedResources.Size())
+        {
+            const auto child = mergedResources.GetAt(0);
+            mergedResources.RemoveAt(0);
+            if (child.ThemeDictionaries().HasKey(box_value(L"Light")) &&
+                child.ThemeDictionaries().HasKey(box_value(L"Dark")))
+            {
+                productionThemes = child;
+            }
+            applicationResources.MergedDictionaries().Append(child);
+        }
+        applicationResources.MergedDictionaries().Append(productionResources);
+        stage = L"validating explicit production theme lookup";
+        THROW_HR_IF(E_UNEXPECTED, !productionThemes);
+        for (const auto& [name, theme] : { std::pair{ L"Light", ElementTheme::Light }, std::pair{ L"Dark", ElementTheme::Dark } })
+        {
+            const auto expected = productionThemes.ThemeDictionaries().Lookup(box_value(name)).as<ResourceDictionary>().Lookup(box_value(L"TabViewBackground"));
+            const auto actual = ThemeLookup(applicationResources, theme, box_value(L"TabViewBackground"));
+            THROW_HR_IF_MSG(E_UNEXPECTED, actual != expected, "Explicit sidebar theme lookup does not match production resources");
+        }
 
         stage = L"creating fixture root";
         const auto root = Markup::XamlReader::Load(

@@ -34,8 +34,8 @@
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#005FB7" />
                             <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
                                              Color="#005FB7" />
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
-                                            ResourceKey="SystemControlForegroundBaseHighBrush" />
+                            <StaticResource x:Key="PaneGroupRailBrush"
+                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
                             <StaticResource x:Key="PaneProgressCriticalBrush"
@@ -47,8 +47,8 @@
                             <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush" Color="#60CDFF" />
                             <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
                                              Color="#60CDFF" />
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
-                                            ResourceKey="SystemControlForegroundBaseHighBrush" />
+                            <StaticResource x:Key="PaneGroupRailBrush"
+                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
                             <StaticResource x:Key="PaneProgressCriticalBrush"
@@ -61,7 +61,7 @@
                                             ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="AgentCompletionIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
+                            <StaticResource x:Key="PaneGroupRailBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
@@ -941,7 +941,7 @@
                                                     Width="3"
                                                     Margin="0,5"
                                                     HorizontalAlignment="Center"
-                                                    Background="{ThemeResource PaneActiveIndicatorBrush}"
+                                                    Background="{ThemeResource PaneGroupRailBrush}"
                                                     CornerRadius="2"
                                                     IsHitTestVisible="False" />
                                         </Grid>

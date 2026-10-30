@@ -11154,9 +11154,8 @@ namespace TerminalAppLocalTests
                 impl->SyncTabPresentation(display);
                 strip.UpdateLayout();
                 VERIFY_ARE_EQUAL(rowHeight, row.ActualHeight());
-                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
                 const auto closePosition = closeSlot.TransformToVisual(row).TransformPoint({ 0, 0 });
-                VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - row.ActualHeight() / 2) <= 1.0);
             }
         });
     }
@@ -18135,6 +18134,19 @@ namespace TerminalAppLocalTests
             const auto groupIndicator = Media::VisualTreeHelper::GetChild(paneList, 0).as<FrameworkElement>()
                                             .FindName(L"PaneGroupIndicator").as<FrameworkElement>();
             VERIFY_IS_TRUE(std::abs(centerX(groupIndicator) - groupIconCenter) <= 1.0);
+            if (!winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
+            {
+                for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+                {
+                    host.RequestedTheme(theme);
+                    host.UpdateLayout();
+                    const auto railBrush = groupIndicator.as<Border>().Background().as<Media::SolidColorBrush>();
+                    const auto effectiveOpacity = railBrush.Opacity() * railBrush.Color().A / 255.0;
+                    VERIFY_IS_TRUE(effectiveOpacity > 0.0 && effectiveOpacity < 0.5);
+                }
+                host.RequestedTheme(ElementTheme::Default);
+                host.UpdateLayout();
+            }
             const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
             const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
             const auto secondPaneContainer = paneList.ContainerFromIndex(1).as<ContentPresenter>();
