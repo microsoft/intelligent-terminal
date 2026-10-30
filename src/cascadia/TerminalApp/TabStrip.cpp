@@ -394,6 +394,7 @@ namespace winrt::TerminalApp::implementation
         if (!verticalPresentation)
         {
             _sidebarHints.reset();
+            _sidebarToolTipContent = nullptr;
         }
         _publishHints(verticalPresentation);
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
@@ -421,9 +422,19 @@ namespace winrt::TerminalApp::implementation
         UpdateCloseVisibility(railCollapsed);
     }
 
-    void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints, bool verticalPresentation)
+    void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints,
+                                              IInspectable const& toolTipContent,
+                                              bool verticalPresentation)
     {
+        if (const auto previous = _sidebarToolTipContent.try_as<FrameworkElement>())
+        {
+            if (const auto replacement = toolTipContent.try_as<FrameworkElement>())
+            {
+                replacement.FlowDirection(previous.FlowDirection());
+            }
+        }
         _sidebarHints = verticalPresentation ? std::move(hints) : std::nullopt;
+        _sidebarToolTipContent = verticalPresentation ? toolTipContent : nullptr;
         _publishHints(verticalPresentation);
     }
 
@@ -433,6 +444,7 @@ namespace winrt::TerminalApp::implementation
                                                               WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         ToolTipText(verticalPresentation && _sidebarHints ? _sidebarHints->second :
                                                            WUX::Automation::AutomationProperties::GetHelpText(_tab));
+        ToolTipContent(verticalPresentation && _sidebarHints ? _sidebarToolTipContent : nullptr);
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
@@ -1877,6 +1889,10 @@ namespace winrt::TerminalApp::implementation
         if (const auto tooltip = ToolTipService::GetToolTip(row).try_as<ToolTip>())
         {
             tooltip.Placement(row.FlowDirection() == FlowDirection::RightToLeft ? Primitives::PlacementMode::Left : Primitives::PlacementMode::Right);
+            if (const auto content = tooltip.Content().try_as<FrameworkElement>())
+            {
+                content.FlowDirection(row.FlowDirection());
+            }
             ToolTipService::SetPlacementTarget(row, target);
             tooltip.PlacementRect(row.TransformToVisual(target).TransformBounds(
                 Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) }));

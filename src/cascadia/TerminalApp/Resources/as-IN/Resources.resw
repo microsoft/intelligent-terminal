@@ -765,6 +765,7 @@
   <data name="ExportTabText"><value>পাঠ ৰপ্তানি কৰক</value></data>
   <data name="FindText"><value>সন্ধান</value></data>
   <data name="RestartConnectionText"><value>অধিবেশন পুনৰ আৰম্ভ কৰক</value></data>
+  <data name="TabToolTipPaneCount"><value>{0}টা পেন</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>বন্ধ কৰক</value></data>
   <data name="TabClose"><value>টেব বন্ধ কৰক</value></data>
   <data name="MoveTabToNewWindowText"><value>টেব নতুন উইণ্ড'লৈ স্থানান্তৰ কৰক</value></data>

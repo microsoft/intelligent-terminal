@@ -762,6 +762,7 @@
   <data name="ExportTabText"><value>Експортиране на текст</value></data>
   <data name="FindText"><value>Търсене</value></data>
   <data name="RestartConnectionText"><value>Рестартиране на сесията</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} панела</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Затваряне</value></data>
   <data name="TabClose"><value>Затваряне на раздела</value></data>
   <data name="MoveTabToNewWindowText"><value>Преместване на раздела в нов прозорец</value></data>

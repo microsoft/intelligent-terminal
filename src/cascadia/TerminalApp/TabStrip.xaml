@@ -780,11 +780,8 @@
                               Unloaded="OnTabHeaderUnloaded">
                             <ToolTipService.ToolTip>
                                 <ToolTip AutomationProperties.Name="{x:Bind ToolTipText, Mode=OneWay}"
-                                         FlowDirection="LeftToRight">
-                                    <TextBlock FlowDirection="{Binding FlowDirection, ElementName=TabHeaderGrid, Mode=OneWay}"
-                                               Text="{x:Bind ToolTipText, Mode=OneWay}"
-                                               TextWrapping="Wrap" />
-                                </ToolTip>
+                                         Content="{x:Bind ToolTipContent, Mode=OneWay}"
+                                         FlowDirection="LeftToRight" />
                             </ToolTipService.ToolTip>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

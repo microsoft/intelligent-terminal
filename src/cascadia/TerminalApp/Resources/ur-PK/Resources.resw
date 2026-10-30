@@ -745,6 +745,7 @@
   <data name="ExportTabText"><value>متن برآمد کریں</value></data>
   <data name="FindText"><value>تلاش</value></data>
   <data name="RestartConnectionText"><value>سیشن دوبارہ شروع کریں</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} پین</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>بند کریں</value></data>
   <data name="TabClose"><value>ٹیب بند کریں</value></data>
   <data name="MoveTabToNewWindowText"><value>ٹیب نئی ونڈو میں منتقل کریں</value></data>

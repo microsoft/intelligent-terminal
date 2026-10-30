@@ -763,6 +763,7 @@
   <data name="ExportTabText"><value>Szöveg exportálása</value></data>
   <data name="FindText"><value>Keresés</value></data>
   <data name="RestartConnectionText"><value>Munkamenet újraindítása</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} ablaktábla</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Bezárás</value></data>
   <data name="TabClose"><value>Lap bezárása</value></data>
   <data name="MoveTabToNewWindowText"><value>Lap áthelyezése új ablakba</value></data>

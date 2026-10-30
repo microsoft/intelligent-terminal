@@ -761,6 +761,7 @@
   <data name="ExportTabText"><value>Mətni ixrac et</value></data>
   <data name="FindText"><value>Tap</value></data>
   <data name="RestartConnectionText"><value>Sessiyanı yenidən başlat</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} panel</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Bağla</value></data>
   <data name="TabClose"><value>Tabı bağla</value></data>
   <data name="MoveTabToNewWindowText"><value>Tabı yeni pəncərəyə köçür</value></data>
