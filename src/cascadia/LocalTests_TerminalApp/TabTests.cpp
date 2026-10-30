@@ -17345,6 +17345,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(header.TransformToVisual(list).TransformPoint({ 0, 0 }).Y < 100);
             const auto history = strip.HistoryItems().GetAt(0);
             const auto historyContainer = list.ContainerFromItem(history).as<ListViewItem>();
+            const auto headerButton = stripImpl->HistoryHeaderButton();
+            const auto headerBounds = headerButton.TransformToVisual(list).TransformBounds(
+                { 0, 0, static_cast<float>(headerButton.ActualWidth()), static_cast<float>(headerButton.ActualHeight()) });
+            const auto liveBounds = live.TransformToVisual(list).TransformBounds(
+                { 0, 0, static_cast<float>(live.ActualWidth()), static_cast<float>(live.ActualHeight()) });
+            VERIFY_IS_TRUE(std::abs(headerBounds.X - liveBounds.X) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(headerBounds.X + headerBounds.Width - liveBounds.X - liveBounds.Width) <= 1.0);
+            const auto historyIcon = historyContainer.ContentTemplateRoot().as<FrameworkElement>().FindName(L"HistoryProviderIcon").as<FrameworkElement>();
+            const auto chevron = stripImpl->HistoryChevron();
+            const auto iconCenter = historyIcon.TransformToVisual(list).TransformPoint(
+                { static_cast<float>(historyIcon.ActualWidth() / 2), 0 });
+            const auto chevronCenter = chevron.TransformToVisual(list).TransformPoint(
+                { static_cast<float>(chevron.ActualWidth() / 2), 0 });
+            VERIFY_IS_TRUE(std::abs(iconCenter.X - chevronCenter.X) <= 1.0);
             VERIFY_IS_TRUE(historyContainer.Focus(FocusState::Keyboard));
         });
         _waitForContentTransferReviewUI([&]() {
