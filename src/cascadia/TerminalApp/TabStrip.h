@@ -57,7 +57,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::DataTemplate HeaderTemplate{ nullptr };
         winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item);
         winrt::Windows::UI::Xaml::DataTemplate SelectTemplateCore(winrt::Windows::Foundation::IInspectable const& item,
-                                                               winrt::Windows::UI::Xaml::DependencyObject const&);
+                                                                  winrt::Windows::UI::Xaml::DependencyObject const&);
     };
 
     struct TabStripHistoryHeader : TabStripHistoryHeaderT<TabStripHistoryHeader>
@@ -274,7 +274,7 @@ namespace winrt::TerminalApp::implementation
 
     public:
         TabStripSelectionChangedEventArgs(winrt::Windows::Foundation::IInspectable added,
-                                           winrt::Windows::Foundation::IInspectable removed) :
+                                          winrt::Windows::Foundation::IInspectable removed) :
             _AddedItem{ std::move(added) }, _RemovedItem{ std::move(removed) } {}
     };
 
@@ -296,8 +296,8 @@ namespace winrt::TerminalApp::implementation
 
     public:
         TabStripDragStartingEventArgs(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab,
-                                       winrt::Windows::Foundation::IInspectable item,
-                                       winrt::Windows::ApplicationModel::DataTransfer::DataPackage data) :
+                                      winrt::Windows::Foundation::IInspectable item,
+                                      winrt::Windows::ApplicationModel::DataTransfer::DataPackage data) :
             _Tab{ std::move(tab) }, _Item{ std::move(item) }, _Data{ std::move(data) } {}
     };
 
@@ -308,7 +308,7 @@ namespace winrt::TerminalApp::implementation
 
     public:
         TabStripDroppedOutsideEventArgs(winrt::Microsoft::UI::Xaml::Controls::TabViewItem tab,
-                                         winrt::Windows::Foundation::IInspectable item) :
+                                        winrt::Windows::Foundation::IInspectable item) :
             _Tab{ std::move(tab) }, _Item{ std::move(item) } {}
     };
 
@@ -413,9 +413,10 @@ namespace winrt::TerminalApp::implementation
         bool HistoryActive() const noexcept { return _sidebarFilters.ShowRecentAgentSessions(); }
         TerminalApp::SidebarFiltersViewModel SidebarFilters() const noexcept { return _sidebarFilters; }
         winrt::Windows::UI::Xaml::Controls::Grid HistorySection();
-        TerminalApp::TabStripHistoryHeader HistoryHeaderButton() { return _historyElement(L"HistoryHeaderButton").try_as<TerminalApp::TabStripHistoryHeader>(); }
+        winrt::Windows::UI::Xaml::Controls::ListView ItemsList() const { return _itemsList; }
+        winrt::Microsoft::UI::Xaml::Controls::TreeViewItem HistoryHeaderButton() { return SidebarTree().ContainerFromItem(_historySectionItem).try_as<winrt::Microsoft::UI::Xaml::Controls::TreeViewItem>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryHeader() { return _historyElement(L"HistoryHeader").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
-        winrt::Windows::UI::Xaml::Controls::FontIcon HistoryChevron() { return _historyElement(L"HistoryChevron").try_as<winrt::Windows::UI::Xaml::Controls::FontIcon>(); }
+        winrt::Windows::UI::Xaml::Controls::TextBlock HistoryChevron();
         winrt::Windows::UI::Xaml::Controls::Grid HistoryStatusPanel() { return _historyElement(L"HistoryStatusPanel").try_as<winrt::Windows::UI::Xaml::Controls::Grid>(); }
         winrt::Windows::UI::Xaml::Controls::ProgressRing HistoryLoadingIndicator() { return _historyElement(L"HistoryLoadingIndicator").try_as<winrt::Windows::UI::Xaml::Controls::ProgressRing>(); }
         winrt::Windows::UI::Xaml::Controls::TextBlock HistoryMessage() { return _historyElement(L"HistoryMessage").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>(); }
@@ -452,17 +453,17 @@ namespace winrt::TerminalApp::implementation
 
         // XAML-bound event handlers.
         void OnListSelectionChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                     winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
+                                    winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
         void OnDragItemsStarting(winrt::Windows::Foundation::IInspectable const& sender,
-                                  winrt::Windows::UI::Xaml::Controls::DragItemsStartingEventArgs const& e);
+                                 winrt::Windows::UI::Xaml::Controls::DragItemsStartingEventArgs const& e);
         void OnDragItemsCompleted(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
-                                   winrt::Windows::UI::Xaml::Controls::DragItemsCompletedEventArgs const& e);
+                                  winrt::Windows::UI::Xaml::Controls::DragItemsCompletedEventArgs const& e);
         // Named to avoid colliding with IControlOverrides::OnDrop /
         // OnDragOver on the Control base class, which have different parameter types.
         void OnListDragOver(winrt::Windows::Foundation::IInspectable const& sender,
-                             winrt::Windows::UI::Xaml::DragEventArgs const& e);
+                            winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,
-                         winrt::Windows::UI::Xaml::DragEventArgs const& e);
+                        winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnRailToggleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnCompactNewTabClick(winrt::Windows::Foundation::IInspectable const& sender,
@@ -484,7 +485,7 @@ namespace winrt::TerminalApp::implementation
         void OnRichTabChangesVisibleClick(winrt::Windows::Foundation::IInspectable const& sender,
                                           winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnAgentsOnlyFilterMenuItemClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                            winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+                                             winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRichTabMetadataFlyoutClosing(
             winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBaseClosingEventArgs const& e);
@@ -502,14 +503,16 @@ namespace winrt::TerminalApp::implementation
                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSearchBoxKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnHistoryExpandedChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                      winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnTreeExpanding(winrt::Microsoft::UI::Xaml::Controls::TreeView const& sender,
+                             winrt::Microsoft::UI::Xaml::Controls::TreeViewExpandingEventArgs const& e);
+        void OnTreeCollapsed(winrt::Microsoft::UI::Xaml::Controls::TreeView const& sender,
+                             winrt::Microsoft::UI::Xaml::Controls::TreeViewCollapsedEventArgs const& e);
+        void OnTreeItemInvoked(winrt::Microsoft::UI::Xaml::Controls::TreeView const& sender,
+                               winrt::Microsoft::UI::Xaml::Controls::TreeViewItemInvokedEventArgs const& e);
         void OnHistorySectionLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                     winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHistorySectionUnloaded(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
-        void OnHistoryItemClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                winrt::Windows::UI::Xaml::Controls::ItemClickEventArgs const& e);
         void OnHistoryRowLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnContainerContentChanging(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
@@ -519,15 +522,15 @@ namespace winrt::TerminalApp::implementation
         void OnTabHeaderUnloaded(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSidebarRowSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
-                                    winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
+                                     winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
         void OnSidebarRowPointerEntered(winrt::Windows::Foundation::IInspectable const& sender,
-                                       winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+                                        winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSidebarRowPointerExited(winrt::Windows::Foundation::IInspectable const& sender,
-                                      winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+                                       winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSidebarPointerExited(winrt::Windows::Foundation::IInspectable const& sender,
                                     winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnSidebarRowGotFocus(winrt::Windows::Foundation::IInspectable const& sender,
-                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSidebarListFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                        winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRowHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -641,6 +644,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripDisplayItem> _displayItems{ nullptr };
         winrt::weak_ref<TerminalApp::TabStripDisplayItem> _focusedCloseDisplay;
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _viewportItems{ nullptr };
+        winrt::Windows::UI::Xaml::Controls::ListView _itemsList{ nullptr };
+        winrt::Microsoft::UI::Xaml::Controls::TreeViewNode _historyNode{ nullptr };
+        bool _syncingTree{ false };
         winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
         bool _historyExpanded{ true };
@@ -704,7 +710,7 @@ namespace winrt::TerminalApp::implementation
         void _onHistoryPreviewKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,
-                                     winrt::Windows::Foundation::Collections::IVectorChangedEventArgs const& args);
+                                   winrt::Windows::Foundation::Collections::IVectorChangedEventArgs const& args);
         TerminalApp::TabStripDisplayItem _displayItemAt(uint32_t index) const;
         TerminalApp::TabStripDisplayItem _displayItemForTab(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& tab) const;
         TerminalApp::TabStripDisplayItem _makeDisplayItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& tab);
@@ -730,6 +736,7 @@ namespace winrt::TerminalApp::implementation
         void _applyHistoryProjection(bool preserveScroll = false);
         void _updateHistoryVisualState();
         void _syncViewportItems();
+        void _activateHistoryItem(TerminalApp::TabStripHistoryItem const& item);
         uint32_t _richTabMetadataSelectionCount() const noexcept;
         void _updateRichTabMetadataSelectionState();
         void _setHighContrastMode(bool enabled);
