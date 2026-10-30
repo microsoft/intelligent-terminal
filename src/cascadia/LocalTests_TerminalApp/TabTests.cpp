@@ -6178,6 +6178,8 @@ namespace TerminalAppLocalTests
             const auto terminal = page->_GetActiveControl();
             VERIFY_IS_NOT_NULL(terminal);
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto railButton = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow)->VerticalRailToggleButton();
+            VERIFY_IS_NOT_NULL(railButton);
             const auto chord = KeyChordSerialization::FromString(L"ctrl+shift+s");
             const auto toggle = [&]() {
                 ActionEventArgs args{};
@@ -6192,10 +6194,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_tabStrip.SearchActive());
             VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
 
+            VERIFY_IS_TRUE(railButton.Focus(FocusState::Programmatic));
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == railButton);
             toggle();
             VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
             VERIFY_IS_FALSE(page->_tabSearchActive);
-            VERIFY_IS_TRUE(terminal.FocusState() != FocusState::Unfocused);
+            VERIFY_IS_TRUE(page->_SidebarFocusedControl() == railButton);
 
             VERIFY_IS_TRUE(strip->FilterTabsButton().Focus(FocusState::Programmatic));
             VERIFY_IS_TRUE(page->_SidebarFocusedControl() == strip->FilterTabsButton());

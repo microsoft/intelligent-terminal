@@ -772,19 +772,20 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
 
         foreach ($fromCollapsed in @($false, $true)) {
             Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+            $expectedToggle = if ($fromCollapsed) { 'Collapse sidebar' } else { 'Expand sidebar' }
+            Wait-UiElement -App $script:app -Selector $expectedToggle | Out-Null
             (Test-Until -TimeoutSec 6 -Condition {
-                $focused = [Windows.Automation.AutomationElement]::FocusedElement
-                $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
-                    $focused.Current.Name -eq 'Collapse sidebar' -and $focused.Current.HasKeyboardFocus
-            }) | Should -BeTrue -Because 'Ctrl+Shift+S must focus the upper-left sidebar toggle'
+                [Windows.Automation.Automation]::Compare(
+                    $sourceFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'Ctrl+Shift+S must preserve focus outside the sidebar'
             $search = Get-SidebarElement -AutomationId 'SearchTextBox'
             [bool]($search -and -not $search.Current.IsOffscreen) |
-                Should -BeFalse -Because 'sidebar entry must not open search'
+                Should -BeFalse -Because 'toggling sidebar visibility must not open search'
 
             Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition {
                 (Get-SidebarElement -AutomationId 'SearchTextBox').Current.HasKeyboardFocus
-            }) | Should -BeTrue -Because 'Ctrl+F from the sidebar toggle must explicitly enter search'
+            }) | Should -BeTrue -Because 'Ctrl+F from terminal input must explicitly enter search'
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { (Get-FocusedTabRowIndex) -ge 0 }) |
                 Should -BeTrue -Because 'Tab from explicitly opened search retains its existing list navigation'

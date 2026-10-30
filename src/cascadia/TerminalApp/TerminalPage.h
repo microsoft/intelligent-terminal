@@ -1136,6 +1136,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _ResetSidebarHistoryMasterRecovery();
         bool _ExpireSidebarHistoryMasterRecovery(std::chrono::steady_clock::time_point now);
+        bool _IsVisibleSidebarControl(const Windows::UI::Xaml::Controls::Control& control) const;
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();

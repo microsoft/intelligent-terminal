@@ -6636,6 +6636,12 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
+    {
+        return _IsVisibleControlInSubtree(control, _tabStrip) ||
+               _IsVisibleControlInSubtree(control, _tabRow);
+    }
+
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
     {
         if (_tabRow)
@@ -6833,7 +6839,7 @@ namespace winrt::TerminalApp::implementation
             }
             _SetVerticalRailColumnWidth(0);
         }
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
         }
@@ -6855,7 +6861,7 @@ namespace winrt::TerminalApp::implementation
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
         }
