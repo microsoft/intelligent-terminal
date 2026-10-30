@@ -833,7 +833,7 @@
                                     Opacity="0" />
                             <Border x:Name="TabSelectionBackground"
                                     Grid.ColumnSpan="3"
-                                    Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                    Background="{ThemeResource TabViewItemHeaderBackgroundSelected}"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False"
                                     Visibility="Collapsed" />
@@ -998,7 +998,7 @@
                                         <Border x:Name="PaneActiveBackground"
                                                 Grid.ColumnSpan="2"
                                                 Margin="7,0,0,0"
-                                                Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                                Background="{ThemeResource TabViewItemHeaderBackgroundSelected}"
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsHitTestVisible="False"
                                                 Visibility="Collapsed" />

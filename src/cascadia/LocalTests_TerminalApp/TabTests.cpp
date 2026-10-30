@@ -18490,6 +18490,26 @@ namespace TerminalAppLocalTests
             const auto tabSelection = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
             VERIFY_ARE_EQUAL(tabSelection.Background().as<Media::SolidColorBrush>().Color(),
                              firstPaneBackground.Background().as<Media::SolidColorBrush>().Color());
+            const auto nativeSelectionReference = Markup::XamlReader::Load(
+                                                     LR"(<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                                                 Background="{ThemeResource TabViewItemHeaderBackgroundSelected}"
+                                                                 Visibility="Collapsed"/>)")
+                                                     .as<Border>();
+            host.Children().Append(nativeSelectionReference);
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                host.RequestedTheme(theme);
+                host.UpdateLayout();
+                const auto expected = nativeSelectionReference.Background().as<Media::SolidColorBrush>();
+                for (const auto& surface : { tabSelection, firstPaneBackground })
+                {
+                    const auto actual = surface.Background().as<Media::SolidColorBrush>();
+                    VERIFY_ARE_EQUAL(expected.Color(), actual.Color());
+                    VERIFY_ARE_EQUAL(expected.Opacity(), actual.Opacity());
+                }
+            }
+            host.RequestedTheme(ElementTheme::Default);
+            host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondPaneClose.Visibility());
             VERIFY_ARE_EQUAL(24.0, firstPaneCloseSlot.ActualWidth());
