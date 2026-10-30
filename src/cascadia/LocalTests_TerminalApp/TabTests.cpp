@@ -572,6 +572,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
         TEST_METHOD(VerticalTabStripContrastsRenderedColors);
         TEST_METHOD(VerticalTabStripCloseAffordanceTracksRowState);
+        TEST_METHOD(VerticalTabStripLeadingIconsFollowTitleRow);
         TEST_METHOD(VerticalTabStripRefreshesHighContrastColors);
         TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
@@ -13116,7 +13117,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(static_cast<bool>(row.FindName(L"HistorySelectionPalette").as<ContentControl>()));
             const auto icon = row.FindName(L"HistoryProviderIcon").as<ContentControl>();
             VERIFY_ARE_EQUAL(0, Grid::GetColumn(icon));
-            VERIFY_ARE_EQUAL(3, Grid::GetRowSpan(icon));
+            VERIFY_ARE_EQUAL(1, Grid::GetRowSpan(icon));
             const auto keepRunningIcon = row.FindName(L"HistoryKeepRunningIcon").as<FontIcon>();
             VERIFY_ARE_EQUAL(2, Grid::GetColumn(keepRunningIcon));
             VERIFY_ARE_EQUAL(1, Grid::GetRowSpan(keepRunningIcon));
@@ -13186,7 +13187,6 @@ namespace TerminalAppLocalTests
                     row.UpdateLayout();
                     const auto titlePosition = titleText.TransformToVisual(row).TransformPoint({ 0, 0 });
                     const auto cwdPosition = cwdText.TransformToVisual(row).TransformPoint({ 0, 0 });
-                    const auto metadataPosition = metadata.TransformToVisual(row).TransformPoint({ 0, 0 });
                     const auto detailText = historical ? subtitleText : statusText;
                     const auto detailPosition = detailText.TransformToVisual(row).TransformPoint({ 0, 0 });
                     const auto iconPosition = icon.TransformToVisual(row).TransformPoint({ 0, 0 });
@@ -13198,10 +13198,17 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(detailPosition.Y >= cwdPosition.Y + cwdText.ActualHeight());
                     VERIFY_IS_TRUE(metadata.ActualWidth() <= width - rowOverhead + tolerance);
                     VERIFY_IS_TRUE(detailPosition.X + detailText.ActualWidth() <= width - row.Padding().Right + tolerance);
-                    const auto textCenter = (titlePosition.Y + metadataPosition.Y + metadata.ActualHeight()) / 2;
+                    const auto textCenter = titlePosition.Y + titleText.ActualHeight() / 2;
                     VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
                     VERIFY_ARE_EQUAL(width == 180.0f, cwdText.IsTextTrimmed());
                 }
+            }
+            const auto completion = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
+            for (const auto unread : { false, true })
+            {
+                completion.Visibility(unread ? Visibility::Visible : Visibility::Collapsed);
+                row.Measure({ 240, 100 });
+                VERIFY_IS_TRUE(std::abs(row.DesiredSize().Height - 72.0) <= tolerance);
             }
         });
     }
@@ -16754,7 +16761,8 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(Visibility::Visible, liveIcon.Visibility());
                     VERIFY_ARE_EQUAL(Visibility::Collapsed, liveRoot.FindName(L"TabGroupToggleButton").as<Button>().Visibility());
                     VERIFY_ARE_EQUAL(Visibility::Visible, groupSlot.Visibility());
-                    VERIFY_ARE_EQUAL(28.0, groupSlot.ActualWidth());
+                    VERIFY_ARE_EQUAL(16.0, groupSlot.ActualWidth());
+                    VERIFY_ARE_EQUAL(16.0, groupSlot.ActualHeight());
                     VERIFY_ARE_EQUAL(Visibility::Collapsed, groupRoot.FindName(L"TabIconPresenter").as<ContentPresenter>().Visibility());
                     VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
                     VERIFY_IS_TRUE(titleText.IsTextTrimmed());
@@ -18260,8 +18268,18 @@ namespace TerminalAppLocalTests
             const auto groupHover = headerRoot.FindName(L"TabHoverBackground").as<Border>();
             const auto groupSelection = headerRoot.FindName(L"TabColorSelectionBackground").as<Border>();
             const auto nativeGroupSelection = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
-            VERIFY_ARE_EQUAL(groupSelection.ActualWidth(), groupHover.ActualWidth());
-            VERIFY_ARE_EQUAL(groupSelection.ActualHeight(), groupHover.ActualHeight());
+            const auto verifyHoverInset = [](const FrameworkElement& row, const wchar_t* name) {
+                const auto hover = row.FindName(name).as<FrameworkElement>();
+                const auto position = hover.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_IS_TRUE(std::abs(position.X - 5.0f) <= 1.0f);
+                VERIFY_IS_TRUE(std::abs(position.Y - 3.0f) <= 1.0f);
+                VERIFY_IS_TRUE(std::abs(row.ActualWidth() - 10.0 - hover.ActualWidth()) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(row.ActualHeight() - 6.0 - hover.ActualHeight()) <= 1.0);
+            };
+            verifyHoverInset(headerRoot, L"TabHoverBackground");
+            verifyHoverInset(headerRoot, L"TabColorHoverBackground");
+            VERIFY_ARE_EQUAL(headerRoot.ActualWidth(), groupSelection.ActualWidth());
+            VERIFY_ARE_EQUAL(headerRoot.ActualHeight(), groupSelection.ActualHeight());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, nativeGroupSelection.Visibility());
             stripImpl->OnSidebarRowPointerEntered(headerRoot, nullptr);
             VERIFY_ARE_EQUAL(winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast() ? 0.0 : 1.0,
@@ -18299,10 +18317,6 @@ namespace TerminalAppLocalTests
             const auto secondPaneRoot = Media::VisualTreeHelper::GetChild(secondPaneContainer, 0).as<Grid>();
             const auto firstPaneBackground = firstPaneRoot.FindName(L"PaneActiveBackground").as<Border>();
             const auto firstPaneHover = firstPaneRoot.FindName(L"PaneHoverBackground").as<Border>();
-            VERIFY_ARE_EQUAL(firstPaneBackground.ActualWidth(), firstPaneHover.ActualWidth());
-            VERIFY_ARE_EQUAL(firstPaneBackground.ActualHeight(), firstPaneHover.ActualHeight());
-            VERIFY_ARE_EQUAL(firstPaneBackground.TransformToVisual(firstPaneRoot).TransformPoint({ 0, 0 }),
-                             firstPaneHover.TransformToVisual(firstPaneRoot).TransformPoint({ 0, 0 }));
             const auto firstPaneActivateButton = firstPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto firstPaneClose = firstPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             const auto firstPaneCloseSlot = firstPaneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
@@ -18310,20 +18324,22 @@ namespace TerminalAppLocalTests
             const auto secondPaneActivateButton = secondPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto secondPaneClose = secondPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneBackground.Visibility());
-            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 10, firstPaneBackground.ActualWidth());
-            const auto verifyPaneButtonWidths = [&]() {
+            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 7, firstPaneBackground.ActualWidth());
+            const auto verifyPaneLayout = [&]() {
                 for (const auto& paneRoot : { firstPaneRoot, secondPaneRoot })
                 {
                     const auto button = paneRoot.FindName(L"PaneActivateButton").as<Button>();
                     const auto closeColumn = paneRoot.ColumnDefinitions().GetAt(1).ActualWidth();
                     VERIFY_IS_TRUE(std::abs(paneRoot.ActualWidth() - closeColumn - button.ActualWidth()) <= 1.0);
+                    verifyHoverInset(paneRoot, L"PaneHoverBackground");
+                    verifyHoverInset(paneRoot, L"PaneColorHoverBackground");
                 }
             };
-            verifyPaneButtonWidths();
+            verifyPaneLayout();
             host.Width(480);
             strip.Width(480);
             host.UpdateLayout();
-            verifyPaneButtonWidths();
+            verifyPaneLayout();
             host.Width(240);
             strip.Width(240);
             host.UpdateLayout();
@@ -18578,7 +18594,13 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_NOT_NULL(root);
                 const auto paneList = root.Children().GetAt(1).as<ItemsControl>();
                 const auto groupIndicator = Media::VisualTreeHelper::GetChild(paneList, 0).as<Grid>().Children().GetAt(0).as<Border>();
-                VERIFY_ARE_EQUAL(10.0, paneList.Margin().Left);
+                const auto boundsInStrip = [&](const FrameworkElement& element) {
+                    return element.TransformToVisual(strip).TransformBounds(
+                        { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+                };
+                const auto indicatorBounds = boundsInStrip(groupIndicator);
+                const auto dropdownBounds = boundsInStrip(root.FindName(L"TabGroupToggleButton").as<FrameworkElement>());
+                VERIFY_IS_TRUE(std::abs(indicatorBounds.X - dropdownBounds.X) <= 1.0f);
                 VERIFY_IS_NULL(paneList.Tag());
                 VERIFY_ARE_EQUAL(Visibility::Visible, groupIndicator.Visibility());
                 for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
@@ -18590,12 +18612,39 @@ namespace TerminalAppLocalTests
                     const auto paneRoot = Media::VisualTreeHelper::GetChild(presenter, 0).as<FrameworkElement>();
                     const auto background = paneRoot.FindName(L"PaneActiveBackground").as<Border>();
                     VERIFY_ARE_EQUAL(expected, background.Visibility());
-                    VERIFY_ARE_EQUAL(10.0, background.Margin().Left);
+                    for (const auto name : { L"PaneActiveBackground", L"PaneColorSelectionBackground" })
+                    {
+                        const auto card = paneRoot.FindName(name).as<FrameworkElement>();
+                        if (card.Visibility() == Visibility::Visible)
+                        {
+                            const auto cardBounds = boundsInStrip(card);
+                            VERIFY_IS_TRUE(std::abs(cardBounds.X - indicatorBounds.X - indicatorBounds.Width - 4.0f) <= 1.0f);
+                        }
+                    }
+                    const auto cardBounds = boundsInStrip(paneRoot);
+                    if (index == 0)
+                    {
+                        VERIFY_IS_TRUE(std::abs(indicatorBounds.Y - cardBounds.Y - 5.0f) <= 1.0f);
+                    }
+                    if (index + 1 == display.PaneItems().Size())
+                    {
+                        VERIFY_IS_TRUE(std::abs(cardBounds.Y + cardBounds.Height - indicatorBounds.Y - indicatorBounds.Height - 5.0f) <= 1.0f);
+                    }
                 }
-                VERIFY_ARE_EQUAL(paneList.ActualHeight() - 10, groupIndicator.ActualHeight());
+                VERIFY_ARE_EQUAL(paneList.ActualHeight() - 12, groupIndicator.ActualHeight());
             };
             verifySelection(firstDisplay, 1);
             verifySelection(secondDisplay, -1);
+            host.Width(480);
+            strip.Width(480);
+            firstActive.MetadataText(L"Working directory\nWorking");
+            firstActive.MetadataVisibility(Visibility::Visible);
+            verifySelection(firstDisplay, 1);
+            verifySelection(secondDisplay, -1);
+            host.Width(240);
+            strip.Width(240);
+            firstActive.MetadataText(L"");
+            firstActive.MetadataVisibility(Visibility::Collapsed);
             setPanes(first, true);
             verifySelection(firstDisplay, 0);
             setPanes(first, false);
@@ -19596,7 +19645,7 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(ring.ApplyTemplate());
                 VERIFY_IS_FALSE(ring.IsTabStop());
                 VERIFY_IS_FALSE(ring.IsHitTestVisible());
-                const auto root = Media::VisualTreeHelper::GetChild(ring, 0).as<Grid>();
+                const auto root = Media::VisualTreeHelper::GetChild(ring, 0).as<Viewbox>().Child().as<Grid>();
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"SpinnerView" }, root.Name());
                 VERIFY_ARE_EQUAL(0u, VisualStateManager::GetVisualStateGroups(root).Size());
                 const auto impl = winrt::get_self<winrt::TerminalApp::implementation::IndeterminateProgressRing>(ring);
@@ -25516,10 +25565,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(selectionBackground);
             VERIFY_IS_NOT_NULL(colorSelectionBackground);
             VERIFY_IS_NOT_NULL(hoverBackground);
-            VERIFY_ARE_EQUAL(colorSelectionBackground.ActualWidth(), hoverBackground.ActualWidth());
-            VERIFY_ARE_EQUAL(colorSelectionBackground.ActualHeight(), hoverBackground.ActualHeight());
-            VERIFY_ARE_EQUAL(colorSelectionBackground.TransformToVisual(headerGrid).TransformPoint({ 0, 0 }),
-                             hoverBackground.TransformToVisual(headerGrid).TransformPoint({ 0, 0 }));
+            VERIFY_ARE_EQUAL(headerGrid.ActualWidth(), colorSelectionBackground.ActualWidth());
+            VERIFY_ARE_EQUAL(headerGrid.ActualHeight(), colorSelectionBackground.ActualHeight());
+            VERIFY_IS_TRUE(std::abs(headerGrid.ActualWidth() - 10.0 - hoverBackground.ActualWidth()) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(headerGrid.ActualHeight() - 6.0 - hoverBackground.ActualHeight()) <= 1.0);
+            const auto hoverPosition = hoverBackground.TransformToVisual(headerGrid).TransformPoint({ 0, 0 });
+            VERIFY_IS_TRUE(std::abs(hoverPosition.X - 5.0f) <= 1.0f);
+            VERIFY_IS_TRUE(std::abs(hoverPosition.Y - 3.0f) <= 1.0f);
             VERIFY_ARE_EQUAL(CornerRadiusHelper::FromUniformRadius(6), headerGrid.CornerRadius());
             strip.SelectedItem(nullptr);
             const auto highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast();
@@ -25797,6 +25849,154 @@ namespace TerminalAppLocalTests
             inactive.Color(winrt::Windows::UI::Colors::Transparent());
             impl->RefreshTabColor(tab);
             VERIFY_IS_TRUE(headerText.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+        });
+    }
+
+    void TabTests::VerticalTabStripLeadingIconsFollowTitleRow()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            strip.Height(700);
+            winrt::TerminalApp::TabHeaderControl header;
+            header.Title(L"Tab title");
+            winrt::TerminalApp::TerminalTabStatus status;
+            header.TabStatus(status);
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(header);
+            strip.TabItems().Append(tab);
+            strip.SetTabPresentation(tab, header.Title(), L"\xE756");
+            winrt::MUX::Controls::TabViewItem group;
+            group.Header(winrt::box_value(L"Group title"));
+            strip.TabItems().Append(group);
+            const auto pane = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(group, 1, L"", L"Pane title", true);
+            strip.SetPaneItems(group, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ pane }), true);
+
+            const auto rowFor = [&](const winrt::MUX::Controls::TabViewItem& item) {
+                return impl->ItemsList().ContainerFromItem(impl->DisplayItemForTab(item)).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            };
+            const auto verifyCentered = [](const FrameworkElement& element, const FrameworkElement& title, const FrameworkElement& row) {
+                VERIFY_IS_TRUE(element.ActualHeight() > 0);
+                VERIFY_IS_TRUE(title.ActualHeight() > 0);
+                const auto elementPosition = element.TransformToVisual(row).TransformPoint({ 0, 0 });
+                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_IS_TRUE(std::abs(elementPosition.Y + element.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+            };
+            const auto verifyMetrics = [](const FrameworkElement& row, const FrameworkElement& close, const double height) {
+                VERIFY_IS_TRUE(std::abs(row.ActualHeight() - height) <= 1.0);
+                const auto closePosition = close.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_IS_TRUE(std::abs(closePosition.Y - 8.0) <= 1.0);
+            };
+            const auto verifySpinnerSize = [](const FrameworkElement& spinner) {
+                const auto canvas = Media::VisualTreeHelper::GetChild(spinner, 0).as<Viewbox>().Child().as<FrameworkElement>();
+                const auto bounds = canvas.TransformToVisual(spinner).TransformBounds(
+                    { 0, 0, static_cast<float>(canvas.ActualWidth()), static_cast<float>(canvas.ActualHeight()) });
+                VERIFY_IS_TRUE(std::abs(bounds.Width - spinner.ActualWidth()) <= 0.1);
+                VERIFY_IS_TRUE(std::abs(bounds.Height - spinner.ActualHeight()) <= 0.1);
+            };
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                strip.FlowDirection(direction);
+                for (const auto width : { 240.0, 360.0 })
+                {
+                    strip.Width(width);
+                    for (const auto text : { L"", L"Working directory", L"Working directory\nWorking", L"" })
+                    {
+                        header.MetadataText(text);
+                        pane.MetadataText(text);
+                        pane.MetadataVisibility(*text ? Visibility::Visible : Visibility::Collapsed);
+                        const auto expectedHeight = !*text ? 40.0 : std::wstring_view{ text }.find(L'\n') == std::wstring_view::npos ? 56.0 :
+                                                                                                                                       72.0;
+                        for (const auto unread : { false, true })
+                        {
+                            header.Presentation().HasUnreadActivity(unread);
+                            pane.HasUnreadActivity(unread);
+                            for (const auto state : { 0, 1, 2, 3 })
+                            {
+                                status.BellIndicator(state == 1);
+                                status.IsProgressRingActive(state >= 2);
+                                status.IsProgressRingIndeterminate(state == 3);
+                                pane.IsProgressRingActive(state >= 2);
+                                pane.IsProgressRingIndeterminate(state == 3);
+                                strip.UpdateLayout();
+                                const auto tabRow = rowFor(tab);
+                                const auto title = tabRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderTextBlock").as<FrameworkElement>();
+                                const auto iconName = state == 0 ? L"TabIconPresenter" :
+                                                      state == 1 ? L"TabBellIndicator" :
+                                                      state == 2 ? L"TabProgressRing" :
+                                                                   L"TabIndeterminateProgressRing";
+                                verifyCentered(tabRow.FindName(iconName).as<FrameworkElement>(), title, tabRow);
+                                verifyCentered(tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), title, tabRow);
+                                verifyMetrics(tabRow, tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), expectedHeight);
+                                const auto groupRow = rowFor(group);
+                                const auto groupTitle = groupRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderTextBlock").as<FrameworkElement>();
+                                const auto groupButton = groupRow.FindName(L"TabGroupToggleButton").as<FrameworkElement>();
+                                VERIFY_ARE_EQUAL(16.0, groupButton.ActualWidth());
+                                VERIFY_ARE_EQUAL(16.0, groupButton.ActualHeight());
+                                verifyCentered(groupButton, groupTitle, groupRow);
+                                verifyMetrics(groupRow, groupRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), 40.0);
+                                const auto panes = impl->ItemsList().ContainerFromItem(impl->DisplayItemForTab(group)).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabPaneItems").as<ItemsControl>();
+                                const auto paneRow = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(0), 0).as<Grid>();
+                                const auto paneTitle = paneRow.FindName(L"PaneTitleText").as<FrameworkElement>();
+                                const auto paneIconName = state < 2  ? L"PaneIconPresenter" :
+                                                          state == 2 ? L"PaneProgressRing" :
+                                                                       L"PaneIndeterminateProgressRing";
+                                verifyCentered(paneRow.FindName(paneIconName).as<FrameworkElement>(), paneTitle, paneRow);
+                                verifyCentered(paneRow.FindName(L"PaneCloseButtonSlot").as<FrameworkElement>(), paneTitle, paneRow);
+                                verifyMetrics(paneRow, paneRow.FindName(L"PaneCloseButtonSlot").as<FrameworkElement>(), expectedHeight);
+                                if (state == 3)
+                                {
+                                    verifySpinnerSize(tabRow.FindName(iconName).as<FrameworkElement>());
+                                    verifySpinnerSize(paneRow.FindName(paneIconName).as<FrameworkElement>());
+                                }
+                            }
+                        }
+                    }
+                    const auto tabRow = rowFor(tab);
+                    const auto projectedHeader = tabRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+                    const auto projectedTitle = projectedHeader.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+                    const auto titleText = Media::VisualTreeHelper::GetChild(projectedTitle, 0).as<TextBlock>();
+                    const auto panes = impl->ItemsList().ContainerFromItem(impl->DisplayItemForTab(group)).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabPaneItems").as<ItemsControl>();
+                    const auto paneRow = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(0), 0).as<Grid>();
+                    const auto paneTitle = paneRow.FindName(L"PaneTitleText").as<FrameworkElement>();
+                    const auto paneTitleText = Media::VisualTreeHelper::GetChild(paneTitle, 0).as<TextBlock>();
+                    titleText.FontSize(28);
+                    paneTitleText.FontSize(28);
+                    strip.UpdateLayout();
+                    VERIFY_IS_TRUE(tabRow.ActualHeight() > 40.0);
+                    VERIFY_IS_TRUE(projectedTitle.ActualHeight() >= 28.0);
+                    verifyCentered(tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), projectedTitle, tabRow);
+                    VERIFY_IS_TRUE(paneRow.ActualHeight() > 40.0);
+                    VERIFY_IS_TRUE(paneTitle.ActualHeight() >= 28.0);
+                    verifyCentered(paneRow.FindName(L"PaneCloseButtonSlot").as<FrameworkElement>(), paneTitle, paneRow);
+                    titleText.ClearValue(TextBlock::FontSizeProperty());
+                    paneTitleText.ClearValue(TextBlock::FontSizeProperty());
+                    projectedHeader.BeginRename();
+                    strip.UpdateLayout();
+                    const auto renamer = projectedHeader.FindName(L"HeaderRenamerTextBox").as<FrameworkElement>();
+                    verifyMetrics(tabRow, tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), 40.0);
+                    verifyCentered(tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), renamer, tabRow);
+                    projectedHeader.CancelRename();
+                    status.IsPinned(true);
+                    strip.IsRailCollapsed(true);
+                    strip.UpdateLayout();
+                    const auto compactRow = rowFor(tab);
+                    const auto compactRing = compactRow.FindName(L"TabIndeterminateProgressRing").as<FrameworkElement>();
+                    verifyCentered(compactRing, compactRow, compactRow);
+                    const auto pin = compactRow.FindName(L"CollapsedPinnedTabIcon").as<FrameworkElement>();
+                    VERIFY_ARE_EQUAL(Visibility::Visible, pin.Visibility());
+                    const auto pinPosition = pin.TransformToVisual(compactRow).TransformPoint({ 0, 0 });
+                    const auto ringPosition = compactRing.TransformToVisual(compactRow).TransformPoint({ 0, 0 });
+                    VERIFY_IS_TRUE(std::abs(pinPosition.Y + pin.ActualHeight() - ringPosition.Y - compactRing.ActualHeight()) <= 1.0);
+                    strip.IsRailCollapsed(false);
+                    status.IsPinned(false);
+                    strip.UpdateLayout();
+                    const auto expandedRow = rowFor(tab);
+                    const auto expandedTitle = expandedRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderTextBlock").as<FrameworkElement>();
+                    verifyCentered(expandedRow.FindName(L"TabIndeterminateProgressRing").as<FrameworkElement>(), expandedTitle, expandedRow);
+                }
+            }
         });
     }
 
