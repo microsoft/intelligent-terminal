@@ -623,6 +623,18 @@ namespace winrt::TerminalApp::implementation
         });
 
         _UpdateTabLayoutHost();
+        _highContrastChangedRevoker = Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
+            try
+            {
+                dispatcher.RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, [weakThis]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        self->_updateThemeColors();
+                    }
+                });
+            }
+            CATCH_LOG();
+        });
         _updateThemeColors();
 
         // Initialize the state of the CloseButtonOverlayMode property of
@@ -18929,6 +18941,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_updateThemeColors()
     {
+        _updateThemeColors(Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast());
+    }
+
+    void TerminalPage::_updateThemeColors(const bool highContrast)
+    {
         if (_settings == nullptr)
         {
             return;
@@ -18955,9 +18972,11 @@ namespace winrt::TerminalApp::implementation
 
         const auto res = Application::Current().Resources();
 
-        // Use our helper to lookup the theme-aware version of the resource.
+        // High contrast must bypass explicit Light/Dark and custom tab-row backgrounds.
         const auto tabViewBackgroundKey = winrt::box_value(L"TabViewBackground");
-        const auto backgroundSolidBrush = ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
+        const auto backgroundSolidBrush = highContrast ?
+                                              res.Lookup(box_value(L"SystemColorButtonFaceColorBrush")).as<Media::SolidColorBrush>() :
+                                              ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
 
         til::color bgColor = backgroundSolidBrush.Color();
 
@@ -18978,7 +18997,11 @@ namespace winrt::TerminalApp::implementation
                                                             theme.TabRow().UnfocusedBackground()) :
                                               ThemeColor{ nullptr } };
 
-        if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
+        if (highContrast)
+        {
+            TitlebarBrush(backgroundSolidBrush);
+        }
+        else if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
         {
             if (tabRowBg)
             {

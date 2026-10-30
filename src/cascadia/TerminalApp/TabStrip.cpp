@@ -816,6 +816,7 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+                self->_refreshRealizedHistoryRowForegrounds();
             }
         });
         Unloaded([weakThis{ get_weak() }](auto&&, auto&&) {
@@ -1290,7 +1291,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    static void _applyHistoryRowForeground(FrameworkElement const& root, TerminalApp::TabStripHistoryItem const& item)
+    void TabStrip::_applyHistoryRowForeground(FrameworkElement const& root, TerminalApp::TabStripHistoryItem const& item)
     {
         if (!root)
         {
@@ -1306,10 +1307,26 @@ namespace winrt::TerminalApp::implementation
         }
         const auto foreground = isCurrent ? item.CurrentForeground() : nullptr;
         const auto palette = root.FindName(L"HistorySelectionPalette").try_as<Control>();
+        const auto title = root.FindName(L"HistoryTitleText").try_as<Control>();
+        const auto inheritForeground = item && _highContrast;
+        const auto captionStyle = inheritForeground ? nullptr :
+                                                      Application::Current().Resources().Lookup(box_value(L"SidebarCaptionControlStyle")).as<WUX::Style>();
         for (const auto name : { L"HistoryTitleText", L"HistoryCwdText", L"HistorySubtitleText", L"HistoryStatusText", L"HistoryWindowHintText" })
         {
             if (const auto control = root.FindName(name).try_as<Control>())
             {
+                if (control != title)
+                {
+                    if (inheritForeground)
+                    {
+                        // Native presenter hover foreground is inherited during rendering, not through a Foreground binding.
+                        control.ClearValue(FrameworkElement::StyleProperty());
+                    }
+                    else
+                    {
+                        control.Style(captionStyle);
+                    }
+                }
                 control.ClearValue(Control::ForegroundProperty());
                 if (foreground)
                 {
@@ -1322,6 +1339,22 @@ namespace winrt::TerminalApp::implementation
                     binding.Path(PropertyPath{ L"Foreground" });
                     binding.Mode(WUX::Data::BindingMode::OneWay);
                     control.SetBinding(Control::ForegroundProperty(), binding);
+                }
+            }
+        }
+    }
+
+    void TabStrip::_refreshRealizedHistoryRowForegrounds()
+    {
+        const auto list = ItemsList();
+        const auto items = list.Items();
+        for (uint32_t index = 0; index < items.Size(); ++index)
+        {
+            if (const auto item = items.GetAt(index).try_as<TerminalApp::TabStripHistoryItem>())
+            {
+                if (const auto container = list.ContainerFromIndex(index).try_as<ListViewItem>())
+                {
+                    _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), item);
                 }
             }
         }
@@ -1353,6 +1386,7 @@ namespace winrt::TerminalApp::implementation
         {
             _refreshDisplayItemVisuals(display);
         }
+        _refreshRealizedHistoryRowForegrounds();
     }
 
     void TabStrip::_updateDisplayItemVisuals(FrameworkElement const& root,
@@ -1477,6 +1511,7 @@ namespace winrt::TerminalApp::implementation
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
+            const auto metadata = header ? header.FindName(L"HeaderMetadataTextBlock").try_as<Control>() : nullptr;
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
             const auto inactiveBrush = !selected && !_highContrast && selectionBackground ?
@@ -1496,7 +1531,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, backdrop) };
-                for (const auto& control : { header, toggle, close })
+                for (const auto& control : { header, metadata, toggle, close })
                 {
                     if (control)
                     {
@@ -1506,7 +1541,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                for (const auto& control : { header, toggle, close })
+                for (const auto& control : { header, metadata, toggle, close })
                 {
                     if (control)
                     {
@@ -1520,6 +1555,14 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+            }
+            if (_highContrast && metadata && !foregroundBrush && !searchFocused)
+            {
+                WUX::Data::Binding binding;
+                binding.Source(header.FindName(L"HeaderTextBlock"));
+                binding.Path(PropertyPath{ L"Foreground" });
+                binding.Mode(WUX::Data::BindingMode::OneWay);
+                metadata.SetBinding(Control::ForegroundProperty(), binding);
             }
             _bindMonochromeIconForeground(iconPresenter, header);
         }
@@ -1590,6 +1633,17 @@ namespace winrt::TerminalApp::implementation
                 {
                     control.ClearValue(WUX::Controls::Control::ForegroundProperty());
                 }
+            }
+        }
+        if (highContrastActive && !foreground && button)
+        {
+            if (const auto metadata = root.FindName(L"PaneMetadataText").try_as<Control>())
+            {
+                WUX::Data::Binding binding;
+                binding.Source(root.FindName(L"PaneTitleText"));
+                binding.Path(PropertyPath{ L"Foreground" });
+                binding.Mode(WUX::Data::BindingMode::OneWay);
+                metadata.SetBinding(Control::ForegroundProperty(), binding);
             }
         }
         const auto presenter = root.FindName(L"PaneIconPresenter").try_as<ContentPresenter>();

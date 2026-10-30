@@ -106,6 +106,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto presenter = _nativeHeaderPresenter.get())
         {
             presenter.UnregisterPropertyChangedCallback(Windows::UI::Xaml::UIElement::VisibilityProperty(), _nativeHeaderVisibilityToken);
+            HeaderMetadataTextBlock().ClearValue(Windows::UI::Xaml::Controls::Control::ForegroundProperty());
         }
         _nativeHeaderPresenter = nullptr;
     }
@@ -140,6 +141,12 @@ namespace winrt::TerminalApp::implementation
         if (const auto presenter = root.FindName(L"ContentPresenter").try_as<UIElement>())
         {
             _nativeHeaderPresenter = winrt::make_weak(presenter);
+            // Native tabs own their selection/hover contrast palette.
+            Data::Binding foreground;
+            foreground.Source(HeaderTextBlock());
+            foreground.Path(PropertyPath{ L"Foreground" });
+            foreground.Mode(Data::BindingMode::OneWay);
+            HeaderMetadataTextBlock().SetBinding(Control::ForegroundProperty(), foreground);
             _nativeHeaderVisibilityToken = presenter.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [weakThis = get_weak()](auto&&, auto&&) {
                 if (const auto self = weakThis.get())
                 {
