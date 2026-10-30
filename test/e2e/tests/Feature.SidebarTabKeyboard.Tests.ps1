@@ -463,10 +463,20 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
         Assert-NavigationTab -Tab $script:tabB -Title $script:titleB -Draft $draftB
 
-        Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+        $toggleName = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
+        $buttonType = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+        $sidebarToggle = Wait-Until -TimeoutSec 5 -Because 'the expanded sidebar toggle button' -Condition {
+            $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.AndCondition]::new($toggleName, $buttonType))
+        }
+        $sidebarToggle.SetFocus()
         (Test-Until -TimeoutSec 5 -Condition {
-            [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Collapse sidebar'
-        }) | Should -BeTrue
+            [Windows.Automation.Automation]::Compare(
+                $sidebarToggle, [Windows.Automation.AutomationElement]::FocusedElement)
+        }) | Should -BeTrue -Because 'navigation coverage requires explicit titlebar-toggle focus'
         Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
         Assert-NavigationTab -Tab $script:initialPane
         Send-WtWindowKey -App $script:app -Vk 0x26 -Ctrl -Alt -RequireForeground | Out-Null
@@ -772,19 +782,20 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
 
         foreach ($fromCollapsed in @($false, $true)) {
             Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+            $expectedToggle = if ($fromCollapsed) { 'Collapse sidebar' } else { 'Expand sidebar' }
+            Wait-UiElement -App $script:app -Selector $expectedToggle | Out-Null
             (Test-Until -TimeoutSec 6 -Condition {
-                $focused = [Windows.Automation.AutomationElement]::FocusedElement
-                $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
-                    $focused.Current.Name -eq 'Collapse sidebar' -and $focused.Current.HasKeyboardFocus
-            }) | Should -BeTrue -Because 'Ctrl+Shift+S must focus the upper-left sidebar toggle'
+                [Windows.Automation.Automation]::Compare(
+                    $sourceFocus, [Windows.Automation.AutomationElement]::FocusedElement)
+            }) | Should -BeTrue -Because 'Ctrl+Shift+S must preserve focus outside the sidebar'
             $search = Get-SidebarElement -AutomationId 'SearchTextBox'
             [bool]($search -and -not $search.Current.IsOffscreen) |
-                Should -BeFalse -Because 'sidebar entry must not open search'
+                Should -BeFalse -Because 'toggling sidebar visibility must not open search'
 
             Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition {
                 (Get-SidebarElement -AutomationId 'SearchTextBox').Current.HasKeyboardFocus
-            }) | Should -BeTrue -Because 'Ctrl+F from the sidebar toggle must explicitly enter search'
+            }) | Should -BeTrue -Because 'Ctrl+F from terminal input must explicitly enter search'
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
             (Test-Until -TimeoutSec 5 -Condition { (Get-FocusedTabRowIndex) -ge 0 }) |
                 Should -BeTrue -Because 'Tab from explicitly opened search retains its existing list navigation'

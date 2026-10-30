@@ -519,7 +519,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>சமீபத்திய எஜென்ட் அமர்வுகள்</value>
+    <value>எஜென்ட்களின் சமீபத்திய அமர்வுகள்</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -744,6 +744,7 @@
   <data name="ExportTabText"><value>உரையை ஏற்றுமதி செய்</value></data>
   <data name="FindText"><value>தேடு</value></data>
   <data name="RestartConnectionText"><value>அமர்வை மறுதொடக்கம் செய்</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} பலகங்கள்</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>மூடு</value></data>
   <data name="TabClose"><value>தாவலை மூடு</value></data>
   <data name="MoveTabToNewWindowText"><value>தாவலைப் புதிய சாளரத்திற்கு நகர்த்து</value></data>

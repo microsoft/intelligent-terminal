@@ -742,6 +742,7 @@
   <data name="ExportTabText"><value>Eksporto tekstin</value></data>
   <data name="FindText"><value>Gjej</value></data>
   <data name="RestartConnectionText"><value>Rinis seancën</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} panele</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Mbyll</value></data>
   <data name="TabClose"><value>Mbyll skedën</value></data>
   <data name="MoveTabToNewWindowText"><value>Zhvendos skedën në një dritare të re</value></data>

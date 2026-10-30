@@ -16,10 +16,12 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="local:IndeterminateProgressRing">
-                    <Grid x:Name="SpinnerView"
-                          Width="15"
-                          Height="15"
-                          Background="Transparent" />
+                    <Viewbox>
+                        <Grid x:Name="SpinnerView"
+                              Width="15"
+                              Height="15"
+                              Background="Transparent" />
+                    </Viewbox>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
