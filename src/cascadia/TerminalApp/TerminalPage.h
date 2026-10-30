@@ -360,6 +360,8 @@ namespace winrt::TerminalApp::implementation
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
         winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarHotkeyReturnControl;
+        Windows::UI::Xaml::Controls::Button _sidebarPaneFocusStop{ nullptr };
+        winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarPaneFocusShell;
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         bool _tabSearchActive{ false };
         winrt::hstring _tabSearchQuery;

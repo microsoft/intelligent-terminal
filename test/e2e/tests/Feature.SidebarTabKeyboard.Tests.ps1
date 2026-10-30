@@ -53,6 +53,15 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
         }
 
+        function Assert-FocusedShellPaneStop {
+            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            $focused.Current.ProcessId | Should -Be $script:app.Pid
+            $focused.Current.AutomationId | Should -Be 'SidebarShellPaneFocusStop'
+            $focused.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::Button)
+            $focused.Current.HasKeyboardFocus | Should -BeTrue
+            $focused
+        }
+
         function Get-VisibleTabRows {
             $list = Get-SidebarElement -AutomationId 'ItemsList'
             if (-not $list -or $list.Current.IsOffscreen) { throw 'The ordinary Sidebar tabs list is not visible.' }
@@ -369,6 +378,13 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             } | Out-Null
             $toggle.SetFocus()
             $toggle.Current.HasKeyboardFocus | Should -BeTrue -Because 'scrolling must leave focus on the toggle before reverse Tab'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $agentToggle = Get-SidebarElement AgentToggleButton
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+                Should -BeTrue -Because 'reverse wrap reaches the agent icon before the offscreen row'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            Assert-FocusedShellPaneStop | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
             $reverseResult = Test-Until -TimeoutSec 5 -Condition {
                 $index = Get-FocusedTabRowIndex
@@ -712,26 +728,103 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }) | Should -BeTrue -Because 'Enter alone activates the focused tab and moves focus into its terminal'
     }
 
-    It 'Sidebar Tab navigation wraps between the last row and the rail toggle' -Tag 'SidebarTabFocusCycle' {
+    It 'Sidebar Tab navigation visits shell and agent toggle before wrapping' -Tag 'SidebarTabFocusCycle' {
         $script:app.Launched | Should -BeTrue
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
             Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
             return
         }
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $shell = [Windows.Automation.AutomationElement]::FocusedElement
+        $shell.Current.ClassName | Should -Be 'TermControl'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $shell) |
+            Should -BeTrue -Because 'ordinary shell Tab outside sidebar traversal remains terminal input'
+        $agentToggle = Get-SidebarElement AgentToggleButton
+        $agentToggle | Should -Not -BeNullOrEmpty
+        $agentToggle.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::Button)
         $lastRow = @(Get-VisibleTabRows)[2]
         $lastRow.SetFocus()
         Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the last row is the forward Tab boundary'
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        $focused = [Windows.Automation.AutomationElement]::FocusedElement
-        $focused.Current.ProcessId | Should -Be $script:app.Pid
-        $focused.Current.Name | Should -Be 'Collapse sidebar' -Because 'one Tab skips row dismiss buttons and reaches the rail toggle'
-        $focused.Current.HasKeyboardFocus | Should -BeTrue
+        $paneStop = Assert-FocusedShellPaneStop
+        $shell.Current.HasKeyboardFocus | Should -BeFalse -Because 'the pane stop must not enter terminal input'
+        $paneStop.Current.BoundingRectangle.Width |
+            Should -BeGreaterOrEqual ($shell.Current.BoundingRectangle.Width - 8) -Because 'the focus border covers the pane'
+        $paneStop.Current.BoundingRectangle.Height |
+            Should -BeGreaterOrEqual ($shell.Current.BoundingRectangle.Height - 8)
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'sidebar-shell-focus.png') | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+            Should -BeTrue -Because 'Tab from the pane outline visits the bottom agent pane icon'
+        Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'sidebar-agent-toggle-focus.png') | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+        $toggle.Current.Name | Should -Be 'Collapse sidebar' -Because 'Tab from the agent icon wraps to the rail toggle'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+            Should -BeTrue -Because 'reverse Tab wraps from the rail toggle to the agent icon'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
+            Should -BeTrue -Because 'reverse Tab moves from the agent icon to the pane outline'
         Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
         [Windows.Automation.Automation]::Compare(
             [Windows.Automation.AutomationElement]::FocusedElement, $lastRow) |
             Should -BeTrue -Because 'reverse Tab focuses the row itself, not its dismiss button'
-        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab wraps from the rail toggle to the last row'
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab returns from the pane outline to the last row'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        Assert-FocusedShellPaneStop | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $shell) |
+            Should -BeTrue -Because 'Enter explicitly activates terminal input from the pane outline'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $shell) |
+            Should -BeTrue -Because 'Tab in the activated shell remains terminal input'
+    }
+
+    It 'Sidebar focus cycle uses the active shell in a split tab' -Tag 'SidebarTabFocusCycleSplit' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        $split = Split-WtPane -App $script:app -SessionId $script:tabB.session_id -Direction right `
+            -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+        try {
+            Set-WtPaneFocus -App $script:app -SessionId $split.session_id
+            $shell = [Windows.Automation.AutomationElement]::FocusedElement
+            $shell.Current.ClassName | Should -Be 'TermControl'
+            $lastRow = @(Get-VisibleTabRows)[2]
+            $lastRow.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $paneStop = Assert-FocusedShellPaneStop
+            $shell.Current.HasKeyboardFocus | Should -BeFalse -Because 'the selected split pane outline must not enter its shell'
+            $paneStop.Current.BoundingRectangle.Width |
+                Should -BeGreaterOrEqual ($shell.Current.BoundingRectangle.Width - 8) -Because 'the stop covers the selected split pane'
+            $paneStop.Current.BoundingRectangle.Width |
+                Should -BeLessOrEqual ($shell.Current.BoundingRectangle.Width + 8) -Because 'the stop does not cover its sibling'
+            (Get-ActivePane -App $script:app).session_id |
+                Should -Be $split.session_id -Because 'focus traversal must not select another pane'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $agentToggle = Get-SidebarElement AgentToggleButton
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+                Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
+                Should -BeTrue
+        }
+        finally {
+            Close-WtPane -App $script:app -SessionId $split.session_id
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
     }
 
     It 'Sidebar new tab and dropdown are separate keyboard stops' -Tag 'SidebarNewTabSplitFocus' {
@@ -826,6 +919,13 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             (Test-Until -TimeoutSec 5 -Condition {
                 [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Collapse sidebar'
             }) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $agentToggle = Get-SidebarElement AgentToggleButton
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+                Should -BeTrue -Because 'reverse wrap reaches the agent icon before the list'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            Assert-FocusedShellPaneStop | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
             Assert-FocusedTabRow -Index 0 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the history heading is not a reverse Tab stop'
         }
