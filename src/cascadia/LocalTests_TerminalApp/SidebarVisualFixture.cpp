@@ -88,27 +88,41 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         const auto productionResources = Markup::XamlReader::Load(dictionary.GetXml()).as<ResourceDictionary>();
         const auto applicationResources = Application::Current().Resources();
         const auto mergedResources = productionResources.MergedDictionaries();
-        ResourceDictionary productionThemes{ nullptr };
+        std::vector<std::pair<ElementTheme, Media::SolidColorBrush>> productionBackgrounds;
         // ThemeLookup inspects immediate merged children, matching the production App.xaml shape.
         while (mergedResources.Size())
         {
             const auto child = mergedResources.GetAt(0);
             mergedResources.RemoveAt(0);
-            if (child.ThemeDictionaries().HasKey(box_value(L"Light")) &&
-                child.ThemeDictionaries().HasKey(box_value(L"Dark")))
+            if (!child.Source())
             {
-                productionThemes = child;
+                for (const auto& [key, value] : child.ThemeDictionaries())
+                {
+                    const auto name = unbox_value<hstring>(key);
+                    const auto themeDictionary = value.as<ResourceDictionary>();
+                    if ((name == L"Light" || name == L"Dark") && themeDictionary.HasKey(box_value(L"TabViewBackground")))
+                    {
+                        productionBackgrounds.emplace_back(
+                            name == L"Light" ? ElementTheme::Light : ElementTheme::Dark,
+                            themeDictionary.Lookup(box_value(L"TabViewBackground")).as<Media::SolidColorBrush>());
+                    }
+                }
             }
             applicationResources.MergedDictionaries().Append(child);
         }
         applicationResources.MergedDictionaries().Append(productionResources);
         stage = L"validating explicit production theme lookup";
-        THROW_HR_IF(E_UNEXPECTED, !productionThemes);
-        for (const auto& [name, theme] : { std::pair{ L"Light", ElementTheme::Light }, std::pair{ L"Dark", ElementTheme::Dark } })
+        if (productionBackgrounds.size() != 2)
         {
-            const auto expected = productionThemes.ThemeDictionaries().Lookup(box_value(name)).as<ResourceDictionary>().Lookup(box_value(L"TabViewBackground"));
-            const auto actual = ThemeLookup(applicationResources, theme, box_value(L"TabViewBackground"));
-            THROW_HR_IF_MSG(E_UNEXPECTED, actual != expected, "Explicit sidebar theme lookup does not match production resources");
+            throw hresult_error{ E_UNEXPECTED, L"Production Light/Dark TabViewBackground resources were not found." };
+        }
+        for (const auto& [theme, expected] : productionBackgrounds)
+        {
+            const auto actual = ThemeLookup(applicationResources, theme, box_value(L"TabViewBackground")).as<Media::SolidColorBrush>();
+            if (actual.Color() != expected.Color() || actual.Opacity() != expected.Opacity())
+            {
+                throw hresult_error{ E_UNEXPECTED, L"Explicit sidebar theme lookup does not match the production brush color/opacity." };
+            }
         }
 
         stage = L"creating fixture root";
