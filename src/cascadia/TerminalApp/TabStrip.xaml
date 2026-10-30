@@ -426,8 +426,9 @@
 
         <Grid x:Name="TabsToolbar"
               Grid.Row="2"
-              Height="44"
-              Padding="12,0,8,0"
+              Height="40"
+              Margin="0,0,-8,0"
+              Padding="12,0,0,0"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1">
             <Grid.ColumnDefinitions>
