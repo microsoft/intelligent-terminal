@@ -151,6 +151,7 @@
                                                 HorizontalContentAlignment="Stretch"
                                                 Background="Transparent"
                                                 BorderThickness="0"
+                                                CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsChecked="True"
                                                 Checked="OnHistoryExpandedChanged"
                                                 Unchecked="OnHistoryExpandedChanged">
