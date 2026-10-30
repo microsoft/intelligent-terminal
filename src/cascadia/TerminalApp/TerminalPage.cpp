@@ -17409,9 +17409,9 @@ namespace winrt::TerminalApp::implementation
         const auto profileAgentId = profile.AgentProfileId();
         const auto profileProvider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
             std::wstring_view{ profileAgentId });
-        const auto nativeAgentProvider = !profileProvider.empty() ?
-                                             winrt::hstring{ profileProvider } :
-                                             newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
+        const auto nativeAgentProvider = newTerminalArgs && !newTerminalArgs.NativeAgentProviderId().empty() ?
+                                             newTerminalArgs.NativeAgentProviderId() :
+                                             winrt::hstring{ profileProvider };
         const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
         // Two kinds of pane replay their own history and must not also be
