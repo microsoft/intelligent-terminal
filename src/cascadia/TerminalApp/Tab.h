@@ -81,6 +81,8 @@ namespace winrt::TerminalApp::implementation
         void SetTabText(winrt::hstring title);
         winrt::hstring GetTabText() const;
         winrt::hstring ToolTipTextForKeyChord(const winrt::hstring& keyChord);
+        winrt::Windows::UI::Xaml::Controls::TextBlock ToolTipContentForKeyChord(const winrt::hstring& keyChord);
+        void RefreshToolTip();
         void ResetTabText();
         void ActivateTabRenamer();
         void CancelTabRename();
@@ -428,6 +430,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateKeepRunningMenuItem();
         void _UpdatePinMenuItem();
         winrt::hstring _CreateToolTipTitle();
+        winrt::hstring _CreateToolTipPaneCount();
 
         void _DetachEventHandlersFromContent(const uint32_t paneId);
         void _AttachEventHandlersToContent(const uint32_t paneId, const winrt::TerminalApp::IPaneContent& content);
@@ -455,7 +458,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutSubItem _AppendCloseMenuItems(winrt::Windows::UI::Xaml::Controls::MenuFlyout flyout);
         void _EnableMenuItems();
         void _UpdateSwitchToTabKeyChord();
-        void _UpdateToolTip();
+        void _UpdateToolTip(bool notifyPropertyChanged = true);
         void _UpdateRichTabPresentation();
         void _UpdateAutomationName();
 

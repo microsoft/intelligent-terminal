@@ -717,17 +717,10 @@ namespace winrt::TerminalApp::implementation
         args.Handled(res);
     }
 
-    void TerminalPage::_HandleToggleSidebar(const IInspectable& sender,
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& /*sender*/,
                                             const ActionEventArgs& args)
     {
-        if (sender.try_as<KeyChord>())
-        {
-            _ToggleSidebarHotkey();
-        }
-        else
-        {
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-        }
+        _OnVerticalRailCollapseRequested(nullptr, nullptr);
         args.Handled(true);
     }
 
@@ -1002,7 +995,6 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isVerticalLayout && _isVerticalRailVisible)
         {
-            _sidebarHotkeyReturnControl = {};
             if (_isVerticalRailCollapsed)
             {
                 _OnVerticalRailCollapseRequested(nullptr, nullptr);

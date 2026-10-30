@@ -762,6 +762,7 @@
   <data name="ExportTabText"><value>Ekspordi tekst</value></data>
   <data name="FindText"><value>Otsi</value></data>
   <data name="RestartConnectionText"><value>Taaskäivita seanss</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} paani</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Sulge</value></data>
   <data name="TabClose"><value>Sulge vahekaart</value></data>
   <data name="MoveTabToNewWindowText"><value>Teisalda vahekaart uude aknasse</value></data>

@@ -649,6 +649,7 @@
   <data name="ExportTabText"><value>Izvezi tekst</value></data>
   <data name="FindText"><value>Pronađi</value></data>
   <data name="RestartConnectionText"><value>Ponovo pokreni sesiju</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} okna</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Zatvori</value></data>
   <data name="TabClose"><value>Zatvori karticu</value></data>
   <data name="MoveTabToNewWindowText"><value>Premjesti karticu u novi prozor</value></data>

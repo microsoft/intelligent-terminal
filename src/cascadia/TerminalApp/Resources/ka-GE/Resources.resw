@@ -649,6 +649,7 @@
   <data name="ExportTabText"><value>ტექსტის ექსპორტი</value></data>
   <data name="FindText"><value>ძიება</value></data>
   <data name="RestartConnectionText"><value>სესიის ხელახლა დაწყება</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} პანელი</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>დახურვა</value></data>
   <data name="TabClose"><value>ჩანართის დახურვა</value></data>
   <data name="MoveTabToNewWindowText"><value>ჩანართის ახალ ფანჯარაში გადატანა</value></data>

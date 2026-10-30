@@ -694,6 +694,7 @@
   <data name="ExportTabText"><value>I-export ang teksto</value></data>
   <data name="FindText"><value>Hanapin</value></data>
   <data name="RestartConnectionText"><value>I-restart ang session</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} pane</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Isara</value></data>
   <data name="TabClose"><value>Isara ang tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Ilipat ang tab sa bagong window</value></data>
