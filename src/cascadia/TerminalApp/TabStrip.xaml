@@ -152,7 +152,7 @@
             <DataTemplate x:Key="HistoryHeaderTemplate">
                 <Grid x:Name="HistorySection"
                       Background="Transparent"
-                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                      BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                       BorderThickness="0,1,0,0"
                       Loaded="OnHistorySectionLoaded"
                       Unloaded="OnHistorySectionUnloaded">
@@ -499,7 +499,7 @@
               Grid.Row="2"
               Height="40"
               Padding="{StaticResource SidebarToolbarPadding}"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1"
               ColumnSpacing="{StaticResource SidebarActionColumnSpacing}">
             <Grid.ColumnDefinitions>
