@@ -207,7 +207,7 @@
                                        TextTrimming="CharacterEllipsis" />
                             <FontIcon x:Name="HistoryChevron"
                                       Grid.Column="1"
-                                      Width="{StaticResource SidebarToolbarActionExtent}"
+                                      Width="{StaticResource SidebarActionCellExtent}"
                                       Height="{StaticResource SidebarToolbarActionExtent}"
                                       VerticalAlignment="Center"
                                       FontSize="10"
@@ -433,9 +433,11 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Click="OnCompactNewTabClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="10"
-                          Glyph="&#xE710;" />
+                <Viewbox Width="16"
+                         Height="16">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              Glyph="&#xE710;" />
+                </Viewbox>
             </Button>
 
             <Button x:Name="CompactNewTabMenuButton"
@@ -447,23 +449,25 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Click="OnCompactNewTabMenuClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="8"
-                          Glyph="&#xE70D;" />
+                <Viewbox Width="16"
+                         Height="16">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              Glyph="&#xE70D;" />
+                </Viewbox>
             </Button>
         </Grid>
 
         <Grid x:Name="TabsToolbar"
               Grid.Row="2"
-              Height="44"
-              Padding="{StaticResource SidebarSectionPadding}"
+              Height="40"
+              Padding="{StaticResource SidebarToolbarPadding}"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1"
               ColumnSpacing="{StaticResource SidebarActionColumnSpacing}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
+                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
             </Grid.ColumnDefinitions>
 
             <TextBlock x:Name="VerticalTabsHeader"
@@ -479,6 +483,7 @@
                           Width="{StaticResource SidebarToolbarActionExtent}"
                           Height="{StaticResource SidebarToolbarActionExtent}"
                           Padding="0"
+                          HorizontalAlignment="Center"
                           VerticalAlignment="Center"
                           Background="Transparent"
                           BorderThickness="0"
@@ -604,6 +609,7 @@
                     Width="{StaticResource SidebarToolbarActionExtent}"
                     Height="{StaticResource SidebarToolbarActionExtent}"
                     Padding="0"
+                    HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Background="Transparent"
                     BorderThickness="0"

@@ -99,6 +99,20 @@ public:
 
             // Resize the window
             auto lprcNewScale = reinterpret_cast<RECT*>(lParam);
+            const auto constrainedToWorkArea = static_cast<T*>(this)->ConstrainDpiChangedWindowRect(*lprcNewScale);
+            if (constrainedToWorkArea)
+            {
+                static_cast<T*>(this)->SetMinimumSizeOverride(til::size{
+                    lprcNewScale->right - lprcNewScale->left,
+                    lprcNewScale->bottom - lprcNewScale->top,
+                });
+            }
+            const auto clearMinimumSizeOverride = wil::scope_exit([&]() {
+                if (constrainedToWorkArea)
+                {
+                    static_cast<T*>(this)->SetMinimumSizeOverride(std::nullopt);
+                }
+            });
 
             SetWindowPos(hWnd, nullptr, lprcNewScale->left, lprcNewScale->top, lprcNewScale->right - lprcNewScale->left, lprcNewScale->bottom - lprcNewScale->top, SWP_NOZORDER | SWP_NOACTIVATE);
 

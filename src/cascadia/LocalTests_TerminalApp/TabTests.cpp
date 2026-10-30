@@ -462,8 +462,13 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(FreHidesAndRestoresTabChrome);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
+        TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
+        TEST_METHOD(FreWelcomeMinimumLayoutScrollsWithStickyFooter);
+        TEST_METHOD(FreWelcomeLayoutSupportsEnlargedText);
+        TEST_METHOD(FreWelcomeCardRadiusUsesInitialWindowScale);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
@@ -559,6 +564,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentInteractiveResumeOrdersQualifiedBirth);
         TEST_METHOD(NativeAgentSessionsOffDiscardsSignalsQueuedBeforeToggle);
         TEST_METHOD(NativeAgentResumeSeedsProviderBeforeContent);
+        TEST_METHOD(NativeAgentResumeProviderOverridesProfileBeforeFirstFrame);
         TEST_METHOD(NativeAgentPreHookPersistenceRestoresTabAndSplit);
         TEST_METHOD(HorizontalNativeIconSelectionAppliesTemplateAgainWithReusableMasks);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
@@ -3570,6 +3576,7 @@ namespace TerminalAppLocalTests
                 const auto groups = winrt::single_threaded_vector<winrt::guid>({ firstGroup, secondGroup });
                 window->SetStartupKeptGroups(groups.GetView(), bounds);
                 VERIFY_ARE_EQUAL(bounds.Width, window->GetLaunchDimensions(96).Width);
+                VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
                 VERIFY_ARE_EQUAL(bounds.Height, window->GetLaunchDimensions(96).Height);
                 VERIFY_ARE_EQUAL(bounds.Width * 1.5f, window->GetLaunchDimensions(144).Width);
                 VERIFY_ARE_EQUAL(bounds.Height * 1.5f, window->GetLaunchDimensions(144).Height);
@@ -7038,6 +7045,16 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(tabStrip->CompactNewTabMenuButton().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsHitTestVisible());
             VERIFY_IS_TRUE(tabStrip->SearchTabsButton().IsEnabled());
+            const auto compactNewTabIcon = tabStrip->CompactNewTabButton().Content().as<Viewbox>();
+            const auto compactNewTabMenuIcon = tabStrip->CompactNewTabMenuButton().Content().as<Viewbox>();
+            const auto compactSearchIcon = tabStrip->SearchTabsButton().Content().as<PathIcon>();
+            for (const auto& icon : { compactNewTabIcon.as<FrameworkElement>(),
+                                     compactNewTabMenuIcon.as<FrameworkElement>(),
+                                     compactSearchIcon.as<FrameworkElement>() })
+            {
+                VERIFY_ARE_EQUAL(16.0, icon.Width());
+                VERIFY_ARE_EQUAL(16.0, icon.Height());
+            }
             VERIFY_ARE_EQUAL(Visibility::Collapsed, tabStrip->FilterTabsButton().Visibility());
             VERIFY_IS_FALSE(tabStrip->FilterTabsButton().IsHitTestVisible());
             VERIFY_IS_FALSE(tabStrip->ItemsList().AllowDrop());
@@ -7083,12 +7100,23 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTitlebarDragAreaExcludesControls()
     {
         TestOnUIThread([]() {
+            constexpr auto newTabRegionWidth = 46.02;
+            constexpr auto newTabButtonWidth = newTabRegionWidth * 2 + 1;
+            constexpr auto newTabButtonHeight = 36.81;
+            constexpr auto sidebarToggleIconSize = 14.0f;
+            constexpr auto newTabIconSize = 16.0f;
+            constexpr auto layoutTolerance = 1.0f;
             const auto row = winrt::make_self<winrt::TerminalApp::implementation::TabRowControl>();
             row->IsVerticalLayout(true);
             const auto chrome = row->VerticalTitleBarContent().as<FrameworkElement>();
             const auto area = winrt::TerminalApp::TitlebarControl::GetContentDragArea(chrome);
             VERIFY_IS_NOT_NULL(area);
             VERIFY_IS_NULL(winrt::TerminalApp::TitlebarControl::GetContentDragArea(*row));
+            const auto newTab = row->VerticalNewTabButton();
+            VERIFY_ARE_EQUAL(newTabButtonWidth, newTab.Width());
+            VERIFY_ARE_EQUAL(newTabButtonHeight, newTab.Height());
+            VERIFY_ARE_EQUAL(newTabRegionWidth, winrt::unbox_value<double>(newTab.Resources().Lookup(winrt::box_value(L"SplitButtonPrimaryButtonSize"))));
+            VERIFY_ARE_EQUAL(newTabRegionWidth, winrt::unbox_value<double>(newTab.Resources().Lookup(winrt::box_value(L"SplitButtonSecondaryButtonSize"))));
 
             winrt::TerminalApp::TitlebarControl titlebar{ uint64_t{ 0 } };
             titlebar.Width(800);
@@ -7112,6 +7140,9 @@ namespace TerminalAppLocalTests
                     row->SetVerticalRailState(true, false, width);
                     titlebar.UpdateLayout();
                     const auto dragBounds = bounds(area);
+                    const auto railToggleBounds = bounds(row->VerticalRailToggleButton());
+                    const auto railToggleIcon = row->VerticalRailToggleButton().Content().as<FrameworkElement>();
+                    const auto railToggleIconBounds = bounds(railToggleIcon);
                     const auto buttonBounds = bounds(row->VerticalNewTabButton());
                     VERIFY_IS_TRUE(dragBounds.Width > 0);
                     VERIFY_ARE_EQUAL(40.0f, dragBounds.Height);
@@ -7121,44 +7152,64 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(26.0f, toggleBounds.X + toggleBounds.Width / 2);
                     VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
-                    VERIFY_ARE_EQUAL(81.0f, buttonBounds.Width);
+                    VERIFY_IS_TRUE(std::abs(railToggleIconBounds.Width - sidebarToggleIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(railToggleIconBounds.Height - sidebarToggleIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(railToggleBounds.X + railToggleBounds.Width / 2 -
+                                            railToggleIconBounds.X - railToggleIconBounds.Width / 2) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(railToggleBounds.Y + railToggleBounds.Height / 2 -
+                                            railToggleIconBounds.Y - railToggleIconBounds.Height / 2) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.X - dragBounds.X - dragBounds.Width) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Width - newTabButtonWidth) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Height - newTabButtonHeight) <= layoutTolerance);
                     VERIFY_IS_TRUE(row->VerticalNewTabButton().IsHitTestVisible());
-                    VERIFY_ARE_EQUAL(static_cast<float>(width - 20), buttonBounds.X + buttonBounds.Width);
-                    VERIFY_IS_TRUE(buttonBounds.Y >= 4.0f);
-                    VERIFY_IS_TRUE(buttonBounds.Y + buttonBounds.Height <= chrome.ActualHeight() - 4.0f);
-                    const auto newTab = row->VerticalNewTabButton();
+                    VERIFY_IS_TRUE(std::abs(static_cast<float>(width) - buttonBounds.X - buttonBounds.Width) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Y - (40.0f - newTabButtonHeight) / 2) <= layoutTolerance);
                     newTab.ApplyTemplate();
                     const auto buttonRoot = Media::VisualTreeHelper::GetChild(newTab, 0).as<Grid>();
                     const auto primaryBackground = buttonRoot.FindName(L"PrimaryBackgroundGrid").as<Grid>();
                     const auto secondaryBackground = buttonRoot.FindName(L"SecondaryBackgroundGrid").as<Grid>();
                     const auto primaryButton = buttonRoot.FindName(L"PrimaryButton").as<Button>();
                     const auto secondaryButton = buttonRoot.FindName(L"SecondaryButton").as<Button>();
-                    VERIFY_ARE_EQUAL(40.0, primaryButton.ActualWidth());
-                    VERIFY_ARE_EQUAL(40.0, secondaryButton.ActualWidth());
+                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - primaryButton.ActualWidth()) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - secondaryButton.ActualWidth()) <= layoutTolerance);
                     const auto primaryBounds = bounds(primaryBackground);
                     const auto secondaryBounds = bounds(secondaryBackground);
-                    VERIFY_ARE_EQUAL(buttonBounds.X, primaryBounds.X);
-                    VERIFY_ARE_EQUAL(primaryBounds.X + primaryBounds.Width, secondaryBounds.X);
-                    VERIFY_ARE_EQUAL(buttonBounds.X + buttonBounds.Width, secondaryBounds.X + secondaryBounds.Width);
-                    VERIFY_ARE_EQUAL(buttonBounds.Y, primaryBounds.Y);
-                    VERIFY_ARE_EQUAL(buttonBounds.Height, primaryBounds.Height);
-                    VERIFY_ARE_EQUAL(buttonBounds.Y, secondaryBounds.Y);
-                    VERIFY_ARE_EQUAL(buttonBounds.Height, secondaryBounds.Height);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.X - primaryBounds.X) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(primaryBounds.X + primaryBounds.Width - secondaryBounds.X) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.X + buttonBounds.Width - secondaryBounds.X - secondaryBounds.Width) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Y - primaryBounds.Y) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Height - primaryBounds.Height) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Y - secondaryBounds.Y) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.Height - secondaryBounds.Height) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(primaryBounds.Width - newTabRegionWidth) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(secondaryBounds.Width - newTabRegionWidth) <= layoutTolerance);
                     VERIFY_IS_TRUE(newTab.CornerRadius().TopLeft > 0);
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), primaryBackground.CornerRadius());
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), secondaryBackground.CornerRadius());
                     VERIFY_ARE_EQUAL(Thickness{}, primaryButton.Padding());
                     VERIFY_ARE_EQUAL(Thickness{}, secondaryButton.Padding());
+                    const auto glyph = primaryButton.Content().as<FrameworkElement>();
+                    const auto glyphBounds = bounds(glyph);
+                    VERIFY_IS_TRUE(std::abs(glyphBounds.Width - newTabIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(glyphBounds.Height - newTabIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(glyphBounds.X + glyphBounds.Width / 2 -
+                                            primaryBounds.X - primaryBounds.Width / 2) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(glyphBounds.Y + glyphBounds.Height / 2 -
+                                            primaryBounds.Y - primaryBounds.Height / 2) <= layoutTolerance);
                     const auto chevron = secondaryButton.Content().as<FrameworkElement>();
                     const auto chevronBounds = bounds(chevron);
-                    VERIFY_ARE_EQUAL(secondaryBounds.X + secondaryBounds.Width / 2,
-                                     chevronBounds.X + chevronBounds.Width / 2);
+                    VERIFY_IS_TRUE(std::abs(chevronBounds.Width - newTabIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(chevronBounds.Height - newTabIconSize) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(secondaryBounds.X + secondaryBounds.Width / 2 -
+                                            chevronBounds.X - chevronBounds.Width / 2) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(secondaryBounds.Y + secondaryBounds.Height / 2 -
+                                            chevronBounds.Y - chevronBounds.Height / 2) <= layoutTolerance);
                     for (const auto state : { L"PrimaryPointerOver", L"SecondaryPointerOver" })
                     {
                         VERIFY_IS_TRUE(VisualStateManager::GoToState(newTab, state, false));
-                        VERIFY_ARE_EQUAL(buttonBounds.X, bounds(primaryBackground).X);
-                        VERIFY_ARE_EQUAL(buttonBounds.X + buttonBounds.Width,
-                                         bounds(secondaryBackground).X + bounds(secondaryBackground).Width);
+                        VERIFY_IS_TRUE(std::abs(buttonBounds.X - bounds(primaryBackground).X) <= layoutTolerance);
+                        VERIFY_IS_TRUE(std::abs(buttonBounds.X + buttonBounds.Width -
+                                                bounds(secondaryBackground).X - bounds(secondaryBackground).Width) <= layoutTolerance);
                     }
                     VERIFY_IS_TRUE(VisualStateManager::GoToState(newTab, L"Normal", false));
                     if (elevated)
@@ -7169,7 +7220,7 @@ namespace TerminalAppLocalTests
                     else
                     {
                         VERIFY_ARE_EQUAL(52.0f, dragBounds.X);
-                        VERIFY_ARE_EQUAL(static_cast<float>(width - 153), dragBounds.Width);
+                        VERIFY_IS_TRUE(std::abs(dragBounds.Width - static_cast<float>(width - 52 - newTabButtonWidth)) <= layoutTolerance);
                     }
                 }
             }
@@ -7217,6 +7268,32 @@ namespace TerminalAppLocalTests
             const auto minimizeBounds = minimize.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(minimize.ActualWidth()), static_cast<float>(minimize.ActualHeight()) });
             const auto closeBounds = close.TransformToVisual(titlebar).TransformBounds({ 0, 0, static_cast<float>(close.ActualWidth()), static_cast<float>(close.ActualHeight()) });
             VERIFY_IS_TRUE(closeBounds.X < minimizeBounds.X);
+        });
+    }
+
+    void TabTests::FreHidesAndRestoresTabChrome()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto verticalTitlebar = row->VerticalTitleBarContent();
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(false);
+            page->_UpdateTabView();
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(true);
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
         });
     }
 
@@ -7325,6 +7402,213 @@ namespace TerminalAppLocalTests
                 }
             });
         }
+    }
+
+    void TabTests::FreWelcomeDefaultLayoutMatchesDesign()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
+            fre.UpdateLayout();
+
+            const auto contentRoot = fre.FindName(L"FreContentRoot").try_as<Grid>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").try_as<ScrollViewer>();
+            const auto cards = fre.FindName(L"WelcomeCardsGrid").try_as<Grid>();
+            const auto title = fre.FindName(L"WelcomeTitle").try_as<TextBlock>();
+            const auto subtitle = fre.FindName(L"WelcomeSubtitle").try_as<TextBlock>();
+            const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto sidebarImage = fre.FindName(L"SidebarImage").try_as<Image>();
+            const auto autofixImage = fre.FindName(L"AutofixImage").try_as<Image>();
+            const auto sidebarTitle = fre.FindName(L"SidebarCardTitle").try_as<TextBlock>();
+            const auto sidebarDescription = fre.FindName(L"SidebarCardDescription").try_as<TextBlock>();
+            const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
+            const auto next = fre.FindName(L"NextButton").try_as<Button>();
+
+            VERIFY_IS_NOT_NULL(contentRoot);
+            VERIFY_IS_NOT_NULL(scroller);
+            VERIFY_IS_NOT_NULL(cards);
+            VERIFY_IS_NOT_NULL(title);
+            VERIFY_IS_NOT_NULL(subtitle);
+            VERIFY_IS_NOT_NULL(sidebarCard);
+            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(sidebarImage);
+            VERIFY_IS_NOT_NULL(autofixImage);
+            VERIFY_IS_NOT_NULL(sidebarTitle);
+            VERIFY_IS_NOT_NULL(sidebarDescription);
+            VERIFY_IS_NOT_NULL(footer);
+            VERIFY_IS_NOT_NULL(next);
+
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 1130.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualHeight() - 679.0) <= 0.5);
+            const auto titleOrigin = title.TransformToVisual(fre).TransformPoint({});
+            const auto subtitleOrigin = subtitle.TransformToVisual(fre).TransformPoint({});
+            const auto cardsOrigin = cards.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(titleOrigin.Y - 47.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(title.ActualHeight() - 36.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(subtitleOrigin.Y - 107.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(subtitle.ActualHeight() - 44.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cardsOrigin.Y - 184.0f) <= 0.5f);
+            VERIFY_ARE_EQUAL(28.0, title.FontSize());
+            VERIFY_ARE_EQUAL(36.0, title.LineHeight());
+            VERIFY_ARE_EQUAL(16.0, subtitle.FontSize());
+            VERIFY_ARE_EQUAL(22.0, subtitle.LineHeight());
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
+
+            VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 1032.0) <= 0.5);
+            VERIFY_ARE_EQUAL(3u, cards.ColumnDefinitions().Size());
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 510.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 510.0) <= 0.5);
+            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 522.0f) <= 0.5f);
+
+            const auto cardPadding = sidebarCard.Padding();
+            VERIFY_ARE_EQUAL(20.0, cardPadding.Left);
+            VERIFY_ARE_EQUAL(24.0, cardPadding.Top);
+            VERIFY_ARE_EQUAL(20.0, cardPadding.Right);
+            VERIFY_ARE_EQUAL(24.0, cardPadding.Bottom);
+            const auto imageOrigin = sidebarImage.TransformToVisual(sidebarCard).TransformPoint({});
+            const auto cardTitleOrigin = sidebarTitle.TransformToVisual(sidebarCard).TransformPoint({});
+            const auto cardDescriptionOrigin = sidebarDescription.TransformToVisual(sidebarCard).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(imageOrigin.X - 22.5f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(imageOrigin.Y - 24.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualWidth() - 465.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 261.5625) <= 0.5);
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, sidebarImage.Stretch());
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, autofixImage.Stretch());
+            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.X - 20.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.Y - 295.5625f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardDescriptionOrigin.Y - 333.5625f) <= 0.5f);
+            VERIFY_ARE_EQUAL(20.0, sidebarTitle.FontSize());
+            VERIFY_ARE_EQUAL(28.0, sidebarTitle.LineHeight());
+            VERIFY_ARE_EQUAL(14.0, sidebarDescription.FontSize());
+            VERIFY_ARE_EQUAL(20.0, sidebarDescription.LineHeight());
+
+            VERIFY_IS_TRUE(std::abs(footer.ActualHeight() - 80.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(next.ActualWidth() - 120.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(next.ActualHeight() - 32.0) <= 0.5);
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() <= 0.5);
+
+            const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 599.0f) <= 0.5f);
+        });
+    }
+
+    void TabTests::FreWelcomeMinimumLayoutScrollsWithStickyFooter()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+            fre.Measure({ 711, 631 });
+            fre.Arrange({ 0, 0, 711, 631 });
+            fre.UpdateLayout();
+
+            const auto contentRoot = fre.FindName(L"FreContentRoot").try_as<Grid>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").try_as<ScrollViewer>();
+            const auto cards = fre.FindName(L"WelcomeCardsGrid").try_as<Grid>();
+            const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
+            const auto next = fre.FindName(L"NextButton").try_as<Button>();
+
+            VERIFY_IS_NOT_NULL(contentRoot);
+            VERIFY_IS_NOT_NULL(scroller);
+            VERIFY_IS_NOT_NULL(cards);
+            VERIFY_IS_NOT_NULL(sidebarCard);
+            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(footer);
+            VERIFY_IS_NOT_NULL(next);
+
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 711.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 619.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(autofixCard.ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 303.5) <= 0.5);
+            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 315.5f) <= 0.5f);
+
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Disabled, scroller.HorizontalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
+            VERIFY_IS_TRUE(scroller.ScrollableWidth() <= 0.5);
+
+            VERIFY_IS_TRUE(std::abs(footer.ActualHeight() - 80.0) <= 0.5);
+            const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 551.0f) <= 0.5f);
+
+            const auto nextOrigin = next.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(nextOrigin.X >= 0);
+            VERIFY_IS_TRUE(nextOrigin.Y >= footerOrigin.Y);
+            VERIFY_IS_TRUE(nextOrigin.X + next.ActualWidth() <= 711.0);
+            VERIFY_IS_TRUE(nextOrigin.Y + next.ActualHeight() <= 631.0);
+        });
+    }
+
+    void TabTests::FreWelcomeLayoutSupportsEnlargedText()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            const auto title = fre.FindName(L"WelcomeTitle").as<TextBlock>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").as<ScrollViewer>();
+            title.FontSize(56);
+            title.LineHeight(72);
+
+            fre.Measure({ 1130, 631 });
+            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
+            VERIFY_IS_TRUE(title.ActualHeight() > 72.0);
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
+        });
+    }
+
+    void TabTests::FreWelcomeCardRadiusUsesInitialWindowScale()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            fre.Measure({ 990, 590 });
+            fre.Arrange({ 0, 0, 990, 590 });
+            fre.UpdateLayout();
+
+            const auto sidebarCard = fre.FindName(L"SidebarCard").as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").as<Border>();
+            const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").as<Border>();
+            const auto autofixImageFrame = fre.FindName(L"AutofixImageFrame").as<Border>();
+            const auto initialRadius = sidebarCard.CornerRadius().TopLeft;
+            VERIFY_IS_TRUE(std::abs(initialRadius - 6.13) < 0.01);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
+
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(initialRadius, sidebarCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
+        });
     }
 
     void TabTests::EmptyTabLayoutChangeCompletesBeforeStartup()
@@ -9623,8 +9907,19 @@ namespace TerminalAppLocalTests
             for (const auto width : { 180.0f, 240.0f, 480.0f })
             {
                 const auto toolbar = stripImpl->TabsToolbar();
-                toolbar.Measure({ width, 44 });
-                toolbar.Arrange({ 0, 0, width, 44 });
+                toolbar.Measure({ width, 40 });
+                toolbar.Arrange({ 0, 0, width, 40 });
+                toolbar.UpdateLayout();
+                const auto searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+                const auto optionsBounds = options.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+                VERIFY_ARE_EQUAL(40.0, toolbar.ActualHeight());
+                VERIFY_ARE_EQUAL(0.0, toolbar.Margin().Right);
+                VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
+                const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
+                VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 1 - 1.5 * cell)) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - cell / 2)) <= 1.0);
+                VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
+                VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
                 const auto panel = stripImpl->SearchPanel();
                 panel.Measure({ width, 40 });
                 panel.Arrange({ 0, 0, width, 40 });
@@ -9632,7 +9927,8 @@ namespace TerminalAppLocalTests
                 const auto input = stripImpl->SearchTextBox();
                 const auto inputBounds = input.TransformToVisual(panel).TransformBounds({ 0, 0, static_cast<float>(input.ActualWidth()), static_cast<float>(input.ActualHeight()) });
                 const auto titleLeft = stripImpl->VerticalTabsHeader().TransformToVisual(toolbar).TransformPoint({ 0, 0 }).X;
-                VERIFY_ARE_EQUAL(titleLeft, inputBounds.X);
+                VERIFY_ARE_EQUAL(12.0f, titleLeft);
+                VERIFY_ARE_EQUAL(20.0f, inputBounds.X);
                 VERIFY_ARE_EQUAL(inputBounds.X, width - inputBounds.X - inputBounds.Width);
                 const auto iconBounds = icon.TransformToVisual(input).TransformBounds({ 0, 0, static_cast<float>(icon.ActualWidth()), static_cast<float>(icon.ActualHeight()) });
                 VERIFY_IS_TRUE(iconBounds.Width > 0);
@@ -9651,6 +9947,15 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->FilterTabsButton().Visibility());
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->VerticalTabsHeader().Visibility());
+            const auto toolbar = stripImpl->TabsToolbar();
+            toolbar.Measure({ 40, 40 });
+            toolbar.Arrange({ 0, 0, 40, 40 });
+            toolbar.UpdateLayout();
+            auto searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+            VERIFY_ARE_EQUAL(Thickness{}, toolbar.Margin());
+            VERIFY_ARE_EQUAL(Thickness{}, toolbar.Padding());
+            VERIFY_ARE_EQUAL(0.0f, searchBounds.X);
+            VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
 
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
@@ -9658,6 +9963,19 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->FilterTabsButton().Visibility());
             VERIFY_IS_TRUE(stripImpl->FilterTabsButton().IsEnabled());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->VerticalTabsHeader().Visibility());
+            toolbar.Measure({ 240, 40 });
+            toolbar.Arrange({ 0, 0, 240, 40 });
+            toolbar.UpdateLayout();
+            searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+            const auto optionsBounds = options.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+            VERIFY_ARE_EQUAL(0.0, toolbar.Margin().Right);
+            VERIFY_ARE_EQUAL(12.0, toolbar.Padding().Left);
+            VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
+            const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
+            VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 1 - 1.5 * cell)) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - cell / 2)) <= 1.0);
+            VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
+            VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
             stripImpl->ProjectionControlsEnabled(false);
             VERIFY_IS_FALSE(stripImpl->SearchTabsButton().IsEnabled());
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
@@ -9890,6 +10208,13 @@ namespace TerminalAppLocalTests
                     const auto filter = bounds(stripImpl->FilterTabsButton());
                     const auto chevron = bounds(stripImpl->HistoryChevron());
                     const auto search = bounds(stripImpl->SearchTextBox());
+                    const auto tabsHeading = bounds(stripImpl->VerticalTabsHeader());
+                    const auto recentHeading = bounds(stripImpl->HistoryHeader());
+                    const auto leadingEdge = [&](const auto& rect) {
+                        return direction == FlowDirection::LeftToRight ? rect.X : width - rect.X - rect.Width;
+                    };
+                    VERIFY_IS_TRUE(std::abs(leadingEdge(tabsHeading) - 12) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(leadingEdge(recentHeading) - leadingEdge(tabsHeading)) <= 1.0);
                     const auto split = chrome->VerticalNewTabButton();
                     split.ApplyTemplate();
                     const auto splitRoot = Media::VisualTreeHelper::GetChild(split, 0).as<Grid>();
@@ -9900,9 +10225,9 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(std::abs(center(primary) - center(searchAction)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(center(secondary) - center(filter)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(filter.X + filter.Width / 2 - chevron.X - chevron.Width / 2) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
-                                                filter.X + filter.Width - search.X - search.Width :
-                                                filter.X - search.X) <= 1.0);
+                    const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
+                    VERIFY_IS_TRUE(std::abs(center(filter) - (direction == FlowDirection::LeftToRight ? width - cell / 2 : cell / 2)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(search.X - 20) <= 1.0);
                     const auto rows = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
                     const auto tabRoot = rows.Children().GetAt(0).as<Grid>();
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
@@ -9943,10 +10268,10 @@ namespace TerminalAppLocalTests
                         const auto activate = paneRoot.FindName(L"PaneActivateButton").as<Button>();
                         VERIFY_ARE_EQUAL(0, Grid::GetColumn(activate));
                         VERIFY_ARE_EQUAL(3, Grid::GetColumnSpan(activate));
-                        const Thickness contentInset{ 15, 0, 54, 0 };
+                        const Thickness contentInset{ 15, 0, 34.02, 0 };
                         VERIFY_ARE_EQUAL(contentInset, activate.Padding());
                         VERIFY_ARE_EQUAL(activate.Padding(), activate.FocusVisualMargin());
-                        const auto focusBounds = activate.TransformToVisual(strip).TransformBounds({ 15, 0, static_cast<float>(activate.ActualWidth() - 15 - 54), static_cast<float>(activate.ActualHeight()) });
+                        const auto focusBounds = activate.TransformToVisual(strip).TransformBounds({ 15, 0, static_cast<float>(activate.ActualWidth() - 15 - 34.02), static_cast<float>(activate.ActualHeight()) });
                         VERIFY_IS_TRUE(rail.X + rail.Width <= focusBounds.X || focusBounds.X + focusBounds.Width <= rail.X);
                         for (const auto target : { activate.as<FrameworkElement>(),
                                                    paneRoot.FindName(L"PaneIconPresenter").as<FrameworkElement>(),
@@ -11123,9 +11448,9 @@ namespace TerminalAppLocalTests
                     const auto before = indicator.TransformToVisual(strip).TransformPoint({ 0, 0 });
                     const auto slotPosition = closeSlot.TransformToVisual(strip).TransformPoint({ 0, 0 });
                     const auto titlePosition = title.TransformToVisual(strip).TransformPoint({ 0, 0 });
-                    VERIFY_ARE_EQUAL(40.0, closeSlot.ActualWidth());
+                    VERIFY_IS_TRUE(std::abs(34.02 - closeSlot.ActualWidth()) <= 1.0);
                     VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
-                    VERIFY_IS_TRUE(std::abs(slotPosition.X + closeSlot.ActualWidth() / 2 - (width - 40.0)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(slotPosition.X + closeSlot.ActualWidth() / 2 - (width - 46.02 / 2)) <= 1.0);
                     VERIFY_IS_TRUE(before.X + indicator.ActualWidth() <= slotPosition.X + 1.0);
                     VERIFY_IS_TRUE(std::abs(slotPosition.Y - before.Y) <= 1.0);
                     VERIFY_IS_TRUE(titlePosition.X + title.ActualWidth() <= before.X + 1.0);
@@ -18185,7 +18510,7 @@ namespace TerminalAppLocalTests
                              firstPaneBackground.Background().as<Media::SolidColorBrush>().Color());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondPaneClose.Visibility());
-            VERIFY_ARE_EQUAL(40.0, firstPaneCloseSlot.ActualWidth());
+            VERIFY_IS_TRUE(std::abs(34.02 - firstPaneCloseSlot.ActualWidth()) <= 1.0);
             VERIFY_IS_TRUE(std::abs(paneCloseColumn - firstPaneCloseSlot.ActualWidth() - firstPaneCloseSlot.Margin().Left - firstPaneCloseSlot.Margin().Right) <= 1.0);
             VERIFY_ARE_EQUAL(0.0, firstPaneActivateButton.Content().as<Grid>().Margin().Right);
             stripImpl->OnPanePointerEntered(firstPaneRoot, nullptr);
@@ -24239,6 +24564,37 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::NativeAgentResumeProviderOverridesProfileBeforeFirstFrame()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto verticalLayout : { false, true })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, verticalLayout);
+            TestOnUIThread([&]() {
+                const auto profile = page->_settings.ActiveProfiles().GetAt(1);
+                profile.AgentProfileId(L"copilot");
+                profile.Icon(MediaResourceHelper::FromString(L"ms-appx:///AgentIcons/copilot.svg"));
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                for (const auto& [commandline, provider] : {
+                         std::pair{ L"cmd.exe /d /k", L"claude" },
+                         std::pair{ L"claude --resume 11111111-2222-3333-4444-555555555555", L"" } })
+                {
+                    NewTerminalArgs args;
+                    args.Profile(Utils::GuidToString(profile.Guid()));
+                    args.Commandline(commandline);
+                    args.NativeAgentProviderId(provider);
+                    const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+                    const auto pane = page->_MakePane(args, nullptr, *connection);
+                    const auto control = pane->GetTerminalControl();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, manager->NativeAgentProviderId(control.ContentId()));
+                    VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
+                    VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/claude.svg" }, page->_GetFocusedTabImpl()->Icon());
+                }
+            });
+        }
+    }
+
     void TabTests::NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
@@ -25661,7 +26017,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondClose.Visibility());
             const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& slot) {
                 const auto slotPosition = slot.TransformToVisual(row).TransformPoint({ 0, 0 });
-                VERIFY_ARE_EQUAL(40.0, slot.ActualWidth());
+                VERIFY_IS_TRUE(std::abs(34.02 - slot.ActualWidth()) <= 1.0);
                 VERIFY_ARE_EQUAL(24.0, slot.ActualHeight());
                 VERIFY_IS_TRUE(std::abs(slotPosition.Y + slot.ActualHeight() / 2 - row.ActualHeight() / 2) <= 1.0);
             };
@@ -27129,7 +27485,7 @@ namespace TerminalAppLocalTests
                         const auto titlePosition = title.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
                         const auto closeSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
                         const auto closePosition = closeSlot.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
-                        VERIFY_ARE_EQUAL(40.0, closeSlot.ActualWidth());
+                        VERIFY_IS_TRUE(std::abs(34.02 - closeSlot.ActualWidth()) <= 1.0);
                         VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
                         VERIFY_IS_TRUE(indicatorPosition.X + indicator.ActualWidth() <= closePosition.X + 1.0);
                         VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - paneRoot.ActualHeight() / 2) <= 1.0);
