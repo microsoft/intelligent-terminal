@@ -31,10 +31,6 @@
                 <ResourceDictionary>
                     <ResourceDictionary.ThemeDictionaries>
                         <ResourceDictionary x:Key="Light">
-                            <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush"
-                                             Color="#005FB7" />
-                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                             Color="#005FB7" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -45,10 +41,6 @@
                                             ResourceKey="SystemFillColorCautionBrush" />
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="Dark">
-                            <SolidColorBrush x:Key="AgentsOnlyIndicatorBrush"
-                                             Color="#60CDFF" />
-                            <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                             Color="#60CDFF" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemControlForegroundBaseHighBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -59,10 +51,6 @@
                                             ResourceKey="SystemFillColorCautionBrush" />
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="HighContrast">
-                            <StaticResource x:Key="AgentsOnlyIndicatorBrush"
-                                            ResourceKey="SystemColorWindowTextColorBrush" />
-                            <StaticResource x:Key="AgentCompletionIndicatorBrush"
-                                            ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="PaneActiveIndicatorBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -88,7 +76,7 @@
             </Style>
             <Style x:Key="HistoryTitleTextStyle"
                    TargetType="TextBlock">
-                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontWeight" Value="Normal" />
                 <Setter Property="MaxLines" Value="1" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 <Setter Property="TextWrapping" Value="NoWrap" />
@@ -337,7 +325,7 @@
                               Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
                             <Ellipse Width="4"
                                      Height="4"
-                                     Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                     Fill="{ThemeResource SystemFillColorAttentionBrush}" />
                         </Grid>
                         <FontIcon x:Name="HistoryKeepRunningIcon"
                                   Grid.Column="2"
@@ -675,7 +663,7 @@
                                  Margin="0,1,3,0"
                                  HorizontalAlignment="Right"
                                  VerticalAlignment="Top"
-                                 Fill="{ThemeResource AgentsOnlyIndicatorBrush}"
+                                 Fill="{ThemeResource SystemFillColorAttentionBrush}"
                                  IsHitTestVisible="False"
                                  Visibility="Collapsed" />
                     </Grid>
@@ -1095,7 +1083,7 @@
                                                           Visibility="{x:Bind HasUnreadActivity, Mode=OneWay}">
                                                         <Ellipse Width="4"
                                                                  Height="4"
-                                                                 Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                                                                 Fill="{ThemeResource SystemFillColorAttentionBrush}" />
                                                     </Grid>
                                                 </Grid>
                                                 <local:HighlightedTextControl x:Name="PaneMetadataText"

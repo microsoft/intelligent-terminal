@@ -2466,6 +2466,13 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetFocusedTabImpl();
             const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
             const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                header.RequestedTheme(theme);
+                header.UpdateLayout();
+                const auto attention = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"SystemFillColorAttentionBrush")).as<Media::SolidColorBrush>().Color();
+                VERIFY_ARE_EQUAL(attention, header.FindName(L"HeaderCompletionDot").as<Shapes::Ellipse>().Fill().as<Media::SolidColorBrush>().Color());
+            }
             for (const auto width : { 120.0f, 240.0f, 272.0f })
             {
                 for (const auto& titleText : { winrt::hstring{ L"Tab" }, winrt::hstring{ std::wstring(240, L'W') } })
@@ -9592,6 +9599,8 @@ namespace TerminalAppLocalTests
                 const auto optionsContent = optionsPresenter.Content().as<Grid>();
                 const auto optionsIcon = optionsContent.Children().GetAt(0).as<PathIcon>();
                 const auto indicator = optionsContent.FindName(L"AgentsOnlyIndicator").as<Shapes::Ellipse>();
+                const auto attention = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"SystemFillColorAttentionBrush")).as<Media::SolidColorBrush>().Color();
+                VERIFY_ARE_EQUAL(attention, indicator.Fill().as<Media::SolidColorBrush>().Color());
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Width());
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Height());
                 const auto optionsIconBounds = optionsIcon.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 16, 16 });
@@ -16246,7 +16255,9 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(primary, brush.as<Media::SolidColorBrush>().Color());
                 }
                 title.ApplyTemplate();
-                VERIFY_ARE_EQUAL(primary, Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>().Foreground().as<Media::SolidColorBrush>().Color());
+                const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
+                VERIFY_ARE_EQUAL(primary, titleText.Foreground().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(FontWeights::Normal().Weight, titleText.FontWeight().Weight);
                 const auto secondary = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>();
                 for (const auto name : { L"HistoryCwdText", L"HistorySubtitleText", L"HistoryWindowHintText" })
                 {
