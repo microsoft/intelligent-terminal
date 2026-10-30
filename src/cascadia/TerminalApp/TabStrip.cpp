@@ -2832,6 +2832,14 @@ namespace winrt::TerminalApp::implementation
         const auto display = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripDisplayItem>();
         const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
         const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
+        if (header)
+        {
+            container.Template(Resources().Lookup(box_value(L"HistoryHeaderContainerTemplate")).as<ControlTemplate>());
+        }
+        else
+        {
+            container.ClearValue(Control::TemplateProperty());
+        }
         if (!display)
         {
             if (const auto presenter = _findNamedElement(container, L"SidebarItemPresenter").try_as<Primitives::ListViewItemPresenter>();

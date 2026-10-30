@@ -113,6 +113,16 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
+            <!--  The header button owns hover, pressed, and focus visuals.  -->
+            <ControlTemplate x:Key="HistoryHeaderContainerTemplate"
+                             TargetType="ListViewItem">
+                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}" />
+            </ControlTemplate>
             <DataTemplate x:Key="HistoryHeaderTemplate">
                 <Grid x:Name="HistorySection"
                       Background="Transparent"

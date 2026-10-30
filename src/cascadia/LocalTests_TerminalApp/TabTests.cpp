@@ -15446,6 +15446,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, list.Items().Size());
             VERIFY_IS_TRUE(list.Items().GetAt(0) == stripImpl->_historySectionItem);
             VERIFY_IS_NULL(list.Items().GetAt(0).try_as<UIElement>());
+            const auto headerContainer = list.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_IS_NOT_NULL(Media::VisualTreeHelper::GetChild(headerContainer, 0).try_as<ContentPresenter>());
             const auto chevron = stripImpl->HistoryChevron();
             const auto chevronPosition = chevron.TransformToVisual(stripImpl->HistoryHeader()).TransformPoint({ 0, 0 });
             VERIFY_IS_TRUE(chevron.ActualWidth() > 0);
@@ -15487,6 +15489,8 @@ namespace TerminalAppLocalTests
                                        .MainResourceMap()
                                        .GetSubtree(L"TerminalApp/Resources");
             VERIFY_IS_FALSE(stripImpl->HistoryHeaderButton().IsChecked().Value());
+            const auto headerContainer = list.ContainerFromIndex(0).as<ListViewItem>();
+            VERIFY_IS_NOT_NULL(Media::VisualTreeHelper::GetChild(headerContainer, 0).try_as<ContentPresenter>());
             const auto restoredPeer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(stripImpl->HistoryHeaderButton());
             restoredPeer.GetPattern(Automation::Peers::PatternInterface::ExpandCollapse)
                 .as<Automation::Provider::IExpandCollapseProvider>().Expand();
@@ -15500,7 +15504,9 @@ namespace TerminalAppLocalTests
         });
         TestOnUIThread([&]() {
             const auto list = stripImpl->ItemsList();
-            VERIFY_IS_TRUE(list.ContainerFromIndex(1).as<ListViewItem>().Margin() == Thickness{ 0 });
+            const auto historyContainer = list.ContainerFromIndex(1).as<ListViewItem>();
+            VERIFY_IS_TRUE(historyContainer.Margin() == Thickness{ 0 });
+            VERIFY_IS_NOT_NULL(Media::VisualTreeHelper::GetChild(historyContainer, 0).try_as<Primitives::ListViewItemPresenter>());
             winrt::MUX::Controls::TabViewItem tab;
             tab.Header(winrt::box_value(L"Live agent"));
             strip.TabItems().Append(tab);
