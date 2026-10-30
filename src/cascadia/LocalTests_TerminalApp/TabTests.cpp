@@ -560,6 +560,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentSessionsOffTransferRetainsExplicitOwnership);
         TEST_METHOD(NativeAgentSessionsOffRetainsStatusUntilPaneRemoval);
         TEST_METHOD(NativeAgentRestartRetiresOldIdentityAndObservesNewConnection);
+        TEST_METHOD(NativeAgentRestartDoesNotInheritSessionIdentity);
         TEST_METHOD(NativeAgentAutomaticRetirementPublishesRemoval);
         TEST_METHOD(NativeAgentInteractiveResumeOrdersQualifiedBirth);
         TEST_METHOD(NativeAgentSessionsOffDiscardsSignalsQueuedBeforeToggle);
@@ -23496,6 +23497,96 @@ namespace TerminalAppLocalTests
                        observation["pane_id"].asString() == _formatPaneId(newConnection->SessionId());
             });
         });
+    }
+
+    void TabTests::NativeAgentRestartDoesNotInheritSessionIdentity()
+    {
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto directory = wil::GetSystemDirectoryW<std::wstring>();
+        struct RestartCase
+        {
+            std::wstring commandline;
+            bool explicitOldBinding;
+        };
+        for (const auto& test : {
+                 RestartCase{ L"copilot", false },
+                 RestartCase{ L"copilot", true },
+                 RestartCase{ L"copilot --resume old-session", true } })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+                page->_SyncNativeAgentStatusMode();
+                const auto oldId = Utils::CreateGuid();
+                const auto newId = Utils::CreateGuid();
+                const auto initial = winrt::make_self<TestConnection>(oldId, State::Connected);
+                NewTerminalArgs args;
+                args.NativeAgentProviderId(L"copilot");
+                const auto pane = page->_MakePane(args, nullptr, *initial);
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                const auto makeConnection = [&](const winrt::guid& paneId) {
+                    Conpty connection;
+                    auto settings = Conpty::CreateSettings(
+                        winrt::hstring{ test.commandline }, winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, {});
+                    // Exercise production launch metadata without starting an agent or its hooks.
+                    settings.Insert(L"startupError", winrt::Windows::Foundation::PropertyValue::CreateInt32(E_FAIL));
+                    connection.Initialize(settings);
+                    return connection;
+                };
+                const auto oldConnection = makeConnection(oldId);
+                const auto newConnection = makeConnection(newId);
+                control.Connection(oldConnection);
+                const auto manager = winrt::get_self<Manager>(page->_manager);
+                const auto oldIdentity = manager->NativeAgentObservationForContent(control.ContentId()).value();
+                manager->RetainQualifiedNativeAgentIdentity(control.ContentId(), oldIdentity.modeEpoch, "old-session", "Host");
+                VERIFY_ARE_EQUAL(std::string{ "old-session" }, manager->NativeAgentObservationForContent(control.ContentId())->qualifiedSessionId);
+                if (test.explicitOldBinding)
+                {
+                    page->_paneAgentSessions.insert_or_assign(
+                        oldId, Page::_PaneAgentSession{ L"old-session", L"copilot", L"", L"host:copilot", winrt::hstring{ directory } });
+                    page->_explicitNativeAgentSessions.insert(oldId);
+                }
+                std::optional<Manager::NativeAgentObservationIdentity> restartedIdentity;
+                std::optional<Page::_PaneAgentSession> restartedBinding;
+                bool restartedExplicit = false;
+                bool restartedInteractive = false;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream input{ winrt::to_string(json) };
+                    std::string errors;
+                    VERIFY_IS_TRUE(Json::parseFromStream(reader, input, &event, &errors));
+                    if (!restartedIdentity && event["method"] == "native_agent_observation" &&
+                        event["params"]["kind"] == "reset" && event["params"]["pane_id"] == _formatPaneId(newId))
+                    {
+                        restartedIdentity = manager->NativeAgentObservationForContent(control.ContentId());
+                        if (const auto binding = page->_paneAgentSessions.find(newId); binding != page->_paneAgentSessions.end())
+                        {
+                            restartedBinding = binding->second;
+                        }
+                        restartedExplicit = page->_explicitNativeAgentSessions.contains(newId);
+                        restartedInteractive = page->_interactiveResumeSessions.contains(newId);
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+                page->_RestartPaneWithConnection(pane->GetContent().as<winrt::TerminalApp::TerminalPaneContent>(), newConnection);
+                VERIFY_IS_FALSE(page->_paneAgentSessions.contains(oldId));
+                VERIFY_IS_FALSE(page->_explicitNativeAgentSessions.contains(oldId));
+                VERIFY_IS_FALSE(oldConnection.ProcessStarted());
+                VERIFY_IS_FALSE(newConnection.ProcessStarted());
+                VERIFY_IS_TRUE(restartedIdentity.has_value());
+                VERIFY_IS_TRUE(restartedIdentity->agentSessionId.empty());
+                VERIFY_IS_TRUE(restartedIdentity->qualifiedSessionId.empty());
+                VERIFY_IS_FALSE(restartedBinding.has_value());
+                VERIFY_IS_FALSE(restartedExplicit);
+                VERIFY_IS_FALSE(restartedInteractive);
+            });
+        }
     }
 
     void TabTests::NativeAgentSessionsOffObservesParsedSignals()
