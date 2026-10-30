@@ -380,6 +380,8 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
+        bool FocusActiveSidebarTab();
+        bool FocusLastSidebarStop();
         void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
@@ -530,6 +532,8 @@ namespace winrt::TerminalApp::implementation
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSidebarListFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                        winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnSidebarListGettingFocus(winrt::Windows::Foundation::IInspectable const& sender,
+                                       winrt::Windows::UI::Xaml::Input::GettingFocusEventArgs const& e);
         void OnRowHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnRowHeaderSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -703,6 +707,11 @@ namespace winrt::TerminalApp::implementation
 
         void _onListKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        void _onSidebarEntryKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        bool _isSidebarFocusableItem(winrt::Windows::Foundation::IInspectable const& item) const;
+        winrt::Windows::UI::Xaml::Controls::ListViewItem _realizeSidebarItem(winrt::Windows::Foundation::IInspectable const& item);
+        winrt::Windows::UI::Xaml::Controls::ListViewItem _sidebarEntryTarget();
         void _onHistoryPreviewKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,

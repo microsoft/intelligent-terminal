@@ -734,6 +734,8 @@ namespace winrt::TerminalApp::implementation
         ItemsList().ItemTemplate(nullptr);
         ItemsList().ItemTemplateSelector(*selector);
         ItemsList().ItemsSource(_displayItems);
+        SearchTextBox().PreviewKeyDown({ get_weak(), &TabStrip::_onSidebarEntryKeyDown });
+        FilterTabsButton().PreviewKeyDown({ get_weak(), &TabStrip::_onSidebarEntryKeyDown });
         // ListView consumes Enter even when its focused row is already selected.
         ItemsList().AddHandler(WUX::UIElement::KeyDownEvent(),
                                winrt::box_value(WUX::Input::KeyEventHandler{ get_weak(), &TabStrip::_onListKeyDown }),
@@ -1843,6 +1845,130 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnSidebarRowGotFocus(IInspectable const& sender, RoutedEventArgs const&)
     {
         _updateSidebarRowToolTipPlacement(sender.as<FrameworkElement>());
+    }
+
+    bool TabStrip::_isSidebarFocusableItem(IInspectable const& item) const
+    {
+        if (!item || item == _historySectionItem)
+        {
+            return false;
+        }
+        if (const auto display = item.try_as<TerminalApp::TabStripDisplayItem>())
+        {
+            const auto tab = display.Tab();
+            if (const auto desired = _tabItemVisibility.find(winrt::get_abi(tab));
+                desired != _tabItemVisibility.end() && desired->second.Item.get() == tab)
+            {
+                return desired->second.Visible;
+            }
+            return true;
+        }
+        return static_cast<bool>(item.try_as<TerminalApp::TabStripHistoryItem>());
+    }
+
+    ListViewItem TabStrip::_realizeSidebarItem(IInspectable const& item)
+    {
+        ItemsList().ScrollIntoView(item);
+        ItemsList().UpdateLayout();
+        const auto row = ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+        return row && row.Visibility() == Visibility::Visible && row.IsEnabled() && row.IsTabStop() ? row : nullptr;
+    }
+
+    ListViewItem TabStrip::_sidebarEntryTarget()
+    {
+        const auto selected = ItemsList().SelectedItem();
+        if (selected && selected.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(selected))
+        {
+            return _realizeSidebarItem(selected);
+        }
+        for (const auto& item : ItemsList().Items())
+        {
+            if (item.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(item))
+            {
+                return _realizeSidebarItem(item);
+            }
+        }
+        return nullptr;
+    }
+
+    bool TabStrip::FocusActiveSidebarTab()
+    {
+        if (Visibility() == Visibility::Visible && ItemsList().Visibility() == Visibility::Visible)
+        {
+            if (const auto target = _sidebarEntryTarget())
+            {
+                return target.Focus(FocusState::Keyboard);
+            }
+        }
+        return false;
+    }
+
+    void TabStrip::_onSidebarEntryKeyDown(IInspectable const& sender, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
+        {
+            return;
+        }
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (!window || WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down))
+        {
+            return;
+        }
+        if (ItemsList().Visibility() == Visibility::Visible &&
+            (SearchPanel().Visibility() != Visibility::Visible || sender == SearchTextBox()))
+        {
+            if (const auto target = _sidebarEntryTarget())
+            {
+                e.Handled(target.Focus(FocusState::Keyboard));
+            }
+        }
+    }
+
+    bool TabStrip::FocusLastSidebarStop()
+    {
+        for (uint32_t index = ItemsList().Items().Size(); index > 0; --index)
+        {
+            const auto item = ItemsList().Items().GetAt(index - 1);
+            if (_isSidebarFocusableItem(item))
+            {
+                if (const auto row = _realizeSidebarItem(item))
+                {
+                    return row.Focus(FocusState::Keyboard);
+                }
+            }
+        }
+        if (const auto last = WUX::Input::FocusManager::FindLastFocusableElement(ContentGrid()).try_as<Control>())
+        {
+            return last.Focus(FocusState::Keyboard);
+        }
+        return false;
+    }
+
+    void TabStrip::OnSidebarListGettingFocus(IInspectable const&, WUX::Input::GettingFocusEventArgs const& e)
+    {
+        if (e.FocusState() != FocusState::Keyboard)
+        {
+            return;
+        }
+
+        auto source = e.OldFocusedElement().try_as<DependencyObject>();
+        while (source && source != SearchTextBox() && source != FilterTabsButton())
+        {
+            source = WUX::Media::VisualTreeHelper::GetParent(source);
+        }
+        if (!source)
+        {
+            return;
+        }
+
+        const auto target = _sidebarEntryTarget();
+        if (target && e.NewFocusedElement() != target)
+        {
+            e.Handled(e.TrySetNewFocusedElement(target));
+        }
     }
 
     void TabStrip::OnSidebarListFocusChanged(IInspectable const&, RoutedEventArgs const&)

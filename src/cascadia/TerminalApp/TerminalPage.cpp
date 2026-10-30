@@ -562,6 +562,45 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        _sidebarPaneFocusStop = WUX::Controls::Button{};
+        _sidebarPaneFocusStop.IsTabStop(false);
+        _sidebarPaneFocusStop.IsHitTestVisible(false);
+        _sidebarPaneFocusStop.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
+        _sidebarPaneFocusStop.VerticalAlignment(WUX::VerticalAlignment::Stretch);
+        _sidebarPaneFocusStop.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _sidebarPaneFocusStop.BorderThickness(WUX::Thickness{});
+        _sidebarPaneFocusStop.FocusVisualMargin(WUX::Thickness{});
+        Automation::AutomationProperties::SetAutomationId(_sidebarPaneFocusStop, L"SidebarShellPaneFocusStop");
+        Automation::AutomationProperties::SetName(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopName"));
+        Automation::AutomationProperties::SetHelpText(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopHelpText"));
+        _sidebarPaneFocusStop.LostFocus([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_sidebarPaneFocusStop.IsTabStop(false);
+            }
+        });
+        _sidebarPaneFocusStop.Click([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto shell = page->_sidebarPaneFocusShell.get())
+                {
+                    page->_TryFocusSidebarInput(shell);
+                }
+            }
+        });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabRow.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
             [weakThis{ get_weak() }](const TerminalApp::TabStripHistoryItem& item) {
                 const auto page = weakThis.get();
@@ -6688,6 +6727,192 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
+    }
+
+    bool TerminalPage::_FocusSidebarShellPaneStop()
+    {
+        if (const auto pane = _SourceTerminalPaneForTab(_GetFocusedTabImpl(), true))
+        {
+            const auto shell = pane->GetTerminalControl();
+            if (shell && _IsVisibleControlInSubtree(shell, _tabContent))
+            {
+                const auto root = pane->GetRootElement();
+                if (const auto parent = _sidebarPaneFocusStop.Parent().try_as<WUX::Controls::Grid>(); parent != root)
+                {
+                    if (parent)
+                    {
+                        uint32_t index;
+                        if (parent.Children().IndexOf(_sidebarPaneFocusStop, index))
+                        {
+                            parent.Children().RemoveAt(index);
+                        }
+                    }
+                    root.Children().Append(_sidebarPaneFocusStop);
+                    root.UpdateLayout();
+                }
+                _sidebarPaneFocusShell = winrt::make_weak(shell);
+                _sidebarPaneFocusStop.IsTabStop(true);
+                if (_sidebarPaneFocusStop.Focus(FocusState::Keyboard))
+                {
+                    return true;
+                }
+                _sidebarPaneFocusStop.IsTabStop(false);
+            }
+        }
+        return false;
+    }
+
+    void TerminalPage::_SidebarF6FocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::F6)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::LeftWindows), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::RightWindows), down))
+        {
+            return;
+        }
+
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        if (const auto actionMap = _settings.ActionMap())
+        {
+            const KeyChord chord{ false, false, shift, false, VK_F6, gsl::narrow_cast<int32_t>(e.KeyStatus().ScanCode) };
+            if (actionMap.GetActionByKeyChord(chord) || actionMap.IsKeyChordExplicitlyUnbound(chord))
+            {
+                return;
+            }
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto agentToggle = AgentToggleButton();
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto list = _tabStrip.FindName(L"ItemsList").try_as<WUX::Controls::ListView>();
+        bool inList = false;
+        for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (element == list)
+            {
+                inList = true;
+                break;
+            }
+        }
+
+        if (shift)
+        {
+            if (focused == _sidebarPaneFocusStop)
+            {
+                e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+            }
+            else if (focused == agentToggle)
+            {
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else if (focused == toggle)
+            {
+                e.Handled(agentToggle.Focus(FocusState::Keyboard));
+            }
+            else
+            {
+                e.Handled(toggle.Focus(FocusState::Keyboard));
+            }
+        }
+        else if (focused == _sidebarPaneFocusStop)
+        {
+            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == agentToggle)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (inList)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() || agentToggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == toggle || _IsVisibleSidebarControl(focused.try_as<WUX::Controls::Control>()))
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || _FocusSidebarShellPaneStop());
+        }
+        else
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+        }
+    }
+
+    void TerminalPage::_SidebarTabFocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || _isVerticalRailCollapsed ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down))
+        {
+            return;
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto last = WUX::Input::FocusManager::FindLastFocusableElement(_tabStrip).try_as<WUX::Controls::Control>();
+        if (!toggle || !last)
+        {
+            return;
+        }
+
+        const auto agentToggle = AgentToggleButton();
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        if (shift && toggle.FocusState() != FocusState::Unfocused)
+        {
+            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+        }
+        else if (shift && focused == agentToggle)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() || winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+        }
+        else if (shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled(winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+        }
+        else if (!shift && focused == agentToggle)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift)
+        {
+            auto element = focused.try_as<DependencyObject>();
+            const auto list = _tabStrip.FindName(L"ItemsList").try_as<WUX::Controls::ListView>();
+            for (; element; element = Media::VisualTreeHelper::GetParent(element))
+            {
+                if (element == list || element == last)
+                {
+                    e.Handled(_FocusSidebarShellPaneStop() || agentToggle.Focus(FocusState::Keyboard));
+                    break;
+                }
+            }
+        }
     }
 
     bool TerminalPage::_TryFocusSidebarInput(const TermControl& control)

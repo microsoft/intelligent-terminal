@@ -3272,8 +3272,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $lastLive) | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-            [Windows.Automation.Automation]::Compare(
-                [Windows.Automation.AutomationElement]::FocusedElement, $heading) | Should -BeTrue
+            $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+            $toggle.Current.ProcessId | Should -Be $script:app.Pid
+            $toggle.Current.Name | Should -Be 'Collapse sidebar' -Because 'Tab from the last live row wraps to the rail toggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $lastRecent = [Windows.Automation.AutomationElement]::FocusedElement
+            $lastRecent.Current.ProcessId | Should -Be $script:app.Pid
+            (Get-CombinedRowText $lastRecent) | Should -Match ([regex]::Escape($script:history[-1].title))
+            (Get-CombinedElement ItemsList).Current.BoundingRectangle.Contains($lastRecent.Current.BoundingRectangle) | Should -BeTrue
+            $heading.SetFocus()
             $receipts = @()
             foreach ($key in @(0x20, 0x0D)) {
                 Send-WtWindowKey -App $script:app -Vk $key -RequireForeground | Out-Null

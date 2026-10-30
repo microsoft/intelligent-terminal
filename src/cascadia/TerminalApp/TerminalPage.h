@@ -359,6 +359,8 @@ namespace winrt::TerminalApp::implementation
         bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
+        Windows::UI::Xaml::Controls::Button _sidebarPaneFocusStop{ nullptr };
+        winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarPaneFocusShell;
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         bool _tabSearchActive{ false };
         winrt::hstring _tabSearchQuery;
@@ -997,6 +999,8 @@ namespace winrt::TerminalApp::implementation
 
         void _KeyDownHandler(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);
         void _SidebarNavigationKeyDown(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);
+        void _SidebarTabFocusKeyDown(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);
+        void _SidebarF6FocusKeyDown(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);
         void _DispatchKeyEvent(const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e, KeyDispatchScope scope);
         static ::Microsoft::Terminal::Core::ControlKeyStates _GetPressedModifierKeys() noexcept;
         static void _ClearKeyboardState(const WORD vkey, const WORD scanCode) noexcept;
@@ -1139,6 +1143,7 @@ namespace winrt::TerminalApp::implementation
         bool _ExpireSidebarHistoryMasterRecovery(std::chrono::steady_clock::time_point now);
         bool _IsVisibleSidebarControl(const Windows::UI::Xaml::Controls::Control& control) const;
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
+        bool _FocusSidebarShellPaneStop();
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();
         void _CloseSidebarHistory(bool restoreFocus);
