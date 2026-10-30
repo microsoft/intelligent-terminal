@@ -215,6 +215,7 @@ namespace winrt::TerminalApp::implementation
             if (page && tab)
             {
                 page->_RefreshTabUnreadActivity(*tab);
+                tab->RefreshToolTip();
                 page->_ApplyTabListProjection(*tab);
                 if (tab->KeepRunning())
                 {

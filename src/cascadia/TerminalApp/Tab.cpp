@@ -371,13 +371,21 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     // Return Value:
     // - <none>
-    void Tab::_UpdateToolTip()
+    void Tab::_UpdateToolTip(const bool notifyPropertyChanged)
     {
         WUX::Controls::ToolTip toolTip{};
         toolTip.Content(ToolTipContentForKeyChord(_keyChord));
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
         Automation::AutomationProperties::SetHelpText(TabViewItem(), ToolTipTextForKeyChord(_keyChord));
-        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        if (notifyPropertyChanged)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        }
+    }
+
+    void Tab::RefreshToolTip()
+    {
+        _UpdateToolTip(false);
     }
 
     // Method Description:

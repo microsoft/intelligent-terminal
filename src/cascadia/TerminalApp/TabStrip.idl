@@ -132,7 +132,6 @@ namespace TerminalApp
         Double HeaderMinHeight;
         Windows.UI.Xaml.Thickness LeadingContentMargin;
         String ToolTipText;
-        Object ToolTipContent;
         String AcceleratorKey;
         Boolean IsPinned;
         Windows.UI.Xaml.Visibility PinnedIconVisibility;
@@ -145,6 +144,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         Int32 LeadingContentColumnSpan;
         Boolean ShowStatusIcon;
+        Object ToolTipContent;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

@@ -426,6 +426,13 @@ namespace winrt::TerminalApp::implementation
                                               IInspectable const& toolTipContent,
                                               bool verticalPresentation)
     {
+        if (const auto previous = _sidebarToolTipContent.try_as<FrameworkElement>())
+        {
+            if (const auto replacement = toolTipContent.try_as<FrameworkElement>())
+            {
+                replacement.FlowDirection(previous.FlowDirection());
+            }
+        }
         _sidebarHints = verticalPresentation ? std::move(hints) : std::nullopt;
         _sidebarToolTipContent = verticalPresentation ? toolTipContent : nullptr;
         _publishHints(verticalPresentation);
