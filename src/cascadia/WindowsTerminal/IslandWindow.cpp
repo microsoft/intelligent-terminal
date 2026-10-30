@@ -205,9 +205,19 @@ void IslandWindow::SetWorkAreaConstraintCallback(std::function<bool()> pfn) noex
     _pfnWorkAreaConstraintCallback = std::move(pfn);
 }
 
+void IslandWindow::SetResizeLockCallback(std::function<bool()> pfn) noexcept
+{
+    _pfnResizeLockCallback = std::move(pfn);
+}
+
 void IslandWindow::SetMinimumSizeOverride(std::optional<til::size> size) noexcept
 {
     _minimumSizeOverride = size;
+}
+
+bool IslandWindow::_IsResizeLocked() const noexcept
+{
+    return _pfnResizeLockCallback && _pfnResizeLockCallback();
 }
 
 // Method Description:
@@ -254,6 +264,12 @@ void IslandWindow::_HandleCreateWindow(const WPARAM, const LPARAM lParam) noexce
 // - <none>
 LRESULT IslandWindow::_OnSizing(const WPARAM wParam, const LPARAM lParam)
 {
+    if (_IsResizeLocked())
+    {
+        ::GetWindowRect(_window.get(), reinterpret_cast<LPRECT>(lParam));
+        return true;
+    }
+
     if (!_pfnSnapDimensionCallback)
     {
         // If we haven't been given the callback that would adjust the dimension,
@@ -554,6 +570,27 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
 
     switch (message)
     {
+    case WM_NCHITTEST:
+    {
+        if (_IsResizeLocked())
+        {
+            const auto hitTest = DefWindowProc(_window.get(), message, wparam, lparam);
+            switch (hitTest)
+            {
+            case HTLEFT:
+            case HTRIGHT:
+            case HTTOP:
+            case HTTOPLEFT:
+            case HTTOPRIGHT:
+            case HTBOTTOM:
+            case HTBOTTOMLEFT:
+            case HTBOTTOMRIGHT:
+                return HTBORDER;
+            }
+            return hitTest;
+        }
+        break;
+    }
     case WM_GETMINMAXINFO:
     {
         _OnGetMinMaxInfo(wparam, lparam);
@@ -770,6 +807,10 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
     {
         // the low 4 bits contain additional information (that we don't care about)
         auto highBits = wparam & 0xFFF0;
+        if (highBits == SC_SIZE && _IsResizeLocked())
+        {
+            return 0;
+        }
         if (highBits == SC_RESTORE || highBits == SC_MAXIMIZE)
         {
             MaximizeChanged.raise(highBits == SC_MAXIMIZE);
@@ -1831,7 +1872,7 @@ void IslandWindow::OpenSystemMenu(const std::optional<int> mouseX, const std::op
     };
     setState(SC_RESTORE, isMaximized);
     setState(SC_MOVE, !isMaximized);
-    setState(SC_SIZE, !isMaximized);
+    setState(SC_SIZE, !isMaximized && !_IsResizeLocked());
     setState(SC_MINIMIZE, true);
     setState(SC_MAXIMIZE, !isMaximized);
     setState(SC_CLOSE, true);

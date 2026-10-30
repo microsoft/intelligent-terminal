@@ -304,6 +304,7 @@ void AppHost::Initialize()
 
     _window->SetSnapDimensionCallback([this](auto&& PH1, auto&& PH2) { return _windowLogic.CalcSnappedDimension(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2)); });
     _window->SetWorkAreaConstraintCallback([this]() { return _windowLogic.IsFreRequired(); });
+    _window->SetResizeLockCallback([this]() { return _windowLogic.IsFreRequired(); });
 
     // Create a throttled function for updating the window state, to match the
     // one requested by the pty. A 200ms delay was chosen because it's the
