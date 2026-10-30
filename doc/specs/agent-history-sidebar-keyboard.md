@@ -10,9 +10,9 @@ This is not an acceptance report: build-specific results and remaining validatio
 belong in the release checklist and validation evidence.
 
 The October 20, 2026 decisions in
-[Sidebar and Tab Search Shortcuts](sidebar-hotkey.md) separate sidebar entry from
-search: Ctrl+Shift+S focuses the sidebar toggle
-without activating search, and Ctrl+F is the separate application search
+[Sidebar and Tab Search Shortcuts](sidebar-hotkey.md), revised October 30, separate
+sidebar visibility from search: Ctrl+Shift+S directly expands or collapses the
+sidebar without activating search, and Ctrl+F is the separate application search
 shortcut. That decision record also defines preserved query, overlay, and window
 mode behavior; it does not claim acceptance.
 
@@ -99,7 +99,7 @@ instead of letting unordered snapshot rows repeatedly change the icon.
 |---|---|
 | `Ctrl+Shift+G` | Toggle **Agents only** without changing **Agent recent sessions** or the search query. |
 | `Ctrl+Shift+/` | Toggle **Agent recent sessions** without changing **Agents only** or the search query in vertical layout; horizontal Agent Pane sessions behavior is unchanged. |
-| `Ctrl+Shift+S` | Enter the sidebar by focusing its upper-left toggle without opening search, or collapse it and return to the previous input when focus is already inside. |
+| `Ctrl+Shift+S` | Directly expand or collapse the sidebar without focusing its upper-left toggle or opening search. |
 | `Ctrl+F` | Open/focus shared sidebar search; in horizontal layout, open the existing tab-search palette. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
 
@@ -114,9 +114,9 @@ unbind the defaults.
 
 | State before the action | Action | Resulting surface/state | Focus policy |
 |---|---|---|---|
-| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar without opening search. | Remember the current terminal or Agent input, then focus the upper-left toggle. |
-| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Keep the sidebar expanded; preserve any existing search/query. | Remember the current input, then focus the upper-left toggle. |
-| Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close search; keep both filter preferences. | Best-effort return to the input used before entering the sidebar. |
+| Sidebar collapsed | `Ctrl+Shift+S` | Expand the sidebar without opening search. | Preserve the current focus. |
+| Sidebar expanded, focus outside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close search; keep both filter preferences. | Preserve the current outside focus. |
+| Sidebar expanded, focus inside the sidebar | `Ctrl+Shift+S` | Collapse the sidebar and close search; keep both filter preferences. | Best-effort focus a visible terminal. |
 | Sidebar collapsed or expanded | `Ctrl+F` | Expand if necessary and open/focus shared search. | Focus the search box without selecting all or resetting an existing query/selection. |
 | Horizontal layout | `Ctrl+F` | Open/focus the tab-search palette without changing layout. | Preserve an already-open search query/selection. |
 | Query empty | Both filters off | All open shell/agent tabs; no recent section. | Keep standard menu/input focus. |
@@ -262,26 +262,17 @@ preference, or start a session. New-tab and resume actions retain the chosen
 display preferences. Standard flyout keyboard navigation and checked-state
 automation remain available; the removed heading action is not a tab stop.
 
-## Sidebar hotkey: focus the toggle and return to input
+## Sidebar hotkey: direct visibility toggle
 
-`Ctrl+Shift+S` navigates between the current input and the sidebar's upper-left toggle.
+`Ctrl+Shift+S` directly toggles the sidebar's expanded/collapsed state.
 
-- When the sidebar is collapsed, expand it and focus its toggle without opening
-  search. When expanded with focus outside, focus the same toggle without
-  collapsing the sidebar or changing an existing search/query.
-- Remember the terminal or Agent chat input used just before this hotkey entry.
-  A later entry from another input replaces that best-effort return target.
-  Closing search with Escape or its button expires the target; explicitly opening
-  search (including Ctrl+F or its pointer/keyboard button)
-  starts without a saved hotkey source. A new hotkey entry captures its input
-  only after the toggle has received focus successfully.
-- When focus is inside the expanded sidebar, collapse it. If the remembered
-  input remains visible and focusable, return there without changing its
-  unsent draft. Otherwise, try the currently active visible terminal or Agent
-  input, then a visible terminal pane in the current tab, best effort; never
-  reopen a hidden Agent Pane or create a pane to recover focus.
-- If no target exists, leave any remaining valid focus unchanged; do not
-  display an error, block, or retry indefinitely.
+- When collapsed, expand without opening search or moving focus.
+- When expanded, collapse and close search through the existing collapse path.
+- If collapse hides the focused sidebar control, try the currently active
+  visible terminal or Agent input, then a visible terminal pane in the current
+  tab, best effort. Never reopen a hidden Agent Pane or create a pane to recover
+  focus.
+- If focus is already outside the sidebar, preserve it.
 
 The titlebar's Expand/Collapse button retains its existing visibility behavior;
 it does not itself open search. Ctrl+F opens **Search tabs and recent agent sessions**
@@ -508,7 +499,7 @@ elements.
   change. Rebinding changes the displayed chord; unbinding or overriding the
   action hides the obsolete shortcut without leaving an empty gap.
 
-Opening global search with `Ctrl+Shift+S` does not change either checked filter
+Toggling the sidebar with `Ctrl+Shift+S` does not change either checked filter
 preference or the ordinary Tab traversal of sidebar items.
 
 ## Acceptance scenarios
@@ -529,13 +520,12 @@ These are required checks for this contract, not claims of completed validation:
   Verify restoration of the exact checked preferences, not default values.
 - Verify existing recent-row activation and live tab/group/pane
   actions remain available when their rows are visible.
-- For sidebar-hotkey entry from collapsed and expanded rails, verify restoration
-  to Agent Pane chat and the exact originating terminal split when available.
-- Repeat with an unavailable source and verify the visible-terminal fallback,
-  unchanged session data/drafts, and nonblocking behavior.
-- Verify that `Ctrl+Shift+S` from either collapsed or expanded/outside focus
-  activates tab search and focuses its box; a second press from inside
-  collapses and best-effort restores the originating shell or Agent input.
+- Verify that `Ctrl+Shift+S` directly alternates collapsed and expanded state
+  without focusing the upper-left toggle or activating search.
+- Repeat collapse with a sidebar control focused and verify the visible-terminal
+  fallback, unchanged session data/drafts, and nonblocking behavior.
+- Verify that collapse closes and clears an active sidebar search while expansion
+  leaves search inactive.
 - Inspect both Expand/Collapse hints against the single-line designer
   reference, including the sidebar wording, accurate shortcut presence,
   casing, remapping, and unbinding.

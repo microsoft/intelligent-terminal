@@ -779,10 +779,6 @@ namespace winrt::TerminalApp::implementation
                 const auto wasAgentScopeEffective = page->_IsAgentScopeEffective();
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
-                if (wasSearchActive != page->_tabSearchActive)
-                {
-                    page->_sidebarHotkeyReturnControl = {};
-                }
                 page->_ApplyTabListProjection(nullptr, wasAgentScopeEffective != page->_IsAgentScopeEffective());
                 page->_UpdateRecentAgentSessionsVisibility();
                 page->_suppressTabFocusRequests = false;
@@ -6563,7 +6559,6 @@ namespace winrt::TerminalApp::implementation
         if (succeeded && !targetVertical)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
 
         _changingTabLayout = false;
@@ -6660,6 +6655,15 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return false;
+    }
+
+    bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
+    {
+        const auto titlebar = _tabRow ?
+                                  winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent() :
+                                  nullptr;
+        return _IsVisibleControlInSubtree(control, _tabStrip) ||
+               _IsVisibleControlInSubtree(control, titlebar);
     }
 
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
@@ -6772,7 +6776,6 @@ namespace winrt::TerminalApp::implementation
         if (!visible)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
         _isVerticalRailVisible = visible;
 
@@ -6860,51 +6863,9 @@ namespace winrt::TerminalApp::implementation
             }
             _SetVerticalRailColumnWidth(0);
         }
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
-        }
-    }
-
-    void TerminalPage::_ToggleSidebarHotkey()
-    {
-        if (!_isVerticalLayout || !_isVerticalRailVisible)
-        {
-            return;
-        }
-
-        if (!_isVerticalRailCollapsed && _SidebarFocusedControl())
-        {
-            const auto source = std::exchange(_sidebarHotkeyReturnControl, {});
-            if (!_TryFocusSidebarInput(source.get()) &&
-                !_TryFocusSidebarInput(_GetActiveControl()))
-            {
-                _FocusSidebarTerminalFallback();
-            }
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-            return;
-        }
-
-        winrt::weak_ref<TermControl> returnControl;
-        if (const auto source = _GetActiveControl();
-            source && _IsVisibleControlInSubtree(source, _tabContent))
-        {
-            returnControl = winrt::make_weak(source);
-        }
-        _sidebarHotkeyReturnControl = {};
-
-        if (_isVerticalRailCollapsed)
-        {
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-        }
-        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
-        if (toggle && toggle.Focus(FocusState::Programmatic))
-        {
-            _sidebarHotkeyReturnControl = std::move(returnControl);
-        }
-        else
-        {
-            LOG_HR(E_FAIL);
         }
     }
 
@@ -6919,13 +6880,12 @@ namespace winrt::TerminalApp::implementation
         const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
-            _sidebarHotkeyReturnControl = {};
             _ClearTabSearch();
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
         }
@@ -7902,7 +7862,6 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ClearTabSearch()
     {
-        _sidebarHotkeyReturnControl = {};
         if (!_tabSearchActive && _tabSearchQuery.empty())
         {
             return;
