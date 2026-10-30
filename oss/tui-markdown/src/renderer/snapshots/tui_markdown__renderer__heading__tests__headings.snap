@@ -1,0 +1,43 @@
+---
+source: tui-markdown/src/renderer/heading.rs
+expression: |-
+  from_str(indoc!("
+                  # Heading 1
+                  ## Heading 2
+                  ### Heading 3
+                  #### Heading 4
+                  ##### Heading 5
+                  ###### Heading 6
+              "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from("# "),
+        Span::from("Heading 1"),
+    ]).on_cyan().bold().underlined(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("## "),
+        Span::from("Heading 2"),
+    ]).cyan().bold(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("### "),
+        Span::from("Heading 3"),
+    ]).cyan().bold().italic(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("#### "),
+        Span::from("Heading 4"),
+    ]).light_cyan().italic(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("##### "),
+        Span::from("Heading 5"),
+    ]).light_cyan().italic(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("###### "),
+        Span::from("Heading 6"),
+    ]).light_cyan().italic(),
+])

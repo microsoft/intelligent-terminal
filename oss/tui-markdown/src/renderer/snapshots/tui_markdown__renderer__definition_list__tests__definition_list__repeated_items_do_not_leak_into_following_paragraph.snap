@@ -1,0 +1,27 @@
+---
+source: tui-markdown/src/renderer/definition_list.rs
+expression: |-
+  from_str(indoc!("
+                      Term one
+                      : First description.
+  
+                      Term two
+                      : Second description.
+  
+                      After.
+                  "))
+---
+Text::from_iter([
+    Line::from(Span::from("Term one").bold()),
+    Line::from_iter([
+        Span::from(": "),
+        Span::from("First description."),
+    ]),
+    Line::from(Span::from("Term two").bold()),
+    Line::from_iter([
+        Span::from(": "),
+        Span::from("Second description."),
+    ]),
+    Line::default(),
+    Line::from("After."),
+])
