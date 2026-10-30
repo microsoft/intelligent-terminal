@@ -74,7 +74,9 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
             resourcesXml.remove_prefix(3);
         }
         winrt::Windows::Data::Xml::Dom::XmlDocument document;
+        stage = L"parsing production resources";
         document.LoadXml(to_hstring(resourcesXml));
+        stage = L"selecting production resource dictionary";
         const auto dictionary = document.SelectSingleNode(
                                             L"/*[local-name()='Application']/*[local-name()='Application.Resources']/*[local-name()='ResourceDictionary']")
                                     .as<winrt::Windows::Data::Xml::Dom::XmlElement>();
@@ -234,6 +236,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
             }
         });
 
+        stage = L"loading built-in theme presets";
         const auto settings = Model::CascadiaSettings::LoadDefaults();
         const auto applyPreset = [weakRoot = make_weak(root), weakStrip = make_weak(strip), weakPreset = make_weak(themePreset), weakActive = make_weak(activePalette), themes = settings.GlobalSettings().Themes(), ownedTabs]() {
             const auto host = weakRoot.get();
@@ -267,6 +270,11 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         };
         themePreset.SelectionChanged([applyPreset](const auto&, const SelectionChangedEventArgs&) { applyPreset(); });
         activePalette.Toggled([applyPreset](const auto&, const RoutedEventArgs&) { applyPreset(); });
+        root.Loaded([applyPreset](const winrt::Windows::Foundation::IInspectable& sender, const RoutedEventArgs&) {
+            sender.as<FrameworkElement>().Dispatcher().RunAsync(
+                winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                [applyPreset]() { applyPreset(); });
+        });
 
         strip.SearchChanged([weakStrip = make_weak(strip)](const auto&, const auto&) {
             if (const auto sidebar = weakStrip.get())
@@ -282,6 +290,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         });
 
         Window::Current().Content(root);
+        stage = L"applying initial theme preset";
         applyPreset();
         return S_OK;
     }
