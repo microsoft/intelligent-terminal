@@ -18,7 +18,7 @@ mode behavior; it does not claim acceptance.
 
 The scenarios below cover the left sidebar in the **vertical** tab layout. The
 sidebar and the independent **Agent Pane** are different surfaces. The sidebar
-is always **Tabs**. Its **Agents only** and **Recent agent sessions** options are
+is always **Tabs**. Its **Agents only** and **Agent recent sessions** options are
 independent: recent sessions can appear below ordinary shell tabs as well as
 agent tabs. **History** below refers to the existing session rows and their
 loading/activation lifecycle, not a separate navigation mode. The one-time upgrade
@@ -97,8 +97,8 @@ instead of letting unordered snapshot rows repeatedly change the icon.
 
 | Default shortcut | Responsibility |
 |---|---|
-| `Ctrl+Shift+G` | Toggle **Agents only** without changing **Recent agent sessions** or the search query. |
-| `Ctrl+Shift+/` | Toggle **Recent agent sessions** without changing **Agents only** or the search query in vertical layout; horizontal Agent Pane sessions behavior is unchanged. |
+| `Ctrl+Shift+G` | Toggle **Agents only** without changing **Agent recent sessions** or the search query. |
+| `Ctrl+Shift+/` | Toggle **Agent recent sessions** without changing **Agents only** or the search query in vertical layout; horizontal Agent Pane sessions behavior is unchanged. |
 | `Ctrl+Shift+S` | Enter the sidebar by focusing its upper-left toggle without opening search, or collapse it and return to the previous input when focus is already inside. |
 | `Ctrl+F` | Open/focus shared sidebar search; in horizontal layout, open the existing tab-search palette. |
 | `Ctrl+Shift+.` | Show/hide the independent Agent Pane; its behavior is unchanged. |
@@ -149,7 +149,7 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   honor the theme's icon style and explicit tab icon visibility.
 - The toolbar heading is static **Tabs**, with no switch button, border, or swap
   icon. The display-options flyout has a **Show** section containing standard
-  checkable **Agents only** and **Recent agent sessions** controls.
+  checkable **Agents only** and **Agent recent sessions** controls.
 - The display-options button uses **Sidebar display options** for its tooltip
   and accessible name regardless of filters. Its menu configures visible tab details and
   any available tab filters; opening it does not itself filter tabs.
@@ -204,16 +204,16 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   come from Windows ICU's long CLDR formats, using the UI resource language.
   Missing or unsupported timestamps, or timestamps that cannot be formatted, retain localized “unknown.”
 - The sidebar has exactly one vertical scrolling viewport containing the
-  eligible open tabs followed by **Recent agent sessions** when requested.
+  eligible open tabs followed by **Agent recent sessions** when requested.
   The live section grows or shrinks with its tab, group, and pane rows; this does
-  not mean stretching individual row heights. Recent agent sessions follows the last
+  not mean stretching individual row heights. Agent recent sessions follows the last
   live row rather than being pinned to the bottom edge of the window.
 - There is no draggable divider, section-height setting, keyboard section
   resizing, fixed split ratio, or independent section scrollbar. Window resizing
   changes the shared viewport while both sections remain reachable.
-  A theme-aware, noninteractive separator remains above the Recent agent sessions
+  A theme-aware, noninteractive separator remains above the Agent recent sessions
   heading in both expanded and collapsed states.
-- Recent agent sessions has a keyboard-accessible expand/collapse heading exposing its
+- Agent recent sessions has a keyboard-accessible expand/collapse heading exposing its
   expanded state to UI Automation. It is initially expanded, preserving the
   existing visible-session behavior. Expanded session rows have no additional
   indentation beyond their existing provider-icon and metadata alignment.
@@ -238,7 +238,7 @@ last active pane. Activating another pane in a zoomed tab exits zoom first.
   Clearing or closing search restores those values immediately.
 - The search placeholder, automation names, and button tooltip read
   **Search tabs and recent agent sessions**, independent of filters.
-- Recent agent sessions retains its loading, error, and empty-state messages without
+- Agent recent sessions retains its loading, error, and empty-state messages without
   replacing usable retained rows or introducing another scrolling viewport.
   Runtime Narrator/UIA and RTL behavior remain separate validation steps.
 - Exclude only the represented history identity: provider, session ID, source

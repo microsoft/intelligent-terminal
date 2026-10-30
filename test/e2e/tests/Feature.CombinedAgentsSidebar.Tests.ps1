@@ -1130,7 +1130,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         })
         Set-CombinedView $true
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
-        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Recent agent sessions'
+        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Agent recent sessions'
         Set-CombinedView $false
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-header.png') | Out-Null
@@ -1473,7 +1473,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedQuery $script:scopeQuery
             $capture = @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id })
             foreach ($entry in @(
-                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Recent agent sessions'; Key = 0xBF; KeyText = '/' },
+                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Agent recent sessions'; Key = 0xBF; KeyText = '/' },
                 @{ Id = 'AgentsOnlyFilterMenuItem'; Name = 'Agents only'; Key = 0x47; KeyText = 'G' }
             )) {
                 Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
@@ -3060,7 +3060,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $scroll = Get-CombinedScroll ItemsList
         $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 100)
         $header = Get-CombinedElement HistoryHeaderButton
-        $header.Current.Name | Should -Be 'Recent agent sessions'
+        $header.Current.Name | Should -Be 'Agent recent sessions'
         $pattern = $header.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
         $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
         $sessions = @((Get-CombinedSnapshot).sessions.session_id | Sort-Object)
