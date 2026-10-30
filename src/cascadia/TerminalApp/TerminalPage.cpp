@@ -13825,6 +13825,66 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    void TerminalPage::_OnTerminalBackgroundBrushChanged(const TermControl& control)
+    {
+        bool hiddenAgent = false;
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                if (const auto pane = tabImpl->FindAgentPane(); pane && pane->IsHidden())
+                {
+                    if (const auto agentControl = pane->GetTerminalControl();
+                        agentControl && agentControl == control)
+                    {
+                        hiddenAgent = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Keep the upstream synchronous path for normal and visible controls.
+        if (!hiddenAgent)
+        {
+            _updateThemeColors();
+            return;
+        }
+
+        if (_hiddenAgentThemeRefreshQueued || _windowPanesShutdown || _windowCloseAccepted)
+        {
+            return;
+        }
+
+        _hiddenAgentThemeRefreshQueued = true;
+        try
+        {
+            Dispatcher().RunAsync(CoreDispatcherPriority::Normal, [weakThis = get_weak()]() {
+                if (const auto page = weakThis.get())
+                {
+                    page->_hiddenAgentThemeRefreshQueued = false;
+                    if (!page->_windowPanesShutdown && !page->_windowCloseAccepted)
+                    {
+                        try
+                        {
+                            page->_updateThemeColors();
+                        }
+                        CATCH_LOG()
+                    }
+                }
+            });
+        }
+        catch (...)
+        {
+            _hiddenAgentThemeRefreshQueued = false;
+            LOG_CAUGHT_EXCEPTION();
+            if (!_windowPanesShutdown && !_windowCloseAccepted)
+            {
+                _updateThemeColors();
+            }
+        }
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         const auto publication = _receivingContentTransfer ? _receivingContentTransfer->publication : nullptr;
@@ -13841,12 +13901,12 @@ namespace winrt::TerminalApp::implementation
 
         term.ConnectionStateChanged({ get_weak(), &TerminalPage::_ConnectionStateChangedHandler });
 
-        term.PropertyChanged([weakThis = get_weak()](auto& /*sender*/, auto& e) {
+        term.PropertyChanged([weakThis = get_weak()](auto& sender, auto& e) {
             if (auto page{ weakThis.get() })
             {
                 if (e.PropertyName() == L"BackgroundBrush")
                 {
-                    page->_updateThemeColors();
+                    page->_OnTerminalBackgroundBrushChanged(sender.template as<TermControl>());
                 }
             }
         });

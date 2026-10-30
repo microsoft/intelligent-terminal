@@ -26,13 +26,16 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/SidebarLayoutResources.xaml" />
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/AgentIconResources.xaml" />
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
                 <ResourceDictionary>
                     <ResourceDictionary.ThemeDictionaries>
                         <ResourceDictionary x:Key="Light">
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
-                                            ResourceKey="SystemControlForegroundBaseHighBrush" />
+                            <StaticResource x:Key="PaneGroupRailBrush"
+                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
+                            <StaticResource x:Key="SidebarTabSelectionBackground"
+                                            ResourceKey="TabViewItemHeaderBackgroundSelected" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
                             <StaticResource x:Key="PaneProgressCriticalBrush"
@@ -41,8 +44,10 @@
                                             ResourceKey="SystemFillColorCautionBrush" />
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="Dark">
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
-                                            ResourceKey="SystemControlForegroundBaseHighBrush" />
+                            <StaticResource x:Key="PaneGroupRailBrush"
+                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
+                            <StaticResource x:Key="SidebarTabSelectionBackground"
+                                            ResourceKey="TabViewItemHeaderBackgroundSelected" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
                             <StaticResource x:Key="PaneProgressCriticalBrush"
@@ -51,8 +56,10 @@
                                             ResourceKey="SystemFillColorCautionBrush" />
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="HighContrast">
-                            <StaticResource x:Key="PaneActiveIndicatorBrush"
+                            <StaticResource x:Key="PaneGroupRailBrush"
                                             ResourceKey="SystemColorWindowTextColorBrush" />
+                            <StaticResource x:Key="SidebarTabSelectionBackground"
+                                            ResourceKey="ListViewItemBackgroundSelected" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
                                             ResourceKey="SystemControlForegroundAccentBrush" />
                             <StaticResource x:Key="PaneProgressCriticalBrush"
@@ -66,6 +73,20 @@
             <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
             <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
             <CornerRadius x:Key="SidebarTabCornerRadius">6</CornerRadius>
+            <!--  The header button owns hover, pressed, and focus visuals.  -->
+            <Style x:Key="SidebarHistoryHeaderContainerStyle"
+                   TargetType="ListViewItem">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListViewItem">
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style BasedOn="{StaticResource DefaultButtonStyle}"
                    TargetType="Button">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -129,16 +150,6 @@
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
                 <Setter Property="Opacity" Value="1" />
             </Style>
-            <!--  The header button owns hover, pressed, and focus visuals.  -->
-            <ControlTemplate x:Key="HistoryHeaderContainerTemplate"
-                             TargetType="ListViewItem">
-                <ContentPresenter Margin="{TemplateBinding Padding}"
-                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                  Content="{TemplateBinding Content}"
-                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                  ContentTransitions="{TemplateBinding ContentTransitions}" />
-            </ControlTemplate>
             <DataTemplate x:Key="HistoryHeaderTemplate">
                 <Grid x:Name="HistorySection"
                       Background="Transparent"
@@ -178,6 +189,8 @@
                                                          Color="{ThemeResource TextFillColorPrimary}" />
                                         <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"
                                                          Color="{ThemeResource TextFillColorSecondary}" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedDisabled"
+                                                        ResourceKey="ToggleButtonForegroundDisabled" />
                                     </ResourceDictionary>
                                     <ResourceDictionary x:Key="Light">
                                         <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
@@ -190,6 +203,8 @@
                                                          Color="{ThemeResource TextFillColorPrimary}" />
                                         <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"
                                                          Color="{ThemeResource TextFillColorSecondary}" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedDisabled"
+                                                        ResourceKey="ToggleButtonForegroundDisabled" />
                                     </ResourceDictionary>
                                     <ResourceDictionary x:Key="HighContrast">
                                         <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
@@ -202,6 +217,8 @@
                                                         ResourceKey="ToggleButtonForegroundPointerOver" />
                                         <StaticResource x:Key="ToggleButtonForegroundCheckedPressed"
                                                         ResourceKey="ToggleButtonForegroundPressed" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedDisabled"
+                                                        ResourceKey="ToggleButtonForegroundDisabled" />
                                     </ResourceDictionary>
                                 </ResourceDictionary.ThemeDictionaries>
                                 <SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
@@ -225,7 +242,9 @@
                                        x:Uid="VerticalTabsSessionHistoryHeader"
                                        Grid.Column="1"
                                        VerticalAlignment="Center"
-                                       FontWeight="SemiBold" />
+                                       FontWeight="SemiBold"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis" />
                         </Grid>
                     </local:TabStripHistoryHeader>
                     <Grid x:Name="HistoryStatusPanel"
@@ -329,6 +348,7 @@
                                     IsTabStop="False" />
                     <Grid x:Name="HistoryTitleGroup"
                           Grid.Column="1"
+                          Margin="0,0,21,0"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
@@ -478,19 +498,19 @@
         <Grid x:Name="TabsToolbar"
               Grid.Row="2"
               Height="40"
-              Margin="0,0,-8,0"
-              Padding="12,0,8,0"
+              Padding="{StaticResource SidebarToolbarPadding}"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              BorderThickness="0,1,0,1">
+              BorderThickness="0,1,0,1"
+              ColumnSpacing="{StaticResource SidebarActionColumnSpacing}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
+                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
             </Grid.ColumnDefinitions>
 
             <TextBlock x:Name="VerticalTabsHeader"
                        x:Uid="VerticalTabsHeader"
-                       Margin="8,4"
+                       Margin="0,4"
                        HorizontalAlignment="Left"
                        VerticalAlignment="Center"
                        FontWeight="SemiBold" />
@@ -498,9 +518,10 @@
             <ToggleButton x:Name="SearchTabsButton"
                           x:Uid="VerticalTabsSearchButton"
                           Grid.Column="1"
-                          Width="40"
-                          Height="40"
+                          Width="{StaticResource SidebarToolbarActionExtent}"
+                          Height="{StaticResource SidebarToolbarActionExtent}"
                           Padding="0"
+                          HorizontalAlignment="Center"
                           VerticalAlignment="Center"
                           Background="Transparent"
                           BorderThickness="0"
@@ -623,9 +644,10 @@
             <Button x:Name="FilterTabsButton"
                     x:Uid="VerticalTabsFilterButton"
                     Grid.Column="2"
-                    Width="40"
-                    Height="40"
+                    Width="{StaticResource SidebarToolbarActionExtent}"
+                    Height="{StaticResource SidebarToolbarActionExtent}"
                     Padding="0"
+                    HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Background="Transparent"
                     BorderThickness="0"
@@ -858,7 +880,7 @@
                                     Opacity="0" />
                             <Border x:Name="TabSelectionBackground"
                                     Grid.ColumnSpan="3"
-                                    Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                    Background="{ThemeResource SidebarTabSelectionBackground}"
                                     CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                     IsHitTestVisible="False"
                                     Visibility="Collapsed" />
@@ -873,7 +895,7 @@
                                   Margin="{x:Bind LeadingContentMargin, Mode=OneWay}"
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
-                                  SizeChanged="OnRowHeaderSizeChanged">
+                                  SizeChanged="OnSidebarRowSizeChanged">
                                 <Button x:Name="TabGroupToggleButton"
                                         Width="16"
                                         Height="16"
@@ -959,13 +981,10 @@
                                                     PaneRowsVisibility="{x:Bind ChildrenVisibility, Mode=OneWay}"
                                                     Presentation="{x:Bind Presentation, Mode=OneWay}"
                                                     ShowProgressRing="False"
-                                                    SizeChanged="OnRowHeaderSizeChanged"
                                                     Visibility="{x:Bind HeaderVisibility, Mode=OneWay}" />
                             <Grid x:Name="TabCloseButtonSlot"
                                   Grid.Column="2"
-                                  Width="24"
-                                  Height="24"
-                                  VerticalAlignment="Top"
+                                  Style="{StaticResource SidebarCloseSlotStyle}"
                                   Visibility="{x:Bind HeaderVisibility, Mode=OneWay}">
                                 <Button x:Name="TabCloseButton"
                                         Width="24"
@@ -973,7 +992,7 @@
                                         MinWidth="0"
                                         MinHeight="0"
                                         Padding="0"
-                                        VerticalAlignment="Top"
+                                        HorizontalAlignment="Center"
                                         Background="Transparent"
                                         BorderThickness="0"
                                         Click="OnTabCloseClick"
@@ -997,7 +1016,7 @@
                                                 Width="3"
                                                 Margin="0,6"
                                                 HorizontalAlignment="Left"
-                                                Background="{ThemeResource PaneActiveIndicatorBrush}"
+                                                Background="{ThemeResource PaneGroupRailBrush}"
                                                 CornerRadius="2"
                                                 IsHitTestVisible="False" />
                                         <ItemsPresenter />
@@ -1026,7 +1045,7 @@
                                         <Border x:Name="PaneActiveBackground"
                                                 Grid.ColumnSpan="2"
                                                 Margin="7,0,0,0"
-                                                Background="{ThemeResource ListViewItemBackgroundSelected}"
+                                                Background="{ThemeResource SidebarTabSelectionBackground}"
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsHitTestVisible="False"
                                                 Visibility="Collapsed" />
@@ -1051,8 +1070,8 @@
                                                 IsHitTestVisible="False"
                                                 Opacity="0" />
                                         <Button x:Name="PaneActivateButton"
-                                                Grid.Column="0"
-                                                Padding="0"
+                                                Grid.ColumnSpan="2"
+                                                Padding="0,0,33,0"
                                                 HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Stretch"
                                                 VerticalContentAlignment="Stretch"
@@ -1060,6 +1079,7 @@
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Click="OnPaneActivateClick"
+                                                FocusVisualMargin="{StaticResource SidebarPaneFocusInset}"
                                                 ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
                                             <Button.Resources>
                                                 <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
@@ -1156,16 +1176,14 @@
                                         </Button>
                                         <Grid x:Name="PaneCloseButtonSlot"
                                               Grid.Column="1"
-                                              Width="24"
-                                              Height="24"
-                                              VerticalAlignment="Top">
+                                              Style="{StaticResource SidebarCloseSlotStyle}">
                                             <Button x:Name="PaneCloseButton"
                                                     Width="24"
                                                     Height="24"
                                                     MinWidth="0"
                                                     MinHeight="0"
                                                     Padding="0"
-                                                    VerticalAlignment="Top"
+                                                    HorizontalAlignment="Center"
                                                     Background="Transparent"
                                                     BorderThickness="0"
                                                     Click="OnPaneCloseClick"
@@ -1188,7 +1206,7 @@
                        TargetType="ListViewItem">
                     <Setter Property="MinWidth" Value="0" />
                     <Setter Property="Padding" Value="0" />
-                    <Setter Property="Margin" Value="6,4" />
+                    <Setter Property="Margin" Value="{StaticResource SidebarLiveRowMargin}" />
                     <Setter Property="MinHeight" Value="32" />
                     <Setter Property="HorizontalAlignment" Value="Stretch" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />

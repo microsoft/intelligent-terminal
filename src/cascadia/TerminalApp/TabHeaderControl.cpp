@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "TabHeaderControl.h"
+#include <winrt/Windows.UI.Xaml.Markup.h>
 
 #include "TabHeaderControl.g.cpp"
 #include "TabHeaderPresentation.g.cpp"
@@ -26,6 +27,7 @@ namespace winrt::TerminalApp::implementation
             Windows::UI::Xaml::Shapes::Shape::FillProperty(), completionBrush);
         _initialized = true;
         _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
 
         Loaded([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self = weakThis.get())
@@ -106,7 +108,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto presenter = _nativeHeaderPresenter.get())
         {
             presenter.UnregisterPropertyChangedCallback(Windows::UI::Xaml::UIElement::VisibilityProperty(), _nativeHeaderVisibilityToken);
-            HeaderMetadataTextBlock().ClearValue(Windows::UI::Xaml::Controls::Control::ForegroundProperty());
+            SetMetadataForeground(nullptr, false);
         }
         _nativeHeaderPresenter = nullptr;
     }
@@ -142,11 +144,7 @@ namespace winrt::TerminalApp::implementation
         {
             _nativeHeaderPresenter = winrt::make_weak(presenter);
             // Native tabs own their selection/hover contrast palette.
-            Data::Binding foreground;
-            foreground.Source(HeaderTextBlock());
-            foreground.Path(PropertyPath{ L"Foreground" });
-            foreground.Mode(Data::BindingMode::OneWay);
-            HeaderMetadataTextBlock().SetBinding(Control::ForegroundProperty(), foreground);
+            SetMetadataForeground(nullptr, true);
             _nativeHeaderVisibilityToken = presenter.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [weakThis = get_weak()](auto&&, auto&&) {
                 if (const auto self = weakThis.get())
                 {
@@ -204,6 +202,10 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->PropertyChanged.raise(*self, args);
+                if (args.PropertyName() == L"SearchText")
+                {
+                    self->_UpdateTitleVisibility();
+                }
                 if (args.PropertyName() == L"HasUnreadActivity" || args.PropertyName() == L"UnreadActivityProjectedToPaneRows")
                 {
                     self->_UpdateUnreadActivityVisibility();
@@ -215,6 +217,7 @@ namespace winrt::TerminalApp::implementation
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
         }
         _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
     }
 
     void TabHeaderControl::PaneRowsVisibility(const Windows::UI::Xaml::Visibility value)
@@ -282,6 +285,56 @@ namespace winrt::TerminalApp::implementation
         return Windows::UI::Xaml::Visibility::Visible == HeaderRenamerTextBox().Visibility();
     }
 
+    bool TabHeaderControl::IsTitleHighlighted()
+    {
+        return !SearchText().empty() && !InRename();
+    }
+
+    void TabHeaderControl::SetSidebarTextStyles(const Windows::UI::Xaml::Style& titleStyle,
+                                                const Windows::UI::Xaml::Style& metadataStyle)
+    {
+        _sidebarTitleTextStyle = titleStyle;
+        _sidebarMetadataTextStyle = metadataStyle;
+        HeaderTextBlock().Style(titleStyle);
+        if (_highlightedTitle)
+        {
+            _highlightedTitle.TextBlockStyle(titleStyle);
+        }
+        if (_metadataTextBlock)
+        {
+            _metadataTextBlock.TextBlockStyle(metadataStyle);
+            _metadataTextBlock.Margin({});
+        }
+    }
+
+    void TabHeaderControl::_UpdateTitleVisibility()
+    {
+        if (_initialized)
+        {
+            HeaderTextBlock().Visibility(InRename() || IsTitleHighlighted() ?
+                                             Windows::UI::Xaml::Visibility::Collapsed :
+                                             Windows::UI::Xaml::Visibility::Visible);
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsTitleHighlighted" });
+            // Bound x:Load emits an unavailable projected UnloadObject call; realize static stubs explicitly.
+            if (IsTitleHighlighted())
+            {
+                if (!_highlightedTitle)
+                {
+                    _highlightedTitle = FindName(L"HeaderHighlightedTextBlock").as<TerminalApp::HighlightedTextControl>();
+                    if (_sidebarTitleTextStyle)
+                    {
+                        _highlightedTitle.TextBlockStyle(_sidebarTitleTextStyle);
+                    }
+                }
+            }
+            else if (_highlightedTitle)
+            {
+                Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_highlightedTitle);
+                _highlightedTitle = nullptr;
+            }
+        }
+    }
+
     bool TabHeaderControl::IsMetadataVisible() const noexcept
     {
         return _isMetadataVisible;
@@ -313,9 +366,59 @@ namespace winrt::TerminalApp::implementation
 
     void TabHeaderControl::_UpdateMetadataVisibility()
     {
-        HeaderMetadataTextBlock().Visibility(_isMetadataVisible && !InRename() ?
-                                                 Windows::UI::Xaml::Visibility::Visible :
-                                                 Windows::UI::Xaml::Visibility::Collapsed);
+        if (_isMetadataVisible)
+        {
+            if (!_metadataTextBlock)
+            {
+                _metadataTextBlock = FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+                if (_sidebarMetadataTextStyle)
+                {
+                    _metadataTextBlock.TextBlockStyle(_sidebarMetadataTextStyle);
+                    _metadataTextBlock.Margin({});
+                }
+                _UpdateMetadataForeground();
+            }
+            _metadataTextBlock.Visibility(!InRename() ?
+                                              Windows::UI::Xaml::Visibility::Visible :
+                                              Windows::UI::Xaml::Visibility::Collapsed);
+        }
+        else if (_metadataTextBlock)
+        {
+            Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_metadataTextBlock);
+            _metadataTextBlock = nullptr;
+        }
+    }
+
+    void TabHeaderControl::SetMetadataForeground(const Windows::UI::Xaml::Media::Brush& foreground, const bool followTitle)
+    {
+        _metadataForeground = foreground;
+        _metadataFollowsTitle = followTitle;
+        _UpdateMetadataForeground();
+    }
+
+    void TabHeaderControl::_UpdateMetadataForeground()
+    {
+        if (!_metadataTextBlock)
+        {
+            return;
+        }
+        using namespace Windows::UI::Xaml;
+        if (_metadataFollowsTitle)
+        {
+            Data::Binding binding;
+            binding.Source(HeaderTextBlock());
+            binding.Path(PropertyPath{ L"Foreground" });
+            binding.Mode(Data::BindingMode::OneWay);
+            _metadataTextBlock.SetBinding(Controls::Control::ForegroundProperty(), binding);
+        }
+        else if (_metadataForeground)
+        {
+            _metadataTextBlock.Foreground(_metadataForeground);
+        }
+        else
+        {
+            _metadataTextBlock.ClearValue(Controls::Control::ForegroundProperty());
+        }
     }
 
     // Method Description:
@@ -326,8 +429,8 @@ namespace winrt::TerminalApp::implementation
         _receivedKeyDown = false;
         _renameCancelled = false;
 
-        HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
         HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Visible);
+        _UpdateTitleVisibility();
         _UpdateMetadataVisibility();
 
         HeaderRenamerTextBox().Text(Title());
@@ -392,7 +495,7 @@ namespace winrt::TerminalApp::implementation
         if (HeaderRenamerTextBox().Visibility() == Windows::UI::Xaml::Visibility::Visible)
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
-            HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
+            _UpdateTitleVisibility();
             _UpdateMetadataVisibility();
             if (notify)
             {
