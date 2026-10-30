@@ -7494,6 +7494,7 @@ namespace TerminalAppLocalTests
                         for (const auto activated : { false, true })
                         {
                             page->WindowActivated(activated);
+                            page->_updateThemeColors(false);
                             const auto brush = page->TitlebarBrush();
                             VERIFY_IS_TRUE(page->_tabStrip.Background() == brush);
                             const auto expectedColor = activated ?
@@ -7507,7 +7508,7 @@ namespace TerminalAppLocalTests
                                 VERIFY_ARE_EQUAL(0.5, acrylic.TintOpacity());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.TintColor());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.FallbackColor());
-                                page->_updateThemeColors();
+                                page->_updateThemeColors(false);
                                 VERIFY_IS_TRUE(page->TitlebarBrush() == brush);
                             }
                             else
@@ -7522,6 +7523,30 @@ namespace TerminalAppLocalTests
                             else
                             {
                                 VERIFY_IS_TRUE(page->_tabRow.Background() == brush);
+                            }
+
+                            page->_updateThemeColors(true);
+                            const auto contrastBackground = Application::Current().Resources().Lookup(winrt::box_value(L"SystemColorButtonFaceColorBrush")).as<Media::SolidColorBrush>();
+                            VERIFY_IS_TRUE(page->TitlebarBrush() == contrastBackground);
+                            VERIFY_IS_TRUE(page->_tabStrip.Background() == contrastBackground);
+                            if (hasTitlebarHost)
+                            {
+                                VERIFY_ARE_EQUAL(uint8_t{ 0 }, page->_tabRow.Background().as<Media::SolidColorBrush>().Color().A);
+                            }
+                            else
+                            {
+                                VERIFY_IS_TRUE(page->_tabRow.Background() == contrastBackground);
+                            }
+
+                            page->_updateThemeColors(false);
+                            VERIFY_IS_TRUE(page->_tabStrip.Background() == page->TitlebarBrush());
+                            if (useAcrylic && (activated || unfocusedAcrylic))
+                            {
+                                VERIFY_ARE_EQUAL(expectedColor, page->TitlebarBrush().as<Media::AcrylicBrush>().TintColor());
+                            }
+                            else
+                            {
+                                VERIFY_ARE_EQUAL(expectedColor, page->TitlebarBrush().as<Media::SolidColorBrush>().Color());
                             }
                         }
                     }
