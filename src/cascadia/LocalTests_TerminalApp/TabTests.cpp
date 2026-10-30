@@ -9199,9 +9199,13 @@ namespace TerminalAppLocalTests
                 const auto content = tooltip.Content().as<TextBlock>();
                 const auto inlines = content.Inlines();
                 VERIFY_IS_TRUE(inlines.Size() >= 2u);
+                VERIFY_ARE_EQUAL(TextAlignment::Left, content.TextAlignment());
+                const auto titleRun = inlines.GetAt(0).as<Documents::Run>();
                 const auto keyChordRun = inlines.GetAt(inlines.Size() - 1).as<Documents::Run>();
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, keyChordRun.Text());
                 VERIFY_ARE_EQUAL(winrt::Windows::UI::Text::FontStyle::Italic, keyChordRun.FontStyle());
+                VERIFY_IS_NULL(titleRun.Foreground());
+                VERIFY_IS_NULL(keyChordRun.Foreground());
             };
             const auto verifyPlacementRect = [&]() {
                 const auto tooltip = ToolTipService::GetToolTip(thirdHeader).as<ToolTip>();
@@ -9253,16 +9257,32 @@ namespace TerminalAppLocalTests
                 Automation::AutomationProperties::GetAcceleratorKey(thirdContainer));
             verifyVerticalTooltipKeyChordStyle();
 
+            const auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(agentPane->IsAgentPane());
+            VERIFY_IS_TRUE(page->_SplitPane(third, SplitDirection::Right, 0.5f, agentPane));
+            page->UpdateLayout();
+            VERIFY_ARE_EQUAL(2, third->GetLeafPaneCount());
+            const auto agentTooltip = verticalTooltipText();
+            VERIFY_ARE_EQUAL(std::wstring::npos, agentTooltip.find(L"panes"));
+            VERIFY_ARE_EQUAL(winrt::hstring{ agentTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
+            verifyVerticalTooltipKeyChordStyle();
+
             const auto splitPane = page->_MakePane(nullptr, nullptr, nullptr);
             VERIFY_IS_NOT_NULL(splitPane);
             VERIFY_IS_TRUE(page->_SplitPane(third, SplitDirection::Right, 0.5f, splitPane));
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(2, third->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(3, third->GetLeafPaneCount());
             const auto splitTooltip = verticalTooltipText();
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, splitTooltip.find(L"Third tab"));
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, splitTooltip.find(L"2 panes"));
             VERIFY_ARE_EQUAL(splitTooltip.find(L"Third tab"), splitTooltip.find(L"2 panes") - std::wstring_view{ L"Third tab" }.size() - 1);
             VERIFY_ARE_EQUAL(winrt::hstring{ splitTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
+            const auto splitContent = ToolTipService::GetToolTip(thirdHeader).as<ToolTip>().Content().as<TextBlock>();
+            const auto paneCountRun = splitContent.Inlines().GetAt(1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"    2 panes" }, paneCountRun.Text());
+            VERIFY_IS_NULL(paneCountRun.Foreground());
             verifyVerticalTooltipKeyChordStyle();
 
             third->SetTabText(L"Renamed third tab");
@@ -9280,6 +9300,13 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), verticalTooltipText());
             VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(third->TabViewItem()), thirdDisplay.ToolTipText());
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ thirdDisplay.ToolTipText() }.find(presentation.tooltip));
+            const auto metadataContent = ToolTipService::GetToolTip(thirdHeader).as<ToolTip>().Content().as<TextBlock>();
+            const auto metadataInlines = metadataContent.Inlines();
+            const auto metadataRun = metadataInlines.GetAt(metadataInlines.Size() - 3).as<Documents::Run>();
+            const auto metadataKeyChordRun = metadataInlines.GetAt(metadataInlines.Size() - 1).as<Documents::Run>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ presentation.tooltip }, metadataRun.Text());
+            VERIFY_IS_NULL(metadataRun.Foreground());
+            VERIFY_IS_NULL(metadataKeyChordRun.Foreground());
 
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             strip->SyncTabPresentation(thirdDisplay);

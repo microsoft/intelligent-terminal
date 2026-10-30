@@ -324,7 +324,7 @@ namespace winrt::TerminalApp::implementation
     {
         auto textBlock = WUX::Controls::TextBlock{};
         textBlock.TextWrapping(WUX::TextWrapping::Wrap);
-        textBlock.TextAlignment(WUX::TextAlignment::Center);
+        textBlock.TextAlignment(_isVerticalTabLayout ? WUX::TextAlignment::Left : WUX::TextAlignment::Center);
 
         auto titleRun = WUX::Documents::Run();
         titleRun.Text(_CreateToolTipTitle());
@@ -333,7 +333,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
         {
             auto paneCountRun = WUX::Documents::Run();
-            paneCountRun.Text(til::hstring_format(FMT_COMPILE(L" {}"), paneCount));
+            paneCountRun.Text(til::hstring_format(FMT_COMPILE(L"    {}"), paneCount));
             textBlock.Inlines().Append(paneCountRun);
         }
 
@@ -3333,7 +3333,11 @@ namespace winrt::TerminalApp::implementation
 
     winrt::hstring Tab::_CreateToolTipPaneCount()
     {
-        const auto paneCount = GetLeafPaneCount();
+        uint32_t paneCount = 0;
+        for (const auto& pane : GetVisiblePaneSnapshot())
+        {
+            paneCount += !pane.IsAgentPane;
+        }
         return paneCount > 1 ? winrt::hstring{ RS_fmt(L"TabToolTipPaneCount", paneCount) } : winrt::hstring{};
     }
 
