@@ -49,6 +49,8 @@ namespace winrt::TerminalApp::implementation
                                       const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
         void _OnSettingsFormScrollerSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
                                                 const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
+        void _OnRootGridSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
+                                    const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();
@@ -59,6 +61,9 @@ namespace winrt::TerminalApp::implementation
         bool _updatingAgentComboBox{ false };
         bool _agentSelectionExplicitlyChanged{ false };
         bool _autoInstallCopilotAfterCompletion{ false };
+        std::optional<double> _welcomeCardCornerRadius;
+
+        void _UpdateWelcomeLayout(const winrt::Windows::Foundation::Size& viewport);
 
         // Things that can block FRE completion, in priority order (lower value
         // = higher priority). Only the highest-priority problem is surfaced in

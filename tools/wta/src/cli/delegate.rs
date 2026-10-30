@@ -58,7 +58,7 @@ pub(crate) async fn run(
         let snapshot = local
             .run_until(super::sessions::fetch_from_master(
                 master.to_string(),
-                false,
+                Default::default(),
             ))
             .await?;
         let row = resolve_split_session(

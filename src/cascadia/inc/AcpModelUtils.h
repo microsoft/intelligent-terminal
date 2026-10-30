@@ -38,6 +38,45 @@ namespace Microsoft::Terminal::AcpModels
         bool excludeCustomSelectionIds{ false };
     };
 
+    struct ModelSelectionReset
+    {
+        bool acpModel{ false };
+        bool customModelSelection{ false };
+    };
+
+    template<typename IsAvailable, typename SelectionExists>
+    ModelSelectionReset ReconcileModelSelection(
+        const std::wstring_view acpModel,
+        const std::wstring_view customModelSelection,
+        const bool supportsCustomModels,
+        const bool hasModels,
+        IsAvailable&& isAvailable,
+        SelectionExists&& selectionExists)
+    {
+        ModelSelectionReset reset;
+        if (!hasModels)
+        {
+            return reset;
+        }
+        const auto valid = [&](const std::wstring_view id) {
+            return isAvailable(id) ||
+                   (supportsCustomModels &&
+                    ::Microsoft::Terminal::CustomModels::IsCustomSelection(id) &&
+                    selectionExists(id));
+        };
+        if (supportsCustomModels && !customModelSelection.empty())
+        {
+            if (valid(customModelSelection))
+            {
+                return reset;
+            }
+            reset.customModelSelection = true;
+        }
+        // A stale custom selection can expose a stale native fallback.
+        reset.acpModel = !acpModel.empty() && !valid(acpModel);
+        return reset;
+    }
+
     struct StartupFailure
     {
         std::string phase;

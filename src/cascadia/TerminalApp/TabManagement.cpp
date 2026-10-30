@@ -205,7 +205,7 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto tab = weakTab.get())
                 {
-                    page->_ReadTabAgentCompletions(*tab);
+                    page->_ReadFocusedPaneAgentActivity(*tab);
                 }
             }
         });
@@ -214,6 +214,7 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab)
             {
+                page->_RefreshTabUnreadActivity(*tab);
                 page->_ApplyTabListProjection(*tab);
                 if (tab->KeepRunning())
                 {
@@ -449,6 +450,13 @@ namespace winrt::TerminalApp::implementation
                     self->_RaiseProtocolEvent("tab_renamed", params);
                 });
 
+                // CLI tracking is a background consumer even if this tab
+                // suppresses assistant pre-warm or restores only shell panes.
+                if (self->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                {
+                    self->_EnsureSharedWtaService();
+                }
+
                 // Pre-warm a stashed agent pane on this tab so the helper is
                 // running from the start (autofix needs it). A transferred
                 // pane keeps its existing helper and skips this path, and a
@@ -561,6 +569,13 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
+        if (!_freChromeVisible)
+        {
+            _tabRow.Visibility(Visibility::Collapsed);
+            _tabStrip.Visibility(Visibility::Collapsed);
+            return;
+        }
+
         if (_isVerticalLayout)
         {
             const auto railVisible = !_isInFocusMode &&
@@ -816,6 +831,32 @@ namespace winrt::TerminalApp::implementation
             }
             if (!resume.empty())
             {
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ binding->second.backend });
+                if ((binding->second.backend.empty() ||
+                     (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host)) &&
+                    !binding->second.cwd.empty())
+                {
+                    bool hasReportedCwd = false;
+                    for (const auto& runtimeTab : _RuntimeTabs())
+                    {
+                        const auto tab = _GetTabImpl(runtimeTab);
+                        const auto pane = tab && tab->GetRootPane() ?
+                                              tab->GetRootPane()->FindPaneBySessionId(terminalArgs.SessionId()) :
+                                              nullptr;
+                        if (pane)
+                        {
+                            const auto control = pane->GetTerminalControl();
+                            hasReportedCwd = control && control.WorkingDirectoryReportedByShell() &&
+                                             Utils::IsUsableStartingDirectory(control.Settings().Commandline(), control.WorkingDirectory());
+                            break;
+                        }
+                    }
+                    if (!hasReportedCwd)
+                    {
+                        terminalArgs.StartingDirectory(binding->second.cwd);
+                    }
+                }
                 terminalArgs.Commandline(resume);
             }
         }

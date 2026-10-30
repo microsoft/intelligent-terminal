@@ -348,7 +348,7 @@ Describe 'Feature: ACP provider lifecycle' -Tag 'Feature', 'AcpLifecycle' {
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-recovered.png') | Out-Null
     }
 
-    It 'ACP startup budgets survive separate probe requests' {
+    It 'ACP startup budgets reset for a new probe process' {
         $failureText = 'Application Control policy has blocked this file. Controlled fixture stderr.'
         $fixture = New-LifecycleFixture -FailureStderr $failureText
         for ($i = 0; $i -lt 2; $i++) {
@@ -356,6 +356,7 @@ Describe 'Feature: ACP provider lifecycle' -Tag 'Feature', 'AcpLifecycle' {
                 'probe-models', '--agent', $fixture.Command, '--agent-id', 'custom:lifecycle-budget'
             ) -TimeoutSec 120
             $result.ExitCode | Should -Not -Be 0
+            (Get-LifecycleStarts $fixture) | Should -Be (($i + 1) * 3) -Because 'each probe process retains its own three-attempt ceiling'
             if ($i -eq 0) {
                 $failure = ($result.StdOut | ConvertFrom-Json).startup_failure
                 $failure.phase | Should -Be 'initialize'
@@ -366,19 +367,20 @@ Describe 'Feature: ACP provider lifecycle' -Tag 'Feature', 'AcpLifecycle' {
         }
         (Get-ItLogText -App $script:app -Name 'wta-probe.log' -SinceStart) |
             Should -Match ([regex]::Escape($failureText)) -Because 'native stderr must remain available in diagnostic logs'
-        (Get-LifecycleStarts $fixture) | Should -Be 3 -Because 'separate CLI processes must share one failure ceiling'
+        (Get-LifecycleStarts $fixture) | Should -Be 6
         @{ mode = 'ready' } | ConvertTo-Json | Set-Content -LiteralPath $fixture.Control
-        $blocked = Invoke-Native -FilePath $script:wtaAlias -Arguments @(
+        $recovered = Invoke-Native -FilePath $script:wtaAlias -Arguments @(
             'probe-models', '--agent', $fixture.Command, '--agent-id', 'custom:lifecycle-budget'
         ) -TimeoutSec 30
-        $blocked.ExitCode | Should -Not -Be 0
-        (Get-LifecycleStarts $fixture) | Should -Be 3 -Because 'another request must not silently reset the budget'
+        $recovered.ExitCode | Should -Be 0 -Because 'an earlier process failure must not block a new invocation'
+        ($recovered.StdOut | ConvertFrom-Json).available_models.id | Should -Contain 'lifecycle-fixture-model'
+        (Get-LifecycleStarts $fixture) | Should -Be 7
         $retried = Invoke-Native -FilePath $script:wtaAlias -Arguments @(
             'probe-models', '--agent', $fixture.Command, '--agent-id', 'custom:lifecycle-budget', '--retry-startup'
         ) -TimeoutSec 60
         $retried.ExitCode | Should -Be 0
         ($retried.StdOut | ConvertFrom-Json).available_models.id | Should -Contain 'lifecycle-fixture-model'
-        (Get-LifecycleStarts $fixture) | Should -Be 4
+        (Get-LifecycleStarts $fixture) | Should -Be 8
     }
 
     It 'ACP verification initializes once without creating a conversation' {

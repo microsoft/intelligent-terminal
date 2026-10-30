@@ -811,6 +811,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
     }
 
     _finalizeSessionPersistence();
+    _app.Logic().ShutdownBackgroundServices();
 
     if (_notificationIconShown)
     {

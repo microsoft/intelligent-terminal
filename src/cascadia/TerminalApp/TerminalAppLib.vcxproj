@@ -224,6 +224,7 @@
     <ClInclude Include="FreOverlay.h">
       <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="FreLayoutMetrics.h" />
     <ClInclude Include="WindowsPackageManagerFactory.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->

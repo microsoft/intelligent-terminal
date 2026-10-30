@@ -61,11 +61,16 @@ namespace winrt::TerminalApp::implementation
             std::string qualifiedLocation;
             uint64_t paneCreatedAtMs{ 0 };
             uint64_t paneCreationSequence{ 0 };
+            bool locationConfirmed{ false };
         };
         void SetExplicitNativeAgentProvider(uint64_t contentId, const winrt::hstring& providerId);
         bool RefineNativeAgentLaunchLocation(uint64_t contentId, const winrt::hstring& providerId, const std::string& location);
         std::optional<NativeAgentObservationIdentity> NativeAgentObservationForContent(uint64_t contentId) const;
-        NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0);
+        uint64_t NativeAgentOwnerGenerationForContent(uint64_t contentId) const;
+        void ConfirmNativeAgentOwner(uint64_t contentId, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
+        std::optional<NativeAgentObservationIdentity> RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, uint64_t ownerGeneration);
+        std::optional<uint64_t> NativeAgentProgressForContent(uint64_t contentId) const;
+        NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0, const winrt::hstring& hookProviderId = {});
         void RetainQualifiedNativeAgentIdentity(uint64_t contentId, uint64_t modeEpoch, const std::string& sessionId, const std::string& location);
         void RemoveNativeAgentObservation(uint64_t contentId);
         void RestartNativeAgentConnectionTracking(uint64_t contentId);
@@ -79,18 +84,22 @@ namespace winrt::TerminalApp::implementation
             std::string providerId;
             bool wasActive{ false };
             bool unread{ false };
-
-            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider,
-                        const std::string_view status, const bool focused)
+            bool wasAttention{ false };
+            bool Update(const winrt::guid& pane, const std::string_view session, const std::string_view provider, const std::string_view status, const bool focused)
             {
                 const auto wasUnread = unread;
-                if (paneId != pane || sessionId != session || providerId != provider)
+                const auto identityChanged = paneId != pane || sessionId != session || providerId != provider;
+                if (identityChanged)
                 {
                     *this = { pane, std::string{ session }, std::string{ provider } };
                 }
-                unread = status == "Idle" && !focused && (unread || wasActive);
+                const auto attention = status == "Attention";
+                const auto newAttention = attention && !wasAttention;
+                unread = !focused && ((attention && (unread || newAttention)) ||
+                                      (status == "Idle" && (unread || wasActive)));
                 wasActive = status == "Working" || status == "Attention";
-                return wasUnread != unread;
+                wasAttention = attention;
+                return wasUnread != unread || (identityChanged && (wasUnread || unread));
             }
         };
         void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
@@ -140,7 +149,17 @@ namespace winrt::TerminalApp::implementation
             bool observationAdmitted{ false };
             bool agentHelper{ false };
             AgentCompletionState completion;
+            std::optional<std::pair<winrt::guid, uint64_t>> parsedProgress;
+            struct ConfirmedOwner
+            {
+                winrt::hstring providerId;
+                std::string sessionId;
+                std::string location;
+            } lastConfirmedOwner;
+            uint64_t ownerGeneration{ 0 };
+            std::optional<uint64_t> observationOwnerGeneration;
         };
+        static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
         std::unordered_map<uint64_t, TerminalContent> _content;
         bool _nativeAgentSessionEventsEnabled{ true };
         uint64_t _nativeAgentObservationGeneration{ 0 };

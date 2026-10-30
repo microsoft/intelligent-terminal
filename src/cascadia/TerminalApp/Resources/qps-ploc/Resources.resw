@@ -210,7 +210,8 @@
     <value>Ѕéªяċħ ťªвѕ !!!</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Ѕéªяċħ ťªвѕ !!!</value>
+    <value>Ѕéªяċħ !!!</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Ѕéªяċħ ťªвѕ !!!</value>
@@ -266,7 +267,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>[Ŕéçéñţ åĝéñţ šéššïöñš !!!!!!!]</value>
+    <value>[Åĝéñţ ŕéçéñţ šéššïöñš !!!!!!!]</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -1656,7 +1657,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>[Šéåŕçĥ ţåƀš åñď ŕéçéñţ åĝéñţ šéššïöñš !!!!!!!!!!!!]</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · [Îñ àñöţĥéŕ ŵïñďöŵ!!!!!]</value>
