@@ -10,7 +10,7 @@ for isolated accessibility checks. It does not replace full-app integration test
 | No accessibility argument | Default test-client path for TAEF local tests. |
 | `--accessibility-page=fre` | Real FRE overlay, initialized with default settings. |
 | `--accessibility-page=agents` | Real Agents page reached through Frame navigation with the production view model and navigation arguments. |
-| `--visual-page=sidebar` | Real sidebar controls with deterministic tab, pane-group, and history data; switches for Light/Dark, RTL, and width. |
+| `--visual-page=sidebar` | Real sidebar controls with deterministic tab, pane-group, and history data; named theme presets, active/inactive palette, RTL, and width controls. |
 
 The harness surface `fre-settings` launches the FRE mode, invokes Next through
 UI Automation, and scans the resulting settings controls. It is not a separate
@@ -61,6 +61,13 @@ dictionary and instantiates production controls through `TerminalApp.LocalTests.
 Its TAEF runtime dependencies are packaged explicitly because this route runs
 without TAEF provisioning. It does not start Terminal, WTA, shells, or agents.
 Fixture labels and paths are synthetic; do not substitute real session data.
+
+The four named presets come from `CascadiaSettings::LoadDefaults()`, not copied
+color tables. Production `Tab::ThemeColor` applies their tab colors against a
+synthetic black content background; legacy presets retain the native/default
+tab brushes. The active/inactive palette switch exercises the preset's tab-row
+colors with acrylic disabled. This is controlled palette coverage, not proof of
+native window activation, acrylic, or every profile-background combination.
 
 Build LocalTests and the full incremental TestHost payload after control changes,
 then inspect the registered test package with `winapp ui inspect`, `get-property`,

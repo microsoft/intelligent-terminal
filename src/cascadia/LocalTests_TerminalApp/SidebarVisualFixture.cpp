@@ -11,12 +11,48 @@
 #include "../TerminalApp/TabHeaderControl.h"
 #include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/TerminalTabStatus.h"
+#include "../TerminalApp/Tab.h"
+#include "../TerminalApp/BasicPaneEvents.h"
+#include "../WinRTUtils/inc/Utils.h"
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
 using namespace winrt;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 namespace MUX = winrt::Microsoft::UI::Xaml::Controls;
+namespace Model = winrt::Microsoft::Terminal::Settings::Model;
+
+namespace
+{
+    struct VisualFixturePaneContent :
+        implements<VisualFixturePaneContent, winrt::TerminalApp::IPaneContent>,
+        winrt::TerminalApp::implementation::BasicPaneEvents
+    {
+        explicit VisualFixturePaneContent(hstring title) :
+            _title{ std::move(title) }
+        {
+        }
+
+        FrameworkElement GetRoot() { return _root; }
+        void UpdateSettings(const Model::CascadiaSettings&) {}
+        winrt::Windows::Foundation::Size MinimumSize() { return { 1, 1 }; }
+        hstring Title() { return _title; }
+        uint64_t TaskbarState() { return 0; }
+        uint64_t TaskbarProgress() { return 0; }
+        bool ReadOnly() { return false; }
+        hstring Icon() { return L""; }
+        winrt::Windows::Foundation::IReference<winrt::Windows::UI::Color> TabColor() { return nullptr; }
+        Media::Brush BackgroundBrush() { return _background; }
+        Model::INewContentArgs GetNewTerminalArgs(winrt::TerminalApp::BuildStartupKind) { return Model::BaseContentArgs{ L"settings" }; }
+        void Focus(FocusState) {}
+        void Close() {}
+
+    private:
+        Grid _root;
+        hstring _title;
+        Media::SolidColorBrush _background{ winrt::Windows::UI::Colors::Black() };
+    };
+}
 
 extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessage, uint32_t errorCapacity) noexcept
 {
@@ -75,16 +111,29 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         Grid::SetRow(strip, 1);
         root.Children().Append(strip);
 
-        ToggleSwitch lightTheme;
-        lightTheme.Header(box_value(L"Light theme"));
-        Automation::AutomationProperties::SetAutomationId(lightTheme, L"FixtureLightTheme");
-        lightTheme.Toggled([weakRoot = make_weak(root)](const winrt::Windows::Foundation::IInspectable& sender, const RoutedEventArgs&) {
-            if (const auto host = weakRoot.get())
-            {
-                host.RequestedTheme(sender.as<ToggleSwitch>().IsOn() ? ElementTheme::Light : ElementTheme::Dark);
-            }
-        });
-        toolbar.Children().Append(lightTheme);
+        ComboBox themePreset;
+        themePreset.Header(box_value(L"Application theme preset"));
+        Automation::AutomationProperties::SetAutomationId(themePreset, L"FixtureThemePreset");
+        for (const auto& [label, name] : {
+                 std::pair{ L"Dark", L"dark" },
+                 std::pair{ L"Dark (legacy)", L"legacyDark" },
+                 std::pair{ L"Light", L"light" },
+                 std::pair{ L"Light (legacy)", L"legacyLight" } })
+        {
+            ComboBoxItem item;
+            item.Content(box_value(hstring{ label }));
+            item.Tag(box_value(hstring{ name }));
+            Automation::AutomationProperties::SetAutomationId(item, hstring{ L"FixturePreset-" } + name);
+            themePreset.Items().Append(item);
+        }
+        themePreset.SelectedIndex(0);
+        toolbar.Children().Append(themePreset);
+
+        ToggleSwitch activePalette;
+        activePalette.Header(box_value(L"Active window palette"));
+        activePalette.IsOn(true);
+        Automation::AutomationProperties::SetAutomationId(activePalette, L"FixtureActivePalette");
+        toolbar.Children().Append(activePalette);
 
         ToggleSwitch rtl;
         rtl.Header(box_value(L"Right to left"));
@@ -112,9 +161,12 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         });
         toolbar.Children().Append(width);
 
+        std::vector<com_ptr<winrt::TerminalApp::implementation::Tab>> ownedTabs;
         const auto addTab = [&](const wchar_t* title, const wchar_t* metadata, const wchar_t* icon) {
-            MUX::TabViewItem tab;
-            winrt::TerminalApp::TabHeaderControl header;
+            const auto content = make<VisualFixturePaneContent>(title);
+            const auto owner = make_self<winrt::TerminalApp::implementation::Tab>(std::make_shared<Pane>(content));
+            const auto tab = owner->TabViewItem();
+            const auto header = tab.Header().as<winrt::TerminalApp::TabHeaderControl>();
             header.Title(title);
             header.MetadataText(metadata);
             header.IsMetadataVisible(*metadata != L'\0');
@@ -123,6 +175,16 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
             tab.Header(header);
             strip.TabItems().Append(tab);
             strip.SetTabPresentation(tab, title, icon);
+            owner->TabColorChanged([weakStrip = make_weak(strip), weakTab = make_weak(tab)]() {
+                if (const auto sidebar = weakStrip.get())
+                {
+                    if (const auto item = weakTab.get())
+                    {
+                        get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->RefreshTabColor(item);
+                    }
+                }
+            });
+            ownedTabs.emplace_back(owner);
             return tab;
         };
         stage = L"creating production tab headers";
@@ -157,6 +219,54 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         history.Subtitle(L"1h");
         stripImpl->CommitHistorySnapshot({ history }, true);
 
+        strip.PaneActivationRequested([weakStrip = make_weak(strip)](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
+            if (const auto sidebar = weakStrip.get())
+            {
+                const auto display = get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->DisplayItemForTab(args.Tab());
+                for (const auto& pane : display.PaneItems())
+                {
+                    const auto active = pane.ContentId() == args.ContentId();
+                    pane.IsActive(active);
+                    pane.ActiveIndicatorVisibility(active ? Visibility::Visible : Visibility::Collapsed);
+                }
+                sidebar.SelectedItem(args.Tab());
+            }
+        });
+
+        const auto settings = Model::CascadiaSettings::LoadDefaults();
+        const auto applyPreset = [weakRoot = make_weak(root), weakStrip = make_weak(strip), weakPreset = make_weak(themePreset), weakActive = make_weak(activePalette), themes = settings.GlobalSettings().Themes(), ownedTabs]() {
+            const auto host = weakRoot.get();
+            const auto sidebar = weakStrip.get();
+            const auto picker = weakPreset.get();
+            const auto active = weakActive.get();
+            if (!host || !sidebar || !picker || !active)
+            {
+                return;
+            }
+            const auto name = unbox_value<hstring>(picker.SelectedItem().as<ComboBoxItem>().Tag());
+            const auto theme = themes.Lookup(name);
+            host.RequestedTheme(theme.RequestedTheme());
+            const auto resources = Application::Current().Resources();
+            Media::Brush background = ThemeLookup(resources, theme.RequestedTheme(), box_value(L"TabViewBackground")).as<Media::Brush>();
+            if (const auto row = theme.TabRow())
+            {
+                if (const auto color = active.IsOn() ? row.Background() : row.UnfocusedBackground())
+                {
+                    background = color.Evaluate(resources, nullptr, true);
+                }
+            }
+            sidebar.Background(background);
+            const til::color rowColor{ Model::ThemeColor::ColorFromBrush(background) };
+            for (const auto& owner : ownedTabs)
+            {
+                owner->ThemeColor(theme.Tab() ? theme.Tab().Background() : nullptr,
+                                  theme.Tab() ? theme.Tab().UnfocusedBackground() : nullptr,
+                                  rowColor);
+            }
+        };
+        themePreset.SelectionChanged([applyPreset](const auto&, const SelectionChangedEventArgs&) { applyPreset(); });
+        activePalette.Toggled([applyPreset](const auto&, const RoutedEventArgs&) { applyPreset(); });
+
         strip.SearchChanged([weakStrip = make_weak(strip)](const auto&, const auto&) {
             if (const auto sidebar = weakStrip.get())
             {
@@ -171,6 +281,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         });
 
         Window::Current().Content(root);
+        applyPreset();
         return S_OK;
     }
     catch (const winrt::hresult_error& error)
