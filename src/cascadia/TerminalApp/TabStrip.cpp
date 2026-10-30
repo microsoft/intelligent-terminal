@@ -49,6 +49,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed);
     void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
     {
         if (_showAgentsOnly != value)
@@ -1687,6 +1688,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root, _isRailCollapsed);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1712,11 +1714,101 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed)
+    {
+        ListViewItem container{ nullptr };
+        for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
+        {
+            container = current.try_as<ListViewItem>();
+        }
+        if (!container || container.ActualWidth() <= 0)
+        {
+            return;
+        }
+
+        const auto rowMargin = container.Margin();
+        const auto width = container.ActualWidth() + rowMargin.Left + rowMargin.Right;
+        // Figma's 272-DIP row has a 15-DIP trailing inset.
+        // Scale the outer inset, not the 24-DIP controls.
+        const auto inset = std::max(0.0, width * 15.0 / 272.0 - rowMargin.Right);
+        for (const auto name : { L"TabCloseButtonSlot", L"PaneCloseButtonSlot" })
+        {
+            if (const auto slot = row.FindName(name).try_as<FrameworkElement>())
+            {
+                FrameworkElement title{ nullptr };
+                if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
+                {
+                    title = header.FindName(header.InRename() ? L"HeaderRenamerTextBox" : L"HeaderTextBlock").try_as<FrameworkElement>();
+                    if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
+                    {
+                        const auto alignment = railCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
+                        if (leading.VerticalAlignment() != alignment)
+                        {
+                            leading.VerticalAlignment(alignment);
+                        }
+                        auto leadingMargin = leading.Margin();
+                        leadingMargin.Top = 0;
+                        if (!railCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
+                        {
+                            const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                            leadingMargin.Top = position.Y + title.ActualHeight() / 2.0 - leading.ActualHeight() / 2.0;
+                        }
+                        if (leading.Margin() != leadingMargin)
+                        {
+                            leading.Margin(leadingMargin);
+                        }
+                    }
+                }
+                else
+                {
+                    title = row.FindName(L"PaneTitleText").try_as<FrameworkElement>();
+                }
+                auto margin = slot.Margin();
+                margin.Right = inset;
+                if (title && title.ActualHeight() > 0)
+                {
+                    const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                    margin.Top = std::max(0.0, position.Y + title.ActualHeight() / 2.0 - 12.0);
+                }
+                if (slot.Margin() != margin)
+                {
+                    slot.Margin(margin);
+                }
+                if (const auto activate = row.FindName(L"PaneActivateButton").try_as<Button>())
+                {
+                    const auto closeExtent = slot.Width() + margin.Left + margin.Right;
+                    const Thickness padding{ 0, 0, closeExtent, 0 };
+                    const Thickness focusInset{ 7, 0, closeExtent, 0 };
+                    if (activate.Padding() != padding)
+                    {
+                        activate.Padding(padding);
+                    }
+                    if (activate.FocusVisualMargin() != focusInset)
+                    {
+                        activate.FocusVisualMargin(focusInset);
+                    }
+                }
+                return;
+            }
+        }
+        if (const auto titleGroup = row.FindName(L"HistoryTitleGroup").try_as<FrameworkElement>())
+        {
+            auto margin = titleGroup.Margin();
+            margin.Right = 24.0 + inset - row.as<Grid>().Padding().Right;
+            if (titleGroup.Margin() != margin)
+            {
+                titleGroup.Margin(margin);
+            }
+        }
+    }
+
     void TabStrip::OnSidebarRowSizeChanged(IInspectable const& sender, SizeChangedEventArgs const&)
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarRowToolTipPlacement(root);
+            const auto row = root.Name() == L"TabLeadingContent" ? root.Parent().as<FrameworkElement>() : root;
+            _updateSidebarActionLayout(row, _isRailCollapsed);
+            _updateSidebarRowToolTipPlacement(row);
         }
     }
 
@@ -1815,6 +1907,13 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        header.FindName(L"HeaderTextBlock").as<TerminalApp::HighlightedTextControl>().TextBlockStyle(Resources().Lookup(box_value(L"SidebarTitleTextStyle")).as<WUX::Style>());
+        const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+        metadata.TextBlockStyle(Resources().Lookup(box_value(L"SidebarMetadataTextStyle")).as<WUX::Style>());
+        metadata.Margin({});
+        // Keep 24-DIP adornments centered without enlarging the 20-DIP title line.
+        header.FindName(L"HeaderCompletionIndicator").as<FrameworkElement>().Margin({ 12, -2, 0, -2 });
+        header.FindName(L"HeaderRenamerTextBox").as<FrameworkElement>().Margin({ 0, -2, 0, -2 });
         header.TitleChangeRequested([weakThis = get_weak(), weakHeader = winrt::make_weak(header)](const auto& title) {
             const auto self = weakThis.get();
             const auto view = weakHeader.get();
@@ -1840,6 +1939,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
+            _updateSidebarActionLayout(root, _isRailCollapsed);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);

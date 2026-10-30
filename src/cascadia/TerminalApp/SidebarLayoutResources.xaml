@@ -17,18 +17,14 @@
     <!--  Center a forty-DIP action on the live-row icon axis: 6 + 20 = 26.  -->
     <GridLength x:Key="SidebarExpandedLeadingColumnWidth">52</GridLength>
     <GridLength x:Key="SidebarCompactLeadingColumnWidth">40</GridLength>
-    <!--  Preserve the pane icon/text positions formerly supplied by 12 + 3 DIPs of inner spacing.  -->
-    <GridLength x:Key="SidebarPaneGutterWidth">15</GridLength>
-    <!--  The live row's six-DIP outer inset consumes both sides of the shared action cell: 46.02 - 2*6.  -->
-    <x:Double x:Key="SidebarLiveCloseSlotExtent">34.02</x:Double>
-    <Thickness x:Key="SidebarPaneContentInset">15,0,34.02,0</Thickness>
+    <Thickness x:Key="SidebarPaneFocusInset">7,0,33,0</Thickness>
     <!--  Match the native SplitButton's separator column.  -->
     <x:Double x:Key="SidebarActionColumnSpacing">1</x:Double>
     <Style x:Key="SidebarCloseSlotStyle"
            TargetType="Grid">
-        <Setter Property="Width" Value="{StaticResource SidebarLiveCloseSlotExtent}" />
+        <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="24" />
-        <Setter Property="Margin" Value="0" />
-        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,8,9,0" />
+        <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
 </ResourceDictionary>
