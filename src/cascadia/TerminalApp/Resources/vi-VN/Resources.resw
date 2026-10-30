@@ -479,6 +479,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Không có phiên tác tử nào khớp.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Không có tab đang mở hoặc phiên tác tử trước đây nào khớp với nội dung tìm kiếm của bạn.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Không thể tải các phiên tác tử.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>

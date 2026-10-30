@@ -571,6 +571,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>പൊരുത്തപ്പെടുന്ന ഏജന്റ് സെഷനുകളൊന്നുമില്ല.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>നിങ്ങളുടെ തിരയലുമായി പൊരുത്തപ്പെടുന്ന തുറന്ന ടാബുകളോ ഏജന്റുകളുടെ മുൻ സെഷനുകളോ ഇല്ല.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ഏജന്റ് സെഷനുകൾ ലോഡ് ചെയ്യാനായില്ല.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>

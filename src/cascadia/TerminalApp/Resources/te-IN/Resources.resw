@@ -550,6 +550,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>సరిపోలే ఏజెంట్ సెషన్‌లు లేవు.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>మీ శోధనకు సరిపోలే తెరిచిన ట్యాబ్‌లు లేదా ఏజెంట్‌ల గత సెషన్‌లు లేవు.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ఏజెంట్ సెషన్‌లను లోడ్ చేయడం సాధ్యం కాలేదు.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>

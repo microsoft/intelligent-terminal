@@ -179,6 +179,10 @@
                                     </ResourceDictionary>
                                 </ResourceDictionary.ThemeDictionaries>
                                 <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="Transparent" />
+                                <SolidColorBrush x:Key="ToggleButtonBackgroundDisabled"
+                                                 Color="Transparent" />
+                                <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedDisabled"
+                                                 Color="Transparent" />
                             </ResourceDictionary>
                         </local:TabStripHistoryHeader.Resources>
                         <Grid ColumnSpacing="10">
@@ -731,6 +735,24 @@
                           IsHitTestVisible="False" />
             </Grid>
         </Grid>
+
+        <Border x:Name="SearchEmptyState"
+                Grid.Row="4"
+                Padding="16"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="Collapsed">
+            <TextBlock x:Name="SearchNoResultsText"
+                       x:Uid="VerticalTabsSearchNoMatches"
+                       VerticalAlignment="Top"
+                       AutomationProperties.AutomationId="SidebarSearchNoMatches"
+                       FontSize="14"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                       LineHeight="20"
+                       LineStackingStrategy="BlockLineHeight"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+        </Border>
 
         <!-- One display descriptor per canonical tab. The hosted TabViewItem
              remains the real tab; pane rows are a vertical-only projection. -->
