@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
     the MIT License. See LICENSE in the project root for license information.
 -->
@@ -197,15 +197,14 @@
                                       ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                       CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
                                       Text="{x:Bind MetadataText, Mode=OneWay}"
-                                      TextOpacity="0.72"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
-                <Style TargetType="TextBlock">
+                <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"
+                       TargetType="TextBlock">
                     <Setter Property="MaxLines" Value="2" />
-                    <Setter Property="FontSize" Value="10" />
-                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 </Style>
             </local:HighlightedTextControl.TextBlockStyle>
         </local:HighlightedTextControl>

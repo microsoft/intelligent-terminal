@@ -1465,6 +1465,7 @@ namespace winrt::TerminalApp::implementation
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
+            const auto metadata = header ? header.FindName(L"HeaderMetadataTextBlock").try_as<Control>() : nullptr;
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
             const auto inactiveBrush = !selected && !_highContrast && selectionBackground ?
@@ -1484,7 +1485,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, backdrop) };
-                for (const auto& control : { header, toggle, close })
+                for (const auto& control : { header, metadata, toggle, close })
                 {
                     if (control)
                     {
@@ -1494,7 +1495,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                for (const auto& control : { header, toggle, close })
+                for (const auto& control : { header, metadata, toggle, close })
                 {
                     if (control)
                     {
@@ -1508,6 +1509,14 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+            }
+            if (_highContrast && metadata && !foregroundBrush && !searchFocused)
+            {
+                WUX::Data::Binding binding;
+                binding.Source(header.FindName(L"HeaderTextBlock"));
+                binding.Path(PropertyPath{ L"Foreground" });
+                binding.Mode(WUX::Data::BindingMode::OneWay);
+                metadata.SetBinding(Control::ForegroundProperty(), binding);
             }
             _bindMonochromeIconForeground(iconPresenter, header);
         }
@@ -1577,6 +1586,17 @@ namespace winrt::TerminalApp::implementation
                 else
                 {
                     control.ClearValue(WUX::Controls::Control::ForegroundProperty());
+                }
+            }
+            if (highContrastActive && !foreground && button)
+            {
+                if (const auto metadata = root.FindName(L"PaneMetadataText").try_as<Control>())
+                {
+                    WUX::Data::Binding binding;
+                    binding.Source(root.FindName(L"PaneTitleText"));
+                    binding.Path(PropertyPath{ L"Foreground" });
+                    binding.Mode(WUX::Data::BindingMode::OneWay);
+                    metadata.SetBinding(Control::ForegroundProperty(), binding);
                 }
             }
         }
