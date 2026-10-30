@@ -404,9 +404,11 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Click="OnCompactNewTabClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="10"
-                          Glyph="&#xE710;" />
+                <Viewbox Width="16"
+                         Height="16">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              Glyph="&#xE710;" />
+                </Viewbox>
             </Button>
 
             <Button x:Name="CompactNewTabMenuButton"
@@ -418,15 +420,18 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Click="OnCompactNewTabMenuClick">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="8"
-                          Glyph="&#xE70D;" />
+                <Viewbox Width="16"
+                         Height="16">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              Glyph="&#xE70D;" />
+                </Viewbox>
             </Button>
         </Grid>
 
         <Grid x:Name="TabsToolbar"
               Grid.Row="2"
-              Height="44"
+              Height="40"
+              Margin="0,0,-8,0"
               Padding="12,0,8,0"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1">
