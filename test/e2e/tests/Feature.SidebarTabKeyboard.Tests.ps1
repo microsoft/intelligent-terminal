@@ -968,6 +968,82 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }
     }
 
+    It 'Sidebar hotkey exits the shell outline and agent icon to the same input' -Tag 'SidebarFocusStopHotkeyExit' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $shell = [Windows.Automation.AutomationElement]::FocusedElement
+        $shell.Current.ClassName | Should -Be 'TermControl'
+        try {
+            foreach ($target in @('shell outline', 'agent icon')) {
+                Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+                Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'F6 enters the selected row'
+                Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+                Assert-FocusedShellPaneStop | Out-Null
+                if ($target -eq 'agent icon') {
+                    Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+                    [Windows.Automation.Automation]::Compare(
+                        [Windows.Automation.AutomationElement]::FocusedElement,
+                        (Get-SidebarElement AgentToggleButton)) | Should -BeTrue
+                }
+                Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+                Wait-UiElement -App $script:app -Selector CompactNewTabButton | Out-Null
+                (Test-Until -TimeoutSec 6 -Condition {
+                    [Windows.Automation.Automation]::Compare(
+                        [Windows.Automation.AutomationElement]::FocusedElement, $shell)
+                }) | Should -BeTrue -Because "Ctrl+Shift+S from the $target returns to the originating shell"
+                Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+                Wait-UiElement -App $script:app -Selector VerticalTabsHeader | Out-Null
+                [Windows.Automation.Automation]::Compare(
+                    [Windows.Automation.AutomationElement]::FocusedElement, $shell) | Should -BeTrue
+            }
+        }
+        finally {
+            $expand = Get-UiElement -App $script:app -Selector 'Expand sidebar'
+            if ($expand -and -not $expand.isOffscreen) {
+                Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
+    It 'Sidebar Tab wraps when Settings has no shell or bottom bar' -Tag 'SidebarSettingsTabFocusCycle' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        Send-WtWindowKey -App $script:app -Vk 0xBC -Ctrl -RequireForeground | Out-Null
+        try {
+            (Test-Until -TimeoutSec 10 -Condition {
+                @(Get-VisibleTabRows).Count -eq 4
+            }) | Should -BeTrue -Because 'Ctrl+, opens the Settings tab'
+            $settingsRow = @(Get-VisibleTabRows)[3]
+            (Test-TabRowTitle -Row $settingsRow -Title 'Settings') | Should -BeTrue
+            Start-Sleep -Milliseconds 700
+            $settingsRow.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+            $toggle.Current.Name | Should -Be 'Collapse sidebar' -Because 'no shell or agent icon is available on Settings'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $settingsRow) |
+                Should -BeTrue -Because 'reverse traversal returns to the last visible row'
+            $toggle.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $settingsRow) | Should -BeTrue
+        }
+        finally {
+            Send-WtWindowKey -App $script:app -Vk 0x57 -Ctrl -RequireForeground | Out-Null
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
     It 'Sidebar new tab and dropdown are separate keyboard stops' -Tag 'SidebarNewTabSplitFocus' {
         $script:app.Launched | Should -BeTrue
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {

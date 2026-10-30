@@ -588,6 +588,9 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        _sidebarPaneFocusStop.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        AgentToggleButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        DiagnosticsButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         _tabRow.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
@@ -599,6 +602,8 @@ namespace winrt::TerminalApp::implementation
             { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
@@ -6718,6 +6723,11 @@ namespace winrt::TerminalApp::implementation
         if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            const auto page = const_cast<TerminalPage*>(this);
+            if (focused == _sidebarPaneFocusStop || focused == page->AgentToggleButton() || focused == page->DiagnosticsButton())
+            {
+                return focused.try_as<WUX::Controls::Control>();
+            }
             for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
             {
                 if (element == _tabStrip)
@@ -6796,6 +6806,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
         const auto agentToggle = AgentToggleButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
         const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
         const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
         const auto list = _tabStrip.FindName(L"ItemsList").try_as<WUX::Controls::ListView>();
@@ -6819,9 +6830,15 @@ namespace winrt::TerminalApp::implementation
             {
                 e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
             }
+            else if (focused == DiagnosticsButton())
+            {
+                e.Handled(agentVisible ? agentToggle.Focus(FocusState::Keyboard) :
+                                         (_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab()));
+            }
             else if (focused == toggle)
             {
-                e.Handled(agentToggle.Focus(FocusState::Keyboard));
+                e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                          _FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
             }
             else
             {
@@ -6836,9 +6853,14 @@ namespace winrt::TerminalApp::implementation
         {
             e.Handled(toggle.Focus(FocusState::Keyboard));
         }
+        else if (focused == DiagnosticsButton())
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
         else if (inList)
         {
-            e.Handled(_FocusSidebarShellPaneStop() || agentToggle.Focus(FocusState::Keyboard));
+            e.Handled(_FocusSidebarShellPaneStop() ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) || toggle.Focus(FocusState::Keyboard));
         }
         else if (focused == toggle || _IsVisibleSidebarControl(focused.try_as<WUX::Controls::Control>()))
         {
@@ -6872,17 +6894,29 @@ namespace winrt::TerminalApp::implementation
 
         const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
         const auto last = WUX::Input::FocusManager::FindLastFocusableElement(_tabStrip).try_as<WUX::Controls::Control>();
-        if (!toggle || !last)
+        if (!toggle)
         {
             return;
         }
 
         const auto agentToggle = AgentToggleButton();
+        const auto diagnostics = DiagnosticsButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
+        const auto diagnosticsVisible = _IsVisibleControlInSubtree(diagnostics, BottomBarRoot());
         const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
         const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
         if (shift && toggle.FocusState() != FocusState::Unfocused)
         {
-            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+        }
+        else if (shift && focused == diagnostics)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
         }
         else if (shift && focused == agentToggle)
         {
@@ -6894,11 +6928,18 @@ namespace winrt::TerminalApp::implementation
         }
         else if (!shift && focused == agentToggle)
         {
-            e.Handled(toggle.Focus(FocusState::Keyboard));
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
         }
         else if (!shift && focused == _sidebarPaneFocusStop)
         {
-            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == diagnostics)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
         }
         else if (!shift)
         {
@@ -6908,7 +6949,10 @@ namespace winrt::TerminalApp::implementation
             {
                 if (element == list || element == last)
                 {
-                    e.Handled(_FocusSidebarShellPaneStop() || agentToggle.Focus(FocusState::Keyboard));
+                    e.Handled(_FocusSidebarShellPaneStop() ||
+                              (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                              (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                              toggle.Focus(FocusState::Keyboard));
                     break;
                 }
             }

@@ -5,13 +5,23 @@
 Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $script:requestLog = Join-Path $env:TEMP ("ite2e-autofix-routing-{0}.log" -f [guid]::NewGuid().ToString('N'))
         New-Item -ItemType File -Path $script:requestLog | Out-Null
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $command = "pwsh -NoProfile -EncodedCommand $encoded"
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -State @{
+            featureRolloutId = '{00000000-0000-0000-0000-000000000001}'
+            sidebarRolloutVersion = 1
+            sidebarRolloutAssignment = 'Sidebar'
+            sidebarLayoutMigrationCompleted = $true
+            sidebarIntroductionShown = $true
+        } -Settings @{
+            language = 'en-US'
+            tabLayout = 'vertical'
             acpAgent = 'custom:autofix-routing-fixture'
             acpCustomCommand = $command
             acpModel = ''
@@ -61,6 +71,39 @@ Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
         $a, $b = $script:targets
         (Get-RoutingPromptCount $a) | Should -Be 0
         (Get-RoutingPromptCount $b) | Should -Be 0
+        (Test-WtWindowKeyFocusable -App $script:app) | Should -BeTrue
+        Set-WtPaneFocus -App $script:app -SessionId $b.Shell.session_id
+        $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+        function Find-FocusTarget([string]$id) {
+            $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.PropertyCondition]::new(
+                    [Windows.Automation.AutomationElement]::AutomationIdProperty, $id))
+        }
+        $diagnostics = Find-FocusTarget 'DiagnosticsButton'
+        $diagnostics | Should -Not -BeNullOrEmpty
+        $diagnostics.Current.IsOffscreen | Should -BeFalse
+        $diagnostics.Current.IsEnabled | Should -BeTrue
+        foreach ($i in 1..3) {
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        }
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
+            Should -BeTrue -Because 'F6 navigates to the agent region, not each action within it'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) |
+            Should -BeTrue -Because 'Tab includes an actionable Detected diagnostics button'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
+            Should -Be 'Collapse sidebar'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) | Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
+            Should -BeTrue
+        Set-WtPaneFocus -App $script:app -SessionId $b.Shell.session_id
 
         # Both tabs are Detected. Clicking only B must leave A available for a
         # separate opt-in, even though the protocol broadcasts to both helpers.
