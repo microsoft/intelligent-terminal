@@ -732,6 +732,9 @@ namespace winrt::TerminalApp::implementation
         uint32_t _richTabMetadataSelectionCount() const noexcept;
         void _updateRichTabMetadataSelectionState();
         void _setHighContrastMode(bool enabled);
+        void _applyHistoryRowForeground(winrt::Windows::UI::Xaml::FrameworkElement const& root,
+                                        TerminalApp::TabStripHistoryItem const& item);
+        void _refreshRealizedHistoryRowForegrounds();
         void _refreshDisplayItemVisuals(TerminalApp::TabStripDisplayItem const& display);
         void _clearSidebarPointerOver();
         void _refreshRealizedPaneRowVisuals(bool highContrastActive);
