@@ -130,17 +130,17 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!--  Sidebar / session management  -->
-                                <Border x:Name="SidebarCard" Grid.Column="2"
+                                <Border x:Name="SidebarCard" Grid.Column="0"
                                         Padding="20,24"
                                         Background="#FF2D2D2D" CornerRadius="7">
                                     <StackPanel Spacing="10">
                                         <Border x:Name="SidebarImageFrame"
-                                                Height="214" MaxWidth="465"
+                                                Height="261.5625" MaxWidth="465"
                                                 HorizontalAlignment="Stretch"
                                                 Background="#FF0C0C0C" CornerRadius="7,7,0,0">
                                             <Image x:Name="SidebarImage"
                                                    Source="{ThemeResource FreSidebarImage}"
-                                                   Stretch="UniformToFill" />
+                                                   Stretch="Uniform" />
                                         </Border>
                                         <StackPanel Spacing="10">
                                             <TextBlock x:Name="SidebarCardTitle"
@@ -159,17 +159,17 @@
                                 </Border>
 
                                 <!--  Autofix / error detection  -->
-                                <Border x:Name="AutofixCard" Grid.Column="0"
+                                <Border x:Name="AutofixCard" Grid.Column="2"
                                         Padding="20,24"
                                         Background="#FF2D2D2D" CornerRadius="7">
                                     <StackPanel Spacing="10">
                                         <Border x:Name="AutofixImageFrame"
-                                                Height="214" MaxWidth="465"
+                                                Height="261.5625" MaxWidth="465"
                                                 HorizontalAlignment="Stretch"
                                                 Background="#FF0C0C0C" CornerRadius="7,7,0,0">
                                             <Image x:Name="AutofixImage"
                                                    Source="{ThemeResource FreErrorDetectionImage}"
-                                                   Stretch="UniformToFill" />
+                                                   Stretch="Uniform" />
                                         </Border>
                                         <StackPanel Spacing="10">
                                             <TextBlock x:Name="AutofixCardTitle"

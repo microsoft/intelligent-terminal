@@ -76,6 +76,14 @@ namespace winrt::TerminalApp::implementation
         SidebarCard().Width(layout.cardWidth);
         SidebarCard().MinHeight(layout.cardMinHeight);
         AutofixCard().MinHeight(layout.cardMinHeight);
+        if (const auto frame = FindName(L"SidebarImageFrame").try_as<Border>())
+        {
+            frame.Height(layout.cardImageHeight);
+        }
+        if (const auto frame = FindName(L"AutofixImageFrame").try_as<Border>())
+        {
+            frame.Height(layout.cardImageHeight);
+        }
         WelcomeContentScroller().VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
 
         if (!_welcomeCardCornerRadius && viewport.Height > 0)

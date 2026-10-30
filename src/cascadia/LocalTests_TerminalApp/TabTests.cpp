@@ -7180,8 +7180,8 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::FreOverlay fre;
             CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
             fre.Initialize(settings);
-            fre.Measure({ 1130, 631 });
-            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
             fre.UpdateLayout();
 
             const auto contentRoot = fre.FindName(L"FreContentRoot").try_as<Grid>();
@@ -7192,6 +7192,7 @@ namespace TerminalAppLocalTests
             const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
             const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
             const auto sidebarImage = fre.FindName(L"SidebarImage").try_as<Image>();
+            const auto autofixImage = fre.FindName(L"AutofixImage").try_as<Image>();
             const auto sidebarTitle = fre.FindName(L"SidebarCardTitle").try_as<TextBlock>();
             const auto sidebarDescription = fre.FindName(L"SidebarCardDescription").try_as<TextBlock>();
             const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
@@ -7205,12 +7206,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(sidebarCard);
             VERIFY_IS_NOT_NULL(autofixCard);
             VERIFY_IS_NOT_NULL(sidebarImage);
+            VERIFY_IS_NOT_NULL(autofixImage);
             VERIFY_IS_NOT_NULL(sidebarTitle);
             VERIFY_IS_NOT_NULL(sidebarDescription);
             VERIFY_IS_NOT_NULL(footer);
             VERIFY_IS_NOT_NULL(next);
 
             VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 1130.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualHeight() - 679.0) <= 0.5);
             const auto titleOrigin = title.TransformToVisual(fre).TransformPoint({});
             const auto subtitleOrigin = subtitle.TransformToVisual(fre).TransformPoint({});
             const auto cardsOrigin = cards.TransformToVisual(fre).TransformPoint({});
@@ -7232,8 +7235,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 510.0) <= 0.5);
             const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
             const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
-            VERIFY_IS_TRUE(std::abs(autofixOrigin.X) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X - 522.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 522.0f) <= 0.5f);
 
             const auto cardPadding = sidebarCard.Padding();
             VERIFY_ARE_EQUAL(20.0, cardPadding.Left);
@@ -7246,10 +7249,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(imageOrigin.X - 22.5f) <= 0.5f);
             VERIFY_IS_TRUE(std::abs(imageOrigin.Y - 24.0f) <= 0.5f);
             VERIFY_IS_TRUE(std::abs(sidebarImage.ActualWidth() - 465.0) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 214.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 261.5625) <= 0.5);
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, sidebarImage.Stretch());
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, autofixImage.Stretch());
             VERIFY_IS_TRUE(std::abs(cardTitleOrigin.X - 20.0f) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.Y - 248.0f) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(cardDescriptionOrigin.Y - 286.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.Y - 295.5625f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardDescriptionOrigin.Y - 333.5625f) <= 0.5f);
             VERIFY_ARE_EQUAL(20.0, sidebarTitle.FontSize());
             VERIFY_ARE_EQUAL(28.0, sidebarTitle.LineHeight());
             VERIFY_ARE_EQUAL(14.0, sidebarDescription.FontSize());
@@ -7259,9 +7264,10 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(next.ActualWidth() - 120.0) <= 0.5);
             VERIFY_IS_TRUE(std::abs(next.ActualHeight() - 32.0) <= 0.5);
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() <= 0.5);
 
             const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
-            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 551.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 599.0f) <= 0.5f);
         });
     }
 
@@ -7300,8 +7306,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 303.5) <= 0.5);
             const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
             const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
-            VERIFY_IS_TRUE(std::abs(autofixOrigin.X) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X - 315.5f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 315.5f) <= 0.5f);
 
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Disabled, scroller.HorizontalScrollBarVisibility());
@@ -7350,8 +7356,8 @@ namespace TerminalAppLocalTests
             CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
             fre.Initialize(settings);
 
-            fre.Measure({ 990, 548 });
-            fre.Arrange({ 0, 0, 990, 548 });
+            fre.Measure({ 990, 590 });
+            fre.Arrange({ 0, 0, 990, 590 });
             fre.UpdateLayout();
 
             const auto sidebarCard = fre.FindName(L"SidebarCard").as<Border>();
@@ -7364,8 +7370,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
             VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
 
-            fre.Measure({ 1130, 631 });
-            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
             fre.UpdateLayout();
 
             VERIFY_ARE_EQUAL(initialRadius, sidebarCard.CornerRadius().TopLeft);

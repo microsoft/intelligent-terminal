@@ -24,7 +24,7 @@ namespace winrt::TerminalApp::implementation
     {
         return {
             1130.0 * scale,
-            (631.0 + (includeHostedTitlebar ? 40.0 : 0.0)) * scale,
+            (679.0 + (includeHostedTitlebar ? 40.0 : 0.0)) * scale,
         };
     }
 
@@ -32,7 +32,7 @@ namespace winrt::TerminalApp::implementation
                                                 const double viewportHeight) noexcept
     {
         constexpr double designWidth = 1130.0;
-        constexpr double designContentHeight = 631.0;
+        constexpr double designContentHeight = 679.0;
         constexpr double hostedTitlebarHeight = 40.0;
         constexpr double designCornerRadius = 7.0;
 
@@ -104,17 +104,17 @@ namespace winrt::TerminalApp::implementation
         double buttonWidth{ 120.0 };
         double buttonHeight{ 32.0 };
         double titlebarHeight{ 40.0 };
-        double contentHeight{ 631.0 };
+        double contentHeight{ 679.0 };
         double headerTop{ 47.0 };
         double headerWindowTop{ 87.0 };
         double headerHeight{ 113.0 };
         double headerToCardsSpacing{ 24.0 };
         double cardsTop{ 184.0 };
         double cardsWindowTop{ 224.0 };
-        double scrollViewportBottom{ 554.0 };
-        double scrollWindowBottom{ 594.0 };
-        double footerTop{ 551.0 };
-        double footerWindowTop{ 591.0 };
+        double scrollViewportBottom{ 602.0 };
+        double scrollWindowBottom{ 642.0 };
+        double footerTop{ 599.0 };
+        double footerWindowTop{ 639.0 };
         double footerOverlap{ 3.0 };
         double headerTitleFontSize{ 28.0 };
         double headerTitleLineHeight{ 36.0 };
@@ -123,7 +123,7 @@ namespace winrt::TerminalApp::implementation
         double headerTextSpacing{ 24.0 };
         double cardHorizontalPadding{ 20.0 };
         double cardVerticalPadding{ 24.0 };
-        double cardImageHeight{ 214.0 };
+        double cardImageHeight{};
         double cardImageMaxWidth{ 465.0 };
         double cardImageToTextSpacing{ 10.0 };
         double cardTitleFontSize{ 20.0 };
@@ -131,12 +131,12 @@ namespace winrt::TerminalApp::implementation
         double cardDescriptionFontSize{ 14.0 };
         double cardDescriptionLineHeight{ 20.0 };
         double cardTextSpacing{ 10.0 };
-        int autofixCardColumn{ 0 };
-        int sidebarCardColumn{ 2 };
+        int autofixCardColumn{ 2 };
+        int sidebarCardColumn{ 0 };
     };
 
     constexpr FreWelcomeLayout ResolveFreWelcomeLayout(const double viewportWidth,
-                                                        const double /*viewportHeight*/ = 631.0) noexcept
+                                                        const double /*viewportHeight*/ = 679.0) noexcept
     {
         constexpr double wideBreakpoint = 1020.0;
         constexpr double maximumCardsWidth = 1032.0;
@@ -152,6 +152,9 @@ namespace winrt::TerminalApp::implementation
         result.cardWidth = std::max(0.0, (cardsWidth - result.cardSpacing) / 2.0);
         result.horizontalPadding = horizontalPadding;
         result.cardMinHeight = 370.0;
+        const auto cardContentWidth = std::max(0.0, result.cardWidth - (result.cardHorizontalPadding * 2.0));
+        const auto imageWidth = std::min(result.cardImageMaxWidth, cardContentWidth);
+        result.cardImageHeight = imageWidth * 9.0 / 16.0;
         return result;
     }
 }
