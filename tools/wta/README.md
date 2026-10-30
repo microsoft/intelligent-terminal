@@ -259,10 +259,6 @@ worker slot, but does not reset a paused recovery cycle.
 History and title updates share one response. After success, the next query waits
 five seconds from completion; timer, manual, and hook refreshes share this stream
 and cannot queue additional RPCs. Slow title queries never block hook dispatch.
-Ordinary refreshes adopt CWD only for sessions returned in that response; missing
-pane sessions retain their cached CWD without additional CWD-only pagination.
-Qualified CWD-change hooks replace older listing evidence. Complete-inventory
-pagination for native session discovery remains separate and unchanged.
 
 Soft response deadlines widen through 5, 10, 20, 40, and 60 seconds. A soft
 timeout retains the original response receiver and in-flight slot: it does not
