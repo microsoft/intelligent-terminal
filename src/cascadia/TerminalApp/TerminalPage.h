@@ -8,6 +8,7 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
+#include <winrt/Windows.UI.ViewManagement.h>
 
 #include "TerminalPage.g.h"
 #include "Tab.h"
@@ -446,6 +447,7 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<ShortcutActionDispatch> _actionDispatch{ winrt::make_self<implementation::ShortcutActionDispatch>() };
 
         winrt::Windows::UI::Xaml::Controls::Grid::LayoutUpdated_revoker _layoutUpdatedRevoker;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings::HighContrastChanged_revoker _highContrastChangedRevoker;
         StartupState _startupState{ StartupState::NotInitialized };
         Windows::UI::Xaml::DispatcherTimer _sidebarIntroductionTimer{ nullptr };
         uint64_t _sidebarIntroductionClaim{ 0 };
@@ -1590,6 +1592,7 @@ namespace winrt::TerminalApp::implementation
         static void _DismissMessage(const winrt::Microsoft::Terminal::Settings::Model::InfoBarMessage& message);
 
         void _updateThemeColors();
+        void _updateThemeColors(bool highContrast);
         void _updateAllTabCloseButtons();
         void _updatePaneResources(const winrt::Windows::UI::Xaml::ElementTheme& requestedTheme);
 

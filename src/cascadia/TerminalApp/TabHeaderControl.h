@@ -36,6 +36,7 @@ namespace winrt::TerminalApp::implementation
         void CancelRename();
         void SetSidebarTextStyles(const winrt::Windows::UI::Xaml::Style& titleStyle,
                                   const winrt::Windows::UI::Xaml::Style& metadataStyle);
+        void SetMetadataForeground(const winrt::Windows::UI::Xaml::Media::Brush& foreground, bool followTitle);
 
         void RenameBoxLostFocusHandler(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
@@ -93,11 +94,14 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::HighlightedTextControl _metadataTextBlock{ nullptr };
         winrt::Windows::UI::Xaml::Style _sidebarTitleTextStyle{ nullptr };
         winrt::Windows::UI::Xaml::Style _sidebarMetadataTextStyle{ nullptr };
+        winrt::Windows::UI::Xaml::Media::Brush _metadataForeground{ nullptr };
+        bool _metadataFollowsTitle{ false };
         winrt::weak_ref<winrt::Windows::UI::Xaml::UIElement> _nativeHeaderPresenter;
         int64_t _nativeHeaderVisibilityToken{ 0 };
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _UpdateMetadataForeground();
         void _UpdateTitleVisibility();
         void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();

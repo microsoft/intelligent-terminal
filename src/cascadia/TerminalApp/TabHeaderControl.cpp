@@ -108,6 +108,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto presenter = _nativeHeaderPresenter.get())
         {
             presenter.UnregisterPropertyChangedCallback(Windows::UI::Xaml::UIElement::VisibilityProperty(), _nativeHeaderVisibilityToken);
+            SetMetadataForeground(nullptr, false);
         }
         _nativeHeaderPresenter = nullptr;
     }
@@ -142,6 +143,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto presenter = root.FindName(L"ContentPresenter").try_as<UIElement>())
         {
             _nativeHeaderPresenter = winrt::make_weak(presenter);
+            // Native tabs own their selection/hover contrast palette.
+            SetMetadataForeground(nullptr, true);
             _nativeHeaderVisibilityToken = presenter.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [weakThis = get_weak()](auto&&, auto&&) {
                 if (const auto self = weakThis.get())
                 {
@@ -373,6 +376,7 @@ namespace winrt::TerminalApp::implementation
                     _metadataTextBlock.TextBlockStyle(_sidebarMetadataTextStyle);
                     _metadataTextBlock.Margin({});
                 }
+                _UpdateMetadataForeground();
             }
             _metadataTextBlock.Visibility(!InRename() ?
                                               Windows::UI::Xaml::Visibility::Visible :
@@ -382,6 +386,38 @@ namespace winrt::TerminalApp::implementation
         {
             Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_metadataTextBlock);
             _metadataTextBlock = nullptr;
+        }
+    }
+
+    void TabHeaderControl::SetMetadataForeground(const Windows::UI::Xaml::Media::Brush& foreground, const bool followTitle)
+    {
+        _metadataForeground = foreground;
+        _metadataFollowsTitle = followTitle;
+        _UpdateMetadataForeground();
+    }
+
+    void TabHeaderControl::_UpdateMetadataForeground()
+    {
+        if (!_metadataTextBlock)
+        {
+            return;
+        }
+        using namespace Windows::UI::Xaml;
+        if (_metadataFollowsTitle)
+        {
+            Data::Binding binding;
+            binding.Source(HeaderTextBlock());
+            binding.Path(PropertyPath{ L"Foreground" });
+            binding.Mode(Data::BindingMode::OneWay);
+            _metadataTextBlock.SetBinding(Controls::Control::ForegroundProperty(), binding);
+        }
+        else if (_metadataForeground)
+        {
+            _metadataTextBlock.Foreground(_metadataForeground);
+        }
+        else
+        {
+            _metadataTextBlock.ClearValue(Controls::Control::ForegroundProperty());
         }
     }
 

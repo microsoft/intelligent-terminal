@@ -243,6 +243,19 @@ namespace TerminalAppLocalTests
         return opacity;
     }
 
+    static void _verifySidebarCaption(const winrt::TerminalApp::HighlightedTextControl& control)
+    {
+        control.ApplyTemplate();
+        const auto text = Media::VisualTreeHelper::GetChild(control, 0).as<TextBlock>();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Segoe UI Variable" }, text.FontFamily().Source());
+        VERIFY_ARE_EQUAL(FontWeights::Normal().Weight, text.FontWeight().Weight);
+        VERIFY_ARE_EQUAL(12.0, text.FontSize());
+        VERIFY_ARE_EQUAL(16.0, text.LineHeight());
+        VERIFY_ARE_EQUAL(LineStackingStrategy::BlockLineHeight, text.LineStackingStrategy());
+        VERIFY_ARE_EQUAL(1.0, text.Opacity());
+        VERIFY_ARE_EQUAL(1.0, control.TextOpacity());
+    }
+
     class TestConnection : public winrt::implements<TestConnection, winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection>
     {
     public:
@@ -2464,6 +2477,13 @@ namespace TerminalAppLocalTests
             const auto tab = page->_GetFocusedTabImpl();
             const auto indicator = header.FindName(L"HeaderCompletionIndicator").as<Grid>();
             const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                header.RequestedTheme(theme);
+                header.UpdateLayout();
+                const auto attention = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"SystemFillColorAttentionBrush")).as<Media::SolidColorBrush>().Color();
+                VERIFY_ARE_EQUAL(attention, header.FindName(L"HeaderCompletionDot").as<Shapes::Ellipse>().Fill().as<Media::SolidColorBrush>().Color());
+            }
             for (const auto width : { 120.0f, 240.0f, 272.0f })
             {
                 for (const auto& titleText : { winrt::hstring{ L"Tab" }, winrt::hstring{ std::wstring(240, L'W') } })
@@ -7733,6 +7753,7 @@ namespace TerminalAppLocalTests
                         for (const auto activated : { false, true })
                         {
                             page->WindowActivated(activated);
+                            page->_updateThemeColors(false);
                             const auto brush = page->TitlebarBrush();
                             VERIFY_IS_TRUE(page->_tabStrip.Background() == brush);
                             const auto expectedColor = activated ?
@@ -7746,7 +7767,7 @@ namespace TerminalAppLocalTests
                                 VERIFY_ARE_EQUAL(0.5, acrylic.TintOpacity());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.TintColor());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.FallbackColor());
-                                page->_updateThemeColors();
+                                page->_updateThemeColors(false);
                                 VERIFY_IS_TRUE(page->TitlebarBrush() == brush);
                             }
                             else
@@ -7761,6 +7782,30 @@ namespace TerminalAppLocalTests
                             else
                             {
                                 VERIFY_IS_TRUE(page->_tabRow.Background() == brush);
+                            }
+
+                            page->_updateThemeColors(true);
+                            const auto contrastBackground = Application::Current().Resources().Lookup(winrt::box_value(L"SystemColorButtonFaceColorBrush")).as<Media::SolidColorBrush>();
+                            VERIFY_IS_TRUE(page->TitlebarBrush() == contrastBackground);
+                            VERIFY_IS_TRUE(page->_tabStrip.Background() == contrastBackground);
+                            if (hasTitlebarHost)
+                            {
+                                VERIFY_ARE_EQUAL(uint8_t{ 0 }, page->_tabRow.Background().as<Media::SolidColorBrush>().Color().A);
+                            }
+                            else
+                            {
+                                VERIFY_IS_TRUE(page->_tabRow.Background() == contrastBackground);
+                            }
+
+                            page->_updateThemeColors(false);
+                            VERIFY_IS_TRUE(page->_tabStrip.Background() == page->TitlebarBrush());
+                            if (useAcrylic && (activated || unfocusedAcrylic))
+                            {
+                                VERIFY_ARE_EQUAL(expectedColor, page->TitlebarBrush().as<Media::AcrylicBrush>().TintColor());
+                            }
+                            else
+                            {
+                                VERIFY_ARE_EQUAL(expectedColor, page->TitlebarBrush().as<Media::SolidColorBrush>().Color());
                             }
                         }
                     }
@@ -10000,6 +10045,8 @@ namespace TerminalAppLocalTests
                 const auto optionsContent = optionsPresenter.Content().as<Grid>();
                 const auto optionsIcon = optionsContent.Children().GetAt(0).as<PathIcon>();
                 const auto indicator = optionsContent.FindName(L"AgentsOnlyIndicator").as<Shapes::Ellipse>();
+                const auto attention = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"SystemFillColorAttentionBrush")).as<Media::SolidColorBrush>().Color();
+                VERIFY_ARE_EQUAL(attention, indicator.Fill().as<Media::SolidColorBrush>().Color());
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Width());
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Height());
                 const auto optionsIconBounds = optionsIcon.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 16, 16 });
@@ -16685,11 +16732,60 @@ namespace TerminalAppLocalTests
                 const auto palette = row.FindName(L"HistorySelectionPalette").as<ContentControl>();
                 const auto inheritedForeground = title.Foreground();
                 VERIFY_IS_NOT_NULL(inheritedForeground);
+                const auto primary = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"TextFillColorPrimaryBrush")).as<Media::SolidColorBrush>().Color();
+                for (const auto& brush : { strip.Foreground(), impl->ItemsList().Foreground(), container.Foreground(), title.Foreground(), impl->HistoryHeaderButton().Foreground(), impl->HistoryHeader().Foreground(), impl->HistoryChevron().Foreground(), impl->SearchTabsButton().Foreground(), impl->FilterTabsButton().Foreground(), impl->CompactNewTabButton().Foreground(), impl->CompactNewTabMenuButton().Foreground(), impl->SearchTextBox().Foreground() })
+                {
+                    VERIFY_ARE_EQUAL(primary, brush.as<Media::SolidColorBrush>().Color());
+                }
+                title.ApplyTemplate();
+                const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
+                VERIFY_ARE_EQUAL(primary, titleText.Foreground().as<Media::SolidColorBrush>().Color());
+                VERIFY_ARE_EQUAL(FontWeights::Normal().Weight, titleText.FontWeight().Weight);
+                const auto secondary = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>();
+                for (const auto name : { L"HistoryCwdText", L"HistorySubtitleText", L"HistoryWindowHintText" })
+                {
+                    const auto control = row.FindName(name).as<winrt::TerminalApp::HighlightedTextControl>();
+                    _verifySidebarCaption(control);
+                    const auto text = Media::VisualTreeHelper::GetChild(control, 0).as<TextBlock>();
+                    VERIFY_ARE_EQUAL(secondary.Color(), text.Foreground().as<Media::SolidColorBrush>().Color());
+                    VERIFY_ARE_EQUAL(secondary.Opacity(), text.Foreground().Opacity());
+                }
                 VERIFY_IS_NULL(row.GetBindingExpression(Panel::BackgroundProperty()));
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_IS_TRUE(cwd.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, selection.Visibility());
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
+
+                impl->_setHighContrastMode(true);
+                const auto verifyHighContrastCaptions = [&]() {
+                    for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
+                    {
+                        const Media::SolidColorBrush hoverForeground{ color };
+                        container.Foreground(hoverForeground);
+                        VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                        VERIFY_IS_TRUE(titleText.Foreground() == hoverForeground);
+                        for (const auto name : { L"HistoryCwdText", L"HistorySubtitleText", L"HistoryWindowHintText" })
+                        {
+                            const auto caption = row.FindName(name).as<winrt::TerminalApp::HighlightedTextControl>();
+                            _verifySidebarCaption(caption);
+                            VERIFY_IS_TRUE(Media::VisualTreeHelper::GetChild(caption, 0).as<TextBlock>().Foreground() == hoverForeground);
+                        }
+                    }
+                };
+                verifyHighContrastCaptions();
+                strip.RequestedTheme(theme == ElementTheme::Light ? ElementTheme::Dark : ElementTheme::Light);
+                strip.UpdateLayout();
+                verifyHighContrastCaptions();
+                strip.RequestedTheme(theme);
+                strip.UpdateLayout();
+                container.ClearValue(Control::ForegroundProperty());
+                impl->_setHighContrastMode(false);
+                for (const auto name : { L"HistoryCwdText", L"HistorySubtitleText", L"HistoryWindowHintText" })
+                {
+                    const auto caption = row.FindName(name).as<Control>();
+                    VERIFY_IS_TRUE(caption.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                    VERIFY_ARE_EQUAL(secondary.Color(), caption.Foreground().as<Media::SolidColorBrush>().Color());
+                }
 
                 impl->SetCurrentHistoryItem(first, tab);
                 strip.UpdateLayout();
@@ -16757,6 +16853,7 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_IS_TRUE(cwd.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_IS_TRUE(title.Foreground() == inheritedForeground);
+                VERIFY_ARE_EQUAL(secondary.Color(), cwd.Foreground().as<Media::SolidColorBrush>().Color());
                 VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(container).empty());
                 VERIFY_ARE_EQUAL(currentStatus, Automation::AutomationProperties::GetItemStatus(impl->ItemsList().ContainerFromItem(second)));
             }
@@ -16791,6 +16888,7 @@ namespace TerminalAppLocalTests
             strip.UpdateLayout();
             VERIFY_IS_TRUE(currentTitle.Foreground() == currentPalette.Foreground());
             VERIFY_IS_TRUE(currentCwd.Foreground() == currentPalette.Foreground());
+            impl->_setHighContrastMode(true);
             const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             replacement.Title(L"Replacement session");
             impl->CommitHistorySnapshot({ replacement });
@@ -16801,13 +16899,32 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(Automation::AutomationProperties::GetHelpText(recycledContainer).empty());
             const auto recycledTitle = recycledRow.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_IS_TRUE(recycledTitle.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
-            VERIFY_IS_TRUE(recycledRow.FindName(L"HistoryCwdText").as<winrt::TerminalApp::HighlightedTextControl>().ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, recycledRow.FindName(L"HistorySelectionBackground").as<Border>().Visibility());
             VERIFY_IS_TRUE(Automation::AutomationProperties::GetItemStatus(
                                impl->ItemsList().ContainerFromItem(replacement)).empty());
         });
-        _waitForContentTransferReviewUI([&]() { return recycled; });
-        TestOnUIThread([&]() { recycling.revoke(); });
+        _waitForContentTransferReviewUI([&]() {
+            const auto container = impl->ItemsList().ContainerFromItem(strip.HistoryItems().GetAt(0)).try_as<ListViewItem>();
+            const auto root = container ? container.ContentTemplateRoot().try_as<FrameworkElement>() : nullptr;
+            return recycled && root && root.IsLoaded();
+        });
+        TestOnUIThread([&]() {
+            const auto container = impl->ItemsList().ContainerFromItem(strip.HistoryItems().GetAt(0)).as<ListViewItem>();
+            const auto row = container.ContentTemplateRoot().as<Grid>();
+            const auto title = row.FindName(L"HistoryTitleText").as<Control>();
+            const auto cwd = row.FindName(L"HistoryCwdText").as<Control>();
+            const Media::SolidColorBrush replacementForeground{ winrt::Windows::UI::Colors::Green() };
+            container.Foreground(replacementForeground);
+            cwd.ApplyTemplate();
+            VERIFY_IS_TRUE(Media::VisualTreeHelper::GetChild(cwd, 0).as<TextBlock>().Foreground() == replacementForeground);
+            container.ClearValue(Control::ForegroundProperty());
+            impl->_setHighContrastMode(false);
+            VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            VERIFY_IS_TRUE(cwd.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            const auto secondary = ThemeLookup(Application::Current().Resources(), strip.ActualTheme(), winrt::box_value(L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>().Color();
+            VERIFY_ARE_EQUAL(secondary, cwd.Foreground().as<Media::SolidColorBrush>().Color());
+            recycling.revoke();
+        });
     }
 
     void TabTests::VerticalTabHistoryAlignsWithLiveRows()
@@ -19618,7 +19735,10 @@ namespace TerminalAppLocalTests
             winrt::TerminalApp::TabStrip strip;
             const auto titleStyle = strip.Resources().Lookup(winrt::box_value(L"SidebarTitleTextStyle")).as<Style>();
             const auto metadataStyle = strip.Resources().Lookup(winrt::box_value(L"SidebarMetadataTextStyle")).as<Style>();
-            winrt::get_self<winrt::TerminalApp::implementation::TabHeaderControl>(header)->SetSidebarTextStyles(titleStyle, metadataStyle);
+            const auto headerImpl = winrt::get_self<winrt::TerminalApp::implementation::TabHeaderControl>(header);
+            headerImpl->SetSidebarTextStyles(titleStyle, metadataStyle);
+            Media::SolidColorBrush metadataForeground{ winrt::Windows::UI::Colors::Red() };
+            headerImpl->SetMetadataForeground(metadataForeground, false);
             const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
             const auto title = header.FindName(L"HeaderTextBlock").as<TextBlock>();
             const auto countHighlighted = [](auto&& self, const DependencyObject& root) -> uint32_t {
@@ -19677,6 +19797,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
             VERIFY_IS_TRUE(metadata.TextBlockStyle() == metadataStyle);
             VERIFY_IS_TRUE(metadata.Margin() == Thickness{});
+            VERIFY_IS_TRUE(metadata.Foreground() == metadataForeground);
             header.BeginRename();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, metadata.Visibility());
             header.CancelRename();
@@ -19689,6 +19810,15 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(reloadedMetadata == metadata);
             VERIFY_IS_TRUE(reloadedMetadata.TextBlockStyle() == metadataStyle);
             VERIFY_IS_TRUE(reloadedMetadata.Margin() == Thickness{});
+            VERIFY_IS_TRUE(reloadedMetadata.Foreground() == metadataForeground);
+            header.IsMetadataVisible(false);
+            VERIFY_ARE_EQUAL(0u, count());
+            title.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Blue() });
+            headerImpl->SetMetadataForeground(nullptr, true);
+            VERIFY_ARE_EQUAL(0u, count());
+            header.IsMetadataVisible(true);
+            VERIFY_ARE_EQUAL(1u, count());
+            VERIFY_IS_TRUE(header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>().Foreground() == title.Foreground());
             header.IsMetadataVisible(false);
             VERIFY_ARE_EQUAL(0u, count());
 
@@ -25590,6 +25720,9 @@ namespace TerminalAppLocalTests
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
+            ::Microsoft::Terminal::RichTab::Provider::Presentation metadataPresentation;
+            metadataPresentation.text = L"Metadata";
+            tab->SetRichTabPresentation(metadataPresentation);
             tab->ShowBellIndicator(true);
             const auto terminalColor = ThemeColor::ColorFromBrush(tab->_BackgroundBrush());
             const auto headerGrid = [&](const uint32_t index) {
@@ -25611,6 +25744,9 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Collapsed, grid.FindName(L"TabSelectionBackground").as<Border>().Visibility());
                 const auto header = grid.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
                 VERIFY_IS_TRUE(header.ReadLocalValue(Control::ForegroundProperty()) != DependencyProperty::UnsetValue());
+                const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+                _verifySidebarCaption(metadata);
+                VERIFY_IS_TRUE(metadata.Foreground() == header.Foreground());
                 const auto icon = grid.FindName(L"TabIconPresenter").as<ContentPresenter>().Content().as<IconElement>();
                 VERIFY_IS_NOT_NULL(icon.Foreground());
                 VERIFY_ARE_EQUAL(header.Foreground().as<Media::SolidColorBrush>().Color(), icon.Foreground().as<Media::SolidColorBrush>().Color());
@@ -25652,6 +25788,7 @@ namespace TerminalAppLocalTests
                     const auto bell = grid.FindName(L"TabBellIndicator").as<FontIcon>();
                     const auto expectedForeground = color == winrt::Windows::UI::Colors::Black() ? winrt::Windows::UI::Colors::White() : winrt::Windows::UI::Colors::Black();
                     VERIFY_ARE_EQUAL(expectedForeground, header.Foreground().as<Media::SolidColorBrush>().Color());
+                    VERIFY_ARE_EQUAL(expectedForeground, header.FindName(L"HeaderMetadataTextBlock").as<Control>().Foreground().as<Media::SolidColorBrush>().Color());
                     VERIFY_ARE_EQUAL(expectedForeground, icon.Foreground().as<Media::SolidColorBrush>().Color());
                     VERIFY_ARE_EQUAL(Visibility::Visible, bell.Visibility());
                     VERIFY_IS_NOT_NULL(bell.Foreground());
@@ -25762,8 +25899,9 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Collapsed,
                                  headerGrid(0).FindName(L"TabSelectionBackground").as<Border>().Visibility());
                 VERIFY_ARE_EQUAL(uint8_t{ 0 }, sidebarTabColor(0).A);
-                VERIFY_IS_TRUE(headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>()
-                                   .ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                VERIFY_IS_TRUE(headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                const auto groupHeader = headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+                VERIFY_IS_FALSE(groupHeader.IsMetadataVisible());
                 for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
                 {
                     const auto pane = display.PaneItems().GetAt(index);
@@ -25778,6 +25916,19 @@ namespace TerminalAppLocalTests
                     {
                         const auto title = root.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                         VERIFY_IS_TRUE(title.ReadLocalValue(Control::ForegroundProperty()) != DependencyProperty::UnsetValue());
+                    }
+                    else
+                    {
+                        const auto primary = ThemeLookup(Application::Current().Resources(), root.ActualTheme(), winrt::box_value(L"TextFillColorPrimaryBrush")).as<Media::SolidColorBrush>().Color();
+                        for (const auto name : { L"PaneActivateButton", L"PaneCloseButton", L"PaneTitleText" })
+                        {
+                            VERIFY_ARE_EQUAL(primary, root.FindName(name).as<Control>().Foreground().as<Media::SolidColorBrush>().Color());
+                        }
+                        const auto metadata = root.FindName(L"PaneMetadataText").as<winrt::TerminalApp::HighlightedTextControl>();
+                        _verifySidebarCaption(metadata);
+                        const auto expectedCaptionForeground = highContrast ? primary :
+                                                                              ThemeLookup(Application::Current().Resources(), root.ActualTheme(), winrt::box_value(L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>().Color();
+                        VERIFY_ARE_EQUAL(expectedCaptionForeground, metadata.Foreground().as<Media::SolidColorBrush>().Color());
                     }
                 }
             };
@@ -27600,15 +27751,14 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_NOT_NULL(metadata.CautionHighlightBrush());
                     VERIFY_IS_NOT_NULL(metadata.CriticalHighlightBrush());
                     const auto highlights = textBlock.TextHighlighters();
-                    VERIFY_ARE_EQUAL(color == TextHighlightColor::None ? 1u : 2u, highlights.Size());
-                    const auto neutral = highlights.GetAt(0);
-                    VERIFY_ARE_EQUAL(textBlock.Foreground().as<Media::SolidColorBrush>().Color(),
-                                     neutral.Foreground().as<Media::SolidColorBrush>().Color());
-                    VERIFY_IS_TRUE(std::abs(_effectiveTextOpacity(textBlock, textBlock.Foreground()) * 0.72 -
-                                            _effectiveTextOpacity(textBlock, neutral.Foreground())) < 0.000001);
+                    _verifySidebarCaption(metadata);
+                    const auto secondary = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>();
+                    VERIFY_ARE_EQUAL(secondary.Color(), textBlock.Foreground().as<Media::SolidColorBrush>().Color());
+                    VERIFY_ARE_EQUAL(secondary.Opacity(), textBlock.Foreground().Opacity());
+                    VERIFY_ARE_EQUAL(color == TextHighlightColor::None ? 0u : 1u, highlights.Size());
                     if (color != TextHighlightColor::None)
                     {
-                        const auto highlighter = highlights.GetAt(1);
+                        const auto highlighter = highlights.GetAt(0);
                         VERIFY_ARE_EQUAL(1u, highlighter.Ranges().Size());
                         VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(cwd.size() + 1), highlighter.Ranges().GetAt(0).StartIndex);
                         VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(statusText.size()), highlighter.Ranges().GetAt(0).Length);
@@ -27674,18 +27824,17 @@ namespace TerminalAppLocalTests
 
             Media::SolidColorBrush custom{ winrt::Windows::UI::Colors::Blue() };
             custom.Opacity(0.8);
-            header.Foreground(custom);
+            metadata.Foreground(custom);
             host.UpdateLayout();
             const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
-            VERIFY_ARE_EQUAL(1u, textBlock.TextHighlighters().Size());
-            const auto neutral = textBlock.TextHighlighters().GetAt(0);
-            VERIFY_ARE_EQUAL(custom.Color(), neutral.Foreground().as<Media::SolidColorBrush>().Color());
-            VERIFY_IS_TRUE(std::abs(custom.Opacity() * 0.72 - _effectiveTextOpacity(textBlock, neutral.Foreground())) < 0.000001);
+            VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
+            VERIFY_ARE_EQUAL(custom.Color(), textBlock.Foreground().as<Media::SolidColorBrush>().Color());
+            VERIFY_IS_TRUE(std::abs(custom.Opacity() - _effectiveTextOpacity(textBlock, textBlock.Foreground())) < 0.000001);
             custom.Color(winrt::Windows::UI::Colors::Red());
             custom.Opacity(0.5);
-            const auto updated = textBlock.TextHighlighters().GetAt(0).Foreground();
+            const auto updated = textBlock.Foreground();
             VERIFY_ARE_EQUAL(custom.Color(), updated.as<Media::SolidColorBrush>().Color());
-            VERIFY_IS_TRUE(std::abs(custom.Opacity() * 0.72 - _effectiveTextOpacity(textBlock, updated)) < 0.000001);
+            VERIFY_IS_TRUE(std::abs(custom.Opacity() - _effectiveTextOpacity(textBlock, updated)) < 0.000001);
         });
     }
 
@@ -27799,16 +27948,15 @@ namespace TerminalAppLocalTests
                                      indicator.Visibility());
                     const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto highlights = textBlock.TextHighlighters();
-                    VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? 1u : 2u, highlights.Size());
-                    VERIFY_IS_TRUE(std::abs(_effectiveTextOpacity(textBlock, textBlock.Foreground()) * 0.72 -
-                                            _effectiveTextOpacity(textBlock, highlights.GetAt(0).Foreground())) < 0.000001);
+                    _verifySidebarCaption(metadata);
+                    VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? 0u : 1u, highlights.Size());
                     if (color != winrt::TerminalApp::TextHighlightColor::None)
                     {
-                        VERIFY_ARE_EQUAL(1.0, _effectiveTextOpacity(textBlock, highlights.GetAt(1).Foreground()));
+                        VERIFY_ARE_EQUAL(1.0, _effectiveTextOpacity(textBlock, highlights.GetAt(0).Foreground()));
                         const auto expected = color == winrt::TerminalApp::TextHighlightColor::Success ? metadata.SuccessHighlightBrush() :
                                               color == winrt::TerminalApp::TextHighlightColor::Caution ? metadata.CautionHighlightBrush() :
                                                                                                          metadata.CriticalHighlightBrush();
-                        VERIFY_IS_TRUE(highlights.GetAt(1).Foreground() == expected);
+                        VERIFY_IS_TRUE(highlights.GetAt(0).Foreground() == expected);
                     }
                     const auto title = paneRoot.FindName(L"PaneTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                     if (indicator.Visibility() == Visibility::Visible)
