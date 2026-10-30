@@ -48,6 +48,7 @@ public:
     void SetWorkAreaConstraintCallback(std::function<bool()> pfn) noexcept;
     void SetResizeLockCallback(std::function<bool()> pfn) noexcept;
     void SetMinimumSizeOverride(std::optional<til::size> size) noexcept;
+    bool ConstrainDpiChangedWindowRect(RECT& rect) const noexcept;
 
     void FocusModeChanged(const bool focusMode);
     void FullscreenChanged(const bool fullscreen);

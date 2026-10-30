@@ -17,6 +17,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(FreDefaultWindowSizeHonorsLaunchOverrides);
         TEST_METHOD(FreMinimumWindowSizeMatchesFigma);
         TEST_METHOD(FreWindowSizeFitsMonitorWorkArea);
+        TEST_METHOD(FreWindowSizeFitsDestinationWorkAreaAfterDpiChange);
         TEST_METHOD(FreCardCornerRadiusScalesWithLaunchWindow);
         TEST_METHOD(WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint);
         TEST_METHOD(WelcomeLayoutScrollsWhenWideWindowIsTooShort);
@@ -138,6 +139,25 @@ namespace TerminalAppUnitTests
             { 0.0, 0.0 },
             { 1920.0, 1040.0 });
         VERIFY_ARE_EQUAL(100.0, position.x);
+        VERIFY_ARE_EQUAL(0.0, position.y);
+    }
+
+    void FreLayoutMetricsTests::FreWindowSizeFitsDestinationWorkAreaAfterDpiChange()
+    {
+        constexpr auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+            { 2260.0, 1438.0 },
+            { 1920.0, 1040.0 });
+        static_assert(constrained.width < 1920.0);
+
+        VERIFY_ARE_EQUAL(1040l, lrint(constrained.height));
+        VERIFY_IS_TRUE(lrint(constrained.width) <= 1920l);
+
+        const auto position = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+            { 100.0, 100.0 },
+            { static_cast<double>(lrint(constrained.width)), static_cast<double>(lrint(constrained.height)) },
+            { -1920.0, 0.0 },
+            { 1920.0, 1040.0 });
+        VERIFY_ARE_EQUAL(-1634.0, position.x);
         VERIFY_ARE_EQUAL(0.0, position.y);
     }
 

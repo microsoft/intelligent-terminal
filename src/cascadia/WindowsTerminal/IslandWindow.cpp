@@ -9,6 +9,7 @@
 #include <dwmapi.h>
 #include <TerminalThemeHelpers.h>
 #include <CoreWindow.h>
+#include "../TerminalApp/FreLayoutMetrics.h"
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
@@ -213,6 +214,52 @@ void IslandWindow::SetResizeLockCallback(std::function<bool()> pfn) noexcept
 void IslandWindow::SetMinimumSizeOverride(std::optional<til::size> size) noexcept
 {
     _minimumSizeOverride = size;
+}
+
+bool IslandWindow::ConstrainDpiChangedWindowRect(RECT& rect) const noexcept
+{
+    if (!_pfnWorkAreaConstraintCallback || !_pfnWorkAreaConstraintCallback())
+    {
+        return false;
+    }
+
+    const auto monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (!GetMonitorInfo(monitor, &monitorInfo))
+    {
+        return false;
+    }
+
+    const winrt::TerminalApp::implementation::FreWindowSize workAreaSize{
+        static_cast<double>(monitorInfo.rcWork.right - monitorInfo.rcWork.left),
+        static_cast<double>(monitorInfo.rcWork.bottom - monitorInfo.rcWork.top),
+    };
+    const auto constrainedSize = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+        {
+            static_cast<double>(rect.right - rect.left),
+            static_cast<double>(rect.bottom - rect.top),
+        },
+        workAreaSize);
+    const auto constrainedWidth = std::max<LONG>(gsl::narrow<LONG>(lrint(constrainedSize.width)), 1);
+    const auto constrainedHeight = std::max<LONG>(gsl::narrow<LONG>(lrint(constrainedSize.height)), 1);
+    const winrt::TerminalApp::implementation::FreWindowSize roundedSize{
+        static_cast<double>(constrainedWidth),
+        static_cast<double>(constrainedHeight),
+    };
+    const auto constrainedPosition = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+        { static_cast<double>(rect.left), static_cast<double>(rect.top) },
+        roundedSize,
+        {
+            static_cast<double>(monitorInfo.rcWork.left),
+            static_cast<double>(monitorInfo.rcWork.top),
+        },
+        workAreaSize);
+
+    rect.left = gsl::narrow<LONG>(constrainedPosition.x);
+    rect.top = gsl::narrow<LONG>(constrainedPosition.y);
+    rect.right = rect.left + constrainedWidth;
+    rect.bottom = rect.top + constrainedHeight;
+    return true;
 }
 
 bool IslandWindow::_IsResizeLocked() const noexcept
