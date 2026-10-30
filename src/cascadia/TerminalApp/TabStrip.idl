@@ -132,6 +132,7 @@ namespace TerminalApp
         Double HeaderMinHeight;
         Windows.UI.Xaml.Thickness LeadingContentMargin;
         String ToolTipText;
+        Object ToolTipContent;
         String AcceleratorKey;
         Boolean IsPinned;
         Windows.UI.Xaml.Visibility PinnedIconVisibility;

@@ -2430,7 +2430,9 @@ namespace winrt::TerminalApp::implementation
                 const auto chosen = list.ChooseHint(owner.identity, std::wstring_view{ canonicalHint.c_str(), canonicalHint.size() }, hints);
                 const auto chord = chosen ? winrt::hstring{ hints[*chosen].text } : winrt::hstring{};
                 winrt::get_self<TabStripDisplayItem>(display)->SetSidebarHints(
-                    std::pair{ chord, tab->ToolTipTextForKeyChord(chord) }, tabStrip->IsVerticalPresentation());
+                    std::pair{ chord, tab->ToolTipTextForKeyChord(chord) },
+                    tab->ToolTipContentForKeyChord(chord),
+                    tabStrip->IsVerticalPresentation());
                 tabStrip->SetTabItemVisibility(display, visible);
             }
             else
