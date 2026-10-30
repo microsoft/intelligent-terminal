@@ -455,6 +455,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Keng passend Agent-Sessiounen.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Keng oppen Tabs oder fréier Agent-Sessioune passen op Är Sich.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>D’Agent-Sessioune konnten net geluede ginn.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>

@@ -73,6 +73,7 @@
             <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
             <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
             <CornerRadius x:Key="SidebarTabCornerRadius">6</CornerRadius>
+            <!--  The header button owns hover, pressed, and focus visuals.  -->
             <Style x:Key="SidebarHistoryHeaderContainerStyle"
                    TargetType="ListViewItem">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -161,17 +162,19 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <local:TabStripHistoryHeader x:Name="HistoryHeaderButton"
-                                                AutomationProperties.AutomationId="HistoryHeaderButton"
-                                                MinHeight="44"
-                                                Padding="{StaticResource SidebarSectionPadding}"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Stretch"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                                IsChecked="True"
-                                                Checked="OnHistoryExpandedChanged"
-                                                Unchecked="OnHistoryExpandedChanged">
+                                                 MinHeight="44"
+                                                 Margin="6,0"
+                                                 Padding="6,0"
+                                                 HorizontalAlignment="Stretch"
+                                                 HorizontalContentAlignment="Stretch"
+                                                 AutomationProperties.AutomationId="HistoryHeaderButton"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 Checked="OnHistoryExpandedChanged"
+                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
+                                                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                 IsChecked="True"
+                                                 Unchecked="OnHistoryExpandedChanged">
                         <local:TabStripHistoryHeader.Resources>
                             <ResourceDictionary>
                                 <ResourceDictionary.ThemeDictionaries>
@@ -226,25 +229,22 @@
                                                  Color="Transparent" />
                             </ResourceDictionary>
                         </local:TabStripHistoryHeader.Resources>
-                        <Grid>
+                        <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="28" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <FontIcon x:Name="HistoryChevron"
+                                      AutomationProperties.AccessibilityView="Raw"
+                                      FontSize="10"
+                                      Glyph="&#xE70D;" />
                             <TextBlock x:Name="HistoryHeader"
                                        x:Uid="VerticalTabsSessionHistoryHeader"
+                                       Grid.Column="1"
                                        VerticalAlignment="Center"
                                        FontWeight="SemiBold"
                                        MaxLines="1"
                                        TextTrimming="CharacterEllipsis" />
-                            <FontIcon x:Name="HistoryChevron"
-                                      Grid.Column="1"
-                                      Width="{StaticResource SidebarActionCellExtent}"
-                                      Height="{StaticResource SidebarToolbarActionExtent}"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.AccessibilityView="Raw"
-                                      FontSize="10"
-                                      Glyph="&#xE70D;" />
                         </Grid>
                     </local:TabStripHistoryHeader>
                     <Grid x:Name="HistoryStatusPanel"
@@ -791,6 +791,24 @@
                           IsHitTestVisible="False" />
             </Grid>
         </Grid>
+
+        <Border x:Name="SearchEmptyState"
+                Grid.Row="4"
+                Padding="16"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="Collapsed">
+            <TextBlock x:Name="SearchNoResultsText"
+                       x:Uid="VerticalTabsSearchNoMatches"
+                       VerticalAlignment="Top"
+                       AutomationProperties.AutomationId="SidebarSearchNoMatches"
+                       FontSize="14"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                       LineHeight="20"
+                       LineStackingStrategy="BlockLineHeight"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+        </Border>
 
         <!--
             One display descriptor per canonical tab. The hosted TabViewItem
