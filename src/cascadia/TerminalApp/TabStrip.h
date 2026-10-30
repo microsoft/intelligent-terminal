@@ -659,7 +659,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IInspectable _historySectionItem{ nullptr };
         winrt::Windows::Foundation::IInspectable _historyStatusItem{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _historyStatusPanel{ nullptr };
-        // Recycling can clear the template root's namescope; retain its named controls too.
+        // Recycling can clear the template root's name scope; retain its named controls too.
         winrt::Windows::UI::Xaml::Controls::ProgressRing _historyLoadingIndicator{ nullptr };
         winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
