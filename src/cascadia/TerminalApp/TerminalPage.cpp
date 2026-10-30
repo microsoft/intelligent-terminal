@@ -9440,7 +9440,6 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
-        winrt::hstring managedAgentSessionId;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9474,12 +9473,7 @@ namespace winrt::TerminalApp::implementation
                     ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
                     ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
                         profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                    if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
-                    {
-                        managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
-                    }
-                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
-                        profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
                 }
                 catch (const wil::ResultException& e)
                 {
@@ -9537,7 +9531,6 @@ namespace winrt::TerminalApp::implementation
 
             if (FAILED(startupError))
             {
-                managedAgentSessionId.clear();
                 // Defer the failure until Start so the pane can display it without launching a process.
                 valueSet.Insert(L"startupError", Windows::Foundation::PropertyValue::CreateInt32(startupError));
                 valueSet.Insert(L"startupErrorMessage", Windows::Foundation::PropertyValue::CreateString(startupErrorMessage));
@@ -9564,25 +9557,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
-
-        if (!managedAgentSessionId.empty())
-        {
-            const auto agent = profile.AgentProfileId();
-            const auto backend = winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ agent }) };
-            const auto cwd = connection.as<TerminalConnection::ConptyConnection>().StartingDirectory();
-            _explicitNativeAgentSessions.insert(connection.SessionId());
-            _paneAgentSessions.insert_or_assign(
-                connection.SessionId(),
-                _PaneAgentSession{
-                    managedAgentSessionId,
-                    agent,
-                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, managedAgentSessionId) },
-                    backend,
-                    cwd });
-            _pendingRestoredSessionBindings.insert_or_assign(
-                connection.SessionId(),
-                _PendingRestoredSessionBinding{ managedAgentSessionId, agent, cwd, backend });
-        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -17592,13 +17566,27 @@ namespace winrt::TerminalApp::implementation
         std::optional<_PaneAgentSession> resumeBinding;
         std::string resumeLocation;
         const auto oldPaneId = _FindSessionIdForControl(termControl);
+        const auto managedAgentLaunch = winrt::get_self<Settings::TerminalSettings>(termControl.Settings())->UsesManagedAgentCommand();
+        auto freshManagedLaunch = managedAgentLaunch;
+        if (const auto profile = paneContent.GetProfile(); freshManagedLaunch && profile)
+        {
+            try
+            {
+                freshManagedLaunch = std::ranges::none_of(
+                    ::Microsoft::Terminal::AgentProfiles::ParseArguments(profile.AgentProfileArguments()), [](const auto& argument) {
+                        const auto flag = std::wstring_view{ argument }.substr(0, argument.find(L'='));
+                        return flag == L"--resume" || flag == L"--continue" || flag == L"--session" || flag == L"--conversation";
+                    });
+            }
+            CATCH_LOG()
+        }
         if (nativeFallback)
         {
             const auto oldConnection = termControl.Connection().try_as<TerminalConnection::ConptyConnection>();
             const auto newConnection = connection.try_as<TerminalConnection::ConptyConnection>();
             if (const auto paneId = _TryParsePaneSessionId(oldPaneId))
             {
-                if (oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
+                if (!freshManagedLaunch && oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
                 {
                     _PreserveNativeAgentIdentity(termControl);
                     const auto identity = manager->NativeAgentObservationForContent(termControl.ContentId());
@@ -17635,16 +17623,15 @@ namespace winrt::TerminalApp::implementation
         else
         {
             _PublishNativeAgentObservation(termControl, "removed");
-            if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId() &&
+                (managedAgentLaunch || _paneAgentSessions.contains(*oldPaneSessionId) ||
+                 _pendingRestoredSessionBindings.contains(connection.SessionId())))
             {
-                if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
-                    oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
-                {
-                    // Replacement retires the old lifetime even if a failure was already reported.
-                    _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
-                    _panesWithEmittedTerminalEndState.emplace(oldPaneId);
-                    _ForgetPaneAgentIdentity(*oldPaneSessionId);
-                }
+                // Replacement retires the old lifetime even if a failure was already reported.
+                _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
+                _panesWithEmittedTerminalEndState.emplace(oldPaneId);
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
             }
         }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
