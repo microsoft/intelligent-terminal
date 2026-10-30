@@ -2934,7 +2934,8 @@ namespace winrt::TerminalApp::implementation
         }
         container.IsTabStop(!header);
         // History keeps the previous row geometry; it isn't indented under the header.
-        container.Margin(history || header ? Thickness{ 0 } : Thickness{ 6, 4, 6, 4 });
+        container.Margin(history || header ? Thickness{ 0 } :
+                                             unbox_value<Thickness>(Resources().Lookup(box_value(L"SidebarLiveRowMargin"))));
         _applyHistoryRowAutomation(container, history);
         _applyHistoryRowForeground(container.ContentTemplateRoot().try_as<FrameworkElement>(), history);
         if (display)

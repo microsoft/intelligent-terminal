@@ -1,0 +1,25 @@
+﻿<!--
+    Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
+    the MIT License. See LICENSE in the project root for license information.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Thickness x:Key="SidebarSectionPadding">20,0</Thickness>
+    <Thickness x:Key="SidebarTrailingActionMargin">0,0,20,0</Thickness>
+    <Thickness x:Key="SidebarLiveRowMargin">6,4</Thickness>
+    <x:Double x:Key="SidebarToolbarActionExtent">40</x:Double>
+    <!--  Preserve the pane icon/text positions formerly supplied by 12 + 3 DIPs of inner spacing.  -->
+    <GridLength x:Key="SidebarPaneGutterWidth">15</GridLength>
+    <!--  Reserve the close cell (40) and its inner trailing inset (14) for content/focus, not input.  -->
+    <Thickness x:Key="SidebarPaneContentInset">15,0,54,0</Thickness>
+    <!--  Match the native SplitButton's separator column.  -->
+    <x:Double x:Key="SidebarActionColumnSpacing">1</x:Double>
+    <Style x:Key="SidebarCloseSlotStyle"
+           TargetType="Grid">
+        <Setter Property="Width" Value="{StaticResource SidebarToolbarActionExtent}" />
+        <Setter Property="Height" Value="24" />
+        <!--  The row container already supplies six DIPs of the twenty-DIP inset.  -->
+        <Setter Property="Margin" Value="0,0,14,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+</ResourceDictionary>

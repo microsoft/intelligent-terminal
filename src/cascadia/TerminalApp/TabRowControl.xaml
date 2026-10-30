@@ -14,71 +14,76 @@
                   mc:Ignorable="d">
 
     <ContentPresenter.Resources>
-        <ControlTemplate x:Key="VerticalRailToggleTemplate"
-                         TargetType="Button">
-            <!--  Keep the hit target larger than the visible affordance.  -->
-            <Grid x:Name="RailToggleRoot"
-                  Background="Transparent">
-                <Border x:Name="CollapsedBackground"
-                        Width="24"
-                        Height="24"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                        CornerRadius="4"
-                        Visibility="Collapsed" />
-                <ContentPresenter x:Name="RailTogglePresenter"
-                                  Width="24"
-                                  Height="24"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  HorizontalContentAlignment="Center"
-                                  VerticalContentAlignment="Center"
-                                  Background="{TemplateBinding Background}"
-                                  Content="{TemplateBinding Content}"
-                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                  Control.IsTemplateFocusTarget="True"
-                                  CornerRadius="4"
-                                  FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
-                                  FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
-                                  FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
-                                  FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
-                                  FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
-                                  Foreground="{TemplateBinding Foreground}" />
-                <VisualStateManager.VisualStateGroups>
-                    <VisualStateGroup x:Name="CommonStates">
-                        <VisualState x:Name="Normal" />
-                        <VisualState x:Name="PointerOver">
-                            <VisualState.Setters>
-                                <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                                <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundPointerOver}" />
-                            </VisualState.Setters>
-                        </VisualState>
-                        <VisualState x:Name="Pressed">
-                            <VisualState.Setters>
-                                <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
-                                <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundPressed}" />
-                            </VisualState.Setters>
-                        </VisualState>
-                        <VisualState x:Name="Disabled">
-                            <VisualState.Setters>
-                                <Setter Target="RailToggleRoot.Opacity" Value="0.4" />
-                                <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource ButtonBackgroundDisabled}" />
-                                <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
-                            </VisualState.Setters>
-                        </VisualState>
-                    </VisualStateGroup>
-                    <VisualStateGroup x:Name="RailStates">
-                        <VisualState x:Name="RailExpanded" />
-                        <VisualState x:Name="RailCollapsed">
-                            <VisualState.Setters>
-                                <Setter Target="CollapsedBackground.Visibility" Value="Visible" />
-                            </VisualState.Setters>
-                        </VisualState>
-                    </VisualStateGroup>
-                </VisualStateManager.VisualStateGroups>
-            </Grid>
-        </ControlTemplate>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-resource:///Files/TerminalApp/SidebarLayoutResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <ControlTemplate x:Key="VerticalRailToggleTemplate"
+                             TargetType="Button">
+                <!--  Keep the hit target larger than the visible affordance.  -->
+                <Grid x:Name="RailToggleRoot"
+                      Background="Transparent">
+                    <Border x:Name="CollapsedBackground"
+                            Width="24"
+                            Height="24"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="4"
+                            Visibility="Collapsed" />
+                    <ContentPresenter x:Name="RailTogglePresenter"
+                                      Width="24"
+                                      Height="24"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center"
+                                      Background="{TemplateBinding Background}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Control.IsTemplateFocusTarget="True"
+                                      CornerRadius="4"
+                                      FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                      FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                      FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                      FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                      FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                      Foreground="{TemplateBinding Foreground}" />
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                    <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundPointerOver}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                    <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundPressed}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Target="RailToggleRoot.Opacity" Value="0.4" />
+                                    <Setter Target="RailTogglePresenter.Background" Value="{ThemeResource ButtonBackgroundDisabled}" />
+                                    <Setter Target="RailTogglePresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                        <VisualStateGroup x:Name="RailStates">
+                            <VisualState x:Name="RailExpanded" />
+                            <VisualState x:Name="RailCollapsed">
+                                <VisualState.Setters>
+                                    <Setter Target="CollapsedBackground.Visibility" Value="Visible" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                </Grid>
+            </ControlTemplate>
+        </ResourceDictionary>
     </ContentPresenter.Resources>
 
     <!--

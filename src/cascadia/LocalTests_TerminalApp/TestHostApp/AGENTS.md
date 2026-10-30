@@ -61,6 +61,16 @@ dictionary and instantiates production controls through `TerminalApp.LocalTests.
 Its TAEF runtime dependencies are packaged explicitly because this route runs
 without TAEF provisioning. It does not start Terminal, WTA, shells, or agents.
 Fixture labels and paths are synthetic; do not substitute real session data.
+The sidebar hosts the production TabRowControl vertical chrome, retaining its
+controller and synchronizing width, direction, and rail collapse with TabStrip.
+Use it to compare the native new-tab cells, toolbar, row dismiss slots, recent
+header chevron, and the separate pane-group rail gutter as one composition.
+The native new-tab SplitButton retains its 32-DIP height: its two 40-DIP-wide
+cells are not 40-by-40 targets. Pane activation and close requests report
+`PaneActivationRequested:<contentId>` or `PaneCloseRequested:<contentId>` in the
+sidebar's UIA ItemStatus (`FixtureSidebar` automation ID). Pane dismiss
+availability still follows production feature gating; the fixture does not
+enable hidden actions.
 
 The four named presets come from `CascadiaSettings::LoadDefaults()`, not copied
 color tables. Production `Tab::ThemeColor` applies their tab colors against a

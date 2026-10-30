@@ -7117,9 +7117,9 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(40.0f, dragBounds.Height);
                     VERIFY_IS_TRUE(dragBounds.X >= 40.0f);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
-                    VERIFY_ARE_EQUAL(71.0f, buttonBounds.Width);
+                    VERIFY_ARE_EQUAL(81.0f, buttonBounds.Width);
                     VERIFY_IS_TRUE(row->VerticalNewTabButton().IsHitTestVisible());
-                    VERIFY_ARE_EQUAL(static_cast<float>(width), buttonBounds.X + buttonBounds.Width);
+                    VERIFY_ARE_EQUAL(static_cast<float>(width - 20), buttonBounds.X + buttonBounds.Width);
                     VERIFY_IS_TRUE(buttonBounds.Y >= 4.0f);
                     VERIFY_IS_TRUE(buttonBounds.Y + buttonBounds.Height <= chrome.ActualHeight() - 4.0f);
                     const auto newTab = row->VerticalNewTabButton();
@@ -7129,6 +7129,8 @@ namespace TerminalAppLocalTests
                     const auto secondaryBackground = buttonRoot.FindName(L"SecondaryBackgroundGrid").as<Grid>();
                     const auto primaryButton = buttonRoot.FindName(L"PrimaryButton").as<Button>();
                     const auto secondaryButton = buttonRoot.FindName(L"SecondaryButton").as<Button>();
+                    VERIFY_ARE_EQUAL(40.0, primaryButton.ActualWidth());
+                    VERIFY_ARE_EQUAL(40.0, secondaryButton.ActualWidth());
                     const auto primaryBounds = bounds(primaryBackground);
                     const auto secondaryBounds = bounds(secondaryBackground);
                     VERIFY_ARE_EQUAL(buttonBounds.X, primaryBounds.X);
@@ -9852,6 +9854,20 @@ namespace TerminalAppLocalTests
 
             const auto originalWidth = strip.Width();
             const auto originalDirection = strip.FlowDirection();
+            const auto chrome = winrt::make_self<winrt::TerminalApp::implementation::TabRowControl>();
+            chrome->IsVerticalLayout(true);
+            strip.TopChromeContent(chrome->VerticalTitleBarContent());
+            winrt::MUX::Controls::TabViewItem liveTab;
+            liveTab.Header(winrt::TerminalApp::TabHeaderControl{});
+            strip.TabItems().Append(liveTab);
+            strip.SetPaneItems(liveTab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(liveTab, 1, L"", L"Pane", true), winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(liveTab, 2, L"", L"Pane two", false) }), true);
+            uint32_t activatedContentId = 0;
+            uint32_t closeRequests = 0;
+            const auto activation = strip.PaneActivationRequested(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                VERIFY_IS_TRUE(args.Tab() == liveTab);
+                activatedContentId = args.ContentId();
+            });
+            const auto closeRequested = strip.PaneCloseRequested(winrt::auto_revoke, [&](auto&&, auto&&) { ++closeRequests; });
             const auto bounds = [&](const FrameworkElement& element) {
                 return element.TransformToVisual(strip).TransformBounds(
                     { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
@@ -9862,16 +9878,93 @@ namespace TerminalAppLocalTests
                 for (const auto width : { 180.0, 272.0, 400.0 })
                 {
                     strip.Width(width);
+                    chrome->SetVerticalRailState(true, false, width);
                     strip.UpdateLayout();
                     const auto filter = bounds(stripImpl->FilterTabsButton());
                     const auto chevron = bounds(stripImpl->HistoryChevron());
                     const auto search = bounds(stripImpl->SearchTextBox());
+                    const auto split = chrome->VerticalNewTabButton();
+                    split.ApplyTemplate();
+                    const auto splitRoot = Media::VisualTreeHelper::GetChild(split, 0).as<Grid>();
+                    const auto primary = bounds(splitRoot.FindName(L"PrimaryButton").as<Button>());
+                    const auto secondary = bounds(splitRoot.FindName(L"SecondaryButton").as<Button>());
+                    const auto searchAction = bounds(stripImpl->SearchTabsButton());
+                    const auto center = [](const auto& rect) { return rect.X + rect.Width / 2; };
+                    VERIFY_IS_TRUE(std::abs(center(primary) - center(searchAction)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(center(secondary) - center(filter)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(filter.X + filter.Width / 2 - chevron.X - chevron.Width / 2) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
-                                               filter.X + filter.Width - search.X - search.Width :
-                                               filter.X - search.X) <= 1.0);
+                                                filter.X + filter.Width - search.X - search.Width :
+                                                filter.X - search.X) <= 1.0);
+                    const auto rows = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+                    const auto tabRoot = rows.Children().GetAt(0).as<Grid>();
+                    const auto tabSlot = bounds(tabRoot.FindName(L"TabCloseButtonSlot").as<Grid>());
+                    VERIFY_IS_TRUE(std::abs(center(tabSlot) - center(filter)) <= 1.0);
+                    const auto panes = rows.Children().GetAt(1).as<ItemsControl>();
+                    const auto rail = bounds(Media::VisualTreeHelper::GetChild(panes, 0).as<FrameworkElement>().FindName(L"PaneGroupIndicator").as<FrameworkElement>());
+                    for (uint32_t index = 0; index < 2; ++index)
+                    {
+                        const auto paneRoot = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(index), 0).as<Grid>();
+                        VERIFY_IS_TRUE(std::abs(center(bounds(paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>())) - center(filter)) <= 1.0);
+                        for (const auto name : { L"PaneActiveBackground", L"PaneColorSelectionBackground", L"PaneHoverBackground", L"PaneColorHoverBackground" })
+                        {
+                            const auto surface = paneRoot.FindName(name).as<FrameworkElement>();
+                            // Collapsed selection layers still own the same structural content columns.
+                            VERIFY_ARE_EQUAL(1, Grid::GetColumn(surface));
+                            if (surface.Visibility() == Visibility::Visible)
+                            {
+                                const auto surfaceBounds = bounds(surface);
+                                VERIFY_IS_TRUE(rail.X + rail.Width <= surfaceBounds.X || surfaceBounds.X + surfaceBounds.Width <= rail.X);
+                            }
+                        }
+                        const auto icon = bounds(paneRoot.FindName(L"PaneIconPresenter").as<ContentPresenter>());
+                        const auto title = bounds(paneRoot.FindName(L"PaneTitleText").as<FrameworkElement>());
+                        const auto paneBounds = bounds(paneRoot);
+                        const auto activate = paneRoot.FindName(L"PaneActivateButton").as<Button>();
+                        VERIFY_ARE_EQUAL(0, Grid::GetColumn(activate));
+                        VERIFY_ARE_EQUAL(3, Grid::GetColumnSpan(activate));
+                        const Thickness contentInset{ 15, 0, 54, 0 };
+                        VERIFY_ARE_EQUAL(contentInset, activate.Padding());
+                        VERIFY_ARE_EQUAL(activate.Padding(), activate.FocusVisualMargin());
+                        const auto focusBounds = activate.TransformToVisual(strip).TransformBounds({ 15, 0, static_cast<float>(activate.ActualWidth() - 15 - 54), static_cast<float>(activate.ActualHeight()) });
+                        VERIFY_IS_TRUE(rail.X + rail.Width <= focusBounds.X || focusBounds.X + focusBounds.Width <= rail.X);
+                        for (const auto target : { activate.as<FrameworkElement>(),
+                                                   paneRoot.FindName(L"PaneIconPresenter").as<FrameworkElement>(),
+                                                   paneRoot.FindName(L"PaneTitleText").as<FrameworkElement>() })
+                        {
+                            const auto point = target.TransformToVisual(nullptr).TransformPoint({ target == activate ? 1.0f : static_cast<float>(target.ActualWidth() / 2),
+                                                                                                  static_cast<float>(target.ActualHeight() / 2) });
+                            bool activationHit = false;
+                            for (const auto hit : Media::VisualTreeHelper::FindElementsInHostCoordinates(point, paneRoot))
+                            {
+                                activationHit |= hit == activate;
+                            }
+                            VERIFY_IS_TRUE(activationHit);
+                            stripImpl->OnPaneActivateClick(activate, RoutedEventArgs{});
+                            VERIFY_ARE_EQUAL(index + 1, activatedContentId);
+                            VERIFY_ARE_EQUAL(0u, closeRequests);
+                            VERIFY_IS_TRUE(stripImpl->DisplayItemForTab(liveTab).IsExpanded());
+                        }
+                        const auto trailingPoint = activate.TransformToVisual(nullptr).TransformPoint({
+                            static_cast<float>(activate.ActualWidth() - 1), static_cast<float>(activate.ActualHeight() / 2) });
+                        bool trailingActivationHit = false;
+                        for (const auto hit : Media::VisualTreeHelper::FindElementsInHostCoordinates(trailingPoint, paneRoot))
+                        {
+                            trailingActivationHit |= hit == activate;
+                        }
+                        VERIFY_IS_TRUE(trailingActivationHit);
+                        VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
+                                                    icon.X + icon.Width / 2 - paneBounds.X - 29 :
+                                                    paneBounds.X + paneBounds.Width - icon.X - icon.Width / 2 - 29) <= 1.0);
+                        VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
+                                                    title.X - paneBounds.X - 45 :
+                                                    paneBounds.X + paneBounds.Width - title.X - title.Width - 45) <= 1.0);
+                    }
                 }
             }
+            strip.SetPaneItems(liveTab, nullptr, false);
+            strip.TabItems().RemoveAtEnd();
+            strip.TopChromeContent(nullptr);
             strip.Width(originalWidth);
             strip.FlowDirection(originalDirection);
             strip.UpdateLayout();
@@ -10996,9 +11089,9 @@ namespace TerminalAppLocalTests
                     const auto before = indicator.TransformToVisual(strip).TransformPoint({ 0, 0 });
                     const auto slotPosition = closeSlot.TransformToVisual(strip).TransformPoint({ 0, 0 });
                     const auto titlePosition = title.TransformToVisual(strip).TransformPoint({ 0, 0 });
-                    VERIFY_ARE_EQUAL(24.0, closeSlot.ActualWidth());
+                    VERIFY_ARE_EQUAL(40.0, closeSlot.ActualWidth());
                     VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
-                    VERIFY_IS_TRUE(std::abs(slotPosition.X - (width * 257.0 / 272.0 - 24.0)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(slotPosition.X + closeSlot.ActualWidth() / 2 - (width - 40.0)) <= 1.0);
                     VERIFY_IS_TRUE(before.X + indicator.ActualWidth() <= slotPosition.X + 1.0);
                     VERIFY_IS_TRUE(std::abs(slotPosition.Y - before.Y) <= 1.0);
                     VERIFY_IS_TRUE(titlePosition.X + title.ActualWidth() <= before.X + 1.0);
@@ -18021,17 +18114,16 @@ namespace TerminalAppLocalTests
             const auto firstPaneActivateButton = firstPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto firstPaneClose = firstPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             const auto firstPaneCloseSlot = firstPaneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
-            const auto paneCloseColumn = firstPaneRoot.ColumnDefinitions().GetAt(1).ActualWidth();
+            const auto paneCloseColumn = firstPaneRoot.ColumnDefinitions().GetAt(2).ActualWidth();
             const auto secondPaneActivateButton = secondPaneRoot.FindName(L"PaneActivateButton").as<Button>();
             const auto secondPaneClose = secondPaneRoot.FindName(L"PaneCloseButton").as<Button>();
             VERIFY_ARE_EQUAL(Visibility::Visible, firstPaneBackground.Visibility());
-            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 10, firstPaneBackground.ActualWidth());
+            VERIFY_ARE_EQUAL(firstPaneRoot.ActualWidth() - 15, firstPaneBackground.ActualWidth());
             const auto verifyPaneButtonWidths = [&]() {
                 for (const auto& paneRoot : { firstPaneRoot, secondPaneRoot })
                 {
                     const auto button = paneRoot.FindName(L"PaneActivateButton").as<Button>();
-                    const auto closeColumn = paneRoot.ColumnDefinitions().GetAt(1).ActualWidth();
-                    VERIFY_IS_TRUE(std::abs(paneRoot.ActualWidth() - closeColumn - button.ActualWidth()) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(paneRoot.ActualWidth() - button.ActualWidth()) <= 1.0);
                 }
             };
             verifyPaneButtonWidths();
@@ -18047,7 +18139,7 @@ namespace TerminalAppLocalTests
                              firstPaneBackground.Background().as<Media::SolidColorBrush>().Color());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstPaneClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondPaneClose.Visibility());
-            VERIFY_ARE_EQUAL(24.0, firstPaneCloseSlot.ActualWidth());
+            VERIFY_ARE_EQUAL(40.0, firstPaneCloseSlot.ActualWidth());
             VERIFY_IS_TRUE(std::abs(paneCloseColumn - firstPaneCloseSlot.ActualWidth() - firstPaneCloseSlot.Margin().Left - firstPaneCloseSlot.Margin().Right) <= 1.0);
             VERIFY_ARE_EQUAL(0.0, firstPaneActivateButton.Content().as<Grid>().Margin().Right);
             stripImpl->OnPanePointerEntered(firstPaneRoot, nullptr);
@@ -25523,7 +25615,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondClose.Visibility());
             const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& slot) {
                 const auto slotPosition = slot.TransformToVisual(row).TransformPoint({ 0, 0 });
-                VERIFY_ARE_EQUAL(24.0, slot.ActualWidth());
+                VERIFY_ARE_EQUAL(40.0, slot.ActualWidth());
                 VERIFY_ARE_EQUAL(24.0, slot.ActualHeight());
                 VERIFY_IS_TRUE(std::abs(slotPosition.Y + slot.ActualHeight() / 2 - row.ActualHeight() / 2) <= 1.0);
             };
@@ -25567,7 +25659,7 @@ namespace TerminalAppLocalTests
             const auto paneSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, paneClose.Visibility());
             verifyCloseAlignment(paneRoot, paneSlot);
-            VERIFY_IS_TRUE(std::abs(paneRoot.ColumnDefinitions().GetAt(1).ActualWidth() - paneSlot.ActualWidth() - paneSlot.Margin().Left - paneSlot.Margin().Right) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(paneRoot.ColumnDefinitions().GetAt(2).ActualWidth() - paneSlot.ActualWidth() - paneSlot.Margin().Left - paneSlot.Margin().Right) <= 1.0);
             strip.SetPaneItems(first, nullptr, false);
             strip.SelectedItem(nullptr);
             second.IsClosable(true);
@@ -26991,7 +27083,7 @@ namespace TerminalAppLocalTests
                         const auto titlePosition = title.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
                         const auto closeSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
                         const auto closePosition = closeSlot.TransformToVisual(paneRoot).TransformPoint({ 0, 0 });
-                        VERIFY_ARE_EQUAL(24.0, closeSlot.ActualWidth());
+                        VERIFY_ARE_EQUAL(40.0, closeSlot.ActualWidth());
                         VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
                         VERIFY_IS_TRUE(indicatorPosition.X + indicator.ActualWidth() <= closePosition.X + 1.0);
                         VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - paneRoot.ActualHeight() / 2) <= 1.0);

@@ -12,6 +12,7 @@
 #include "../TerminalApp/TabStrip.h"
 #include "../TerminalApp/TerminalTabStatus.h"
 #include "../TerminalApp/Tab.h"
+#include "../TerminalApp/TabRowControl.h"
 #include "../TerminalApp/BasicPaneEvents.h"
 #include "../WinRTUtils/inc/Utils.h"
 #include <winrt/Windows.UI.Xaml.Automation.h>
@@ -108,8 +109,15 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
 
         stage = L"creating production TabStrip";
         const winrt::TerminalApp::TabStrip strip;
+        Automation::AutomationProperties::SetAutomationId(strip, L"FixtureSidebar");
+        Automation::AutomationProperties::SetItemStatus(strip, L"PaneRequest:None");
         strip.Width(272);
         strip.HorizontalAlignment(HorizontalAlignment::Left);
+        const winrt::TerminalApp::TabRowControl chrome;
+        const auto chromeImpl = get_self<winrt::TerminalApp::implementation::TabRowControl>(chrome);
+        chromeImpl->IsVerticalLayout(true);
+        chromeImpl->SetVerticalRailState(true, false, 272);
+        strip.TopChromeContent(chromeImpl->VerticalTitleBarContent());
         Grid::SetRow(strip, 1);
         root.Children().Append(strip);
 
@@ -155,13 +163,32 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         width.Value(272);
         width.Width(180);
         Automation::AutomationProperties::SetAutomationId(width, L"FixtureSidebarWidth");
-        width.ValueChanged([weakStrip = make_weak(strip)](const winrt::Windows::Foundation::IInspectable&, const Primitives::RangeBaseValueChangedEventArgs& args) {
+        width.ValueChanged([weakStrip = make_weak(strip), chrome](const winrt::Windows::Foundation::IInspectable&, const Primitives::RangeBaseValueChangedEventArgs& args) {
             if (const auto sidebar = weakStrip.get())
             {
-                sidebar.Width(args.NewValue());
+                const auto effectiveWidth = sidebar.IsRailCollapsed() ? 40.0 : args.NewValue();
+                sidebar.Width(effectiveWidth);
+                get_self<winrt::TerminalApp::implementation::TabRowControl>(chrome)->SetVerticalRailState(
+                    true, sidebar.IsRailCollapsed(), effectiveWidth);
             }
         });
         toolbar.Children().Append(width);
+        chromeImpl->RailCollapseRequested([weakStrip = make_weak(strip), weakChrome = make_weak(chrome), weakWidth = make_weak(width)](const auto&, const auto&) {
+            if (const auto sidebar = weakStrip.get())
+            {
+                if (const auto row = weakChrome.get())
+                {
+                    if (const auto slider = weakWidth.get())
+                    {
+                        const auto collapsed = !sidebar.IsRailCollapsed();
+                        const auto effectiveWidth = collapsed ? 40.0 : slider.Value();
+                        sidebar.IsRailCollapsed(collapsed);
+                        sidebar.Width(effectiveWidth);
+                        get_self<winrt::TerminalApp::implementation::TabRowControl>(row)->SetVerticalRailState(true, collapsed, effectiveWidth);
+                    }
+                }
+            }
+        });
 
         std::vector<com_ptr<winrt::TerminalApp::implementation::Tab>> ownedTabs;
         const auto addTab = [&](const wchar_t* title, const wchar_t* metadata, const wchar_t* icon) {
@@ -224,6 +251,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         strip.PaneActivationRequested([weakStrip = make_weak(strip)](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
             if (const auto sidebar = weakStrip.get())
             {
+                Automation::AutomationProperties::SetItemStatus(sidebar, L"PaneActivationRequested:" + to_hstring(args.ContentId()));
                 const auto display = get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->DisplayItemForTab(args.Tab());
                 const auto panes = single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>();
                 for (const auto& pane : display.PaneItems())
@@ -233,6 +261,12 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
                 }
                 sidebar.SelectedItem(args.Tab());
                 sidebar.SetPaneItems(args.Tab(), panes, true);
+            }
+        });
+        strip.PaneCloseRequested([weakStrip = make_weak(strip)](const auto&, const winrt::TerminalApp::TabStripPaneEventArgs& args) {
+            if (const auto sidebar = weakStrip.get())
+            {
+                Automation::AutomationProperties::SetItemStatus(sidebar, L"PaneCloseRequested:" + to_hstring(args.ContentId()));
             }
         });
 
