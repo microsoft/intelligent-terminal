@@ -17476,7 +17476,7 @@ namespace TerminalAppLocalTests
                 for (const auto& button : { firstButton, secondButton })
                 {
                     VERIFY_IS_TRUE(button.IsChecked().Value());
-                    const auto heading = button.Content().as<Grid>().Children().GetAt(0).as<TextBlock>();
+                    const auto heading = button.Parent().as<Grid>().FindName(L"HistoryHeader").as<TextBlock>();
                     const auto color = heading.Foreground().as<Media::SolidColorBrush>().Color();
                     const uint8_t expectedChannel = theme == ElementTheme::Dark ? 255 : 0;
                     VERIFY_ARE_EQUAL(expectedChannel, color.R);
