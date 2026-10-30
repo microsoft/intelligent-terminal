@@ -49,6 +49,7 @@
 #include "AppLogic.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
+#include "FreLayoutMetrics.h"
 #include "../inc/AgentPaneRestore.h"
 #include "../inc/WindowPersistence.h"
 #include "MarkdownPaneContent.h"
@@ -1319,6 +1320,28 @@ namespace winrt::TerminalApp::implementation
         return !ApplicationState::SharedInstance().AgentFreCompleted();
     }
 
+    void TerminalPage::_SetFreChromeVisible(const bool visible)
+    {
+        _freChromeVisible = visible;
+        const auto visibility = visible ? Visibility::Visible : Visibility::Collapsed;
+        _tabRow.Visibility(visibility);
+
+        const auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
+        if (const auto verticalTitlebar = tabRowImpl->VerticalTitleBarContent())
+        {
+            verticalTitlebar.Visibility(visibility);
+        }
+
+        if (!visible)
+        {
+            _tabStrip.Visibility(Visibility::Collapsed);
+        }
+        else
+        {
+            _UpdateTabView();
+        }
+    }
+
     void TerminalPage::_ShowFreOverlay()
     {
         if (auto overlay = FindName(L"FreOverlayElement").try_as<winrt::TerminalApp::FreOverlay>())
@@ -1355,9 +1378,9 @@ namespace winrt::TerminalApp::implementation
                                       }
                                   });
 
-            // Hide the tab bar during FRE — the full-screen wizard replaces
-            // the entire window content. Restored in _OnFreCompleted.
-            TabRow().Visibility(Visibility::Collapsed);
+            // Hide tab creation and sidebar chrome while the wizard owns the
+            // window. Native caption buttons remain available.
+            _SetFreChromeVisible(false);
         }
     }
 
@@ -1375,9 +1398,6 @@ namespace winrt::TerminalApp::implementation
             overlay.Visibility(Visibility::Collapsed);
         }
 
-        // Restore the tab bar
-        TabRow().Visibility(Visibility::Visible);
-
         // Apply the FRE choice before deferred startup creates the first tab.
         const auto layoutApplied = _ApplyTabLayout(_settings.GlobalSettings().TabLayout());
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
@@ -1387,6 +1407,7 @@ namespace winrt::TerminalApp::implementation
 
         // Persist: never show FRE again
         ApplicationState::SharedInstance().AgentFreCompleted(true);
+        _SetFreChromeVisible(true);
 
         // Flush settings to disk (FreOverlay already wrote to GlobalSettings
         // via _OnSaveButtonClick; if the user closed without saving, defaults
@@ -16381,6 +16402,11 @@ namespace winrt::TerminalApp::implementation
     // - See Pane::CalcSnappedDimension
     float TerminalPage::CalcSnappedDimension(const bool widthOrHeight, const float dimension) const
     {
+        if (_IsFreRequired())
+        {
+            return static_cast<float>(ClampFreMinimumWindowDimension(widthOrHeight, dimension));
+        }
+
         if (_settings && _settings.GlobalSettings().SnapToGridOnResize())
         {
             if (const auto tabImpl{ _GetFocusedTabImpl() })

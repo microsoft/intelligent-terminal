@@ -462,8 +462,13 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(FreHidesAndRestoresTabChrome);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
+        TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
+        TEST_METHOD(FreWelcomeMinimumLayoutScrollsWithStickyFooter);
+        TEST_METHOD(FreWelcomeLayoutSupportsEnlargedText);
+        TEST_METHOD(FreWelcomeCardRadiusUsesInitialWindowScale);
         TEST_METHOD(EmptyTabLayoutChangeCompletesBeforeStartup);
         TEST_METHOD(VerticalLayoutMirrorsForRtl);
         TEST_METHOD(VerticalLayoutUsesFirstPreferredResourceLanguage);
@@ -3571,6 +3576,7 @@ namespace TerminalAppLocalTests
                 const auto groups = winrt::single_threaded_vector<winrt::guid>({ firstGroup, secondGroup });
                 window->SetStartupKeptGroups(groups.GetView(), bounds);
                 VERIFY_ARE_EQUAL(bounds.Width, window->GetLaunchDimensions(96).Width);
+                VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
                 VERIFY_ARE_EQUAL(bounds.Height, window->GetLaunchDimensions(96).Height);
                 VERIFY_ARE_EQUAL(bounds.Width * 1.5f, window->GetLaunchDimensions(144).Width);
                 VERIFY_ARE_EQUAL(bounds.Height * 1.5f, window->GetLaunchDimensions(144).Height);
@@ -7212,6 +7218,32 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::FreHidesAndRestoresTabChrome()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
+            const auto verticalTitlebar = row->VerticalTitleBarContent();
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(false);
+            page->_UpdateTabView();
+
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabRow.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, verticalTitlebar.Visibility());
+
+            page->_SetFreChromeVisible(true);
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+        });
+    }
+
     void TabTests::FreTabModeSelectionDoesNotMutateSettings()
     {
         TestOnUIThread([]() {
@@ -7317,6 +7349,213 @@ namespace TerminalAppLocalTests
                 }
             });
         }
+    }
+
+    void TabTests::FreWelcomeDefaultLayoutMatchesDesign()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
+            fre.UpdateLayout();
+
+            const auto contentRoot = fre.FindName(L"FreContentRoot").try_as<Grid>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").try_as<ScrollViewer>();
+            const auto cards = fre.FindName(L"WelcomeCardsGrid").try_as<Grid>();
+            const auto title = fre.FindName(L"WelcomeTitle").try_as<TextBlock>();
+            const auto subtitle = fre.FindName(L"WelcomeSubtitle").try_as<TextBlock>();
+            const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto sidebarImage = fre.FindName(L"SidebarImage").try_as<Image>();
+            const auto autofixImage = fre.FindName(L"AutofixImage").try_as<Image>();
+            const auto sidebarTitle = fre.FindName(L"SidebarCardTitle").try_as<TextBlock>();
+            const auto sidebarDescription = fre.FindName(L"SidebarCardDescription").try_as<TextBlock>();
+            const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
+            const auto next = fre.FindName(L"NextButton").try_as<Button>();
+
+            VERIFY_IS_NOT_NULL(contentRoot);
+            VERIFY_IS_NOT_NULL(scroller);
+            VERIFY_IS_NOT_NULL(cards);
+            VERIFY_IS_NOT_NULL(title);
+            VERIFY_IS_NOT_NULL(subtitle);
+            VERIFY_IS_NOT_NULL(sidebarCard);
+            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(sidebarImage);
+            VERIFY_IS_NOT_NULL(autofixImage);
+            VERIFY_IS_NOT_NULL(sidebarTitle);
+            VERIFY_IS_NOT_NULL(sidebarDescription);
+            VERIFY_IS_NOT_NULL(footer);
+            VERIFY_IS_NOT_NULL(next);
+
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 1130.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualHeight() - 679.0) <= 0.5);
+            const auto titleOrigin = title.TransformToVisual(fre).TransformPoint({});
+            const auto subtitleOrigin = subtitle.TransformToVisual(fre).TransformPoint({});
+            const auto cardsOrigin = cards.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(titleOrigin.Y - 47.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(title.ActualHeight() - 36.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(subtitleOrigin.Y - 107.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(subtitle.ActualHeight() - 44.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cardsOrigin.Y - 184.0f) <= 0.5f);
+            VERIFY_ARE_EQUAL(28.0, title.FontSize());
+            VERIFY_ARE_EQUAL(36.0, title.LineHeight());
+            VERIFY_ARE_EQUAL(16.0, subtitle.FontSize());
+            VERIFY_ARE_EQUAL(22.0, subtitle.LineHeight());
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
+
+            VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 1032.0) <= 0.5);
+            VERIFY_ARE_EQUAL(3u, cards.ColumnDefinitions().Size());
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 510.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 510.0) <= 0.5);
+            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 522.0f) <= 0.5f);
+
+            const auto cardPadding = sidebarCard.Padding();
+            VERIFY_ARE_EQUAL(20.0, cardPadding.Left);
+            VERIFY_ARE_EQUAL(24.0, cardPadding.Top);
+            VERIFY_ARE_EQUAL(20.0, cardPadding.Right);
+            VERIFY_ARE_EQUAL(24.0, cardPadding.Bottom);
+            const auto imageOrigin = sidebarImage.TransformToVisual(sidebarCard).TransformPoint({});
+            const auto cardTitleOrigin = sidebarTitle.TransformToVisual(sidebarCard).TransformPoint({});
+            const auto cardDescriptionOrigin = sidebarDescription.TransformToVisual(sidebarCard).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(imageOrigin.X - 22.5f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(imageOrigin.Y - 24.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualWidth() - 465.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 261.5625) <= 0.5);
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, sidebarImage.Stretch());
+            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, autofixImage.Stretch());
+            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.X - 20.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardTitleOrigin.Y - 295.5625f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(cardDescriptionOrigin.Y - 333.5625f) <= 0.5f);
+            VERIFY_ARE_EQUAL(20.0, sidebarTitle.FontSize());
+            VERIFY_ARE_EQUAL(28.0, sidebarTitle.LineHeight());
+            VERIFY_ARE_EQUAL(14.0, sidebarDescription.FontSize());
+            VERIFY_ARE_EQUAL(20.0, sidebarDescription.LineHeight());
+
+            VERIFY_IS_TRUE(std::abs(footer.ActualHeight() - 80.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(next.ActualWidth() - 120.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(next.ActualHeight() - 32.0) <= 0.5);
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() <= 0.5);
+
+            const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 599.0f) <= 0.5f);
+        });
+    }
+
+    void TabTests::FreWelcomeMinimumLayoutScrollsWithStickyFooter()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+            fre.Measure({ 711, 631 });
+            fre.Arrange({ 0, 0, 711, 631 });
+            fre.UpdateLayout();
+
+            const auto contentRoot = fre.FindName(L"FreContentRoot").try_as<Grid>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").try_as<ScrollViewer>();
+            const auto cards = fre.FindName(L"WelcomeCardsGrid").try_as<Grid>();
+            const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
+            const auto next = fre.FindName(L"NextButton").try_as<Button>();
+
+            VERIFY_IS_NOT_NULL(contentRoot);
+            VERIFY_IS_NOT_NULL(scroller);
+            VERIFY_IS_NOT_NULL(cards);
+            VERIFY_IS_NOT_NULL(sidebarCard);
+            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(footer);
+            VERIFY_IS_NOT_NULL(next);
+
+            VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 711.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 619.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(autofixCard.ActualWidth() - 303.5) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 303.5) <= 0.5);
+            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 315.5f) <= 0.5f);
+
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Disabled, scroller.HorizontalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
+            VERIFY_IS_TRUE(scroller.ScrollableWidth() <= 0.5);
+
+            VERIFY_IS_TRUE(std::abs(footer.ActualHeight() - 80.0) <= 0.5);
+            const auto footerOrigin = footer.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(footerOrigin.Y - 551.0f) <= 0.5f);
+
+            const auto nextOrigin = next.TransformToVisual(fre).TransformPoint({});
+            VERIFY_IS_TRUE(nextOrigin.X >= 0);
+            VERIFY_IS_TRUE(nextOrigin.Y >= footerOrigin.Y);
+            VERIFY_IS_TRUE(nextOrigin.X + next.ActualWidth() <= 711.0);
+            VERIFY_IS_TRUE(nextOrigin.Y + next.ActualHeight() <= 631.0);
+        });
+    }
+
+    void TabTests::FreWelcomeLayoutSupportsEnlargedText()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            const auto title = fre.FindName(L"WelcomeTitle").as<TextBlock>();
+            const auto scroller = fre.FindName(L"WelcomeContentScroller").as<ScrollViewer>();
+            title.FontSize(56);
+            title.LineHeight(72);
+
+            fre.Measure({ 1130, 631 });
+            fre.Arrange({ 0, 0, 1130, 631 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
+            VERIFY_IS_TRUE(title.ActualHeight() > 72.0);
+            VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
+            VERIFY_IS_TRUE(scroller.ScrollableHeight() > 0);
+        });
+    }
+
+    void TabTests::FreWelcomeCardRadiusUsesInitialWindowScale()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            fre.Measure({ 990, 590 });
+            fre.Arrange({ 0, 0, 990, 590 });
+            fre.UpdateLayout();
+
+            const auto sidebarCard = fre.FindName(L"SidebarCard").as<Border>();
+            const auto autofixCard = fre.FindName(L"AutofixCard").as<Border>();
+            const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").as<Border>();
+            const auto autofixImageFrame = fre.FindName(L"AutofixImageFrame").as<Border>();
+            const auto initialRadius = sidebarCard.CornerRadius().TopLeft;
+            VERIFY_IS_TRUE(std::abs(initialRadius - 6.13) < 0.01);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
+
+            fre.Measure({ 1130, 679 });
+            fre.Arrange({ 0, 0, 1130, 679 });
+            fre.UpdateLayout();
+
+            VERIFY_ARE_EQUAL(initialRadius, sidebarCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
+            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
+        });
     }
 
     void TabTests::EmptyTabLayoutChangeCompletesBeforeStartup()

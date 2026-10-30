@@ -569,6 +569,13 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
+        if (!_freChromeVisible)
+        {
+            _tabRow.Visibility(Visibility::Collapsed);
+            _tabStrip.Visibility(Visibility::Collapsed);
+            return;
+        }
+
         if (_isVerticalLayout)
         {
             const auto railVisible = !_isInFocusMode &&
