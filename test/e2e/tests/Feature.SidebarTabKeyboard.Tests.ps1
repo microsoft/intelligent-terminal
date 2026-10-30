@@ -345,6 +345,42 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
                 $scroll.Current.VerticalScrollPercent -le 0.1
             } | Out-Null
             (Get-NavigationViewportState $last.TestTitle).FullyVisible | Should -BeFalse
+            Set-WtPaneFocus -App $script:app -SessionId $last.session_id
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            Wait-Until -TimeoutSec 5 -Because 'the selected filtered row is outside the viewport' -Condition {
+                $scroll.Current.VerticalScrollPercent -le 0.1
+            } | Out-Null
+            (Get-NavigationViewportState $last.TestTitle).FullyVisible | Should -BeFalse
+            (Get-SidebarElement SearchTextBox).SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 5 -Condition {
+                $index = Get-FocusedTabRowIndex
+                $index -ge 0 -and (Test-TabRowTitle -Row @(Get-VisibleTabRows)[$index] -Title $last.TestTitle)
+            }) | Should -BeTrue -Because 'Tab from search realizes and focuses the selected offscreen result'
+            [string](Get-ActivePane -App $script:app).tab_id | Should -Be ([string]$last.tab_id)
+
+            $toggleCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
+            $toggle = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $toggleCondition)
+            $toggle | Should -Not -BeNullOrEmpty
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
+            Wait-Until -TimeoutSec 5 -Because 'reverse wrap starts with its final result unrealized' -Condition {
+                $scroll.Current.VerticalScrollPercent -le 0.1
+            } | Out-Null
+            $toggle.SetFocus()
+            $toggle.Current.HasKeyboardFocus | Should -BeTrue -Because 'scrolling must leave focus on the toggle before reverse Tab'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $reverseResult = Test-Until -TimeoutSec 5 -Condition {
+                $index = Get-FocusedTabRowIndex
+                $index -ge 0 -and (Test-TabRowTitle -Row @(Get-VisibleTabRows)[$index] -Title $last.TestTitle)
+            }
+            $reverseFocus = [Windows.Automation.AutomationElement]::FocusedElement
+            $reverseResult | Should -BeTrue -Because (
+                "Shift+Tab must focus the final result; got '$($reverseFocus.Current.Name)' " +
+                "row index $(Get-FocusedTabRowIndex), scroll $($scroll.Current.VerticalScrollPercent)")
+            [string](Get-ActivePane -App $script:app).tab_id | Should -Be ([string]$last.tab_id)
+            Set-WtPaneFocus -App $script:app -SessionId $created[0].session_id
+            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0)
             Send-WtWindowKey -App $script:app -Vk 0x26 -Ctrl -Alt -RequireForeground | Out-Null
             Assert-NavigationViewport -Tab $last -Title $last.TestTitle -Draft $draft -Label 'viewport-filtered-up'
             Send-WtWindowKey -App $script:app -Vk 0x28 -Ctrl -Alt -RequireForeground | Out-Null
@@ -367,6 +403,12 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
                     Select-Object -First 1
             }
             $groupRow = Get-GroupRow
+            if (-not $groupRow) {
+                $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 50)
+                $groupRow = Wait-Until -TimeoutSec 6 -Because 'virtualized group row becomes realized near the viewport center' -Condition {
+                    Get-GroupRow
+                }
+            }
             $groupRow | Should -Not -BeNullOrEmpty
             $groupRow.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView()
             $paneCondition = [Windows.Automation.PropertyCondition]::new(
@@ -697,6 +739,44 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab wraps from the rail toggle to the last row'
     }
 
+    It 'Sidebar reverse Tab skips an empty Recent Sessions heading' -Tag 'SidebarHistoryFocusCycle' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        Send-WtWindowKey -App $script:app -Vk 0xBF -Ctrl -Shift -RequireForeground | Out-Null
+        try {
+            (Test-Until -TimeoutSec 6 -Condition { [bool](Get-SidebarElement HistoryHeaderButton) }) |
+                Should -BeTrue -Because 'the non-tab-stop heading must be present in the list'
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $script:titleB | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition { @(Get-VisibleTabRows).Count -eq 1 }) |
+                Should -BeTrue -Because 'only the matching tab and empty history heading remain'
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            $window = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $toggleCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
+            $toggle = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $toggleCondition)
+            $toggle | Should -Not -BeNullOrEmpty
+            $toggle.SetFocus()
+            (Test-Until -TimeoutSec 5 -Condition {
+                [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Collapse sidebar'
+            }) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 0 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the history heading is not a reverse Tab stop'
+        }
+        finally {
+            $search = Get-SidebarElement SearchTextBox
+            if ($search -and -not $search.Current.IsOffscreen) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            Send-WtWindowKey -App $script:app -Vk 0xBF -Ctrl -Shift -RequireForeground | Out-Null
+        }
+    }
+
     It 'Sidebar list entry follows the active tab across search results' -Tag 'SidebarActiveTabFocusEntry' {
         $script:app.Launched | Should -BeTrue
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
@@ -716,6 +796,10 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
 
             Set-UiValue -App $script:app -Selector SearchTextBox -Value $script:titleA | Out-Null
             (Test-Until -TimeoutSec 6 -Condition { @(Get-VisibleTabRows).Count -eq 1 }) | Should -BeTrue
+            (Get-SidebarElement -AutomationId 'FilterTabsButton').SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            (Get-SidebarElement -AutomationId 'SearchTextBox').Current.HasKeyboardFocus |
+                Should -BeTrue -Because 'Tab from the filter button must visit the visible search field before the list'
             $search.SetFocus()
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
             Assert-FocusedTabRow -Index 0 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'a hidden active tab falls back to the first visible result without activating it'

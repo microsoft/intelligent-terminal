@@ -1816,29 +1816,51 @@ namespace winrt::TerminalApp::implementation
         _updateSidebarRowToolTipPlacement(sender.as<FrameworkElement>());
     }
 
+    bool TabStrip::_isSidebarFocusableItem(IInspectable const& item) const
+    {
+        if (!item || item == _historySectionItem)
+        {
+            return false;
+        }
+        if (const auto display = item.try_as<TerminalApp::TabStripDisplayItem>())
+        {
+            const auto tab = display.Tab();
+            if (const auto desired = _tabItemVisibility.find(winrt::get_abi(tab));
+                desired != _tabItemVisibility.end() && desired->second.Item.get() == tab)
+            {
+                return desired->second.Visible;
+            }
+            return true;
+        }
+        return static_cast<bool>(item.try_as<TerminalApp::TabStripHistoryItem>());
+    }
+
+    ListViewItem TabStrip::_realizeSidebarItem(IInspectable const& item)
+    {
+        ItemsList().ScrollIntoView(item);
+        ItemsList().UpdateLayout();
+        const auto row = ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+        return row && row.Visibility() == Visibility::Visible && row.IsEnabled() && row.IsTabStop() ? row : nullptr;
+    }
+
     ListViewItem TabStrip::_sidebarEntryTarget()
     {
         const auto selected = ItemsList().SelectedItem();
-        auto target = selected ? ItemsList().ContainerFromItem(selected).try_as<ListViewItem>() : nullptr;
-        if (target && target.Visibility() == Visibility::Visible)
+        if (selected && selected.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(selected))
         {
-            return target;
+            return _realizeSidebarItem(selected);
         }
         for (const auto& item : ItemsList().Items())
         {
-            if (item.try_as<TerminalApp::TabStripDisplayItem>())
+            if (item.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(item))
             {
-                auto row = ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
-                if (row && row.Visibility() == Visibility::Visible)
-                {
-                    return row;
-                }
+                return _realizeSidebarItem(item);
             }
         }
         return nullptr;
     }
 
-    void TabStrip::_onSidebarEntryKeyDown(IInspectable const&, WUX::Input::KeyRoutedEventArgs const& e)
+    void TabStrip::_onSidebarEntryKeyDown(IInspectable const& sender, WUX::Input::KeyRoutedEventArgs const& e)
     {
         if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
         {
@@ -1852,10 +1874,8 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        const auto selected = ItemsList().SelectedItem();
-        const auto selectedRow = selected ? ItemsList().ContainerFromItem(selected).try_as<ListViewItem>() : nullptr;
-        if ((!selectedRow || selectedRow.Visibility() != Visibility::Visible) &&
-            ItemsList().Visibility() == Visibility::Visible)
+        if (ItemsList().Visibility() == Visibility::Visible &&
+            (SearchPanel().Visibility() != Visibility::Visible || sender == SearchTextBox()))
         {
             if (const auto target = _sidebarEntryTarget())
             {
@@ -1868,10 +1888,13 @@ namespace winrt::TerminalApp::implementation
     {
         for (uint32_t index = ItemsList().Items().Size(); index > 0; --index)
         {
-            if (const auto row = ItemsList().ContainerFromIndex(index - 1).try_as<ListViewItem>();
-                row && row.Visibility() == Visibility::Visible && row.IsEnabled())
+            const auto item = ItemsList().Items().GetAt(index - 1);
+            if (_isSidebarFocusableItem(item))
             {
-                return row.Focus(FocusState::Keyboard);
+                if (const auto row = _realizeSidebarItem(item))
+                {
+                    return row.Focus(FocusState::Keyboard);
+                }
             }
         }
         if (const auto last = WUX::Input::FocusManager::FindLastFocusableElement(ContentGrid()).try_as<Control>())
