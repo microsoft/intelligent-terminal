@@ -376,6 +376,7 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
+        bool FocusActiveSidebarTab();
         bool FocusLastSidebarStop();
         void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }

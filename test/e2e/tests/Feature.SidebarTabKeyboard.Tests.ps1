@@ -837,6 +837,137 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }
     }
 
+    It 'F6 cycles Sidebar regions from the active tab without entering shell input' -Tag 'SidebarF6FocusCycle' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $shell = [Windows.Automation.AutomationElement]::FocusedElement
+        $draft = "F6_DRAFT_$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+        Send-WtInput -App $script:app -SessionId $script:tabB.session_id -Text $draft | Out-Null
+        Wait-Until -TimeoutSec 8 -Condition {
+            (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd().EndsWith($draft)
+        } | Out-Null
+        $agentToggle = Get-SidebarElement AgentToggleButton
+        $agentToggle | Should -Not -BeNullOrEmpty
+
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the first F6 from shell focuses the active tab'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        $paneStop = Assert-FocusedShellPaneStop
+        $shell.Current.HasKeyboardFocus | Should -BeFalse
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+            Should -BeTrue -Because 'F6 jumps to the agent region, not each tab stop'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        [Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
+            Should -Be 'Collapse sidebar' -Because 'F6 reaches the Sidebar chrome'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'F6 wraps back to the active tab'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.AutomationElement]::FocusedElement.Current.Name | Should -Be 'Collapse sidebar'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) | Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) | Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+F6 wraps to the active tab'
+        (Get-WtCapture -App $script:app -SessionId $script:tabB.session_id -MaxLines 30).TrimEnd() |
+            Should -Match ([regex]::Escape($draft) + '$') -Because 'F6 must not type into the shell'
+    }
+
+    It 'F6 outlines the active shell in a split tab' -Tag 'SidebarF6SplitPane' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        $split = Split-WtPane -App $script:app -SessionId $script:tabB.session_id -Direction right `
+            -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
+        try {
+            Set-WtPaneFocus -App $script:app -SessionId $split.session_id
+            $shell = [Windows.Automation.AutomationElement]::FocusedElement
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'F6 enters the owning split tab'
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            $paneStop = Assert-FocusedShellPaneStop
+            $paneStop.Current.BoundingRectangle.Width |
+                Should -BeGreaterOrEqual ($shell.Current.BoundingRectangle.Width - 8)
+            $paneStop.Current.BoundingRectangle.Width |
+                Should -BeLessOrEqual ($shell.Current.BoundingRectangle.Width + 8) -Because 'F6 outlines only the selected split pane'
+            (Get-ActivePane -App $script:app).session_id |
+                Should -Be $split.session_id -Because 'F6 must not select the sibling pane'
+        }
+        finally {
+            Close-WtPane -App $script:app -SessionId $split.session_id
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
+    It 'F6 focuses the compact active tab without expanding Sidebar' -Tag 'SidebarF6Collapsed' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Invoke-UiElement -App $script:app -Selector 'Collapse sidebar' | Out-Null
+        try {
+            Wait-UiElement -App $script:app -Selector CompactNewTabButton | Out-Null
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            @(Get-VisibleTabRows).Count | Should -Be 3
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'F6 focuses the compact icon row without expanding Sidebar'
+            $header = Get-SidebarElement -AutomationId 'VerticalTabsHeader'
+            [bool]($header -and -not $header.Current.IsOffscreen) |
+                Should -BeFalse -Because 'the compact Sidebar must stay collapsed'
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            Assert-FocusedShellPaneStop | Out-Null
+            Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+F6 returns to the compact icon row'
+        }
+        finally {
+            Invoke-UiElement -App $script:app -Selector 'Expand sidebar' | Out-Null
+            Wait-UiElement -App $script:app -Selector VerticalTabsHeader | Out-Null
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
+    It 'F6 falls back to a visible filtered tab without changing selection' -Tag 'SidebarF6Filtered' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        try {
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $script:titleA | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition { @(Get-VisibleTabRows).Count -eq 1 }) | Should -BeTrue
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 0 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'a filtered-out active tab falls back to the first visible row'
+
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value "F6_NO_MATCH_$script:marker" | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                try { @(Get-VisibleTabRows).Count -eq 0 } catch { $true }
+            }) | Should -BeTrue -Because 'the filter should display no tabs'
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            [Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
+                Should -Be 'Collapse sidebar' -Because 'F6 skips a list without visible tabs'
+            [string](Get-ActivePane -App $script:app).tab_id |
+                Should -Be ([string]$script:tabB.tab_id) -Because 'F6 never changes the active tab'
+        }
+        finally {
+            Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
     It 'Sidebar new tab and dropdown are separate keyboard stops' -Tag 'SidebarNewTabSplitFocus' {
         $script:app.Launched | Should -BeTrue
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
@@ -845,11 +976,19 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
         $baseline = @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count
-        Send-WtWindowKey -App $script:app -Vk 0x53 -Ctrl -Shift -RequireForeground | Out-Null
+        $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
+        $toggleName = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::NameProperty, 'Collapse sidebar')
+        $buttonType = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+        $toggle = $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.AndCondition]::new($toggleName, $buttonType))
+        $toggle | Should -Not -BeNullOrEmpty
+        $toggle.SetFocus()
         (Test-Until -TimeoutSec 5 -Condition {
-            [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Collapse sidebar'
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $toggle)
         }) | Should -BeTrue
-        $toggle = [Windows.Automation.AutomationElement]::FocusedElement
         $toggle.Current.Name | Should -Be 'Collapse sidebar'
 
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null

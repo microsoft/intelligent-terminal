@@ -1879,6 +1879,18 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
+    bool TabStrip::FocusActiveSidebarTab()
+    {
+        if (Visibility() == Visibility::Visible && ItemsList().Visibility() == Visibility::Visible)
+        {
+            if (const auto target = _sidebarEntryTarget())
+            {
+                return target.Focus(FocusState::Keyboard);
+            }
+        }
+        return false;
+    }
+
     void TabStrip::_onSidebarEntryKeyDown(IInspectable const& sender, WUX::Input::KeyRoutedEventArgs const& e)
     {
         if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
