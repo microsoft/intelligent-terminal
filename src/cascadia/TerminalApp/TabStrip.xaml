@@ -732,6 +732,7 @@
                   DragItemsStarting="OnDragItemsStarting"
                   DragItemsCompleted="OnDragItemsCompleted"
                   GotFocus="OnSidebarListFocusChanged"
+                  GettingFocus="OnSidebarListGettingFocus"
                   IsItemClickEnabled="False"
                   ItemClick="OnHistoryItemClick"
                   LostFocus="OnSidebarListFocusChanged"

@@ -643,26 +643,22 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
         $toolbarEnd = Get-SidebarElement -AutomationId 'FilterTabsButton'
         $toolbarEnd.Current.IsOffscreen | Should -BeFalse
+        @(Get-VisibleTabRows)[0].SetFocus()
         $toolbarEnd.SetFocus()
         $toolbarEnd.Current.HasKeyboardFocus | Should -BeTrue
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-before.png') | Out-Null
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-after-tab.png') | Out-Null
-        $entryIndex = Get-FocusedTabRowIndex
-        $entryIndex | Should -BeIn @(0, 1, 2) -Because 'Tab must enter a visible unfiltered Sidebar row'
-        Assert-FocusedTabRow -Index $entryIndex -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Tab enters the unfiltered Sidebar list without entering a terminal'
-        for ($row = $entryIndex; $row -gt 0; $row--) {
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Tab enters the active row, not the previously focused first row'
+        for ($row = 2; $row -gt 0; $row--) {
             Send-WtWindowKey -App $script:app -Vk 0x26 -RequireForeground | Out-Null
-            if ($row -eq $entryIndex) {
+            if ($row -eq 2) {
                 Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-after-first-navigation.png') | Out-Null
             }
             Assert-FocusedTabRow -Index ($row - 1) -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Up moves to a different unfiltered row without activating it'
         }
         for ($row = 0; $row -lt 2; $row++) {
             Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
-            if ($entryIndex -eq 0 -and $row -eq 0) {
-                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDir 'unfiltered-after-first-navigation.png') | Out-Null
-            }
             Assert-FocusedTabRow -Index ($row + 1) -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Down moves through unfiltered rows without activating them'
         }
         Send-WtWindowKey -App $script:app -Vk 0x26 -RequireForeground | Out-Null
@@ -672,6 +668,64 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             [string](Get-ActivePane -App $script:app).tab_id -eq [string]$script:tabA.tab_id -and
             [Windows.Automation.AutomationElement]::FocusedElement.Current.ClassName -eq 'TermControl'
         }) | Should -BeTrue -Because 'Enter alone activates the focused tab and moves focus into its terminal'
+    }
+
+    It 'Sidebar Tab navigation wraps between the last row and the rail toggle' -Tag 'SidebarTabFocusCycle' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $lastRow = @(Get-VisibleTabRows)[2]
+        $lastRow.SetFocus()
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'the last row is the forward Tab boundary'
+        $wrapped = $false
+        for ($step = 0; $step -lt 6; $step++) {
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            $focused.Current.ProcessId | Should -Be $script:app.Pid
+            $focused.Current.ClassName | Should -Not -Be 'TermControl' -Because 'Tab must not strand focus in terminal input'
+            if ($focused.Current.Name -eq 'Collapse sidebar') {
+                $wrapped = $true
+                break
+            }
+            (Get-FocusedTabRowIndex) | Should -BeGreaterOrEqual 0 -Because 'Tab stays within the Sidebar until it wraps'
+        }
+        $wrapped | Should -BeTrue -Because 'Tab from the last Sidebar control wraps to the rail toggle'
+        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+        Assert-FocusedTabRow -Index 2 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'Shift+Tab wraps from the rail toggle to the last row'
+    }
+
+    It 'Sidebar list entry follows the active tab across search results' -Tag 'SidebarActiveTabFocusEntry' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+        try {
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value "focus-$script:marker" | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition { @(Get-VisibleTabRows).Count -eq 2 }) | Should -BeTrue
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            @(Get-VisibleTabRows)[0].SetFocus()
+            $search.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 1 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'search entry focuses the active second result, not the first'
+
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value $script:titleA | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition { @(Get-VisibleTabRows).Count -eq 1 }) | Should -BeTrue
+            $search.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index 0 -SelectedTabId ([string]$script:tabB.tab_id) -Because 'a hidden active tab falls back to the first visible result without activating it'
+        }
+        finally {
+            $search = Get-SidebarElement -AutomationId 'SearchTextBox'
+            if ($search -and -not $search.Current.IsOffscreen) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
+        }
     }
 
     It 'Sidebar tabs keyboard navigation stays in the list (filtered)' {
