@@ -649,6 +649,7 @@
   <data name="ExportTabText"><value>Εξαγωγή κειμένου</value></data>
   <data name="FindText"><value>Εύρεση</value></data>
   <data name="RestartConnectionText"><value>Επανεκκίνηση περιόδου λειτουργίας</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} τμήματα παραθύρου</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Κλείσιμο</value></data>
   <data name="TabClose"><value>Κλείσιμο καρτέλας</value></data>
   <data name="MoveTabToNewWindowText"><value>Μετακίνηση καρτέλας σε νέο παράθυρο</value></data>

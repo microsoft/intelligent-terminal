@@ -34,6 +34,8 @@ namespace winrt::TerminalApp::implementation
         ~TabHeaderControl();
         void BeginRename();
         void CancelRename();
+        void SetSidebarTextStyles(const winrt::Windows::UI::Xaml::Style& titleStyle,
+                                  const winrt::Windows::UI::Xaml::Style& metadataStyle);
 
         void RenameBoxLostFocusHandler(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
@@ -89,6 +91,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::Grid _compactCompletionIndicator{ nullptr };
         winrt::TerminalApp::HighlightedTextControl _highlightedTitle{ nullptr };
         winrt::TerminalApp::HighlightedTextControl _metadataTextBlock{ nullptr };
+        winrt::Windows::UI::Xaml::Style _sidebarTitleTextStyle{ nullptr };
+        winrt::Windows::UI::Xaml::Style _sidebarMetadataTextStyle{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::UIElement> _nativeHeaderPresenter;
         int64_t _nativeHeaderVisibilityToken{ 0 };
 

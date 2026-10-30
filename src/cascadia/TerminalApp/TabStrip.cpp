@@ -394,6 +394,7 @@ namespace winrt::TerminalApp::implementation
         if (!verticalPresentation)
         {
             _sidebarHints.reset();
+            _sidebarToolTipContent = nullptr;
         }
         _publishHints(verticalPresentation);
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
@@ -421,9 +422,19 @@ namespace winrt::TerminalApp::implementation
         UpdateCloseVisibility(railCollapsed);
     }
 
-    void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints, bool verticalPresentation)
+    void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints,
+                                              IInspectable const& toolTipContent,
+                                              bool verticalPresentation)
     {
+        if (const auto previous = _sidebarToolTipContent.try_as<FrameworkElement>())
+        {
+            if (const auto replacement = toolTipContent.try_as<FrameworkElement>())
+            {
+                replacement.FlowDirection(previous.FlowDirection());
+            }
+        }
         _sidebarHints = verticalPresentation ? std::move(hints) : std::nullopt;
+        _sidebarToolTipContent = verticalPresentation ? toolTipContent : nullptr;
         _publishHints(verticalPresentation);
     }
 
@@ -433,6 +444,7 @@ namespace winrt::TerminalApp::implementation
                                                               WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         ToolTipText(verticalPresentation && _sidebarHints ? _sidebarHints->second :
                                                            WUX::Automation::AutomationProperties::GetHelpText(_tab));
+        ToolTipContent(verticalPresentation && _sidebarHints ? _sidebarToolTipContent : nullptr);
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
@@ -1737,7 +1749,29 @@ namespace winrt::TerminalApp::implementation
                 FrameworkElement title{ nullptr };
                 if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
                 {
-                    title = header.FindName(header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" : L"HeaderTextBlock").try_as<FrameworkElement>();
+                    const auto titleName = header.InRename()           ? L"HeaderRenamerTextBox" :
+                                           header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" :
+                                                                         L"HeaderTextBlock";
+                    title = header.FindName(titleName).try_as<FrameworkElement>();
+                    if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
+                    {
+                        const auto alignment = _isRailCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
+                        if (leading.VerticalAlignment() != alignment)
+                        {
+                            leading.VerticalAlignment(alignment);
+                        }
+                        auto leadingMargin = leading.Margin();
+                        leadingMargin.Top = 0;
+                        if (!_isRailCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
+                        {
+                            const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                            leadingMargin.Top = position.Y + title.ActualHeight() / 2.0 - leading.ActualHeight() / 2.0;
+                        }
+                        if (leading.Margin() != leadingMargin)
+                        {
+                            leading.Margin(leadingMargin);
+                        }
+                    }
                 }
                 else
                 {
@@ -1858,6 +1892,10 @@ namespace winrt::TerminalApp::implementation
         if (const auto tooltip = ToolTipService::GetToolTip(row).try_as<ToolTip>())
         {
             tooltip.Placement(row.FlowDirection() == FlowDirection::RightToLeft ? Primitives::PlacementMode::Left : Primitives::PlacementMode::Right);
+            if (const auto content = tooltip.Content().try_as<FrameworkElement>())
+            {
+                content.FlowDirection(row.FlowDirection());
+            }
             ToolTipService::SetPlacementTarget(row, target);
             tooltip.PlacementRect(row.TransformToVisual(target).TransformBounds(
                 Rect{ 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) }));
@@ -1872,6 +1910,12 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        impl->SetSidebarTextStyles(
+            Resources().Lookup(box_value(L"SidebarTitleTextStyle")).as<WUX::Style>(),
+            Resources().Lookup(box_value(L"SidebarMetadataTextStyle")).as<WUX::Style>());
+        // Keep 24-DIP adornments centered without enlarging the 20-DIP title line.
+        header.FindName(L"HeaderCompletionIndicator").as<FrameworkElement>().Margin({ 12, -2, 0, -2 });
+        header.FindName(L"HeaderRenamerTextBox").as<FrameworkElement>().Margin({ 0, -2, 0, -2 });
         header.TitleChangeRequested([weakThis = get_weak(), weakHeader = winrt::make_weak(header)](const auto& title) {
             const auto self = weakThis.get();
             const auto view = weakHeader.get();
@@ -3086,6 +3130,7 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
+        TabsToolbar().Margin(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 0, 0, -8, 0 });
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 12, 0, 8, 0 });
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);

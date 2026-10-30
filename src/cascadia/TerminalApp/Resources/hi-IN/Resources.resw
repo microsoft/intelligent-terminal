@@ -540,7 +540,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>हाल के एजेंट सत्र</value>
+    <value>एजेंटों के हाल के सत्र</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -765,6 +765,7 @@
   <data name="ExportTabText"><value>पाठ निर्यात करें</value></data>
   <data name="FindText"><value>खोजें</value></data>
   <data name="RestartConnectionText"><value>सत्र पुनः प्रारंभ करें</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} पेन</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>बंद करें</value></data>
   <data name="TabClose"><value>टैब बंद करें</value></data>
   <data name="MoveTabToNewWindowText"><value>टैब नई विंडो में ले जाएँ</value></data>

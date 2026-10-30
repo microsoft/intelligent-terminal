@@ -359,7 +359,6 @@ namespace winrt::TerminalApp::implementation
         bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
-        winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarHotkeyReturnControl;
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };
         bool _tabSearchActive{ false };
         winrt::hstring _tabSearchQuery;
@@ -454,6 +453,7 @@ namespace winrt::TerminalApp::implementation
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _sidebarIntroductionLayoutRevoker;
         Windows::UI::Xaml::Controls::Primitives::Popup _sidebarIntroductionPopup{ nullptr };
         void _TryShowSidebarIntroduction();
+        bool _CanShowAgentProfilesIntroduction();
         Microsoft::UI::Xaml::Controls::TeachingTip _PrepareSidebarIntroduction();
         void _OnSidebarIntroductionPresented();
         void _OnSidebarIntroductionClosed(const Microsoft::UI::Xaml::Controls::TeachingTip& sender, const Windows::Foundation::IInspectable& args);
@@ -687,6 +687,7 @@ namespace winrt::TerminalApp::implementation
         bool _startupStructureSettleQueued{ false };
         bool _pendingFreEnsureAgentPaneVisible{ false };
         bool _pendingFreAutoInstallCopilot{ false };
+        bool _freChromeVisible{ true };
         winrt::hstring _freAutoInstallTargetTabId;
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
@@ -1137,6 +1138,7 @@ namespace winrt::TerminalApp::implementation
         void _StopSidebarHistoryRefreshTimer();
         void _ResetSidebarHistoryMasterRecovery();
         bool _ExpireSidebarHistoryMasterRecovery(std::chrono::steady_clock::time_point now);
+        bool _IsVisibleSidebarControl(const Windows::UI::Xaml::Controls::Control& control) const;
         Windows::UI::Xaml::Controls::Control _SidebarFocusedControl() const;
         bool _TryFocusSidebarInput(const Microsoft::Terminal::Control::TermControl& control);
         void _FocusSidebarTerminalFallback();
@@ -1472,7 +1474,6 @@ namespace winrt::TerminalApp::implementation
         void _ApplyPendingTabLayout();
         void _InstallVerticalRailSplitter();
         void _SetVerticalRailVisibility(bool visible);
-        void _ToggleSidebarHotkey();
         void _OnVerticalRailCollapseRequested(const IInspectable& sender, const IInspectable& eventArgs);
         void _CancelRailSplitterDrag();
         void _SetRailSplitterCursor();
@@ -1514,6 +1515,7 @@ namespace winrt::TerminalApp::implementation
 
         // First-run experience
         bool _IsFreRequired() const;
+        void _SetFreChromeVisible(bool visible);
         void _ShowFreOverlay();
         void _OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender, const winrt::Windows::Foundation::IInspectable& args);
 

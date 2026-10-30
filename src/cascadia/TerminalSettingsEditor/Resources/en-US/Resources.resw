@@ -3122,4 +3122,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Your organization blocks managed native agent launches. The agent must be allowed, and policy must permit automatic approval because native agents control their own approval settings.</value>
     <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>Agent profiles added automatically</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal automatically adds your installed agent CLIs as profiles. Open one from the new tab menu to get started.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
 </root>

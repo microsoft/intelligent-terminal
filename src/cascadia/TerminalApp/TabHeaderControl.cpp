@@ -287,6 +287,23 @@ namespace winrt::TerminalApp::implementation
         return !SearchText().empty() && !InRename();
     }
 
+    void TabHeaderControl::SetSidebarTextStyles(const Windows::UI::Xaml::Style& titleStyle,
+                                                const Windows::UI::Xaml::Style& metadataStyle)
+    {
+        _sidebarTitleTextStyle = titleStyle;
+        _sidebarMetadataTextStyle = metadataStyle;
+        HeaderTextBlock().Style(titleStyle);
+        if (_highlightedTitle)
+        {
+            _highlightedTitle.TextBlockStyle(titleStyle);
+        }
+        if (_metadataTextBlock)
+        {
+            _metadataTextBlock.TextBlockStyle(metadataStyle);
+            _metadataTextBlock.Margin({});
+        }
+    }
+
     void TabHeaderControl::_UpdateTitleVisibility()
     {
         if (_initialized)
@@ -301,6 +318,10 @@ namespace winrt::TerminalApp::implementation
                 if (!_highlightedTitle)
                 {
                     _highlightedTitle = FindName(L"HeaderHighlightedTextBlock").as<TerminalApp::HighlightedTextControl>();
+                    if (_sidebarTitleTextStyle)
+                    {
+                        _highlightedTitle.TextBlockStyle(_sidebarTitleTextStyle);
+                    }
                 }
             }
             else if (_highlightedTitle)
@@ -347,6 +368,11 @@ namespace winrt::TerminalApp::implementation
             if (!_metadataTextBlock)
             {
                 _metadataTextBlock = FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+                if (_sidebarMetadataTextStyle)
+                {
+                    _metadataTextBlock.TextBlockStyle(_sidebarMetadataTextStyle);
+                    _metadataTextBlock.Margin({});
+                }
             }
             _metadataTextBlock.Visibility(!InRename() ?
                                               Windows::UI::Xaml::Visibility::Visible :

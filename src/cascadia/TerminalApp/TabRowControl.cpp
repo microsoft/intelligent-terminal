@@ -21,6 +21,11 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static constexpr double NewTabRegionWidth = 46.02;
+    static constexpr double NewTabButtonHeight = 36.81;
+    static constexpr double SidebarToggleIconSize = 14.0;
+    static constexpr double NewTabIconSize = 16.0;
+
     static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
     {
         if (!panel || !child)
@@ -38,6 +43,19 @@ namespace winrt::TerminalApp::implementation
     static WUX::Media::Geometry _geometryFromPathData(const hstring& data)
     {
         return WUX::Markup::XamlBindingHelper::ConvertValue(xaml_typename<WUX::Media::Geometry>(), box_value(data)).as<WUX::Media::Geometry>();
+    }
+
+    static WUX::Controls::Viewbox _titlebarFontIcon(const hstring& glyph, const double size)
+    {
+        WUX::Controls::FontIcon icon;
+        icon.Glyph(glyph);
+        icon.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+
+        WUX::Controls::Viewbox viewbox;
+        viewbox.Width(size);
+        viewbox.Height(size);
+        viewbox.Child(icon);
+        return viewbox;
     }
 
     TabRowControl::TabRowControl()
@@ -130,8 +148,8 @@ namespace winrt::TerminalApp::implementation
         railToggleGeometry.Transform(railToggleOffset);
 
         WUX::Controls::PathIcon railToggleIcon;
-        railToggleIcon.Width(14);
-        railToggleIcon.Height(14);
+        railToggleIcon.Width(SidebarToggleIconSize);
+        railToggleIcon.Height(SidebarToggleIconSize);
         railToggleIcon.Data(railToggleGeometry);
         railToggle.Content(railToggleIcon);
         railToggle.Click([weakThis = get_weak()](auto&&, auto&&) {
@@ -192,17 +210,20 @@ namespace winrt::TerminalApp::implementation
         // the horizontal button leaves its automation peer attached to the
         // old subtree and hides the client UIA tree after a layout round trip.
         _verticalNewTabButton = MUX::Controls::SplitButton{};
-        _verticalNewTabButton.Width(71);
-        _verticalNewTabButton.Height(32);
+        _verticalNewTabButton.Width(NewTabRegionWidth * 2);
+        _verticalNewTabButton.Height(NewTabButtonHeight);
         _verticalNewTabButton.Padding(WUX::Thickness{});
         _verticalNewTabButton.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
         _verticalNewTabButton.VerticalAlignment(WUX::VerticalAlignment::Center);
         _verticalNewTabButton.AllowDrop(true);
         _verticalNewTabButton.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         _verticalNewTabButton.BorderThickness(WUX::Thickness{});
-        _verticalNewTabButton.Content(box_value(L"\xE710"));
-        _verticalNewTabButton.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
-        _verticalNewTabButton.FontSize(12);
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonPrimaryButtonSize"), box_value(NewTabRegionWidth));
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonSecondaryButtonSize"), box_value(NewTabRegionWidth));
+        const auto newTabGlyph = _titlebarFontIcon(L"\xE710", NewTabIconSize);
+        newTabGlyph.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+        newTabGlyph.VerticalAlignment(WUX::VerticalAlignment::Center);
+        _verticalNewTabButton.Content(newTabGlyph);
         WUX::Automation::AutomationProperties::SetAccessibilityView(_verticalNewTabButton, WUX::Automation::Peers::AccessibilityView::Control);
         const auto newTabName = WUX::Automation::AutomationProperties::GetName(NewTabButton());
         const auto newTabHelpText = WUX::Automation::AutomationProperties::GetHelpText(NewTabButton());
@@ -222,13 +243,23 @@ namespace winrt::TerminalApp::implementation
                         background.CornerRadius(button.CornerRadius());
                     }
                 }
-                if (const auto secondary = root.FindName(L"SecondaryButton").template try_as<WUX::Controls::Button>())
+                for (const auto name : { L"PrimaryButton", L"SecondaryButton" })
                 {
-                    secondary.Padding(WUX::Thickness{});
-                    secondary.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
-                    if (const auto icon = secondary.Content().template try_as<WUX::FrameworkElement>())
+                    if (const auto splitRegion = root.FindName(name).template try_as<WUX::Controls::Button>())
                     {
-                        icon.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                        splitRegion.Padding(WUX::Thickness{});
+                        splitRegion.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
+                        splitRegion.VerticalContentAlignment(WUX::VerticalAlignment::Center);
+                        if (std::wstring_view{ name } == L"SecondaryButton")
+                        {
+                            const auto dropdownGlyph = _titlebarFontIcon(L"\xE70D", NewTabIconSize);
+                            splitRegion.Content(dropdownGlyph);
+                        }
+                        if (const auto icon = splitRegion.Content().template try_as<WUX::FrameworkElement>())
+                        {
+                            icon.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                            icon.VerticalAlignment(WUX::VerticalAlignment::Center);
+                        }
                     }
                 }
             }
@@ -315,8 +346,8 @@ namespace winrt::TerminalApp::implementation
             _verticalRailToggleLabel.Text(label);
             _verticalRailToggleShortcut.Text(_sidebarToggleKeyChordText);
             _verticalRailToggleShortcut.Visibility(_sidebarToggleKeyChordText.empty() ?
-                                                      WUX::Visibility::Collapsed :
-                                                      WUX::Visibility::Visible);
+                                                       WUX::Visibility::Collapsed :
+                                                       WUX::Visibility::Visible);
         }
     }
 

@@ -203,7 +203,8 @@
                 </muxc:NavigationViewItem.InfoBadge>
             </muxc:NavigationViewItem>
 
-            <muxc:NavigationViewItemHeader x:Uid="Nav_Profiles" />
+            <muxc:NavigationViewItemHeader x:Name="ProfilesNavHeader"
+                                           x:Uid="Nav_Profiles" />
 
             <muxc:NavigationViewItem x:Name="BaseLayerMenuItem"
                                      x:Uid="Nav_ProfileDefaults"
@@ -222,6 +223,33 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <muxc:TeachingTip x:Name="AgentProfilesIntroductionTip"
+                              x:Load="False"
+                              AutomationProperties.AutomationId="AgentProfilesIntroductionTip"
+                              CloseButtonClick="AgentProfilesIntroductionTip_CloseButtonClick"
+                              Closed="AgentProfilesIntroductionTip_Closed"
+                              IsLightDismissEnabled="False"
+                              PreferredPlacement="Right">
+                <muxc:TeachingTip.Content>
+                    <StackPanel MaxWidth="330"
+                                Spacing="4">
+                        <StackPanel x:Name="AgentProfilesIntroductionHeader"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                            <TextBlock x:Uid="AgentProfilesIntroductionTitle"
+                                       MaxWidth="260"
+                                       VerticalAlignment="Center"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <muxc:InfoBadge VerticalAlignment="Center"
+                                            Style="{StaticResource NewInfoBadge}" />
+                        </StackPanel>
+                        <TextBlock x:Uid="AgentProfilesIntroductionDescription"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </muxc:TeachingTip.Content>
+            </muxc:TeachingTip>
             <ScrollViewer x:Name="SettingsMainPage_ScrollViewer"
                           Grid.Row="0">
                 <Frame x:Name="contentFrame"

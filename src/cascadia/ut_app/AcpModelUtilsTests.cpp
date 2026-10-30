@@ -34,10 +34,60 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParsesAndNormalizesCatalog);
         TEST_METHOD(ParsesCatalogValue);
         TEST_METHOD(ExcludesCustomSelectionIdsOnRequest);
+        TEST_METHOD(ReconcilesStaleModelSelections);
+        TEST_METHOD(PreservesModelSelectionsWithoutAuthority);
+        TEST_METHOD(PreservesConfiguredCustomSelections);
         TEST_METHOD(CustomLaunchIdentityTracksOnlyLaunchFields);
         TEST_METHOD(CustomCatalogSerializationIsCredentialFree);
         TEST_METHOD(LargeCustomCatalogDoesNotExpandHelperBootstrap);
     };
+
+    void AcpModelUtilsTests::ReconcilesStaleModelSelections()
+    {
+        const auto available = [](const std::wstring_view id) { return id == L"current-model"; };
+        const auto missing = [](const std::wstring_view) { return false; };
+
+        const auto native = ReconcileModelSelection(L"obsolete-model", L"", true, true, available, missing);
+        VERIFY_IS_TRUE(native.acpModel);
+        VERIFY_IS_FALSE(native.customModelSelection);
+
+        const auto custom = ReconcileModelSelection(L"current-model", L"custom:missing:old", true, true, available, missing);
+        VERIFY_IS_FALSE(custom.acpModel);
+        VERIFY_IS_TRUE(custom.customModelSelection);
+
+        const auto both = ReconcileModelSelection(L"obsolete-model", L"custom:missing:old", true, true, available, missing);
+        VERIFY_IS_TRUE(both.acpModel);
+        VERIFY_IS_TRUE(both.customModelSelection);
+    }
+
+    void AcpModelUtilsTests::PreservesModelSelectionsWithoutAuthority()
+    {
+        const auto unavailable = [](const std::wstring_view) { return false; };
+        const auto unknown = ReconcileModelSelection(L"future-model", L"custom:future:model", true, false, unavailable, unavailable);
+        VERIFY_IS_FALSE(unknown.acpModel);
+        VERIFY_IS_FALSE(unknown.customModelSelection);
+
+        const auto unsupported = ReconcileModelSelection(L"obsolete-model", L"custom:provider:model", false, true, unavailable, unavailable);
+        VERIFY_IS_TRUE(unsupported.acpModel);
+        VERIFY_IS_FALSE(unsupported.customModelSelection);
+    }
+
+    void AcpModelUtilsTests::PreservesConfiguredCustomSelections()
+    {
+        const auto available = [](const std::wstring_view id) { return id == L"advertised-model"; };
+        const auto configured = [](const std::wstring_view id) { return id == L"custom:provider:model"; };
+        const auto custom = ReconcileModelSelection(L"obsolete-native", L"custom:provider:model", true, true, available, configured);
+        VERIFY_IS_FALSE(custom.acpModel);
+        VERIFY_IS_FALSE(custom.customModelSelection);
+
+        const auto legacy = ReconcileModelSelection(L"custom:provider:model", L"", true, true, available, configured);
+        VERIFY_IS_FALSE(legacy.acpModel);
+        VERIFY_IS_FALSE(legacy.customModelSelection);
+
+        const auto advertised = ReconcileModelSelection(L"advertised-model", L"", true, true, available, configured);
+        VERIFY_IS_FALSE(advertised.acpModel);
+        VERIFY_IS_FALSE(advertised.customModelSelection);
+    }
 
     void AcpModelUtilsTests::AntigravityCliOnlyIsBootstrapCandidate()
     {
