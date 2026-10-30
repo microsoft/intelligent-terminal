@@ -162,5 +162,6 @@ namespace TerminalApp
 
         Boolean ShouldConstrainFreLaunchToWorkArea();
         Boolean IsFreRequired();
+        void WindowMoveSizeChanged(Boolean moving);
     }
 }

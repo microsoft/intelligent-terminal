@@ -444,6 +444,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalWindow::WindowMoveSizeChanged(const bool moving)
+    {
+        if (_root)
+        {
+            _root->WindowMoveSizeChanged(moving);
+        }
+    }
+
     // Method Description:
     // - Displays a dialog for errors found while loading or validating the
     //   settings. Uses the resources under the provided  title and content keys

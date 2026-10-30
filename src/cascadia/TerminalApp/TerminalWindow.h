@@ -143,6 +143,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> ShowDialog(winrt::Windows::UI::Xaml::Controls::ContentDialog dialog);
         void DismissDialog();
         void WindowMoved();
+        void WindowMoveSizeChanged(bool moving);
 
         Microsoft::Terminal::Settings::Model::Theme Theme();
         void UpdateSettingsHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::TerminalApp::SettingsLoadEventArgs& arg);

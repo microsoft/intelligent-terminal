@@ -76,6 +76,7 @@ AppHost::AppHost(WindowEmperor* manager, const winrt::TerminalApp::AppLogic& log
     _windowCallbacks.MouseScrolled = _window->MouseScrolled({ this, &AppHost::_WindowMouseWheeled });
     _windowCallbacks.WindowActivated = _window->WindowActivated({ this, &AppHost::_WindowActivated });
     _windowCallbacks.WindowMoved = _window->WindowMoved({ this, &AppHost::_WindowMoved });
+    _windowCallbacks.WindowMoveSizeChanged = _window->WindowMoveSizeChanged({ this, &AppHost::_WindowMoveSizeChanged });
     _windowCallbacks.ShouldExitFullscreen = _window->ShouldExitFullscreen({ &_windowLogic, &winrt::TerminalApp::TerminalWindow::RequestExitFullscreen });
 
     _window->MakeWindow();
@@ -421,6 +422,7 @@ void AppHost::_revokeWindowCallbacks()
     _window->MouseScrolled(_windowCallbacks.MouseScrolled);
     _window->WindowActivated(_windowCallbacks.WindowActivated);
     _window->WindowMoved(_windowCallbacks.WindowMoved);
+    _window->WindowMoveSizeChanged(_windowCallbacks.WindowMoveSizeChanged);
     _window->ShouldExitFullscreen(_windowCallbacks.ShouldExitFullscreen);
     _window->WindowCloseButtonClicked(_windowCallbacks.WindowCloseButtonClicked);
     _window->DragRegionClicked(_windowCallbacks.DragRegionClicked);
@@ -1239,6 +1241,14 @@ void AppHost::_SystemMenuChangeRequested(const winrt::Windows::Foundation::IInsp
     default:
     {
     }
+    }
+}
+
+void AppHost::_WindowMoveSizeChanged(const bool moving)
+{
+    if (_isWindowInitialized == WindowInitializedState::Initialized && _windowLogic)
+    {
+        _windowLogic.WindowMoveSizeChanged(moving);
     }
 }
 

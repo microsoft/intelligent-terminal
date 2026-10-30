@@ -8705,6 +8705,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::WindowMoved()
     {
+        if (_settingsMainPage)
+        {
+            _settingsMainPage.WindowMoveSizeChanged(_windowMoveSizeInProgress);
+        }
         if (_sidebarIntroductionClaim)
         {
             if (const auto tip = SidebarIntroductionTip(); tip && tip.IsOpen())
@@ -8712,6 +8716,15 @@ namespace winrt::TerminalApp::implementation
                 tip.IsOpen(false);
             }
             _ReleaseSidebarIntroduction(false);
+        }
+    }
+
+    void TerminalPage::WindowMoveSizeChanged(const bool moving)
+    {
+        _windowMoveSizeInProgress = moving;
+        if (_settingsMainPage)
+        {
+            _settingsMainPage.WindowMoveSizeChanged(moving);
         }
     }
 
@@ -18386,7 +18399,7 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_CanShowAgentProfilesIntroduction()
     {
-        return _visible && _activated && !_windowPanesShutdown &&
+        return _visible && _activated && !_windowPanesShutdown && !_windowMoveSizeInProgress &&
                !(CommandPaletteElement() && CommandPaletteElement().Visibility() == Visibility::Visible) &&
                !(SuggestionsElement() && SuggestionsElement().Visibility() == Visibility::Visible) &&
                !(FreOverlayElement() && FreOverlayElement().Visibility() == Visibility::Visible);
@@ -18408,6 +18421,7 @@ namespace winrt::TerminalApp::implementation
         auto sui = settingsContent->SettingsUI();
         sui.FlowDirection(_isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight);
         _settingsMainPage = sui;
+        sui.WindowMoveSizeChanged(_windowMoveSizeInProgress);
 
         sui.SetAgentProfilesIntroductionPresentationGate([weak = get_weak()]() {
             if (const auto page = weak.get())

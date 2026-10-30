@@ -80,6 +80,7 @@ private:
     void _WindowMouseWheeled(const winrt::Windows::Foundation::Point coord, const winrt::Microsoft::Terminal::Core::Point delta);
     void _WindowActivated(bool activated);
     void _WindowMoved();
+    void _WindowMoveSizeChanged(bool moving);
 
     void _IdentifyWindowsRequested(winrt::Windows::Foundation::IInspectable sender,
                                    winrt::Windows::Foundation::IInspectable args);
@@ -194,6 +195,7 @@ private:
         winrt::event_token MouseScrolled;
         winrt::event_token WindowActivated;
         winrt::event_token WindowMoved;
+        winrt::event_token WindowMoveSizeChanged;
         winrt::event_token ShouldExitFullscreen;
         winrt::event_token WindowCloseButtonClicked;
         winrt::event_token DragRegionClicked;
