@@ -17979,6 +17979,9 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, nativeGroupSelection.Visibility());
             const auto paneList = templateRoot.Children().GetAt(1).as<ItemsControl>();
+            const auto groupIndicator = Media::VisualTreeHelper::GetChild(paneList, 0).as<FrameworkElement>()
+                                            .FindName(L"PaneGroupIndicator").as<FrameworkElement>();
+            VERIFY_IS_TRUE(std::abs(centerX(groupIndicator) - groupIconCenter) <= 1.0);
             const auto firstPaneContainer = paneList.ContainerFromIndex(0).as<ContentPresenter>();
             const auto firstPaneRoot = Media::VisualTreeHelper::GetChild(firstPaneContainer, 0).as<Grid>();
             const auto secondPaneContainer = paneList.ContainerFromIndex(1).as<ContentPresenter>();
@@ -25464,6 +25467,8 @@ namespace TerminalAppLocalTests
             winrt::MUX::Controls::TabViewItem first;
             winrt::TerminalApp::TabHeaderControl firstHeader;
             firstHeader.Title(L"First tab");
+            firstHeader.MetadataText(L"C:\\workspace\\sample");
+            firstHeader.IsMetadataVisible(true);
             first.Header(firstHeader);
             winrt::MUX::Controls::TabViewItem second;
             winrt::TerminalApp::TabHeaderControl secondHeader;
@@ -25486,19 +25491,17 @@ namespace TerminalAppLocalTests
             const auto firstClose = firstRow.FindName(L"TabCloseButton").as<Button>();
             const auto secondClose = secondRow.FindName(L"TabCloseButton").as<Button>();
             const auto firstSlot = firstRow.FindName(L"TabCloseButtonSlot").as<Grid>();
-            const auto firstTitle = firstRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderTextBlock").as<FrameworkElement>();
             const auto secondDisplay = impl->DisplayItemForTab(second);
 
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondClose.Visibility());
-            const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& title, const FrameworkElement& slot) {
-                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+            const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& slot) {
                 const auto slotPosition = slot.TransformToVisual(row).TransformPoint({ 0, 0 });
                 VERIFY_ARE_EQUAL(24.0, slot.ActualWidth());
                 VERIFY_ARE_EQUAL(24.0, slot.ActualHeight());
-                VERIFY_IS_TRUE(std::abs(slotPosition.Y + slot.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(slotPosition.Y + slot.ActualHeight() / 2 - row.ActualHeight() / 2) <= 1.0);
             };
-            verifyCloseAlignment(firstRow, firstTitle, firstSlot);
+            verifyCloseAlignment(firstRow, firstSlot);
             const auto verifyCloseInteractionBackground = [](const Button& close) {
                 close.ApplyTemplate();
                 const auto findPresenter = [](const auto& self, const DependencyObject& element) -> ContentPresenter {
@@ -25536,9 +25539,8 @@ namespace TerminalAppLocalTests
             const auto paneRoot = Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(0), 0).as<Grid>();
             const auto paneClose = paneRoot.FindName(L"PaneCloseButton").as<Button>();
             const auto paneSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
-            const auto paneTitle = paneRoot.FindName(L"PaneTitleText").as<FrameworkElement>();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, paneClose.Visibility());
-            verifyCloseAlignment(paneRoot, paneTitle, paneSlot);
+            verifyCloseAlignment(paneRoot, paneSlot);
             VERIFY_IS_TRUE(std::abs(paneRoot.ColumnDefinitions().GetAt(1).ActualWidth() - paneSlot.ActualWidth() - paneSlot.Margin().Left - paneSlot.Margin().Right) <= 1.0);
             strip.SetPaneItems(first, nullptr, false);
             strip.SelectedItem(nullptr);
@@ -25564,7 +25566,7 @@ namespace TerminalAppLocalTests
             firstDisplay.HeaderMinHeight(56);
             strip.UpdateLayout();
             VERIFY_IS_TRUE(firstRow.ActualHeight() >= 56);
-            verifyCloseAlignment(firstRow, firstTitle, firstSlot);
+            verifyCloseAlignment(firstRow, firstSlot);
             VERIFY_IS_TRUE(firstClose.TransformToVisual(firstRow).TransformPoint({ 0, 0 }).X + firstClose.ActualWidth() <= firstRow.ActualWidth());
 
             strip.IsRailCollapsed(true);
@@ -26926,7 +26928,12 @@ namespace TerminalAppLocalTests
                     strip.UpdateLayout();
                 });
                 _waitForContentTransferReviewUI([&]() {
-                    return metadata.ColorHighlight() == color && metadata.ActualTheme() == theme;
+                    const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+                    const auto highlights = textBlock.TextHighlighters();
+                    return metadata.ColorHighlight() == color && metadata.ActualTheme() == theme &&
+                           highlights.Size() > 0 &&
+                           textBlock.Foreground().as<Media::SolidColorBrush>().Color() ==
+                               highlights.GetAt(0).Foreground().as<Media::SolidColorBrush>().Color();
                 });
                 TestOnUIThread([&]() {
                     const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->DisplayItemForTab(tab);
@@ -26938,6 +26945,8 @@ namespace TerminalAppLocalTests
                     const auto textBlock = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto highlights = textBlock.TextHighlighters();
                     VERIFY_ARE_EQUAL(color == winrt::TerminalApp::TextHighlightColor::None ? 1u : 2u, highlights.Size());
+                    VERIFY_ARE_EQUAL(textBlock.Foreground().as<Media::SolidColorBrush>().Color(),
+                                     highlights.GetAt(0).Foreground().as<Media::SolidColorBrush>().Color());
                     VERIFY_IS_TRUE(std::abs(_effectiveTextOpacity(textBlock, textBlock.Foreground()) * 0.72 -
                                             _effectiveTextOpacity(textBlock, highlights.GetAt(0).Foreground())) < 0.000001);
                     if (color != winrt::TerminalApp::TextHighlightColor::None)
@@ -26959,7 +26968,7 @@ namespace TerminalAppLocalTests
                         VERIFY_ARE_EQUAL(24.0, closeSlot.ActualWidth());
                         VERIFY_ARE_EQUAL(24.0, closeSlot.ActualHeight());
                         VERIFY_IS_TRUE(indicatorPosition.X + indicator.ActualWidth() <= closePosition.X + 1.0);
-                        VERIFY_IS_TRUE(std::abs(closePosition.Y - indicatorPosition.Y) <= 1.0);
+                        VERIFY_IS_TRUE(std::abs(closePosition.Y + closeSlot.ActualHeight() / 2 - paneRoot.ActualHeight() / 2) <= 1.0);
                         VERIFY_IS_TRUE(std::abs(indicatorPosition.Y + indicator.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
                     }
                     VERIFY_ARE_EQUAL(1.0, title.Opacity());
