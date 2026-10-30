@@ -2962,13 +2962,13 @@ fn copilot_config_lookup_handles_disabled_plugin() {
 /// disk and the env override is unset.
 #[test]
 fn bundle_resolve_source_returns_none_when_nothing_resolves() {
+    let _env = crate::test_support::lock_env();
+
     // Save & clear WTA_HOOKS_BUNDLE_DIR so the test doesn't pick up
     // the dev tree's bundle via a leftover env var.
     let saved = std::env::var_os("WTA_HOOKS_BUNDLE_DIR");
-    // SAFETY: tests run with --test-threads=1 in CI, but even without
-    // serialization, every other test that touches this env var
-    // restores it; collisions would manifest as flakes here, not data
-    // corruption. We accept the small risk.
+    // SAFETY: the shared environment lock serializes this mutation with
+    // other WTA tests that mutate process-wide environment variables.
     unsafe {
         std::env::set_var(
             "WTA_HOOKS_BUNDLE_DIR",
