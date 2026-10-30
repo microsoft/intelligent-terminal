@@ -762,6 +762,7 @@
   <data name="ExportTabText"><value>Exportar texto</value></data>
   <data name="FindText"><value>Localizar</value></data>
   <data name="RestartConnectionText"><value>Reiniciar sessão</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} painéis</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Fechar</value></data>
   <data name="TabClose"><value>Fechar separador</value></data>
   <data name="MoveTabToNewWindowText"><value>Mover separador para uma nova janela</value></data>

@@ -673,6 +673,7 @@
   <data name="ExportTabText"><value>ส่งออกข้อความ</value></data>
   <data name="FindText"><value>ค้นหา</value></data>
   <data name="RestartConnectionText"><value>เริ่มเซสชันใหม่</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} แผง</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>ปิด</value></data>
   <data name="TabClose"><value>ปิดแท็บ</value></data>
   <data name="MoveTabToNewWindowText"><value>ย้ายแท็บไปยังหน้าต่างใหม่</value></data>

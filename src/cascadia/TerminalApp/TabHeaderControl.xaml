@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
     the MIT License. See LICENSE in the project root for license information.
 -->
@@ -16,20 +16,6 @@
 
     <UserControl.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                     Color="#005FB7" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                     Color="#60CDFF" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="HighContrast">
-                    <StaticResource x:Key="AgentCompletionIndicatorBrush"
-                                    ResourceKey="SystemColorWindowTextColorBrush" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
@@ -166,7 +152,7 @@
                 <Ellipse x:Name="HeaderCompletionDot"
                          Width="4"
                          Height="4"
-                         Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                         Fill="{ThemeResource SystemFillColorAttentionBrush}" />
             </Grid>
             <Grid Grid.Column="2"
                   VerticalAlignment="Center"
@@ -197,15 +183,14 @@
                                       ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                       CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
                                       Text="{x:Bind MetadataText, Mode=OneWay}"
-                                      TextOpacity="0.72"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
-                <Style TargetType="TextBlock">
+                <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"
+                       TargetType="TextBlock">
                     <Setter Property="MaxLines" Value="2" />
-                    <Setter Property="FontSize" Value="10" />
-                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 </Style>
             </local:HighlightedTextControl.TextBlockStyle>
         </local:HighlightedTextControl>
