@@ -9850,6 +9850,32 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->HistorySection().Visibility());
 
+            const auto originalWidth = strip.Width();
+            const auto originalDirection = strip.FlowDirection();
+            const auto bounds = [&](const FrameworkElement& element) {
+                return element.TransformToVisual(strip).TransformBounds(
+                    { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+            };
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                strip.FlowDirection(direction);
+                for (const auto width : { 180.0, 272.0, 400.0 })
+                {
+                    strip.Width(width);
+                    strip.UpdateLayout();
+                    const auto filter = bounds(stripImpl->FilterTabsButton());
+                    const auto chevron = bounds(stripImpl->HistoryChevron());
+                    const auto search = bounds(stripImpl->SearchTextBox());
+                    VERIFY_IS_TRUE(std::abs(filter.X + filter.Width / 2 - chevron.X - chevron.Width / 2) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
+                                               filter.X + filter.Width - search.X - search.Width :
+                                               filter.X - search.X) <= 1.0);
+                }
+            }
+            strip.Width(originalWidth);
+            strip.FlowDirection(originalDirection);
+            strip.UpdateLayout();
+
             strip.TabsVisible(false);
             strip.TabsVisible(true);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->ItemsList().Visibility());

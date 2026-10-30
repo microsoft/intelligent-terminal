@@ -149,6 +149,14 @@
   <ItemGroup>
     <TestDll Include="$(OpenConsoleCommonOutDir)\LocalTests_TerminalApp\TerminalApp.LocalTests.dll" />
     <AgentProfileIcon Include="$(OpenConsoleDir)src\cascadia\CascadiaPackage\AgentIcons\*.svg" />
+    <Content Include="@(TestDll)">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(OpenConsoleDir)src\cascadia\TerminalApp\App.xaml">
+      <Link>TerminalApp\App.xaml</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="$(TAEFPackagePathRoot)\build\Binaries\$(_TAEFPlatformName)\Wex.Common.dll;
                       $(TAEFPackagePathRoot)\build\Binaries\$(_TAEFPlatformName)\Wex.Logger.dll;
                       $(TAEFPackagePathRoot)\build\Binaries\$(_TAEFPlatformName)\Wex.Communication.dll;
