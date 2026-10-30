@@ -530,6 +530,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalSidebarPaneActivationSkipsPreviousFocus);
         TEST_METHOD(HorizontalTabProgressSurvivesAsyncVerticalTeardown);
         TEST_METHOD(HeaderProgressWrapperBindingPreservesRingState);
+        TEST_METHOD(TabHeaderLoadsOptionalTextOnDemand);
+        TEST_METHOD(HiddenAgentBackgroundRefreshPreservesTerminalTiming);
+        TEST_METHOD(HiddenAgentBackgroundRefreshStopsOnWindowShutdown);
         TEST_METHOD(HorizontalCompactProgressSurvivesDeselection);
         TEST_METHOD(IndeterminateProgressUsesSharedResource);
         TEST_METHOD(IndeterminateProgressStopsHiddenClocks);
@@ -2394,8 +2397,7 @@ namespace TerminalAppLocalTests
             const auto header = tab->_headerControl;
             const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
             const auto badge = header.FindName(L"HeaderKeepRunningIcon").as<FontIcon>();
-            const auto title = header.FindName(L"HeaderTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
-            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
             tab->KeepRunning(true);
 
             constexpr double tolerance = 1.0;
@@ -2415,6 +2417,7 @@ namespace TerminalAppLocalTests
                         header.Measure({ width, 100 });
                         header.Arrange({ 0, 0, width, header.DesiredSize().Height });
                         header.UpdateLayout();
+                        const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
 
                         const auto position = badge.TransformToVisual(layout).TransformPoint({ 0, 0 });
                         const auto titlePosition = title.TransformToVisual(layout).TransformPoint({ 0, 0 });
@@ -17140,12 +17143,12 @@ namespace TerminalAppLocalTests
                     const auto liveIcon = liveRoot.FindName(L"TabIconPresenter").as<ContentPresenter>();
                     const auto groupSlot = groupRoot.FindName(L"TabGroupToggleButton").as<Button>();
                     const auto historyIcon = historyRoot.FindName(L"HistoryProviderIcon").as<ContentControl>();
-                    const auto title = header.FindName(L"HeaderTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+                    const auto title = header.FindName(L"HeaderTextBlock").as<TextBlock>();
                     const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
                     const auto historyTitle = historyRoot.FindName(L"HistoryTitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                     const auto historySubtitle = historyRoot.FindName(L"HistorySubtitleText").as<winrt::TerminalApp::HighlightedTextControl>();
                     const auto selection = historyRoot.FindName(L"HistorySelectionBackground").as<Border>();
-                    const auto titleText = Media::VisualTreeHelper::GetChild(title, 0).as<TextBlock>();
+                    const auto titleText = title;
                     const auto metadataText = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
                     const auto historyTitleText = Media::VisualTreeHelper::GetChild(historyTitle, 0).as<TextBlock>();
                     const auto historySubtitleText = Media::VisualTreeHelper::GetChild(historySubtitle, 0).as<TextBlock>();
@@ -19921,6 +19924,192 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void TabTests::TabHeaderLoadsOptionalTextOnDemand()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabHeaderControl header;
+            header.Title(L"Terminal title");
+            winrt::TerminalApp::TabStrip strip;
+            const auto titleStyle = strip.Resources().Lookup(winrt::box_value(L"SidebarTitleTextStyle")).as<Style>();
+            const auto metadataStyle = strip.Resources().Lookup(winrt::box_value(L"SidebarMetadataTextStyle")).as<Style>();
+            const auto headerImpl = winrt::get_self<winrt::TerminalApp::implementation::TabHeaderControl>(header);
+            headerImpl->SetSidebarTextStyles(titleStyle, metadataStyle);
+            Media::SolidColorBrush metadataForeground{ winrt::Windows::UI::Colors::Red() };
+            headerImpl->SetMetadataForeground(metadataForeground, false);
+            const auto layout = header.FindName(L"HeaderLayout").as<Grid>();
+            const auto title = header.FindName(L"HeaderTextBlock").as<TextBlock>();
+            const auto countHighlighted = [](auto&& self, const DependencyObject& root) -> uint32_t {
+                uint32_t count = root.try_as<winrt::TerminalApp::HighlightedTextControl>() ? 1 : 0;
+                for (auto index = 0; index < Media::VisualTreeHelper::GetChildrenCount(root); ++index)
+                {
+                    count += self(self, Media::VisualTreeHelper::GetChild(root, index));
+                }
+                return count;
+            };
+            const auto count = [&]() {
+                header.Measure({ 300, 100 });
+                header.Arrange({ 0, 0, 300, 100 });
+                header.UpdateLayout();
+                return countHighlighted(countHighlighted, layout);
+            };
+
+            VERIFY_ARE_EQUAL(0u, count());
+            VERIFY_ARE_EQUAL(header.Title(), title.Text());
+            VERIFY_IS_TRUE(title.Style() == titleStyle);
+            header.SearchText(L"term");
+            VERIFY_IS_TRUE(header.IsTitleHighlighted());
+            VERIFY_ARE_EQUAL(1u, count());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, title.Visibility());
+            const auto highlighted = header.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(header.Title(), highlighted.Text());
+            VERIFY_ARE_EQUAL(header.SearchText(), highlighted.SearchText());
+            VERIFY_IS_TRUE(highlighted.TextBlockStyle() == titleStyle);
+
+            header.Title(L"Terminal latest");
+            header.BeginRename();
+            VERIFY_IS_TRUE(header.InRename());
+            VERIFY_IS_FALSE(header.IsTitleHighlighted());
+            VERIFY_ARE_EQUAL(0u, count());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, title.Visibility());
+            header.CancelRename();
+            VERIFY_IS_FALSE(header.InRename());
+            VERIFY_IS_TRUE(header.IsTitleHighlighted());
+            VERIFY_ARE_EQUAL(1u, count());
+            VERIFY_ARE_EQUAL(header.Title(), header.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>().Text());
+            VERIFY_IS_TRUE(header.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>().TextBlockStyle() == titleStyle);
+
+            header.SearchText(L"");
+            VERIFY_ARE_EQUAL(0u, count());
+            VERIFY_ARE_EQUAL(Visibility::Visible, title.Visibility());
+            VERIFY_ARE_EQUAL(header.Title(), title.Text());
+            const auto peer = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(title);
+            VERIFY_IS_NOT_NULL(peer);
+            VERIFY_ARE_EQUAL(header.Title(), peer.GetName());
+
+            header.MetadataText(L"Working");
+            header.IsMetadataVisible(true);
+            VERIFY_ARE_EQUAL(1u, count());
+            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_ARE_EQUAL(header.MetadataText(), metadata.Text());
+            VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
+            VERIFY_IS_TRUE(metadata.TextBlockStyle() == metadataStyle);
+            VERIFY_IS_TRUE(metadata.Margin() == Thickness{});
+            VERIFY_IS_TRUE(metadata.Foreground() == metadataForeground);
+            header.BeginRename();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, metadata.Visibility());
+            header.CancelRename();
+            VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
+            header.IsMetadataVisible(false);
+            VERIFY_ARE_EQUAL(0u, count());
+            header.IsMetadataVisible(true);
+            VERIFY_ARE_EQUAL(1u, count());
+            const auto reloadedMetadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            VERIFY_IS_FALSE(reloadedMetadata == metadata);
+            VERIFY_IS_TRUE(reloadedMetadata.TextBlockStyle() == metadataStyle);
+            VERIFY_IS_TRUE(reloadedMetadata.Margin() == Thickness{});
+            VERIFY_IS_TRUE(reloadedMetadata.Foreground() == metadataForeground);
+            header.IsMetadataVisible(false);
+            VERIFY_ARE_EQUAL(0u, count());
+            title.Foreground(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Blue() });
+            headerImpl->SetMetadataForeground(nullptr, true);
+            VERIFY_ARE_EQUAL(0u, count());
+            header.IsMetadataVisible(true);
+            VERIFY_ARE_EQUAL(1u, count());
+            VERIFY_IS_TRUE(header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>().Foreground() == title.Foreground());
+            header.IsMetadataVisible(false);
+            VERIFY_ARE_EQUAL(0u, count());
+
+            const auto previous = header.Presentation();
+            auto replacement = winrt::make<winrt::TerminalApp::implementation::TabHeaderPresentation>();
+            replacement.Title(L"Replacement title");
+            replacement.SearchText(L"replacement");
+            header.Presentation(replacement);
+            VERIFY_IS_TRUE(header.IsTitleHighlighted());
+            VERIFY_ARE_EQUAL(1u, count());
+            previous.SearchText(L"");
+            VERIFY_ARE_EQUAL(replacement.SearchText(), header.SearchText());
+            VERIFY_ARE_EQUAL(replacement.Title(), header.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>().Text());
+        });
+    }
+
+    void TabTests::HiddenAgentBackgroundRefreshPreservesTerminalTiming()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{857f6044-7986-487d-b320-34ad095967e1}" }, State::Connected);
+        const auto helperConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{857f6044-7986-487d-b320-34ad095967e2}" }, State::Connected);
+        const auto page = _commonSetup(*connection);
+        const auto changes = std::make_shared<uint32_t>(0);
+        winrt::Microsoft::Terminal::Control::TermControl shell{ nullptr };
+        winrt::Microsoft::Terminal::Control::TermControl helper{ nullptr };
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            shell = tab->GetActiveTerminalControl();
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *helperConnection));
+            pane->IsAgentPane(true);
+            tab->SplitPaneAtRoot(SplitDirection::Down, pane, 0.5f);
+            helper = pane->GetTerminalControl();
+            tab->TabColorChanged([changes]() { ++*changes; });
+            *changes = 0;
+            page->_OnTerminalBackgroundBrushChanged(shell);
+            VERIFY_ARE_EQUAL(1u, *changes);
+            page->_OnTerminalBackgroundBrushChanged(helper);
+            VERIFY_ARE_EQUAL(2u, *changes);
+            VERIFY_IS_FALSE(page->_hiddenAgentThemeRefreshQueued);
+            tab->StashAgentPane();
+            VERIFY_IS_TRUE(pane->IsHidden());
+        });
+        _waitForContentTransferReviewUI([]() { return true; });
+        TestOnUIThread([&]() {
+            *changes = 0;
+            for (auto index = 0; index < 4; ++index)
+            {
+                page->_OnTerminalBackgroundBrushChanged(helper);
+            }
+            VERIFY_ARE_EQUAL(0u, *changes);
+            VERIFY_IS_TRUE(page->_hiddenAgentThemeRefreshQueued);
+            page->_OnTerminalBackgroundBrushChanged(shell);
+            VERIFY_ARE_EQUAL(1u, *changes);
+            VERIFY_IS_TRUE(page->_hiddenAgentThemeRefreshQueued);
+        });
+        _waitForContentTransferReviewUI([&]() { return !page->_hiddenAgentThemeRefreshQueued; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(2u, *changes);
+            VERIFY_ARE_EQUAL(0u, connection->CloseCount());
+            VERIFY_ARE_EQUAL(0u, helperConnection->CloseCount());
+        });
+    }
+
+    void TabTests::HiddenAgentBackgroundRefreshStopsOnWindowShutdown()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{857f6044-7986-487d-b320-34ad095967e3}" }, State::Connected);
+        const auto helperConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{857f6044-7986-487d-b320-34ad095967e4}" }, State::Connected);
+        const auto page = _commonSetup(*connection);
+        const auto changes = std::make_shared<uint32_t>(0);
+        winrt::Microsoft::Terminal::Control::TermControl helper{ nullptr };
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto pane = page->_WrapInAgentPaneContent(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *helperConnection));
+            pane->IsAgentPane(true);
+            tab->SplitPaneAtRoot(SplitDirection::Down, pane, 0.5f);
+            helper = pane->GetTerminalControl();
+            tab->StashAgentPane();
+            tab->TabColorChanged([changes]() { ++*changes; });
+        });
+        _waitForContentTransferReviewUI([]() { return true; });
+        TestOnUIThread([&]() {
+            *changes = 0;
+            page->_OnTerminalBackgroundBrushChanged(helper);
+            VERIFY_IS_TRUE(page->_hiddenAgentThemeRefreshQueued);
+            page->_windowPanesShutdown = true;
+        });
+        _waitForContentTransferReviewUI([&]() { return !page->_hiddenAgentThemeRefreshQueued; });
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(0u, *changes);
+            page->_windowPanesShutdown = false;
+        });
+    }
+
     void TabTests::HeaderProgressWrapperBindingPreservesRingState()
     {
         UIElement previousContent{ nullptr };
@@ -20893,8 +21082,8 @@ namespace TerminalAppLocalTests
             native.TabStatus().ProgressValue(73);
             VERIFY_ARE_EQUAL(native.Title(), firstHeader.Title());
             VERIFY_ARE_EQUAL(native.Title(), secondHeader.Title());
-            const auto firstTitle = firstHeader.FindName(L"HeaderTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
-            const auto secondTitle = secondHeader.FindName(L"HeaderTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto firstTitle = firstHeader.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto secondTitle = secondHeader.FindName(L"HeaderHighlightedTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_ARE_EQUAL(native.Title(), firstTitle.Text());
             VERIFY_ARE_EQUAL(native.Title(), secondTitle.Text());
             VERIFY_ARE_EQUAL(native.SearchText(), firstTitle.SearchText());
@@ -25728,6 +25917,9 @@ namespace TerminalAppLocalTests
 
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
+            ::Microsoft::Terminal::RichTab::Provider::Presentation metadataPresentation;
+            metadataPresentation.text = L"Metadata";
+            tab->SetRichTabPresentation(metadataPresentation);
             tab->ShowBellIndicator(true);
             const auto terminalColor = ThemeColor::ColorFromBrush(tab->_BackgroundBrush());
             const auto headerGrid = [&](const uint32_t index) {
@@ -25904,11 +26096,9 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Collapsed,
                                  headerGrid(0).FindName(L"TabSelectionBackground").as<Border>().Visibility());
                 VERIFY_ARE_EQUAL(uint8_t{ 0 }, sidebarTabColor(0).A);
-                VERIFY_IS_TRUE(headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>()
-                                   .ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
-                const auto headerMetadata = headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().FindName(L"HeaderMetadataTextBlock").as<Control>();
-                const auto captionForeground = ThemeLookup(Application::Current().Resources(), headerMetadata.ActualTheme(), winrt::box_value(highContrast ? L"TextFillColorPrimaryBrush" : L"TextFillColorSecondaryBrush")).as<Media::SolidColorBrush>();
-                VERIFY_ARE_EQUAL(captionForeground.Color(), headerMetadata.Foreground().as<Media::SolidColorBrush>().Color());
+                VERIFY_IS_TRUE(headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+                const auto groupHeader = headerGrid(0).FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+                VERIFY_IS_FALSE(groupHeader.IsMetadataVisible());
                 for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
                 {
                     const auto pane = display.PaneItems().GetAt(index);
@@ -26423,8 +26613,8 @@ namespace TerminalAppLocalTests
                     }
                     const auto tabRow = rowFor(tab);
                     const auto projectedHeader = tabRow.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
-                    const auto projectedTitle = projectedHeader.FindName(L"HeaderTextBlock").as<FrameworkElement>();
-                    const auto titleText = Media::VisualTreeHelper::GetChild(projectedTitle, 0).as<TextBlock>();
+                    const auto projectedTitle = projectedHeader.FindName(L"HeaderTextBlock").as<TextBlock>();
+                    const auto titleText = projectedTitle;
                     const auto panes = impl->ItemsList().ContainerFromItem(impl->DisplayItemForTab(group)).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabPaneItems").as<ItemsControl>();
                     const auto paneRow = Media::VisualTreeHelper::GetChild(panes.ContainerFromIndex(0), 0).as<Grid>();
                     const auto paneTitle = paneRow.FindName(L"PaneTitleText").as<FrameworkElement>();
@@ -26440,12 +26630,19 @@ namespace TerminalAppLocalTests
                     verifyCentered(paneRow.FindName(L"PaneCloseButtonSlot").as<FrameworkElement>(), paneTitle, paneRow);
                     titleText.ClearValue(TextBlock::FontSizeProperty());
                     paneTitleText.ClearValue(TextBlock::FontSizeProperty());
+                    projectedHeader.SearchText(L"Tab");
+                    strip.UpdateLayout();
+                    const auto highlightedTitle = projectedHeader.FindName(L"HeaderHighlightedTextBlock").as<FrameworkElement>();
+                    verifyMetrics(tabRow, tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), 40.0);
+                    verifyCentered(tabRow.FindName(L"TabIndeterminateProgressRing").as<FrameworkElement>(), highlightedTitle, tabRow);
+                    verifyCentered(tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), highlightedTitle, tabRow);
                     projectedHeader.BeginRename();
                     strip.UpdateLayout();
                     const auto renamer = projectedHeader.FindName(L"HeaderRenamerTextBox").as<FrameworkElement>();
                     verifyMetrics(tabRow, tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), 40.0);
                     verifyCentered(tabRow.FindName(L"TabCloseButtonSlot").as<FrameworkElement>(), renamer, tabRow);
                     projectedHeader.CancelRename();
+                    projectedHeader.SearchText(L"");
                     status.IsPinned(true);
                     strip.IsRailCollapsed(true);
                     strip.UpdateLayout();

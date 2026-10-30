@@ -979,6 +979,7 @@ namespace winrt::TerminalApp::implementation
         bool _windowCloseAccepted{ false };
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout _closingStartupRestoreLayout{ nullptr };
         bool _windowPanesShutdown{ false };
+        bool _hiddenAgentThemeRefreshQueued{ false };
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
@@ -1321,6 +1322,7 @@ namespace winrt::TerminalApp::implementation
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
+        void _OnTerminalBackgroundBrushChanged(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForSessionId(std::string_view sessionId);

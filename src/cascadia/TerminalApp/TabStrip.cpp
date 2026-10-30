@@ -1512,15 +1512,17 @@ namespace winrt::TerminalApp::implementation
             }
             grid.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto header = grid.FindName(L"TabHeaderPresenter").try_as<WUX::Controls::Control>();
-            const auto metadata = header ? header.FindName(L"HeaderMetadataTextBlock").try_as<Control>() : nullptr;
+            const auto headerImpl = header ? winrt::get_self<TabHeaderControl>(header.as<TerminalApp::TabHeaderControl>()) : nullptr;
             const auto close = grid.FindName(L"TabCloseButton").try_as<WUX::Controls::Control>();
             const auto iconPresenter = grid.FindName(L"TabIconPresenter").try_as<ContentPresenter>();
             const auto inactiveBrush = !selected && !_highContrast && selectionBackground ?
                                            selectionBackground.Background().try_as<WUX::Media::SolidColorBrush>() :
                                            nullptr;
-            const auto foregroundBrush = selected ? tabColor :
-                                            hovered ? hoverBrush :
-                                            inactiveBrush && inactiveBrush.Color().A > 0 && inactiveBrush.Opacity() > 0 ? inactiveBrush : nullptr;
+            const auto foregroundBrush = selected                                                                    ? tabColor :
+                                         hovered                                                                     ? hoverBrush :
+                                         inactiveBrush && inactiveBrush.Color().A > 0 && inactiveBrush.Opacity() > 0 ? inactiveBrush :
+                                                                                                                       nullptr;
+            WUX::Media::Brush metadataForeground{ nullptr };
             if (foregroundBrush)
             {
                 auto backdrop = _sidebarBackdropColor(Background(), grid.ActualTheme());
@@ -1532,7 +1534,8 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
                 const auto foreground = WUX::Media::SolidColorBrush{ _tabSelectionForeground(foregroundBrush, backdrop) };
-                for (const auto& control : { header, metadata, toggle, close })
+                metadataForeground = foreground;
+                for (const auto& control : { header, toggle, close })
                 {
                     if (control)
                     {
@@ -1542,7 +1545,8 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                for (const auto& control : { header, metadata, toggle, close })
+                metadataForeground = searchFocused ? searchForeground : nullptr;
+                for (const auto& control : { header, toggle, close })
                 {
                     if (control)
                     {
@@ -1557,13 +1561,9 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             }
-            if (_highContrast && metadata && !foregroundBrush && !searchFocused)
+            if (headerImpl)
             {
-                WUX::Data::Binding binding;
-                binding.Source(header.FindName(L"HeaderTextBlock"));
-                binding.Path(PropertyPath{ L"Foreground" });
-                binding.Mode(WUX::Data::BindingMode::OneWay);
-                metadata.SetBinding(Control::ForegroundProperty(), binding);
+                headerImpl->SetMetadataForeground(metadataForeground, _highContrast && !foregroundBrush && !searchFocused);
             }
             _bindMonochromeIconForeground(iconPresenter, header);
         }
@@ -1804,7 +1804,10 @@ namespace winrt::TerminalApp::implementation
                 FrameworkElement title{ nullptr };
                 if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
                 {
-                    title = header.FindName(header.InRename() ? L"HeaderRenamerTextBox" : L"HeaderTextBlock").try_as<FrameworkElement>();
+                    const auto titleName = header.InRename()           ? L"HeaderRenamerTextBox" :
+                                           header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" :
+                                                                         L"HeaderTextBlock";
+                    title = header.FindName(titleName).try_as<FrameworkElement>();
                     if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
                     {
                         const auto alignment = railCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
@@ -1977,10 +1980,9 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        header.FindName(L"HeaderTextBlock").as<TerminalApp::HighlightedTextControl>().TextBlockStyle(Resources().Lookup(box_value(L"SidebarTitleTextStyle")).as<WUX::Style>());
-        const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
-        metadata.TextBlockStyle(Resources().Lookup(box_value(L"SidebarMetadataTextStyle")).as<WUX::Style>());
-        metadata.Margin({});
+        impl->SetSidebarTextStyles(
+            Resources().Lookup(box_value(L"SidebarTitleTextStyle")).as<WUX::Style>(),
+            Resources().Lookup(box_value(L"SidebarMetadataTextStyle")).as<WUX::Style>());
         // Keep 24-DIP adornments centered without enlarging the 20-DIP title line.
         header.FindName(L"HeaderCompletionIndicator").as<FrameworkElement>().Margin({ 12, -2, 0, -2 });
         header.FindName(L"HeaderRenamerTextBox").as<FrameworkElement>().Margin({ 0, -2, 0, -2 });
