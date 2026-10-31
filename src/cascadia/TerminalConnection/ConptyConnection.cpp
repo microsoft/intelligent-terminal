@@ -109,7 +109,20 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             {
                 const auto bridge = ::IntelligentTerminal::BridgeExecutable();
                 if (!bridge.empty())
+                {
                     environment.as_map().insert_or_assign(L"WTCLI_PATH", bridge.wstring());
+                    const auto hooks = bridge.parent_path() / L"wt-agent-hooks";
+                    std::error_code ec;
+                    if (std::filesystem::is_regular_file(hooks / L"emit-hook.ps1", ec) &&
+                        std::filesystem::is_regular_file(hooks / L"emit-hook.sh", ec))
+                    {
+                        environment.as_map().insert_or_assign(L"WT_AGENT_HOOK_DIR", hooks.wstring());
+                    }
+                    else
+                    {
+                        environment.as_map().erase(L"WT_AGENT_HOOK_DIR");
+                    }
+                }
             }
 
             // WSLENV is a colon-delimited list of environment variables (+flags) that should appear inside WSL
@@ -149,6 +162,10 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
                     additionalWslEnv.append(key);
                     additionalWslEnv.push_back(L':');
                 }
+            }
+            if (wslEnvVars.emplace(L"WT_AGENT_HOOK_DIR").second)
+            {
+                additionalWslEnv.append(L"WT_AGENT_HOOK_DIR/p:");
             }
 
             // add additional env vars

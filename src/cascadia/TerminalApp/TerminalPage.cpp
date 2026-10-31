@@ -33,6 +33,8 @@
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/WslDistroRegistration.h"
+#include "../../tools/wtcli/wtcli_functions.h"
 #include "../inc/AgentYoloPolicy.h"
 #include "../inc/RtlHelper.h"
 #include "../inc/WtaProcess.h"
@@ -14134,20 +14136,46 @@ namespace winrt::TerminalApp::implementation
 
                             if (isAgentEvent)
                             {
-                                auto jsonPayload = seqStr.substr(agentPrefix.size());
                                 Json::Value agentParams;
-                                Json::CharReaderBuilder rb;
-                                std::string errs;
-                                std::istringstream ss(jsonPayload);
-                                if (Json::parseFromStream(rb, ss, &agentParams, &errs) &&
-                                    agentParams.isObject() &&
-                                    agentParams.isMember("event") &&
-                                    agentParams["event"].isString())
+                                Json::CharReaderBuilder reader;
+                                std::string errors;
+                                std::istringstream stream{ seqStr.substr(agentPrefix.size()) };
+                                if (Json::parseFromStream(reader, stream, &agentParams, &errors) &&
+                                    agentParams.isObject() && agentParams["event"].isString())
                                 {
                                     agentParams["pane_id"] = paneIdStr;
-                                    Json::Value bindingEvent;
-                                    bindingEvent["params"] = agentParams;
-                                    page->_manager.OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, bindingEvent)));
+                                    if (const auto control = weakTerm.get())
+                                    {
+                                        const auto shellName = control.ShellName();
+                                        const std::wstring_view shell{ shellName };
+                                        const auto claimedDistro = agentParams.get("wsl_distro", Json::Value{});
+                                        if (shell.starts_with(L"wsl:"))
+                                        {
+                                            const auto distro = til::u16u8(shell.substr(4));
+                                            if (!::Microsoft::Terminal::IsRegisteredWslDistro(distro) ||
+                                                (claimedDistro.isString() && _stricmp(claimedDistro.asCString(), distro.c_str()) != 0))
+                                            {
+                                                _agentPaneLog("AgentEvent: invalid WSL source");
+                                                return;
+                                            }
+                                            agentParams["wsl_distro"] = distro;
+                                        }
+                                        else if (!claimedDistro.isNull() &&
+                                                 (!shell.empty() || !::Microsoft::Terminal::IsRegisteredWslDistro(claimedDistro.asString())))
+                                        {
+                                            _agentPaneLog("AgentEvent: WSL source does not match the owning pane");
+                                            return;
+                                        }
+                                        if (agentParams.get("cli_source", "").asString() == "antigravity")
+                                        {
+                                            Json::Value context;
+                                            const auto connection = control.Connection().try_as<TerminalConnection::ConptyConnection>();
+                                            context["cwd"] = til::u16u8(::Microsoft::Terminal::AgentSource::ResolvePaneCwd(
+                                                control.WorkingDirectory(), control.WorkingDirectoryReportedByShell(), connection ? connection.Commandline() : winrt::hstring{}, connection ? connection.StartingDirectory() : winrt::hstring{}));
+                                            wtcli::ApplyAgentHookPaneCwd(agentParams["payload"], context, agentParams.isMember("wsl_distro"));
+                                        }
+                                    }
+                                    agentParams["window_id"] = std::to_string(page->_WindowProperties.WindowId());
                                     if (!tabIdStr.empty())
                                     {
                                         agentParams["tab_id"] = tabIdStr;
@@ -14160,7 +14188,19 @@ namespace winrt::TerminalApp::implementation
 
                                     Json::StreamWriterBuilder wb;
                                     wb["indentation"] = "";
-                                    const auto eventJson = Json::writeString(wb, evt);
+                                    auto eventJson = Json::writeString(wb, evt);
+                                    if (eventJson.size() > wtcli::kMaxHookEventChars)
+                                    {
+                                        agentParams["payload"] = wtcli::ReduceOversizedHookPayload(agentParams["payload"], eventJson.size());
+                                        evt["params"] = agentParams;
+                                        eventJson = Json::writeString(wb, evt);
+                                        if (eventJson.size() > wtcli::kMaxHookEventChars)
+                                        {
+                                            _agentPaneLog("AgentEvent: enriched payload exceeds the wire budget");
+                                            return;
+                                        }
+                                    }
+                                    page->_manager.OnPaneAgentSessionChanged(winrt::to_hstring(eventJson));
 
                                     // The in-band event is authoritative for
                                     // this pane. Apply it locally before
@@ -14170,12 +14210,11 @@ namespace winrt::TerminalApp::implementation
                                     // present to echo the binding back.
                                     page->OnPaneAgentSessionChanged(winrt::to_hstring(eventJson));
 
-                                    if (autoFixPolicyLocked)
-                                    {
-                                        return;
-                                    }
-
                                     page->_RaiseProtocolEvent("agent_event", agentParams);
+                                }
+                                else
+                                {
+                                    _agentPaneLog("AgentEvent: rejected invalid VT hook payload");
                                 }
                                 return; // AgentEvent never falls through to vt_sequence
                             }

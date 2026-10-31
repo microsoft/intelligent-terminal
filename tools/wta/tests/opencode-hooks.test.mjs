@@ -15,13 +15,14 @@ const tick = () => new Promise((resolve) => setImmediate(resolve))
 
 async function load(entry, env = {}) {
   const calls = []
+  const vt = []
   const failures = []
   const effects = new Set()
   const timers = new Map()
   const context = vm.createContext({
     process: { platform: "win32", env },
     crypto: { randomUUID },
-    TextEncoder, AbortController, AbortSignal, console: { error: (...args) => failures.push(args) },
+    Buffer, TextEncoder, AbortController, AbortSignal, console: { error: (...args) => failures.push(args) },
     setTimeout, clearTimeout,
     setInterval: (callback) => { const id = {}; timers.set(id, callback); return id },
     clearInterval: (id) => timers.delete(id),
@@ -37,7 +38,11 @@ async function load(entry, env = {}) {
     if (modules.has(name)) return modules.get(name)
     if (["node:fs", "node:crypto", "solid-js"].includes(name)) {
       const exports = name === "node:fs"
-        ? { mkdirSync() {}, appendFileSync: (...args) => failures.push(args) }
+        ? {
+          mkdirSync() {},
+          appendFileSync: (...args) => failures.push(args),
+          writeFileSync: (...args) => vt.push(args),
+        }
         : name === "node:crypto" ? { randomUUID }
           : {
             createEffect: (effect) => { effects.add(effect); effect() },
@@ -60,8 +65,26 @@ async function load(entry, env = {}) {
   }
   const module = await moduleFor(entry)
   await module.evaluate()
-  return { plugin: module.namespace, calls, failures, timers, effects }
+  return { plugin: module.namespace, calls, vt, failures, timers, effects }
 }
+
+test("V1 publishes owning-console VT without spawning the native bridge", async () => {
+  const fixture = await load("v1/wt-agent-hooks.js", {
+    WT_SESSION: paneA, WT_COM_CLSID: clsid, WT_AGENT_HOOK_DIR: "C:\\hooks",
+  })
+  const hooks = await fixture.plugin.WtAgentHooks({ directory: location.directory })
+  await hooks["chat.message"]({ sessionID: "a" })
+  assert.equal(fixture.calls.length, 0)
+  assert.ok(fixture.vt.length >= 2)
+  const [path, sequence] = fixture.vt.at(-1)
+  assert.equal(path, "CONOUT$")
+  const encoded = /^\x1b\]9001;AgentEvent64;([A-Za-z0-9+/=]+)\x07$/.exec(sequence)
+  assert.ok(encoded)
+  const params = JSON.parse(Buffer.from(encoded[1], "base64").toString("utf8"))
+  assert.equal(params.event, "agent.prompt.submit")
+  assert.equal(params.agent_session_id, "a")
+  await hooks.dispose()
+})
 
 test("V2 pane binding definition loads without installing the OpenCode SDK", async () => {
   await assert.doesNotReject(import(new URL("v2/rpc.js", bundle)))

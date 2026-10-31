@@ -5,7 +5,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.start; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.session.start; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.start; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -15,7 +15,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.end; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.session.end; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.session.end; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -25,7 +25,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.cwd.changed; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.cwd.changed; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.cwd.changed; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -35,7 +35,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.notification; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.notification; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.notification; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -45,7 +45,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.prompt.submit; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.prompt.submit; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.prompt.submit; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -55,7 +55,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.error; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.error; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.error; fi; exit 0",
           "shell": "bash"
         }]
       }
@@ -65,7 +65,7 @@
         "matcher": ".*",
         "hooks": [{
           "type": "command",
-          "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.stop; exit 0",
+          "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" claude agent.stop; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source claude --event agent.stop; fi; exit 0",
           "shell": "bash"
         }]
       }
