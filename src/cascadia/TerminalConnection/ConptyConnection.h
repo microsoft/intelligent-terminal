@@ -31,6 +31,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
         void ReparentWindow(const uint64_t newParent);
         uint64_t RootProcessHandle() noexcept;
+        bool ProcessStarted() const noexcept;
 
         winrt::hstring Commandline() const;
         winrt::hstring StartingDirectory() const;
@@ -71,6 +72,8 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         hstring _commandline{};
         hstring _startingDirectory{};
         hstring _startingTitle{};
+        HRESULT _startupError{ S_OK };
+        hstring _startupErrorMessage{};
         bool _initialVisibility{ true };
         Windows::Foundation::Collections::ValueSet _environment{ nullptr };
         hstring _clientName{}; // The name of the process hosted by this ConPTY connection (as of launch).
@@ -81,6 +84,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         wil::unique_hfile _pipe;
         wil::unique_handle _hOutputThread;
         wil::unique_process_information _piClient;
+        std::atomic<bool> _processStarted{ false };
         wil::unique_any<HPCON, decltype(closePseudoConsoleAsync), closePseudoConsoleAsync> _hPC;
 
         til::ticket_lock _writeLock;

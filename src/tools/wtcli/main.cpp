@@ -609,6 +609,54 @@ int wmain(int argc, wchar_t** argv)
         }
     });
 
+    auto* listProfilesCmd = app.add_subcommand("list-profiles", "List effective terminal profiles, including dynamically generated agent profiles");
+    listProfilesCmd->callback([&]() {
+        auto server = connect();
+        if (!server)
+            return;
+
+        const auto support = SupportsCapability(server.get(), "list_profiles");
+        if (support != S_OK)
+        {
+            if (support == S_FALSE)
+            {
+                fprintf(stderr, "[wtcli] WT_PROTOCOL_UNSUPPORTED_LIST_PROFILES: update Terminal to query runtime profiles\n");
+                exitCode = 2;
+            }
+            else
+            {
+                fprintf(stderr, "[wtcli] GetCapabilities failed or returned malformed capabilities: 0x%08X\n", static_cast<uint32_t>(support));
+                exitCode = 1;
+            }
+            return;
+        }
+
+        Json::Value profiles;
+        const auto hr = CallJson([&](BSTR* json) { return server->ListProfiles(json); }, profiles);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "ListProfiles failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        if (!profiles.isArray())
+        {
+            fprintf(stderr, "[wtcli] ListProfiles returned malformed profiles\n");
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["profiles"] = std::move(profiles);
+            PrintJson(result);
+        }
+        else
+        {
+            FormatProfilesHuman(profiles);
+        }
+    });
+
     // ── get-settings ──
     auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
     getSettingsCmd->callback([&]() {

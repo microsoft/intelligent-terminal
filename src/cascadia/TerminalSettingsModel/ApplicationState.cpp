@@ -122,12 +122,13 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool pendingIntroduction = false;
         {
             const std::scoped_lock guard{ _sidebarIntroductionMutex };
-            pendingIntroduction = _sidebarIntroductionLock && _sidebarIntroductionPresented;
+            pendingIntroduction = (_sidebarIntroductionLock && _sidebarIntroductionPresented) ||
+                                  (_agentProfilesIntroductionLock && _agentProfilesIntroductionDismissed);
         }
         if (pendingIntroduction)
         {
             // Also retry on graceful shutdown if the queued attempt already
-            // failed; borrowing our reservation avoids waiting on ourselves.
+            // failed; keep the introduction reservation until the write succeeds.
             _write();
         }
     }
@@ -210,9 +211,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     try
     {
         const std::scoped_lock introductionGuard{ _sidebarIntroductionMutex };
-        // A pending presentation owns the cross-process lock. Our ordinary
-        // state writer may borrow it instead of waiting on its own reservation.
-        const auto sidebarLock = _sidebarIntroductionLock ? wil::unique_handle{} : LockSidebarState();
+        const auto sidebarLock = LockSidebarState();
         Json::Value previous{ Json::objectValue };
         try
         {
@@ -256,6 +255,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             // and write it back out.
             _toJsonWithBlob(root, FileSource::Shared);
             _preserveSidebarFlags(root, previous);
+            if (_sidebarIntroductionPresented)
+            {
+                root["sidebarIntroductionShown"] = true;
+            }
+            if (_agentProfilesIntroductionDismissed)
+            {
+                root["agentProfilesIntroductionShown"] = true;
+            }
             _writeSharedContents(Json::writeString(wbuilder, root));
 
             // Finally, write our Local properties back to elevated-state.json
@@ -266,22 +273,42 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             // We're unelevated, this is easy. Just write everything back out.
             auto root = ToJson(FileSource::Local | FileSource::Shared);
             _preserveSidebarFlags(root, previous);
+            if (_sidebarIntroductionPresented)
+            {
+                root["sidebarIntroductionShown"] = true;
+            }
+            if (_agentProfilesIntroductionDismissed)
+            {
+                root["agentProfilesIntroductionShown"] = true;
+            }
             _writeLocalContents(Json::writeString(wbuilder, root));
         }
         if (_sidebarIntroductionLock && _sidebarIntroductionPresented)
         {
             // The shared write above included the shown flag. Only durable
             // completion permits another process to acquire the reservation.
+            _state.lock()->SidebarIntroductionShown = true;
             _sidebarIntroductionPresented = false;
             _sidebarIntroductionLock.reset();
+        }
+        if (_agentProfilesIntroductionLock && _agentProfilesIntroductionDismissed)
+        {
+            _state.lock()->AgentProfilesIntroductionShown = true;
+            _agentProfilesIntroductionDismissed = false;
+            _agentProfilesIntroductionLock.reset();
         }
     }
     CATCH_LOG()
 
     wil::unique_handle ApplicationState::LockSidebarState(const bool wait) const
     {
+        return _lockSidebarFile(L".sidebar.lock", wait);
+    }
+
+    wil::unique_handle ApplicationState::_lockSidebarFile(const std::wstring_view suffix, const bool wait) const
+    {
         auto path = _sharedPath;
-        path += L".sidebar.lock";
+        path += suffix;
         // A file lock follows the settings directory's user/package isolation and
         // is shared by elevated and unelevated processes, without a global mutex.
         for (auto attempt = 0; attempt < (wait ? 1000 : 1); ++attempt)
@@ -325,7 +352,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     {
         // A stale window (or the other elevation level) must never erase a
         // completed once-only operation when it saves unrelated state.
-        for (const auto key : { "sidebarLayoutMigrationCompleted", "sidebarIntroductionShown" })
+        for (const auto key : { "sidebarLayoutMigrationCompleted", "sidebarIntroductionShown", "agentProfilesIntroductionShown" })
         {
             if (previous[key].isBool() && previous[key].asBool())
             {
@@ -466,8 +493,13 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             return 0;
         }
-        auto lock = LockSidebarState(false);
+        auto lock = _lockSidebarFile(L".sidebar.introduction.lock", false);
         if (!lock)
+        {
+            return 0;
+        }
+        const auto stateLock = LockSidebarState(false);
+        if (!stateLock)
         {
             return 0;
         }
@@ -499,10 +531,62 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             // Keep exclusion on failure, including cancellation/window close
             // after presentation. The page timer and ordinary writer can retry.
+            const auto stateLock = LockSidebarState();
             _persistSidebarFlag("sidebarIntroductionShown");
         }
         _sidebarIntroductionPresented = false;
         _sidebarIntroductionLock.reset();
+    }
+
+    uint64_t ApplicationState::TryBeginAgentProfilesIntroduction()
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (_agentProfilesIntroductionLock || AgentProfilesIntroductionShown())
+        {
+            return 0;
+        }
+        auto lock = _lockSidebarFile(L".agent-profiles.introduction.lock", false);
+        if (!lock)
+        {
+            return 0;
+        }
+        const auto stateLock = LockSidebarState(false);
+        if (!stateLock)
+        {
+            return 0;
+        }
+        const auto root = _readSharedJson();
+        const auto dismissed = JsonUtils::GetValueForKey<bool>(root, "agentProfilesIntroductionShown");
+        _state.lock()->AgentProfilesIntroductionShown = dismissed;
+        if (dismissed)
+        {
+            return 0;
+        }
+        // Verify persistence before showing a once-only introduction.
+        _writeSharedContents(Json::writeString(Json::StreamWriterBuilder{}, root));
+        _agentProfilesIntroductionLock = std::move(lock);
+        return ++_agentProfilesIntroductionClaim;
+    }
+
+    void ApplicationState::EndAgentProfilesIntroduction(const uint64_t claim, const bool dismissed)
+    {
+        const std::scoped_lock guard{ _sidebarIntroductionMutex };
+        if (!_agentProfilesIntroductionLock || claim != _agentProfilesIntroductionClaim)
+        {
+            return;
+        }
+        if (dismissed)
+        {
+            _agentProfilesIntroductionDismissed = true;
+            AgentProfilesIntroductionShown(true);
+        }
+        if (_agentProfilesIntroductionDismissed)
+        {
+            const auto stateLock = LockSidebarState();
+            _persistSidebarFlag("agentProfilesIntroductionShown");
+        }
+        _agentProfilesIntroductionDismissed = false;
+        _agentProfilesIntroductionLock.reset();
     }
 
     // Returns the application-global ApplicationState object.

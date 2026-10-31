@@ -243,7 +243,7 @@ Describe 'Feature: restored session startup' -Tag 'Feature', 'RestoredSessionSta
                     app_sha256 = $env:ITE2E_EXPECTED_APP_SHA256; wta_sha256 = $env:ITE2E_EXPECTED_WTA_SHA256 } |
                     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $case 'idle-before-initialize.json')
                 Save-UiScreenshot -App $script:app -Path (Join-Path $case 'idle-before-initialize.png') | Out-Null
-                foreach ($step in @(@{ Command = 'working'; Status = 'Working'; Label = 'Active' },
+                foreach ($step in @(@{ Command = 'working'; Status = 'Working'; Label = 'Working' },
                         @{ Command = 'idle'; Status = 'Idle'; Label = 'Idle' })) {
                     Send-WtInput -App $script:app -SessionId $pane.Trim('{}') -Text $step.Command
                     Send-WtKeys -App $script:app -SessionId $pane.Trim('{}') -Keys @('Enter')

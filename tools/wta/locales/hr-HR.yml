@@ -142,7 +142,7 @@ agent.custom.auth_hint: "Provjerite je li %{name} instaliran i nalazi li se u PA
 agents.loading: "Učitavanje..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ za navigaciju • Enter za pokretanje sesije • Esc za izlaz • F5 za osvježavanje • / za pretraživanje)"
-agents.status.active: "Aktivno"
+agents.status.active: "Radi"
 agents.status.waiting_for_input: "Čeka unos"
 agents.status.error: "Pogreška"
 agents.status.idle: "Neaktivno"

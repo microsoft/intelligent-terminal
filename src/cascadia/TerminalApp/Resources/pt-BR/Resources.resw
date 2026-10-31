@@ -168,6 +168,10 @@
   <data name="MultiplePanes" xml:space="preserve">
     <value>Vários painéis</value>
   </data>
+  <data name="TabToolTipPaneCount" xml:space="preserve">
+    <value>{0} painéis</value>
+    <comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment>
+  </data>
   <data name="TabCloseSubMenu" xml:space="preserve">
     <value>Fechar</value>
   </data>
@@ -210,7 +214,8 @@
     <value>Pesquisar guias</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Pesquisar guias</value>
+    <value>Pesquisar</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Pesquisar guias</value>
@@ -296,6 +301,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Nenhuma sessão de agente correspondente.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Nenhuma guia aberta ou sessão anterior de agentes corresponde à sua pesquisa.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Não foi possível carregar as sessões do agente.</value>
@@ -1608,6 +1617,10 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
     <value>Ocioso</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>Concluído</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>Em uso</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -1617,7 +1630,7 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>Ativo</value>
+    <value>Trabalhando</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -1690,7 +1703,7 @@ Para todas as opções disponíveis, execute 'wt new-tab --help'.</value>
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Pesquisar guias e sessões recentes de agentes</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · Em outra janela</value>

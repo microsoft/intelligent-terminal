@@ -200,11 +200,22 @@ namespace winrt::TerminalApp::implementation
         // for it. The Title change will be propagated upwards through the tab's
         // PropertyChanged event handler.
         newTabImpl->ActivePaneChanged({ get_weak(), &TerminalPage::_activePaneChanged });
+        newTabImpl->Focused([weakTab, weakThis{ get_weak() }]() {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto tab = weakTab.get())
+                {
+                    page->_ReadFocusedPaneAgentActivity(*tab);
+                }
+            }
+        });
         newTabImpl->PaneProjectionChanged([weakTab, weakThis{ get_weak() }]() {
             const auto page = weakThis.get();
             const auto tab = weakTab.get();
             if (page && tab)
             {
+                page->_RefreshTabUnreadActivity(*tab);
+                tab->RefreshToolTip();
                 page->_ApplyTabListProjection(*tab);
                 if (tab->KeepRunning())
                 {
@@ -217,6 +228,10 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_isVerticalLayout)
             {
+                if (page->_DeferSidebarUpdates())
+                {
+                    return;
+                }
                 winrt::get_self<implementation::TabStrip>(page->_tabStrip)->RefreshTabColor(tab->TabViewItem());
                 page->_UpdateSidebarHistoryCurrentSession();
             }
@@ -436,6 +451,13 @@ namespace winrt::TerminalApp::implementation
                     self->_RaiseProtocolEvent("tab_renamed", params);
                 });
 
+                // CLI tracking is a background consumer even if this tab
+                // suppresses assistant pre-warm or restores only shell panes.
+                if (self->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                {
+                    self->_EnsureSharedWtaService();
+                }
+
                 // Pre-warm a stashed agent pane on this tab so the helper is
                 // running from the start (autofix needs it). A transferred
                 // pane keeps its existing helper and skips this path, and a
@@ -548,6 +570,13 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
+        if (!_freChromeVisible)
+        {
+            _tabRow.Visibility(Visibility::Collapsed);
+            _tabStrip.Visibility(Visibility::Collapsed);
+            return;
+        }
+
         if (_isVerticalLayout)
         {
             const auto railVisible = !_isInFocusMode &&
@@ -803,6 +832,32 @@ namespace winrt::TerminalApp::implementation
             }
             if (!resume.empty())
             {
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
+                    std::wstring_view{ binding->second.backend });
+                if ((binding->second.backend.empty() ||
+                     (backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host)) &&
+                    !binding->second.cwd.empty())
+                {
+                    bool hasReportedCwd = false;
+                    for (const auto& runtimeTab : _RuntimeTabs())
+                    {
+                        const auto tab = _GetTabImpl(runtimeTab);
+                        const auto pane = tab && tab->GetRootPane() ?
+                                              tab->GetRootPane()->FindPaneBySessionId(terminalArgs.SessionId()) :
+                                              nullptr;
+                        if (pane)
+                        {
+                            const auto control = pane->GetTerminalControl();
+                            hasReportedCwd = control && control.WorkingDirectoryReportedByShell() &&
+                                             Utils::IsUsableStartingDirectory(control.Settings().Commandline(), control.WorkingDirectory());
+                            break;
+                        }
+                    }
+                    if (!hasReportedCwd)
+                    {
+                        terminalArgs.StartingDirectory(binding->second.cwd);
+                    }
+                }
                 terminalArgs.Commandline(resume);
             }
         }
@@ -1308,11 +1363,16 @@ namespace winrt::TerminalApp::implementation
         if (target && target->canonicalIndex < _tabs.Size() &&
             _GetTabImpl(_tabs.GetAt(target->canonicalIndex)).get() == target->identity)
         {
+            const auto tabItem = _tabs.GetAt(target->canonicalIndex).TabViewItem();
             _SelectTab(target->canonicalIndex);
             if (focused && focused.get() == target->identity)
             {
                 // Re-enter the only displayed tab through the existing row-activation path.
                 focused->RequestFocusActiveControl.raise();
+            }
+            else if (!_IsCollapsedVerticalRail())
+            {
+                winrt::get_self<implementation::TabStrip>(_tabStrip)->BringTabHeaderIntoView(tabItem);
             }
         }
         return true;
@@ -2161,7 +2221,114 @@ namespace winrt::TerminalApp::implementation
         _OnSelectionChangedCore();
     }
 
+    TerminalPage::SidebarUpdateBatch::SidebarUpdateBatch(TerminalPage& page, const bool enabled) noexcept :
+        _page{ enabled ? &page : nullptr }
+    {
+        if (_page)
+        {
+            ++_page->_sidebarUpdateBatchDepth;
+        }
+    }
+
+    TerminalPage::SidebarUpdateBatch::~SidebarUpdateBatch() noexcept
+    {
+        if (_page)
+        {
+            --_page->_sidebarUpdateBatchDepth;
+            _page->_QueueSidebarUpdateFlush();
+        }
+    }
+
+    void TerminalPage::SidebarUpdateBatch::Commit()
+    {
+        if (const auto page = std::exchange(_page, nullptr))
+        {
+            --page->_sidebarUpdateBatchDepth;
+            page->_FlushSidebarUpdates();
+        }
+    }
+
+    bool TerminalPage::_DeferSidebarUpdates()
+    {
+        if (_sidebarUpdateBatchDepth || _flushingSidebarUpdates)
+        {
+            _pendingSidebarUpdates = true;
+            return true;
+        }
+        if (_pendingSidebarUpdates)
+        {
+            _FlushSidebarUpdates();
+        }
+        return false;
+    }
+
+    void TerminalPage::_QueueSidebarUpdateFlush() noexcept
+    {
+        if (_sidebarUpdateBatchDepth || !_pendingSidebarUpdates || _sidebarUpdateFlushQueued)
+        {
+            return;
+        }
+        try
+        {
+            _sidebarUpdateFlushQueued = true;
+            auto resetQueued = wil::scope_exit([&]() noexcept {
+                _sidebarUpdateFlushQueued = false;
+            });
+            const auto dispatcher = DispatcherQueue::GetForCurrentThread();
+            THROW_HR_IF(E_UNEXPECTED, !dispatcher);
+            THROW_HR_IF(E_ABORT, !dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakThis = get_weak()]() {
+                if (const auto page = weakThis.get())
+                {
+                    // Release this callback's ownership before a failed flush queues a retry.
+                    page->_sidebarUpdateFlushQueued = false;
+                    try
+                    {
+                        page->_FlushSidebarUpdates();
+                    }
+                    CATCH_LOG()
+                }
+            }));
+            resetQueued.release();
+        }
+        CATCH_LOG()
+    }
+
+    void TerminalPage::_FlushSidebarUpdates()
+    {
+        if (_sidebarUpdateBatchDepth || _flushingSidebarUpdates || !_pendingSidebarUpdates)
+        {
+            return;
+        }
+        _flushingSidebarUpdates = true;
+        auto resetFlushing = wil::scope_exit([&]() noexcept {
+            _flushingSidebarUpdates = false;
+        });
+        while (std::exchange(_pendingSidebarUpdates, false))
+        {
+            auto retryOnFailure = wil::scope_exit([&]() noexcept {
+                _pendingSidebarUpdates = true;
+                _QueueSidebarUpdateFlush();
+            });
+            // A full projection subsumes every deferred request, including
+            // pane-row, presentation and color updates for other tabs.
+            _ApplyTabListProjectionCore(nullptr, true, false);
+            _UpdateSidebarHistoryCurrentSessionCore();
+            retryOnFailure.release();
+        }
+    }
+
     void TerminalPage::_ApplyTabListProjection(
+        const TerminalApp::Tab& changedTab,
+        const bool refreshPaneItems,
+        const bool updateBookkeeping)
+    {
+        if (!_DeferSidebarUpdates())
+        {
+            _ApplyTabListProjectionCore(changedTab, refreshPaneItems, updateBookkeeping);
+        }
+    }
+
+    void TerminalPage::_ApplyTabListProjectionCore(
         const TerminalApp::Tab& changedTab,
         const bool refreshPaneItems,
         const bool updateBookkeeping)
@@ -2208,7 +2375,7 @@ namespace winrt::TerminalApp::implementation
             const auto tabImpl = _GetTabImpl(tab);
             if (tabImpl && _isVerticalLayout && refreshPaneItems)
             {
-                _RefreshTabStripPaneItems(tabImpl, display);
+                _RefreshTabStripPaneItemsCore(tabImpl, display);
             }
         };
         if (!refreshAll)
@@ -2264,7 +2431,9 @@ namespace winrt::TerminalApp::implementation
                 const auto chosen = list.ChooseHint(owner.identity, std::wstring_view{ canonicalHint.c_str(), canonicalHint.size() }, hints);
                 const auto chord = chosen ? winrt::hstring{ hints[*chosen].text } : winrt::hstring{};
                 winrt::get_self<TabStripDisplayItem>(display)->SetSidebarHints(
-                    std::pair{ chord, tab->ToolTipTextForKeyChord(chord) }, tabStrip->IsVerticalPresentation());
+                    std::pair{ chord, tab->ToolTipTextForKeyChord(chord) },
+                    tab->ToolTipContentForKeyChord(chord),
+                    tabStrip->IsVerticalPresentation());
                 tabStrip->SetTabItemVisibility(display, visible);
             }
             else

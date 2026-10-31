@@ -155,6 +155,25 @@ namespace winrt::TerminalApp::implementation
     // Queries — return typed WinRT structs
     // ============================================================================
 
+    IAsyncOperation<Windows::Foundation::Collections::IVector<Protocol::ProfileInfo>> TerminalPage::GetProtocolProfiles()
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        auto profiles = winrt::single_threaded_vector<Protocol::ProfileInfo>();
+        const auto defaultProfile = _settings.GlobalSettings().DefaultProfile();
+        for (const auto& profile : _settings.ActiveProfiles())
+        {
+            Protocol::ProfileInfo info{};
+            info.Id = profile.Guid();
+            info.Name = profile.Name();
+            info.IsDefault = info.Id == defaultProfile;
+            info.AgentId = profile.AgentProfileId();
+            profiles.Append(info);
+        }
+        co_return profiles;
+    }
+
     IAsyncOperation<Protocol::PaneInfo> TerminalPage::GetProtocolActivePane()
     {
         auto strong = get_strong();

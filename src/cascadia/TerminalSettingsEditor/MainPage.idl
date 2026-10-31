@@ -44,6 +44,8 @@ namespace Microsoft.Terminal.Settings.Editor
         BreadcrumbSubPage SubPage;
     }
 
+    delegate Boolean AgentProfilesIntroductionPresentationGate();
+
     [default_interface] runtimeclass MainPage : Windows.UI.Xaml.Controls.Page, IHostedInWindow
     {
         MainPage(Microsoft.Terminal.Settings.Model.CascadiaSettings settings);
@@ -64,5 +66,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Windows.UI.Xaml.Media.Brush BackgroundBrush { get; };
 
         void NavigateToAIAgents();
+
+        void SetAgentProfilesIntroductionPresentationGate(AgentProfilesIntroductionPresentationGate gate);
     }
 }

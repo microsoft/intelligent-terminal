@@ -142,7 +142,7 @@ agent.custom.auth_hint: "Осигурајте се дека %{name} е инст�
 agents.loading: "Се вчитува..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ за навигација • Enter за стартување сесија • Esc за излез • F5 за освежување • / за пребарување)"
-agents.status.active: "Активен"
+agents.status.active: "Работи"
 agents.status.waiting_for_input: "Чека внес"
 agents.status.error: "Грешка"
 agents.status.idle: "Неактивен"

@@ -239,3 +239,42 @@ executor its own master sender like (a)'s. Threading that through without
 disturbing the recommendation's other steps is why (b) is deferred to its own
 change. It will reuse the exact same id-pinning and born-bound registration as
 (a); only the transport differs.
+
+## Managed native agent profiles
+
+Managed native profiles do not reserve conversation UUIDs, append session-ID
+flags, or pre-bind conversations when Terminal creates their ConPTY connections.
+The CLI creates its own conversation ID, and the existing hook and session
+discovery paths establish the actual binding. Profile restarts follow the same
+behavior. Restore and resume bindings for known conversations remain unchanged.
+
+Command previews and profile settings do not contain a generated UUID.
+Handwritten command overrides, resume/continue commands, help/version commands,
+and providers without new-session ID support keep their existing command behavior.
+
+All managed native profiles also publish their evaluated launch directory as
+pane-only metadata for the native status fallback. This supplies an initial cwd
+for Codex, Antigravity, and OpenCode without inventing a conversation ID or
+binding a history row. Empty managed starting directories use the window's
+virtual cwd or capture the inherited host cwd before delayed connection startup.
+Relative managed Host directories are resolved to absolute Windows paths at
+connection creation, so bindings and saved layouts do not depend on a later
+launcher's directory.
+A confirmed session cwd takes precedence where supported;
+Antigravity's existing shell-session cwd suppression remains unchanged, with the
+Terminal-authored launch directory available as a fallback.
+
+All managed native profiles display an initial Idle state and their fixed
+ConPTY launch cwd without waiting for master or hooks, regardless of session
+management mode. This presentation-only fallback does not invent conversation
+IDs or change native signal ownership. Confirmed pane/session status takes
+precedence, and closing or failed connections do not retain the launch fallback.
+
+Replacing a managed profile connection explicitly retires the old pane in
+master before announcing its replacement, even if a failure was already reported.
+Host resume actions retain the evaluated session cwd when the terminal has no
+usable cwd report, rather than saving an empty or relative profile directory.
+
+A known session ID is not proof that a conversation was persisted. Restore uses the
+saved resume command without inspecting Claude transcripts or replacing its
+session ID; an empty Claude session can still report that no conversation exists.

@@ -146,7 +146,7 @@ agent.custom.auth_hint: "یقینی بنائیں کہ %{name} انسٹال ہے 
 agents.loading: "لوڈ ہو رہا ہے..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - کلید کے مجموعے، ترجمہ نہ کریں
 agents.footer_hint: "(↑ ↓ نیویگیشن • Enter سیشن شروع کریں • Esc باہر نکلیں • F5 ریفریش کریں • / تلاش کریں)"
-agents.status.active: "فعال"
+agents.status.active: "کام کر رہا ہے"
 agents.status.waiting_for_input: "ان پٹ کا انتظار"
 agents.status.error: "خرابی"
 agents.status.idle: "غیر فعال"

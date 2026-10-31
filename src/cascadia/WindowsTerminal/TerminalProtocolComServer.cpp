@@ -570,8 +570,8 @@ try
     // ITerminalProtocol method is gated on this call.
     Json::Value v;
     v["authenticated"] = true;
-    // 2.3 — GetPaneContext resolves and captures bounded pane context in one call.
-    v["protocol_version"] = "2.3";
+    // 2.4 — ListProfiles queries effective runtime profiles, including dynamic profiles.
+    v["protocol_version"] = "2.4";
     *resultJson = _bstrFromJson(v);
     return S_OK;
 }
@@ -606,6 +606,7 @@ try
         "unsubscribe",
         "send_event",
         "get_pane_context",
+        "list_profiles",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -620,6 +621,37 @@ CATCH_RETURN()
 // ============================================================================
 // Queries
 // ============================================================================
+
+STDMETHODIMP TerminalProtocolComServer::ListProfiles(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    const auto host = _getMostRecentHost(s_emperor->GetWindows());
+    RETURN_HR_IF(E_FAIL, !host);
+    const auto page = _getPage(host.get());
+    RETURN_HR_IF(E_FAIL, !page);
+
+    Json::Value profiles(Json::arrayValue);
+    for (const auto& profile : page.GetProtocolProfiles().get())
+    {
+        Json::Value entry(Json::objectValue);
+        // Profile lookup requires braces; pane session IDs omit them.
+        entry["id"] = "{" + _guidStr(profile.Id) + "}";
+        entry["name"] = winrt::to_string(profile.Name);
+        entry["is_default"] = profile.IsDefault;
+        if (!profile.AgentId.empty())
+        {
+            entry["agent_id"] = winrt::to_string(profile.AgentId);
+        }
+        profiles.append(std::move(entry));
+    }
+    *json = _bstrFromJson(profiles);
+    return S_OK;
+}
+CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::GetActivePane(BSTR* json)
 try

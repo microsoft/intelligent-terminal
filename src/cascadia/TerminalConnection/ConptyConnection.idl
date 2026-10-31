@@ -38,5 +38,6 @@ namespace Microsoft.Terminal.TerminalConnection
                                                                       Guid profileGuid);
 
         String StartingDirectory { get; };
+        Boolean ProcessStarted { get; };
     };
 }

@@ -101,6 +101,14 @@ namespace Microsoft.Terminal.Protocol
         String ProtocolVersion;
     };
 
+    struct ProfileInfo
+    {
+        Guid Id;
+        String Name;
+        Boolean IsDefault;
+        String AgentId;
+    };
+
     // Callback interface — implemented by clients (e.g. wtcli) to receive
     // push-based event notifications from Terminal.
     interface IProtocolEventCallback
@@ -147,5 +155,8 @@ namespace Microsoft.Terminal.Protocol
         // Appended in protocol 2.3. Resolves the explicit or effective source
         // pane and captures bounded context in one operation.
         PaneContext GetPaneContext(Guid sourceSessionId, Boolean hasExplicitSource, Int32 maxLines, Int32 maxCharacters);
+
+        // Appended in protocol 2.4.
+        ProfileInfo[] ListProfiles();
     }
 }

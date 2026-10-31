@@ -1,6 +1,6 @@
 //! Shared ACP `session/list` plumbing.
 //!
-//! Both host diagnostics use shared startup admission and confirmed cleanup.
+//! Each host diagnostic owns its startup state and confirms process cleanup.
 //! Callers must drive this inside a tokio `LocalSet`.
 
 use crate::protocol::acp::spawn::{ChildEnvironmentPolicy, SharedProviderSelection};
@@ -18,7 +18,7 @@ use std::time::Duration;
 pub(crate) type ListOutcome = std::result::Result<Vec<acp::schema::v1::SessionInfo>, String>;
 
 /// Initialize once, inspect session-list support, and close the owned process
-/// while retaining the same admission lease used by inherited-provider masters.
+/// without changing a master's startup admission state.
 pub(crate) async fn fetch_session_list(
     agent_cmd: &str,
     retry_startup: bool,
@@ -29,7 +29,7 @@ pub(crate) async fn fetch_session_list(
     let source = crate::agent_source::AgentSource::Host;
     let binding = crate::agent_lifecycle::provider_binding_key("legacy", &shared);
     let key = crate::agent_lifecycle::agent_key(agent_cmd, agent_id, &source, &binding, false);
-    let registry = crate::agent_lifecycle::StartupRegistry::runtime()?;
+    let registry = crate::agent_lifecycle::StartupRegistry::default();
     if retry_startup {
         registry.retry(&key).await?;
     }

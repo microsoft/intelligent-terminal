@@ -135,7 +135,8 @@ public:
 
     std::shared_ptr<Pane> AttachPane(std::shared_ptr<Pane> pane,
                                      winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
-                                     float splitSize = 0.5f);
+                                     float splitSize = 0.5f,
+                                     bool animate = true);
     std::shared_ptr<Pane> DetachPane(std::shared_ptr<Pane> pane);
 
     bool RepositionAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitDirection);
@@ -171,6 +172,7 @@ public:
 
     bool ContainsReadOnly() const;
 
+    bool ContainsAgentPane() const noexcept;
     bool IsAgentPane() const noexcept;
     void IsAgentPane(bool value) noexcept;
     bool IsSourceOfAgentPane() const noexcept;
@@ -194,25 +196,34 @@ public:
     //   returns true.
     // Arguments:
     // - f: The function to be applied to each pane.
+    // - skipHidden: Skip hidden panes and their entire subtrees.
     // Return Value:
     // - The value of the function applied on a Pane
     template<typename F>
-    auto WalkTree(F f) -> decltype(f(shared_from_this()))
+    auto WalkTree(F f, const bool skipHidden = false) -> decltype(f(shared_from_this()))
     {
         using R = std::invoke_result_t<F, std::shared_ptr<Pane>>;
         static constexpr auto IsVoid = std::is_void_v<R>;
 
         if constexpr (IsVoid)
         {
+            if (skipHidden && _hidden)
+            {
+                return;
+            }
             f(shared_from_this());
             if (!_IsLeaf())
             {
-                _firstChild->WalkTree(f);
-                _secondChild->WalkTree(f);
+                _firstChild->WalkTree(f, skipHidden);
+                _secondChild->WalkTree(f, skipHidden);
             }
         }
         else
         {
+            if (skipHidden && _hidden)
+            {
+                return R{};
+            }
             if (const auto res = f(shared_from_this()))
             {
                 return res;
@@ -220,11 +231,11 @@ public:
 
             if (!_IsLeaf())
             {
-                if (const auto res = _firstChild->WalkTree(f))
+                if (const auto res = _firstChild->WalkTree(f, skipHidden))
                 {
                     return res;
                 }
-                return _secondChild->WalkTree(f);
+                return _secondChild->WalkTree(f, skipHidden);
             }
 
             return R{};
@@ -331,7 +342,8 @@ private:
 
     std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> _Split(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
                                                                    const float splitSize,
-                                                                   std::shared_ptr<Pane> newPane);
+                                                                   std::shared_ptr<Pane> newPane,
+                                                                   bool animate = true);
 
     void _CreateRowColDefinitions();
     void _ApplySplitDefinitions();
@@ -346,6 +358,7 @@ private:
     bool _Resize(const winrt::Microsoft::Terminal::Settings::Model::ResizeDirection& direction);
 
     std::shared_ptr<Pane> _FindParentOfPane(const std::shared_ptr<Pane> pane);
+    std::shared_ptr<Pane> _FindVisibleLeaf(std::optional<uint32_t> id = std::nullopt);
     std::pair<PanePoint, PanePoint> _GetOffsetsForPane(const PanePoint parentOffset) const;
     bool _IsAdjacent(const PanePoint firstOffset, const PanePoint secondOffset, const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction) const;
     PaneNeighborSearch _FindNeighborForPane(const winrt::Microsoft::Terminal::Settings::Model::FocusDirection& direction,

@@ -480,7 +480,8 @@
     <value>Tabbladen doorzoeken</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Tabbladen doorzoeken</value>
+    <value>Zoeken</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Tabbladen doorzoeken</value>
@@ -566,6 +567,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Geen overeenkomende agentsessies.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Er zijn geen geopende tabbladen of eerdere agentsessies die overeenkomen met uw zoekopdracht.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Kan de agentsessies niet laden.</value>
@@ -661,6 +666,10 @@
     <value>Inactief</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>Voltooid</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>In gebruik</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -670,7 +679,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>Actief</value>
+    <value>Bezig</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -743,7 +752,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Tabbladen en recente agentsessies doorzoeken</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · In een ander venster</value>
@@ -757,6 +766,7 @@
   <data name="ExportTabText"><value>Tekst exporteren</value></data>
   <data name="FindText"><value>Zoeken</value></data>
   <data name="RestartConnectionText"><value>Sessie opnieuw starten</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} deelvensters</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Sluiten</value></data>
   <data name="TabClose"><value>Tabblad sluiten</value></data>
   <data name="MoveTabToNewWindowText"><value>Tabblad naar nieuw venster verplaatsen</value></data>

@@ -64,6 +64,7 @@ scripts) are not counted.
 | `list-windows` | `lsw` | List all Terminal windows. | `wtcli --json list-windows` | ✅ `cli_channel.rs` (`list_windows`) |
 | `list-tabs` | `lst` | List tabs in a window. `-w` defaults to the first window. | `wtcli --json list-tabs -w 1` | ✅ `cli_channel.rs` (`list_tabs`) |
 | `list-panes` | `lsp` | List panes in a tab. `-t`/`-w` default to the first tab of the first window. | `wtcli --json list-panes -t 2` | ✅ `cli_channel.rs` (`list_panes`) |
+| `list-profiles` | — | List effective active profiles, including dynamically generated agent profiles. Hidden and orphaned profiles are excluded. | `wtcli --json list-profiles` | Agent profile discovery via `terminal-agent.md` |
 | `active-pane` | — | Return metadata for the currently focused pane. Used by other subcommands as the default `-t` target. | `wtcli --json active-pane` | ✅ `cli_channel.rs` (`get_active_pane`) |
 | `capture-pane` | `capturep` | Read pane scrollback as text. `-l` caps line count. `--last-prompt` returns only the most recent completed shell prompt (requires OSC 133 shell integration). | `wtcli --json capture-pane -t 3 --last-prompt` | ✅ `cli_channel.rs` (`read_pane_output`) |
 | `pane-status` | — | Report pane process state: `pid`, `state` (`running`/`exited`), and `exit_code` when applicable. | `wtcli --json pane-status -t 3` | ✅ `cli_channel.rs` (`get_process_status`) |
@@ -79,6 +80,27 @@ scripts) are not counted.
 | `test-pipe` | — | Smoke test: connect, run `list-windows` + `get_capabilities`, print results. Diagnostic only. | `wtcli test-pipe` | ❌ Not called. Manual diagnostic. |
 | `set-env` | `setenv` | Print shell-specific export statements for `WT_COM_CLSID` (`-s powershell\|bash\|cmd`). Output is meant to be `eval`'d / `Invoke-Expression`'d by the caller; it does not modify the current process. | `wtcli set-env -s powershell \| Invoke-Expression` | ❌ Not called. Manual recovery for child shells that didn't inherit `WT_COM_CLSID`. |
 
+## Profile discovery
+
+When a user requests a specific terminal profile, agents can run
+`wtcli --json list-profiles` through their own shell tool before submitting
+`create_workspace` through the existing session MCP. No additional MCP tool is
+needed. The query reads the running Terminal's settings model, including dynamic
+profiles and settings fragments, rather than reading `settings.json`.
+
+JSON output is an object containing a `profiles` array. Each entry has `id`
+(profile GUID), `name`, and `is_default`; managed agent profiles also include
+`agent_id`, such as `copilot`. Command lines and environment variables are not
+returned. Use the selected entry's `id` as `create_workspace.profile` or the
+`--profile` argument to `new-tab` / `split-pane`. Preserve the user's requested
+placement and direction. An agent profile launch is not task delegation.
+
+This requires protocol 2.4 with the `list_profiles` capability. Older servers
+return exit code 2 and `WT_PROTOCOL_UNSUPPORTED_LIST_PROFILES` on stderr without
+calling the appended COM method. Query/connection errors return exit code 1.
+Do not interpret either failure as an empty profile list or silently substitute
+the default profile.
+
 ## Summary
 
 - **Wired into `wta` runtime (13):** `list-windows`, `list-tabs`,
@@ -88,8 +110,9 @@ scripts) are not counted.
 - **Defined but not invoked from in-tree code (4):** `wait-for`,
   `send-event`, `test-pipe`, `set-env`. These remain as public surface for
   external agents / shell scripts and for manual debugging.
+- **Advertised to agents for read-only discovery:** `list-profiles`.
 
-## Listener regression tests
+## Native CLI regression tests
 
 Native mock tests compile the real CLI parser and connection code with mocked
 COM entry points. They verify default activation, class-unregistered recovery
@@ -98,6 +121,9 @@ failure without activation when the factory is absent or incompatible for
 `listen` and both `publish` input forms; no Terminal or agent is launched.
 They also check JSON-listener timestamp normalization, raw-listener pass-through,
 existing ISO strings, unchanged unrelated fields, and invalid timestamp handling.
+Profile-query cases cover successful and empty results, query failures,
+malformed responses, and rejecting unsupported servers before invoking the
+appended COM method.
 From a razzle CMD session at the repository root:
 
 ```cmd

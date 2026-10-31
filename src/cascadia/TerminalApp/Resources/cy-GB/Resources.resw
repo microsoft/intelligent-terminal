@@ -366,7 +366,8 @@
     <value>Chwilio tabiau</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Chwilio tabiau</value>
+    <value>Chwilio</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Chwilio tabiau</value>
@@ -452,6 +453,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Nid oes sesiynau asiant sy&apos;n cyfateb.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Nid oes unrhyw dabiau agored na sesiynau asiant blaenorol sy&apos;n cyfateb i&apos;ch chwiliad.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Methu llwytho sesiynau asiant.</value>
@@ -547,6 +552,10 @@
     <value>Segur</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>Wedi cwblhau</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>Yn cael ei ddefnyddio</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -556,7 +565,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>Gweithredol</value>
+    <value>Yn gweithio</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -629,7 +638,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Chwilio tabiau a sesiynau asiantau diweddar</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · Mewn ffenestr arall</value>
@@ -643,6 +652,7 @@
   <data name="ExportTabText"><value>Allforio testun</value></data>
   <data name="FindText"><value>Chwilio</value></data>
   <data name="RestartConnectionText"><value>Ailgychwyn y sesiwn</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} cwarel</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Cau</value></data>
   <data name="TabClose"><value>Cau'r tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Symud y tab i ffenestr newydd</value></data>

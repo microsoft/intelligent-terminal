@@ -480,7 +480,8 @@
     <value>Søk i faner</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Søk i faner</value>
+    <value>Søk</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Søk i faner</value>
@@ -536,7 +537,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Nylige agentøkter</value>
+    <value>Agentenes nylige økter</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -566,6 +567,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Ingen samsvarende agentøkter.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Ingen åpne faner eller tidligere agentøkter samsvarer med søket ditt.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Kan ikke laste inn agentøktene.</value>
@@ -661,6 +666,10 @@
     <value>Inaktiv</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>Fullført</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>I bruk</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -670,7 +679,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>Aktiv</value>
+    <value>Arbeider</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -743,7 +752,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Søk i faner og nylige agentøkter</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · I et annet vindu</value>
@@ -757,6 +766,7 @@
   <data name="ExportTabText"><value>Eksporter tekst</value></data>
   <data name="FindText"><value>Finn</value></data>
   <data name="RestartConnectionText"><value>Start økten på nytt</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} ruter</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Lukk</value></data>
   <data name="TabClose"><value>Lukk fane</value></data>
   <data name="MoveTabToNewWindowText"><value>Flytt fanen til et nytt vindu</value></data>

@@ -45,6 +45,10 @@ public:
     void SetCreateCallback(std::function<void(const HWND, const til::rect&)> pfn) noexcept;
 
     void SetSnapDimensionCallback(std::function<float(bool widthOrHeight, float dimension)> pfn) noexcept;
+    void SetWorkAreaConstraintCallback(std::function<bool()> pfn) noexcept;
+    void SetResizeLockCallback(std::function<bool()> pfn) noexcept;
+    void SetMinimumSizeOverride(std::optional<til::size> size) noexcept;
+    bool ConstrainDpiChangedWindowRect(RECT& rect) const noexcept;
 
     void FocusModeChanged(const bool focusMode);
     void FullscreenChanged(const bool fullscreen);
@@ -102,10 +106,14 @@ protected:
 
     std::function<void(const HWND, const til::rect&)> _pfnCreateCallback;
     std::function<float(bool, float)> _pfnSnapDimensionCallback;
+    std::function<bool()> _pfnWorkAreaConstraintCallback;
+    std::function<bool()> _pfnResizeLockCallback;
+    std::optional<til::size> _minimumSizeOverride;
 
     void _HandleCreateWindow(const WPARAM wParam, const LPARAM lParam) noexcept;
     [[nodiscard]] LRESULT _OnSizing(const WPARAM wParam, const LPARAM lParam);
     [[nodiscard]] LRESULT _OnMoving(const WPARAM wParam, const LPARAM lParam);
+    bool _IsResizeLocked() const noexcept;
 
     bool _borderless{ false };
     bool _alwaysOnTop{ false };

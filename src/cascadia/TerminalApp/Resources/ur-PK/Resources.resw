@@ -463,7 +463,8 @@
     <value>ٹیبز تلاش کریں</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>ٹیبز تلاش کریں</value>
+    <value>تلاش</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ٹیبز تلاش کریں</value>
@@ -519,7 +520,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>حالیہ ایجنٹ سیشنز</value>
+    <value>ایجنٹس کے حالیہ سیشنز</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -549,6 +550,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>کوئی مماثل ایجنٹ سیشن نہیں ہے۔</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>آپ کی تلاش سے مماثل کوئی کھلے ٹیبز یا ایجنٹس کے پچھلے سیشنز نہیں ہیں۔</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ایجنٹ سیشنز لوڈ نہیں کیے جا سکے۔</value>
@@ -644,6 +649,10 @@
     <value>غیر فعال</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>مکمل</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>زیر استعمال</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -653,7 +662,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>فعال</value>
+    <value>کام کر رہا ہے</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -726,7 +735,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>ٹیبز اور حالیہ ایجنٹ سیشنز تلاش کریں</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · دوسری ونڈو میں</value>
@@ -740,6 +749,7 @@
   <data name="ExportTabText"><value>متن برآمد کریں</value></data>
   <data name="FindText"><value>تلاش</value></data>
   <data name="RestartConnectionText"><value>سیشن دوبارہ شروع کریں</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} پین</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>بند کریں</value></data>
   <data name="TabClose"><value>ٹیب بند کریں</value></data>
   <data name="MoveTabToNewWindowText"><value>ٹیب نئی ونڈو میں منتقل کریں</value></data>

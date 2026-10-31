@@ -64,6 +64,9 @@
     <Page Include="TabStrip.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="SidebarLayoutResources.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="HighlightedTextControlStyle.xaml">
       <Type>DefaultStyle</Type>
       <SubType>Designer</SubType>
@@ -224,6 +227,7 @@
     <ClInclude Include="FreOverlay.h">
       <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="FreLayoutMetrics.h" />
     <ClInclude Include="WindowsPackageManagerFactory.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->

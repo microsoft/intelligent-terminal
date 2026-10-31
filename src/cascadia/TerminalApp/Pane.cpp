@@ -323,6 +323,7 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
 //   and decrease the size of the other.
 // - Adjusts the separation amount by 5%
 // - Does nothing if the direction doesn't match our current split direction
+//   or either child is hidden, since its separator is not in the visible layout.
 // Arguments:
 // - direction: the direction to move our separator. If it's down or right,
 //   we'll be increasing the size of the first of our children. Else, we'll be
@@ -331,7 +332,7 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
 // - false if we couldn't resize this pane in the given direction, else true.
 bool Pane::_Resize(const ResizeDirection& direction)
 {
-    if (!DirectionMatchesSplit(direction, _splitState))
+    if (!DirectionMatchesSplit(direction, _splitState) || _firstChild->_hidden || _secondChild->_hidden)
     {
         return false;
     }
@@ -429,7 +430,7 @@ bool Pane::ResizePane(const ResizeDirection& direction)
 std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> sourcePane, const FocusDirection& direction, const std::vector<uint32_t>& mruPanes)
 {
     // Can't navigate anywhere if we are a leaf
-    if (_IsLeaf())
+    if (_hidden || _IsLeaf())
     {
         return nullptr;
     }
@@ -444,6 +445,11 @@ std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> source
     {
         if (const auto parent = _FindParentOfPane(sourcePane))
         {
+            // The agent's enclosing group belongs to the tab, not pane selection.
+            if (parent->ContainsAgentPane())
+            {
+                return nullptr;
+            }
             // Keep a reference to which child we came from
             parent->_parentChildPath = sourcePane->weak_from_this();
 
@@ -458,12 +464,24 @@ std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> source
         {
             auto child = sourcePane->_firstChild;
             // If we've recorded path try to go back down it
-            if (const auto prevFocus = sourcePane->_parentChildPath.lock())
+            if (const auto prevFocus = sourcePane->_parentChildPath.lock();
+                prevFocus == sourcePane->_firstChild || prevFocus == sourcePane->_secondChild)
             {
                 child = prevFocus;
             }
             // clean up references
             sourcePane->_parentChildPath.reset();
+            const auto selectable = [](const auto& pane) {
+                return !pane->_hidden && !pane->ContainsAgentPane();
+            };
+            if (!selectable(child))
+            {
+                child = child == sourcePane->_firstChild ? sourcePane->_secondChild : sourcePane->_firstChild;
+            }
+            if (!selectable(child))
+            {
+                return nullptr;
+            }
             return child;
         }
         return nullptr;
@@ -472,11 +490,12 @@ std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> source
     // Previous movement relies on the last used panes
     if (direction == FocusDirection::Previous)
     {
-        // If there is actually a previous pane.
-        if (mruPanes.size() > 1)
+        for (size_t i = 1; i < mruPanes.size(); ++i)
         {
-            // This could return nullptr if the id is not actually in the tree.
-            return FindPane(mruPanes.at(1));
+            if (const auto pane = _FindVisibleLeaf(mruPanes[i]); pane && pane != sourcePane)
+            {
+                return pane;
+            }
         }
         return nullptr;
     }
@@ -496,7 +515,7 @@ std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> source
     if (direction == FocusDirection::First)
     {
         // Just get the first leaf pane.
-        auto firstPane = _FindPane([](const auto& p) { return p->_IsLeaf(); });
+        auto firstPane = _FindVisibleLeaf();
 
         // Don't need to do any movement if we are the source and target pane.
         if (firstPane == sourcePane)
@@ -534,6 +553,23 @@ std::shared_ptr<Pane> Pane::NavigateDirection(const std::shared_ptr<Pane> source
     return nullptr;
 }
 
+std::shared_ptr<Pane> Pane::_FindVisibleLeaf(std::optional<uint32_t> id)
+{
+    if (_hidden)
+    {
+        return nullptr;
+    }
+    if (_IsLeaf())
+    {
+        return !id || _id == id ? shared_from_this() : nullptr;
+    }
+    if (const auto pane = _firstChild->_FindVisibleLeaf(id))
+    {
+        return pane;
+    }
+    return _secondChild->_FindVisibleLeaf(id);
+}
+
 // Method Description:
 // - Attempts to find the succeeding pane of the provided pane.
 // - NB: If targetPane is not a leaf, then this will return one of its children.
@@ -553,11 +589,8 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> nextPane = nullptr;
     auto foundTarget = false;
 
-    // A hidden leaf is not in the visual tree — a stashed agent pane is the
-    // only one today — so in-order navigation has to step over it. Landing on
-    // one focuses something the user cannot see, and every subsequent action
-    // that acts on "the active pane" is then aimed at the wrong pane.
-    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+    // Skip entire hidden subtrees, not just leaves marked hidden themselves.
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf(); };
 
     auto foundNext = WalkTree([&](const auto& pane) {
         // If we are a parent pane we don't want to move to one of our children
@@ -586,7 +619,8 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
         }
 
         return false;
-    });
+    },
+                              true);
 
     // If we found the desired pane just return it
     if (foundNext)
@@ -621,9 +655,7 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> lastLeaf = nullptr;
     auto foundTarget = false;
 
-    // See `NextPane`: a hidden leaf is not in the visual tree and must not be
-    // a navigation target.
-    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf(); };
 
     WalkTree([&](auto pane) {
         if (pane == targetPane)
@@ -643,7 +675,8 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
         }
 
         return false;
-    });
+    },
+             true);
 
     // If we found the target pane then lastLeaf will either be the preceding
     // pane or the last pane in the tree if targetPane is the first leaf.
@@ -687,7 +720,7 @@ bool Pane::SwapPanes(std::shared_ptr<Pane> first, std::shared_ptr<Pane> second)
     }
 
     // Agent panes are fixed and cannot be swapped.
-    if (first->_isAgentPane || second->_isAgentPane)
+    if (first->ContainsAgentPane() || second->ContainsAgentPane())
     {
         return false;
     }
@@ -952,6 +985,10 @@ Pane::PaneNeighborSearch Pane::_FindNeighborForPane(const FocusDirection& direct
                                                     const bool sourceIsSecondSide,
                                                     const Pane::PanePoint offset)
 {
+    if (_hidden)
+    {
+        return searchResult;
+    }
     // Test if the move will go out of boundaries. E.g. if the focus is already
     // on the second child of some pane and it attempts to move right, there
     // can't possibly be a neighbor to be found in the first child.
@@ -993,6 +1030,10 @@ Pane::PaneNeighborSearch Pane::_FindNeighborForPane(const FocusDirection& direct
 //   Otherwise, the neighbor will be null and the focus will be null/non-null if it was found.
 Pane::PaneNeighborSearch Pane::_FindPaneAndNeighbor(const std::shared_ptr<Pane> sourcePane, const FocusDirection& direction, const Pane::PanePoint offset)
 {
+    if (_hidden)
+    {
+        return { nullptr, nullptr, offset };
+    }
     // If we are the source pane, return ourselves
     if (this == sourcePane.get())
     {
@@ -1410,7 +1451,7 @@ void Pane::UpdateSettings(const CascadiaSettings& settings)
 // - splitSize: the fraction of the split the *attached* pane should occupy
 // Return Value:
 // - the new reference to the child created from the current pane.
-std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType, const float splitSize)
+std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType, const float splitSize, const bool animate)
 {
     // `_Split` sizes the *first* child, which is the attached pane only when
     // it lands on the leading edge. Invert for the other two directions so
@@ -1419,7 +1460,7 @@ std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirectio
                                    1.0f - splitSize :
                                    splitSize;
     // Splice the new pane into the tree
-    const auto [first, _] = _Split(splitType, requestedSize, pane);
+    const auto [first, _] = _Split(splitType, requestedSize, pane, animate);
 
     // If the new pane has a child that was the focus, re-focus it
     // to steal focus from the currently focused pane.
@@ -1646,6 +1687,10 @@ void Pane::_CloseChild(const bool closeFirst)
         // Notify other UI subscribers. Content close above owns resource
         // retirement independently of the pane-tree event routing.
         remainingChild->Closed.raise(nullptr, nullptr);
+        // Closed handlers can restore a zoomed pane into this visual tree.
+        _root.Children().Clear();
+        _borderFirst.Child(nullptr);
+        _borderSecond.Child(nullptr);
         _firstChild = nullptr;
         _secondChild = nullptr;
         // Become an empty leaf so that subsequent `Pane::Shutdown` (driven
@@ -1860,11 +1905,14 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
     // agent bar anyway, so dropping it for all agent-pane closes (not
     // just the rebuild path) is an acceptable trade.
     const auto closingChildIsAgent = (closeFirst ? _firstChild : _secondChild)->_isAgentPane;
+    const auto remainingChild = closeFirst ? _secondChild : _firstChild;
+    // _CloseChild retires an agent-only subtree instead of expanding the agent pane.
+    const auto remainingChildIsAgent = remainingChild->_IsLeaf() && remainingChild->_isAgentPane;
     // If animations are disabled, just skip this and go straight to
     // _CloseChild. Curiously, the pane opening animation doesn't need this,
     // and will skip straight to Completed when animations are disabled, but
     // this one doesn't seem to.
-    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed || closingChildIsAgent)
+    if (!animationsEnabledInOS || !animationsEnabledInApp || eitherChildZoomed || closingChildIsAgent || remainingChildIsAgent)
     {
         _CloseChild(closeFirst);
         return;
@@ -1873,7 +1921,6 @@ void Pane::_CloseChildRoutine(const bool closeFirst)
     // Set up the animation
 
     auto removedChild = closeFirst ? _firstChild : _secondChild;
-    auto remainingChild = closeFirst ? _secondChild : _firstChild;
     const auto splitWidth = _splitState == SplitState::Vertical;
 
     Size removedOriginalSize{
@@ -2559,7 +2606,8 @@ SplitState Pane::_convertAutomaticOrDirectionalSplitState(const SplitDirection& 
 // - The two newly created Panes, with the original pane as the first pane.
 std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirection splitType,
                                                                      const float splitSize,
-                                                                     std::shared_ptr<Pane> newPane)
+                                                                     std::shared_ptr<Pane> newPane,
+                                                                     const bool animate)
 {
     auto actualSplitType = _convertAutomaticOrDirectionalSplitState(splitType);
 
@@ -2628,7 +2676,10 @@ std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Pane::_Split(SplitDirect
 
     _lastActive = false;
 
-    _SetupEntranceAnimation();
+    if (animate)
+    {
+        _SetupEntranceAnimation();
+    }
 
     // Clear out our ID, only leaves should have IDs
     _id = {};
@@ -2854,18 +2905,20 @@ void Pane::RemoveSessionVariable(const winrt::hstring& name)
 // - The ID of the pane we want to focus
 bool Pane::FocusPane(const uint32_t id)
 {
-    // Always clear the parent child path if we are focusing a leaf
-    return WalkTree([=](const auto& p) {
-        p->_parentChildPath.reset();
-        if (p->_id == id)
-        {
-            // Make sure to use _FocusFirstChild here - that'll properly update the
-            // focus if we're in startup.
-            p->_FocusFirstChild();
-            return true;
-        }
+    if (_hidden)
+    {
         return false;
-    });
+    }
+    // Always clear the parent child path if we are focusing a leaf
+    _parentChildPath.reset();
+    if (_id == id)
+    {
+        // Make sure to use _FocusFirstChild here - that'll properly update the
+        // focus if we're in startup.
+        _FocusFirstChild();
+        return true;
+    }
+    return !_IsLeaf() && (_firstChild->FocusPane(id) || _secondChild->FocusPane(id));
 }
 
 // Method Description:
@@ -2878,16 +2931,18 @@ bool Pane::FocusPane(const uint32_t id)
 // - true if focus was set
 bool Pane::FocusPane(const std::shared_ptr<Pane> pane)
 {
-    return WalkTree([&](const auto& p) {
-        if (p == pane)
-        {
-            p->_Focus();
-            return true;
-        }
-        // clear the parent child path if we are not the pane being focused.
-        p->_parentChildPath.reset();
+    if (_hidden)
+    {
         return false;
-    });
+    }
+    if (this == pane.get())
+    {
+        _Focus();
+        return true;
+    }
+    // clear the parent child path if we are not the pane being focused.
+    _parentChildPath.reset();
+    return !_IsLeaf() && (_firstChild->FocusPane(pane) || _secondChild->FocusPane(pane));
 }
 
 // Method Description:
@@ -3435,6 +3490,11 @@ bool Pane::ContainsReadOnly() const
 {
     return _IsLeaf() ? (_content == nullptr ? false : _content.ReadOnly()) :
                        (_firstChild->ContainsReadOnly() || _secondChild->ContainsReadOnly());
+}
+
+bool Pane::ContainsAgentPane() const noexcept
+{
+    return _isAgentPane || (!_IsLeaf() && (_firstChild->ContainsAgentPane() || _secondChild->ContainsAgentPane()));
 }
 
 bool Pane::IsAgentPane() const noexcept

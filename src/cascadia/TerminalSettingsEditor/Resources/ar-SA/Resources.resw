@@ -1384,6 +1384,10 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>اختر الوكيل المستخدم لتفويض لوحة الأوامر في ملف التعريف هذا. تكون لهذا الاختيار الأولوية على الإعداد العام لوكيل التفويض.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>استخدام الإعداد العام ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -3112,5 +3116,13 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>حاول مرة أخرى</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>تمت إضافة ملفات تعريف الوكلاء تلقائيًا</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>يضيف Terminal تلقائيًا أدوات سطر أوامر الوكلاء المثبتة لديك كملفات تعريف. افتح أحدها من قائمة علامة التبويب الجديدة للبدء.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>

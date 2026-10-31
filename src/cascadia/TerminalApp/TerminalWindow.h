@@ -109,6 +109,8 @@ namespace winrt::TerminalApp::implementation
         void RequestExitFullscreen();
 
         Windows::Foundation::Size GetLaunchDimensions(uint32_t dpi);
+        bool ShouldConstrainFreLaunchToWorkArea() const noexcept { return _shouldConstrainFreLaunchToWorkArea; }
+        bool IsFreRequired() const noexcept;
         bool CenterOnLaunch();
         TerminalApp::InitialPosition GetInitialPosition(int64_t defaultInitialX, int64_t defaultInitialY);
         winrt::Windows::UI::Xaml::ElementTheme GetRequestedTheme();
@@ -140,6 +142,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> ShowDialog(winrt::Windows::UI::Xaml::Controls::ContentDialog dialog);
         void DismissDialog();
+        void WindowMoved();
 
         Microsoft::Terminal::Settings::Model::Theme Theme();
         void UpdateSettingsHandler(const winrt::Windows::Foundation::IInspectable& sender, const winrt::TerminalApp::SettingsLoadEventArgs& arg);
@@ -189,6 +192,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IReference<Windows::Foundation::Rect> _contentBounds{ nullptr };
         std::vector<winrt::guid> _startupKeptGroups;
         Windows::Foundation::Size _startupKeptSize{};
+        bool _shouldConstrainFreLaunchToWorkArea{ false };
 
         winrt::com_ptr<TerminalApp::implementation::WindowProperties> _WindowProperties{ nullptr };
 

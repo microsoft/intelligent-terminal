@@ -271,7 +271,6 @@ namespace Microsoft::Terminal::AgentProfiles
             // Orphaned profiles must remain editable without an installed CLI.
             executable = std::wstring{ Settings::Model::AgentRegistry::CliExecutable(std::wstring_view{ profile.AgentProfileId() }) } + L".exe";
         }
-        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(),
-                            profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
+        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
     }
 }

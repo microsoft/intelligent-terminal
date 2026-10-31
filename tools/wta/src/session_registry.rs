@@ -435,6 +435,9 @@ pub struct SessionsListParams {
     /// discovery for an unbound control client. Ordinary snapshots are read-only.
     #[serde(default)]
     pub rescan: bool,
+    /// Explicitly reopen paused history recovery without resetting chat admission.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub retry_history: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -481,7 +484,7 @@ pub struct PaneAgentStatus {
 }
 
 /// Terminal-authored observations, not ACP sessions. Only reset establishes an
-/// epoch; ON and removal retain a fence against queued OFF observations.
+/// epoch; ON progress arbitrates Idle/Working without taking native OFF ownership.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct NativeAgentObservation {
     pub pane_id: String,
@@ -496,9 +499,13 @@ pub struct NativeAgentObservation {
     #[serde(default)]
     pub location: Option<SessionLocation>,
     #[serde(default)]
+    pub launch_cwd: Option<PathBuf>,
+    #[serde(default)]
     pub pane_created_at_ms: Option<u64>,
     #[serde(default)]
     pub pane_creation_sequence: Option<u64>,
+    #[serde(default)]
+    pub current_progress_state: Option<u8>,
     #[serde(flatten)]
     pub event: NativeObservationKind,
 }
@@ -523,6 +530,7 @@ pub struct NativePaneObservation {
     pub agent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SessionLocation>,
+    /// Stored observations retain launch cwd; projections prefer confirmed session cwd.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -558,6 +566,7 @@ pub struct NativePaneBindingPredecessor {
 pub struct BornBoundEventResult {
     pub applied: bool,
     pub native_pane_owned: bool,
+    pub rejected: bool,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -644,8 +653,17 @@ pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification
 /// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` refreshes
 /// the bound agent, or requests background host discovery for a control client.
 pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams { rescan })
-        .expect("SessionsListParams is trivially serializable");
+    build_sessions_list_request_with_params(SessionsListParams {
+        rescan,
+        ..Default::default()
+    })
+}
+
+pub fn build_sessions_list_request_with_params(
+    params: SessionsListParams,
+) -> acp::schema::v1::ExtRequest {
+    let json =
+        serde_json::to_string(&params).expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
@@ -1633,6 +1651,19 @@ impl PartialEq for SessionInfo {
 impl Eq for SessionInfo {}
 
 impl SessionInfo {
+    pub(crate) fn can_recover_copilot_prompt(&self) -> bool {
+        self.provider_id.as_deref() == Some("copilot")
+            && self.cli_source == Some(CliSource::Copilot)
+            && self.location == SessionLocation::Host
+            && self.session_universe.is_none()
+            && self.origin != Some(SessionOrigin::AgentPane)
+            && self.status == Some(AgentStatus::Historical)
+            && self.pane_session_id.is_none()
+            && !self.born_bound_pane
+            && self.last_error.is_none()
+            && uuid::Uuid::parse_str(self.session_id.0.as_ref()).is_ok()
+    }
+
     pub(crate) fn cwd_revision(&self) -> u64 {
         self.cwd_evidence.revision
     }
@@ -1858,8 +1889,35 @@ pub trait SessionRegistry: Send + Sync {
     /// cheap because `SessionInfo` is small (`Arc<str>` for the id).
     async fn snapshot(&self) -> Vec<SessionInfo>;
 
+    /// Read-side activity arbitration; raw hook state remains available to reducers.
+    async fn effective_snapshot(&self) -> Vec<SessionInfo> {
+        self.snapshot().await
+    }
+
+    async fn lookup_effective(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+        self.lookup(sid).await
+    }
+
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
+    /// Recover only unchanged history on a connected, unowned native pane.
+    /// The caller must first verify that the pane root holds this Copilot lease.
+    async fn recover_copilot_prompt(
+        &self,
+        expected: &SessionInfo,
+        pane_session_id: &str,
+        cwd: PathBuf,
+    ) -> bool;
+    /// Record lifecycle evidence only from master's ordered WT event stream.
+    async fn record_pane_connected(&self, pane_session_id: &str);
+    /// Record trusted failure evidence and reconcile the owner atomically.
+    /// Returns whether a session changed, for master's status broadcast.
+    async fn record_pane_connection_failure(
+        &self,
+        pane_session_id: &str,
+        reason: &str,
+        process_started: Option<bool>,
+    ) -> bool;
     async fn apply_born_bound_event(
         &self,
         ev: SessionEvent,
@@ -1967,6 +2025,15 @@ pub trait SessionRegistry: Send + Sync {
     async fn clear_acp_cwd_identity(&self, identity: &SessionIdentity, revision: u64) -> bool;
 }
 
+enum PaneConnectionState {
+    Connected,
+    Failed {
+        // COM broadcasts are not replayed; absence of Connected is unknown.
+        process_started: Option<bool>,
+        reason: String,
+    },
+}
+
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
 /// existing master state; the critical sections are all sync HashMap ops
 /// so a future sync-lock conversion is a mechanical swap.
@@ -1975,10 +2042,15 @@ struct RegistryState {
     sessions: HashMap<SessionIdentity, SessionInfo>,
     identities_by_raw: HashMap<acp::schema::v1::SessionId, HashSet<SessionIdentity>>,
     active_by_pane: HashMap<String, SessionIdentity>,
+    // Startup failures can arrive before create_tab returns the pane to bind.
+    pane_connections: HashMap<String, PaneConnectionState>,
+    // A consumed callback must not roll back the next, still-unbound retry.
+    failed_resume_assignments: HashSet<(SessionIdentity, String)>,
     // Full observations are active OFF panes only. Retired GUIDs retain only
     // their epoch fence; forgetting it would admit delayed reset replays.
     native_panes: HashMap<String, NativePaneState>,
     native_retired_epochs: HashMap<uuid::Uuid, u64>,
+    hook_pane_progress: HashMap<String, NativeAgentObservation>,
     next_cwd_revision: u64,
     known_raw_ids: HashSet<String>,
     native_listing_completed_at: HashMap<(String, SessionLocation), u64>,
@@ -2400,7 +2472,14 @@ impl SessionRegistry for InMemoryRegistry {
                         agent_session_id: row.agent_session_id.clone(),
                         inferred_history_key: row.inferred_history_key.clone(),
                         last_activity_at_ms: Some(row.last_activity_at_ms),
-                        cwd: pane_status_cwd(&row.provider_id, None, row.cwd.as_ref()),
+                        cwd: pane_status_cwd(&row.provider_id, None, row.cwd.as_ref()).or_else(
+                            || {
+                                state
+                                    .native_panes
+                                    .get(&row.pane_id)
+                                    .and_then(|pane| pane.observation.cwd.clone())
+                            },
+                        ),
                         location: row.location.clone(),
                         mode_epoch: Some(row.mode_epoch),
                         window_id: Some(row.window_id),
@@ -2447,7 +2526,7 @@ impl SessionRegistry for InMemoryRegistry {
             else {
                 continue;
             };
-            let Some(status) = row.status.clone() else {
+            let Some(status) = effective_activity_locked(&state, row) else {
                 continue;
             };
             let cwd = pane_status_cwd(&provider_id, row.origin.as_ref(), Some(&row.cwd));
@@ -2549,9 +2628,139 @@ impl SessionRegistry for InMemoryRegistry {
         guard.sessions.values().cloned().collect()
     }
 
+    async fn effective_snapshot(&self) -> Vec<SessionInfo> {
+        let state = self.inner.lock().await;
+        state
+            .sessions
+            .values()
+            .map(|row| effective_session_locked(&state, row))
+            .collect()
+    }
+
+    async fn lookup_effective(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
+        let state = self.inner.lock().await;
+        let identity = unique_identity_for_raw(&state, sid)?;
+        state
+            .sessions
+            .get(&identity)
+            .map(|row| effective_session_locked(&state, row))
+    }
+
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
         apply_event_locked(&mut guard, ev, None)
+    }
+
+    async fn recover_copilot_prompt(
+        &self,
+        expected: &SessionInfo,
+        pane_session_id: &str,
+        cwd: PathBuf,
+    ) -> bool {
+        if !expected.can_recover_copilot_prompt()
+            || uuid::Uuid::parse_str(pane_session_id).is_err()
+            || cwd.as_os_str().is_empty()
+        {
+            return false;
+        }
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane_session_id);
+        let identity = SessionIdentity::from_info(expected);
+        if unique_identity_for_raw(&state, &expected.session_id).as_ref() != Some(&identity)
+            || state.sessions.get(&identity) != Some(expected)
+            || state.active_by_pane.contains_key(&pane)
+            || state.native_panes.contains_key(&pane)
+            || state
+                .failed_resume_assignments
+                .contains(&(identity, pane.clone()))
+            || !matches!(
+                state.pane_connections.get(&pane),
+                Some(PaneConnectionState::Connected)
+            )
+        {
+            return false;
+        }
+        // Check and claim under one lock: synthetic recovery must never perform
+        // the ordinary SessionStarted handoff that can evict another owner.
+        let now = now_ms();
+        let key = expected.session_id.to_string();
+        apply_event_qualified_at_ms(
+            &mut state,
+            SessionEvent::SessionStarted {
+                key: key.clone(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: pane,
+                cwd,
+                title: String::new(),
+            },
+            None,
+            now,
+        ) && apply_event_qualified_at_ms(
+            &mut state,
+            SessionEvent::ToolStarting {
+                key,
+                tool_name: "prompt".into(),
+            },
+            None,
+            now,
+        )
+    }
+
+    async fn record_pane_connected(&self, pane_session_id: &str) {
+        self.inner
+            .lock()
+            .await
+            .pane_connections
+            .insert(pane_key(pane_session_id), PaneConnectionState::Connected);
+    }
+
+    async fn record_pane_connection_failure(
+        &self,
+        pane_session_id: &str,
+        reason: &str,
+        process_started: Option<bool>,
+    ) -> bool {
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane_session_id);
+        let process_started = match state.pane_connections.get(&pane) {
+            Some(
+                PaneConnectionState::Connected
+                | PaneConnectionState::Failed {
+                    process_started: Some(true),
+                    ..
+                },
+            ) => Some(true),
+            Some(PaneConnectionState::Failed {
+                process_started: previous,
+                ..
+            }) => process_started.or(*previous),
+            None => process_started,
+        };
+        state.pane_connections.insert(
+            pane.clone(),
+            PaneConnectionState::Failed {
+                process_started,
+                reason: reason.to_string(),
+            },
+        );
+        // Only master's ordered WT stream may reconcile native-OFF owners.
+        // Helper ConnectionFailed events still pass through native protection.
+        let changed = apply_connection_failure_locked(&mut state, &pane, reason, now_ms());
+        let owner = state.active_by_pane.get(&pane).cloned();
+        let row = owner
+            .as_ref()
+            .and_then(|id| state.sessions.get(id))
+            .cloned();
+        if let Some(native) = state.native_panes.get_mut(&pane) {
+            native.bound_identity = owner;
+            if let Some(row) = row {
+                native.observation.status = row.status.unwrap_or(AgentStatus::Error);
+                native.observation.last_activity_at_ms = row
+                    .last_activity_at_ms
+                    .unwrap_or(native.observation.last_activity_at_ms);
+            }
+        }
+        changed
     }
 
     async fn apply_born_bound_event(
@@ -2570,6 +2779,22 @@ impl SessionRegistry for InMemoryRegistry {
             ..
         } = &ev
         {
+            if let Some(provider) = cli_source.canonical_provider_id() {
+                let identity = SessionIdentity {
+                    session_id: acp::schema::v1::SessionId::new(key.clone()),
+                    history_key: HistoryRowKey::new(&provider, location.clone(), key, None),
+                };
+                if state
+                    .failed_resume_assignments
+                    .contains(&(identity, pane_key(pane_session_id)))
+                {
+                    return BornBoundEventResult {
+                        applied: false,
+                        native_pane_owned: false,
+                        rejected: true,
+                    };
+                }
+            }
             if state.native_panes.contains_key(&pane_key(pane_session_id)) {
                 let applied = if let Some(provider) = cli_source.canonical_provider_id() {
                     let identity = SessionIdentity {
@@ -2591,6 +2816,7 @@ impl SessionRegistry for InMemoryRegistry {
                 return BornBoundEventResult {
                     applied,
                     native_pane_owned: true,
+                    rejected: false,
                 };
             }
         }
@@ -2609,6 +2835,7 @@ impl SessionRegistry for InMemoryRegistry {
         BornBoundEventResult {
             applied,
             native_pane_owned: false,
+            rejected: false,
         }
     }
 
@@ -2838,6 +3065,54 @@ fn pane_status_cwd(
     cwd.filter(|cwd| !cwd.as_os_str().is_empty()).cloned()
 }
 
+fn effective_activity_locked(state: &RegistryState, row: &SessionInfo) -> Option<AgentStatus> {
+    let status = row.status.clone()?;
+    if !matches!(status, AgentStatus::Idle | AgentStatus::Working)
+        || row.origin == Some(SessionOrigin::AgentPane)
+    {
+        return Some(status);
+    }
+    let Some(pane) = row.pane_session_id.as_deref().map(pane_key) else {
+        return Some(status);
+    };
+    let Some(progress) = state.hook_pane_progress.get(&pane) else {
+        return Some(status);
+    };
+    if progress.agent_session_id.as_deref() == Some(row.session_id.0.as_ref())
+        && row
+            .provider_id
+            .clone()
+            .or_else(|| {
+                row.cli_source
+                    .as_ref()
+                    .and_then(CliSource::canonical_provider_id)
+            })
+            .is_some_and(|provider| provider.eq_ignore_ascii_case(&progress.provider_id))
+        && progress
+            .location
+            .as_ref()
+            .is_none_or(|location| *location == row.location)
+        && state.active_by_pane.get(&pane) == Some(&SessionIdentity::from_info(row))
+    {
+        return osc_activity(progress.current_progress_state).or(Some(status));
+    }
+    Some(status)
+}
+
+fn osc_activity(progress: Option<u8>) -> Option<AgentStatus> {
+    match progress {
+        Some(0 | 4) => Some(AgentStatus::Idle),
+        Some(1 | 3) => Some(AgentStatus::Working),
+        _ => None,
+    }
+}
+
+fn effective_session_locked(state: &RegistryState, row: &SessionInfo) -> SessionInfo {
+    let mut result = row.clone();
+    result.status = effective_activity_locked(state, row);
+    result
+}
+
 fn native_pane_observations_locked(state: &RegistryState) -> Vec<NativePaneObservation> {
     state
         .native_panes
@@ -2855,7 +3130,8 @@ fn native_pane_observations_locked(state: &RegistryState) -> Vec<NativePaneObser
             observation.agent_session_id = row.map(|row| row.session_id.to_string());
             observation.cwd = row
                 .map(|row| row.cwd.clone())
-                .filter(|cwd| !cwd.as_os_str().is_empty());
+                .filter(|cwd| !cwd.as_os_str().is_empty())
+                .or_else(|| pane.observation.cwd.clone());
             if let Some(row) = row {
                 observation.location = row.location.is_actionable().then(|| row.location.clone());
                 if let Some(status) = &row.status {
@@ -2888,6 +3164,12 @@ fn register_native_born_binding_locked(
         return false;
     }
     let pane = pane_key(pane);
+    if state
+        .failed_resume_assignments
+        .contains(&(identity.clone(), pane.clone()))
+    {
+        return false;
+    }
     if let Some(row) = state.sessions.get(identity) {
         if row.origin == Some(SessionOrigin::AgentPane)
             || (row
@@ -2958,8 +3240,6 @@ fn register_native_born_binding_locked(
         row.last_activity_at_ms = Some(now_ms());
         upsert_locked(state, row);
     }
-    let revived =
-        mark_resume_dispatched_identity_locked(state, identity).is_some_and(|(changed, _)| changed);
     if previous.is_some() {
         let row = state.sessions.get(identity).cloned();
         if let (Some(native), Some(row)) = (state.native_panes.get_mut(&pane), row) {
@@ -2977,6 +3257,9 @@ fn register_native_born_binding_locked(
     }
     let assigned = assign_resume_pane_identity_locked(state, identity, pane.clone(), now_ms());
     let confirmed = state.sessions.get_mut(identity).is_some_and(|row| {
+        if row.pane_session_id.as_deref() != Some(pane.as_str()) {
+            return false;
+        }
         let changed = !row.born_bound_pane;
         row.born_bound_pane = true;
         changed
@@ -2990,7 +3273,7 @@ fn register_native_born_binding_locked(
         native.observation.inferred_agent_session_id = None;
         native.observation.inferred_history_key = None;
     }
-    created || revived || assigned || confirmed || bind_native
+    created || assigned || confirmed || bind_native
 }
 
 fn set_location_locked(
@@ -3076,8 +3359,36 @@ fn apply_native_observation_locked(
         return false;
     }
     let pane = pane_id.to_string();
-    let old = state.native_panes.get(&pane);
     let reset = matches!(event.event, NativeObservationKind::Reset { .. });
+    if !reset {
+        if let Some(admission) = state.hook_pane_progress.get_mut(&pane) {
+            if admission.mode_epoch != event.mode_epoch
+                || admission.provider_id != provider
+                || admission.window_id != event.window_id
+                || admission.tab_id != event.tab_id
+                || admission.agent_session_id != event.agent_session_id
+                || admission.location != event.location
+            {
+                return false;
+            }
+            return match event.event {
+                NativeObservationKind::Progress {
+                    progress_state: progress_state @ 0..=4,
+                } => {
+                    let changed = osc_activity(admission.current_progress_state)
+                        != osc_activity(Some(progress_state));
+                    admission.current_progress_state = Some(progress_state);
+                    changed
+                }
+                NativeObservationKind::Removed => {
+                    state.hook_pane_progress.remove(&pane);
+                    true
+                }
+                _ => false,
+            };
+        }
+    }
+    let old = state.native_panes.get(&pane);
     if reset {
         if old.is_some_and(|old| event.mode_epoch <= old.observation.mode_epoch)
             || state
@@ -3112,6 +3423,13 @@ fn apply_native_observation_locked(
                 progress_state: 0 | 1 | 3 | 4
             }
     );
+    let hook_progress = matches!(
+        event.event,
+        NativeObservationKind::Reset {
+            tracking_enabled: true
+        }
+    )
+    .then(|| event.clone());
     let (status, active, removed) = match event.event {
         NativeObservationKind::Reset { tracking_enabled } => {
             (AgentStatus::Idle, !tracking_enabled, false)
@@ -3133,7 +3451,11 @@ fn apply_native_observation_locked(
         window_id: event.window_id,
         tab_id: event.tab_id,
         mode_epoch: event.mode_epoch,
-        cwd: None,
+        cwd: if reset {
+            event.launch_cwd.filter(|cwd| !cwd.as_os_str().is_empty())
+        } else {
+            old.and_then(|old| old.observation.cwd.clone())
+        },
         agent_session_id: event.agent_session_id.or_else(|| {
             (!reset)
                 .then(|| old.and_then(|old| old.observation.agent_session_id.clone()))
@@ -3239,19 +3561,22 @@ fn apply_native_observation_locked(
                 let candidate = candidates.next().map(|(identity, _)| identity.clone());
                 if candidates.next().is_none() {
                     if let Some(identity) = candidate {
-                        mark_resume_dispatched_identity_locked(state, &identity);
                         assign_resume_pane_identity_locked(
                             state,
                             &identity,
                             pane.clone(),
                             observation.last_activity_at_ms,
                         );
-                        bound_identity = Some(identity);
+                        bound_identity = native_bound_identity(state, &observation);
                     }
                 }
             }
         }
     }
+    let connection_failed = matches!(
+        state.pane_connections.get(&pane),
+        Some(PaneConnectionState::Failed { .. })
+    );
     if let Some(identity) = bound_identity.as_ref() {
         observation.inferred_agent_session_id = None;
         observation.inferred_history_key = None;
@@ -3260,7 +3585,7 @@ fn apply_native_observation_locked(
         } else if let Some(row) = state
             .sessions
             .get_mut(identity)
-            .filter(|_| active && !continuation)
+            .filter(|_| active && !continuation && !connection_failed)
         {
             // Generic terminal progress does not prove that a canonical
             // request for input was answered. Native-only BEL has no such context.
@@ -3280,6 +3605,7 @@ fn apply_native_observation_locked(
         }
     }
     if active {
+        state.hook_pane_progress.remove(&pane);
         state.native_retired_epochs.remove(&pane_id);
         state.native_panes.insert(
             pane,
@@ -3291,6 +3617,11 @@ fn apply_native_observation_locked(
         );
     } else {
         state.native_panes.remove(&pane);
+        state.hook_pane_progress.remove(&pane);
+        if let Some(mut progress) = hook_progress {
+            progress.provider_id = observation.provider_id.clone();
+            state.hook_pane_progress.insert(pane, progress);
+        }
         state
             .native_retired_epochs
             .entry(pane_id)
@@ -3421,6 +3752,14 @@ fn mark_resume_dispatched_identity_locked(
         row.status,
         Some(AgentStatus::Historical | AgentStatus::Ended)
     ) {
+        if let Some(pane) = row.pane_session_id.take() {
+            let pane = pane_key(&pane);
+            if state.active_by_pane.get(&pane) == Some(identity) {
+                state.active_by_pane.remove(&pane);
+            }
+        }
+        row.born_bound_pane = false;
+        row.bound_pid = None;
         row.status = Some(AgentStatus::Idle);
         row.cwd_evidence.revision = revision;
         row.last_activity_at_ms = Some(now_ms());
@@ -3436,7 +3775,49 @@ fn assign_resume_pane_identity_locked(
     pane_session_id: String,
     now: u64,
 ) -> bool {
+    let Some(entry) = state.sessions.get(identity) else {
+        return false;
+    };
     let pane_session_id = pane_key(&pane_session_id);
+    if state
+        .failed_resume_assignments
+        .contains(&(identity.clone(), pane_session_id.clone()))
+    {
+        return false;
+    }
+    if let Some(PaneConnectionState::Failed {
+        process_started: Some(false),
+        reason,
+    }) = state.pane_connections.get(&pane_session_id)
+    {
+        if entry.pane_session_id.as_deref().is_some_and(|pane| {
+            pane != pane_session_id
+                || !entry.born_bound_pane
+                || matches!(
+                    entry.status,
+                    Some(AgentStatus::Working | AgentStatus::Attention)
+                )
+        }) && matches!(
+            entry.status,
+            Some(
+                AgentStatus::Idle
+                    | AgentStatus::Working
+                    | AgentStatus::Attention
+                    | AgentStatus::Error
+            )
+        ) {
+            return false;
+        }
+        let reason = reason.clone();
+        let restored = restore_failed_resume_identity_locked(state, identity, reason, now);
+        state
+            .failed_resume_assignments
+            .insert((identity.clone(), pane_session_id));
+        return restored;
+    }
+    // Promotion and binding share the consumed-pair fence and registry lock.
+    let revived =
+        mark_resume_dispatched_identity_locked(state, identity).is_some_and(|(changed, _)| changed);
     if let Some(previous) = state.active_by_pane.get(&pane_session_id).cloned() {
         if &previous != identity {
             let _ = end_entry(state, &previous, now);
@@ -3447,7 +3828,7 @@ fn assign_resume_pane_identity_locked(
         return false;
     };
     if entry.pane_session_id.as_deref() == Some(pane_session_id.as_str()) {
-        return false;
+        return revived;
     }
     if let Some(old_pane) = entry.pane_session_id.take() {
         let old_pane = pane_key(&old_pane);
@@ -3514,6 +3895,12 @@ fn assign_resume_pane_identity_locked(
             }
         }
     }
+    if let Some(PaneConnectionState::Failed { reason, .. }) =
+        state.pane_connections.get(&pane_session_id)
+    {
+        let reason = reason.clone();
+        apply_connection_failure_locked(state, &pane_session_id, &reason, now);
+    }
     true
 }
 
@@ -3550,6 +3937,69 @@ fn end_entry(state: &mut RegistryState, identity: &SessionIdentity, now: u64) ->
     entry.attention_reason = None;
     entry.attention_timestamp_ms = None;
     entry.attention_cooldown_until_ms = None;
+    entry.last_activity_at_ms = Some(now);
+    true
+}
+
+fn restore_failed_resume_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    reason: String,
+    now: u64,
+) -> bool {
+    if state.sessions.get(identity).is_none_or(|entry| {
+        entry.status == Some(AgentStatus::Historical)
+            && entry.pane_session_id.is_none()
+            && entry.last_error.as_deref() == Some(reason.as_str())
+    }) {
+        return false;
+    }
+    end_entry(state, identity, now);
+    let entry = state
+        .sessions
+        .get_mut(identity)
+        .expect("entry was just ended");
+    entry.status = Some(AgentStatus::Historical);
+    entry.last_error = Some(reason);
+    entry.bound_pid = None;
+    true
+}
+
+fn apply_connection_failure_locked(
+    state: &mut RegistryState,
+    pane: &str,
+    reason: &str,
+    now: u64,
+) -> bool {
+    let Some(identity) = state.active_by_pane.get(pane).cloned() else {
+        return false;
+    };
+    if state.sessions.get(&identity).is_some_and(|entry| {
+        entry.born_bound_pane
+            && matches!(entry.status, Some(AgentStatus::Idle | AgentStatus::Error))
+    }) && matches!(
+        state.pane_connections.get(pane),
+        Some(PaneConnectionState::Failed {
+            process_started: Some(false),
+            ..
+        })
+    ) {
+        let restored =
+            restore_failed_resume_identity_locked(state, &identity, reason.to_string(), now);
+        state
+            .failed_resume_assignments
+            .insert((identity, pane.to_string()));
+        return restored;
+    }
+    let Some(entry) = state.sessions.get_mut(&identity) else {
+        return false;
+    };
+    if entry.status == Some(AgentStatus::Error) && entry.last_error.as_deref() == Some(reason) {
+        return false;
+    }
+    entry.status = Some(AgentStatus::Error);
+    entry.attention_cooldown_until_ms = None;
+    entry.last_error = Some(reason.to_string());
     entry.last_activity_at_ms = Some(now);
     true
 }
@@ -3934,9 +4384,11 @@ fn apply_event_qualified_at_ms(
             let revision = advance_cwd_revision(state);
             let entry = state.sessions.get_mut(&identity).expect("checked above");
             entry.cwd_evidence.hook = Some(cwd.clone());
-            entry.cwd_evidence.hook_after_acp = entry.cwd_evidence.acp.is_some();
+            entry.cwd_evidence.acp = None;
+            entry.cwd_evidence.acp_agent = None;
+            entry.cwd_evidence.hook_after_acp = false;
             entry.cwd_evidence.revision = revision;
-            if entry.cwd_evidence.acp.is_some() || entry.cwd == cwd {
+            if entry.cwd == cwd {
                 return false;
             }
             entry.cwd = cwd;
@@ -4204,6 +4656,12 @@ fn apply_event_qualified_at_ms(
             true
         }
         SessionEvent::PaneClosed { pane_session_id } => {
+            if matches!(
+                state.pane_connections.get(&pane_session_id),
+                Some(PaneConnectionState::Connected)
+            ) {
+                state.pane_connections.remove(&pane_session_id);
+            }
             let Some(sid) = state.active_by_pane.remove(&pane_session_id) else {
                 return false;
             };
@@ -4225,30 +4683,7 @@ fn apply_event_qualified_at_ms(
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
-        } => {
-            let Some(sid) = state.active_by_pane.get(&pane_session_id).cloned() else {
-                return false;
-            };
-            let Some(entry) = state.sessions.get_mut(&sid) else {
-                return false;
-            };
-            // Idempotent, unlike the `remove`-based PaneClosed arm above: the
-            // pane binding survives a failure, so a repeat would otherwise
-            // re-report a change every time. Every helper in the window
-            // observes the same WT `connection_state: failed` and publishes
-            // its own copy, so without this each one re-broadcasts
-            // `sessions/changed` for a row that already says exactly this.
-            if entry.status == Some(AgentStatus::Error)
-                && entry.last_error.as_deref() == Some(reason.as_str())
-            {
-                return false;
-            }
-            entry.status = Some(AgentStatus::Error);
-            entry.attention_cooldown_until_ms = None;
-            entry.last_error = Some(reason);
-            entry.last_activity_at_ms = Some(now);
-            true
-        }
+        } => apply_connection_failure_locked(state, &pane_session_id, &reason, now),
         SessionEvent::ResumeDispatched { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
             let Some(identity) = unique_identity_for_raw(state, &sid) else {
@@ -4281,6 +4716,17 @@ fn apply_event_qualified_at_ms(
             let Some(identity) = unique_identity_for_raw(state, &sid) else {
                 return false;
             };
+            // The helper callback only binds an already-dispatched attempt.
+            // A hook followed by PaneClosed may have ended it while the
+            // callback was in flight; only an explicit new resume may revive it.
+            if state.sessions.get(&identity).is_some_and(|row| {
+                matches!(
+                    row.status,
+                    Some(AgentStatus::Historical | AgentStatus::Ended)
+                )
+            }) {
+                return false;
+            }
             assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
     }
@@ -4840,6 +5286,59 @@ mod tests {
             .unwrap()
             .extend(kind.as_object().unwrap().clone());
         serde_json::from_value(value).unwrap()
+    }
+
+    #[tokio::test]
+    async fn native_resume_cached_failure_after_unbound_reset_retains_error() {
+        for process_started in [Some(true), None, Some(false)] {
+            let registry = InMemoryRegistry::new();
+            let row = qualified_info(
+                "cached-failure",
+                "copilot",
+                SessionLocation::Host,
+                "history",
+            );
+            let identity = SessionIdentity::from_info(&row);
+            registry.upsert(row).await;
+            registry
+                .apply_native_observation(native_event(
+                    serde_json::json!({"kind":"reset","tracking_enabled":false}),
+                    1,
+                ))
+                .await;
+            registry
+                .record_pane_connection_failure(NATIVE_PANE, "trusted failure", process_started)
+                .await;
+            assert!(
+                registry
+                    .assign_resume_pane_identity(&identity, NATIVE_PANE.into())
+                    .await
+            );
+            let row = registry.lookup_identity(&identity).await.unwrap();
+            let failed_start = process_started == Some(false);
+            assert_eq!(
+                row.status,
+                Some(if failed_start {
+                    AgentStatus::Historical
+                } else {
+                    AgentStatus::Error
+                })
+            );
+            assert_eq!(
+                row.pane_session_id.as_deref(),
+                (!failed_start).then_some(NATIVE_PANE)
+            );
+            assert_eq!(row.last_error.as_deref(), Some("trusted failure"));
+            assert!(
+                !registry
+                    .apply_event(SessionEvent::ConnectionFailed {
+                        pane_session_id: NATIVE_PANE.into(),
+                        reason: "untrusted helper failure".into(),
+                    })
+                    .await
+            );
+            assert_eq!(registry.lookup_identity(&identity).await.unwrap(), row);
+        }
     }
 
     async fn pending_native(registry: &InMemoryRegistry, pane: &str, birth: u64, sequence: u64) {
@@ -5461,6 +5960,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_profile_launch_cwd_is_pane_only_and_survives_activity() {
+        let launch = PathBuf::from(r"C:\profile-launch");
+        for provider in ["codex", "antigravity", "opencode"] {
+            let registry = InMemoryRegistry::new();
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            for kind in [
+                serde_json::json!({"kind":"progress", "progress_state":1, "launch_cwd":r"C:\stale"}),
+                serde_json::json!({"kind":"bell"}),
+            ] {
+                let mut event = native_event(kind, 1);
+                event.provider_id = provider.into();
+                assert!(registry.apply_native_observation(event).await);
+                let (panes, native) = registry.pane_status_snapshot().await;
+                assert_eq!(panes[0].cwd.as_ref(), Some(&launch));
+                assert_eq!(native[0].cwd.as_ref(), Some(&launch));
+                assert!(panes[0].agent_session_id.is_none());
+                assert!(native[0].agent_session_id.is_none());
+            }
+            {
+                let state = registry.inner.lock().await;
+                assert!(state.sessions.is_empty());
+                assert!(state.active_by_pane.is_empty());
+            }
+            let mut reset = native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+                2,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            let mut stale = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            stale.provider_id = provider.into();
+            assert!(!registry.apply_native_observation(stale).await);
+            assert!(registry.pane_status_snapshot().await.0[0].cwd.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_launch_cwd_preserves_confirmed_cwd_precedence() {
+        let launch = PathBuf::from(r"C:\profile-launch");
+        let canonical = PathBuf::from(r"C:\confirmed-session");
+        for provider in ["codex", "antigravity", "opencode"] {
+            let registry = InMemoryRegistry::new();
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false, "launch_cwd":launch
+                }),
+                1,
+            );
+            reset.provider_id = provider.into();
+            assert!(registry.apply_native_observation(reset).await);
+            let mut row = qualified_info("confirmed", provider, SessionLocation::Host, "confirmed")
+                .with_pane_session_id(NATIVE_PANE);
+            row.cwd = canonical.clone();
+            row.status = Some(AgentStatus::Idle);
+            let identity = SessionIdentity::from_info(&row);
+            registry.upsert(row).await;
+            assert!(
+                registry
+                    .register_native_born_binding(&identity, NATIVE_PANE, &canonical, None, None)
+                    .await
+            );
+            let (panes, native) = registry.pane_status_snapshot().await;
+            assert_eq!(panes[0].agent_session_id.as_deref(), Some("confirmed"));
+            assert_eq!(native[0].cwd.as_ref(), Some(&canonical));
+            assert_eq!(
+                panes[0].cwd.as_ref(),
+                Some(if provider == "antigravity" {
+                    &launch
+                } else {
+                    &canonical
+                })
+            );
+            let state = registry.inner.lock().await;
+            assert_eq!(state.sessions[&identity].cwd, canonical);
+            assert_eq!(
+                state.native_panes[NATIVE_PANE].observation.cwd.as_ref(),
+                Some(&launch)
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn native_observation_updates_shared_bound_rows_and_progress_mapping() {
         let (registry, identity) = native_bound_registry().await;
         assert!(
@@ -5810,6 +6403,264 @@ mod tests {
                     .await
             );
         }
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_uses_one_effective_status_without_overwriting_hooks() {
+        let (registry, identity) = native_bound_registry().await;
+        let event = |kind| {
+            let mut event = native_event(kind, 1);
+            event.agent_session_id = Some("real-session".into());
+            event.location = Some(SessionLocation::Host);
+            event
+        };
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        assert!(
+            registry
+                .apply_native_observation(event(serde_json::json!({
+                    "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+                })))
+                .await
+        );
+        registry
+            .apply_event(SessionEvent::ToolCompleted {
+                key: "real-session".into(),
+            })
+            .await;
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry
+                .lookup_effective(&identity.session_id)
+                .await
+                .unwrap()
+                .status,
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            registry.pane_status_snapshot().await.0[0].status,
+            AgentStatus::Working
+        );
+        assert!(registry.native_pane_observations().await.is_empty());
+
+        for progress in [1, 0, 3, 4, 3, 2] {
+            registry
+                .apply_native_observation(event(serde_json::json!({
+                    "kind":"progress", "progress_state":progress
+                })))
+                .await;
+            let expected = if matches!(progress, 1 | 3) {
+                AgentStatus::Working
+            } else {
+                AgentStatus::Idle
+            };
+            assert_eq!(
+                registry.effective_snapshot().await[0].status,
+                Some(expected.clone())
+            );
+            assert_eq!(registry.pane_status_snapshot().await.0[0].status, expected);
+            assert_eq!(registry.snapshot().await[0].status, Some(AgentStatus::Idle));
+        }
+
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        registry
+            .apply_native_observation(event(serde_json::json!({
+                "kind":"progress", "progress_state":0
+            })))
+            .await;
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_requires_observed_idle_before_demoting_working() {
+        let (registry, identity) = native_bound_registry().await;
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "real-session".into(),
+                tool_name: "prompt".into(),
+            })
+            .await;
+        let mut event = native_event(
+            serde_json::json!({
+                "kind":"reset", "tracking_enabled":true
+            }),
+            1,
+        );
+        event.agent_session_id = Some("real-session".into());
+        event.location = Some(SessionLocation::Host);
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+
+        event.event = NativeObservationKind::Progress { progress_state: 0 };
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.pane_status_snapshot().await.0[0].status,
+            AgentStatus::Idle
+        );
+        assert_eq!(
+            registry
+                .lookup_effective(&identity.session_id)
+                .await
+                .unwrap()
+                .status,
+            Some(AgentStatus::Idle)
+        );
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+        assert!(!registry.apply_native_observation(event.clone()).await);
+
+        event.mode_epoch = 2;
+        event.event = NativeObservationKind::Reset {
+            tracking_enabled: true,
+        };
+        event.current_progress_state = Some(4);
+        assert!(registry.apply_native_observation(event.clone()).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        event.event = NativeObservationKind::Progress { progress_state: 3 };
+        assert!(registry.apply_native_observation(event).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_preserves_attention_errors_liveness_and_helpers() {
+        for status in [
+            AgentStatus::Attention,
+            AgentStatus::Error,
+            AgentStatus::Ended,
+            AgentStatus::Historical,
+            AgentStatus::Idle,
+            AgentStatus::Working,
+        ] {
+            let (registry, identity) = native_bound_registry().await;
+            let mut row = registry.lookup_identity(&identity).await.unwrap();
+            row.status = Some(status.clone());
+            row.current_tool = Some("AskUserQuestion".into());
+            row.attention_reason = Some("approval required".into());
+            row.last_error = Some("retained error".into());
+            row.last_activity_at_ms = Some(42);
+            if matches!(status, AgentStatus::Idle | AgentStatus::Working) {
+                row.origin = Some(SessionOrigin::AgentPane);
+            }
+            registry.upsert(row.clone()).await;
+            let mut event = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+                }),
+                1,
+            );
+            event.agent_session_id = Some("real-session".into());
+            event.location = Some(SessionLocation::Host);
+            assert!(registry.apply_native_observation(event.clone()).await);
+            assert_eq!(registry.effective_snapshot().await, [row.clone()]);
+            event.event = NativeObservationKind::Progress { progress_state: 0 };
+            assert!(registry.apply_native_observation(event).await);
+            assert_eq!(registry.effective_snapshot().await, [row.clone()]);
+            assert_eq!(registry.snapshot().await, [row]);
+        }
+    }
+
+    #[tokio::test]
+    async fn hook_osc_activity_requires_current_admission_and_exact_owner() {
+        let (registry, identity) = native_bound_registry().await;
+        let mut reset = native_event(
+            serde_json::json!({
+                "kind":"reset", "tracking_enabled":true, "current_progress_state":3
+            }),
+            1,
+        );
+        reset.agent_session_id = Some("real-session".into());
+        reset.location = Some(SessionLocation::Host);
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        let mut progress = reset.clone();
+        progress.event = NativeObservationKind::Progress { progress_state: 0 };
+        for mismatch in 0..8 {
+            let mut invalid = progress.clone();
+            match mismatch {
+                0 => invalid.mode_epoch += 1,
+                1 => invalid.window_id += 1,
+                2 => invalid.tab_id = "another-tab".into(),
+                3 => invalid.provider_id = "claude".into(),
+                4 => invalid.agent_session_id = Some("another-session".into()),
+                5 => {
+                    invalid.location = Some(SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    })
+                }
+                6 => invalid.pane_id = "11112233-4455-6677-8899-aabbccddeeff".into(),
+                _ => invalid.event = NativeObservationKind::Progress { progress_state: 9 },
+            }
+            assert!(!registry.apply_native_observation(invalid).await);
+            assert_eq!(
+                registry.effective_snapshot().await[0].status,
+                Some(AgentStatus::Working)
+            );
+        }
+        let mut removed = progress.clone();
+        removed.event = NativeObservationKind::Removed;
+        assert!(registry.apply_native_observation(removed).await);
+        assert_eq!(
+            registry.effective_snapshot().await[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert!(!registry.apply_native_observation(progress.clone()).await);
+        assert!(!registry.apply_native_observation(reset.clone()).await);
+        reset.mode_epoch = 2;
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        assert!(!registry.apply_native_observation(progress).await);
+
+        let mut replacement = registry.lookup_identity(&identity).await.unwrap();
+        replacement.session_id = "replacement-session".into();
+        registry.upsert(replacement).await;
+        assert!(registry
+            .effective_snapshot()
+            .await
+            .iter()
+            .all(|row| row.status != Some(AgentStatus::Working)));
+
+        reset.mode_epoch = 3;
+        reset.event = NativeObservationKind::Reset {
+            tracking_enabled: false,
+        };
+        assert!(registry.apply_native_observation(reset).await);
+        assert!(registry.inner.lock().await.hook_pane_progress.is_empty());
     }
 
     #[tokio::test]
@@ -7309,6 +8160,143 @@ mod tests {
         }
     }
 
+    fn copilot_prompt_history() -> SessionInfo {
+        let mut row = SessionInfo::new(
+            acp::schema::v1::SessionId::new("aaaaaaaa-1111-2222-3333-444444444444"),
+            PathBuf::from("C:\\old"),
+        );
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.status = Some(AgentStatus::Historical);
+        row.title = Some("Durable session title".into());
+        row
+    }
+
+    #[tokio::test]
+    async fn copilot_prompt_recovery_is_atomic_idempotent_and_preserves_title() {
+        let reg = InMemoryRegistry::new();
+        let expected = copilot_prompt_history();
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        reg.upsert(expected.clone()).await;
+        reg.record_pane_connected(pane).await;
+        assert!(
+            reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\current"))
+                .await
+        );
+        let recovered = reg.lookup(&expected.session_id).await.unwrap();
+        assert_eq!(recovered.status, Some(AgentStatus::Working));
+        assert_eq!(recovered.current_tool.as_deref(), Some("prompt"));
+        assert_eq!(recovered.pane_session_id.as_deref(), Some(pane));
+        assert_eq!(recovered.cwd, PathBuf::from("C:\\current"));
+        assert_eq!(recovered.title, expected.title);
+        assert!(
+            !reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\stale"))
+                .await
+        );
+        assert_eq!(reg.lookup(&expected.session_id).await.unwrap(), recovered);
+
+        assert!(
+            reg.apply_event(SessionEvent::SessionStarted {
+                key: expected.session_id.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: pane.into(),
+                cwd: PathBuf::from("C:\\current"),
+                title: String::new(),
+            })
+            .await
+        );
+        let late_start = reg.lookup(&expected.session_id).await.unwrap();
+        assert_eq!(late_start.status, Some(AgentStatus::Working));
+        assert_eq!(late_start.title, expected.title);
+    }
+
+    #[tokio::test]
+    async fn copilot_prompt_recovery_rechecks_lifecycle_identity_and_owner() {
+        let pane = "bbbbbbbb-1111-2222-3333-444444444444";
+        for case in [
+            "unknown-pane",
+            "closed-pane",
+            "failed-pane",
+            "other-owner",
+            "ended",
+            "changed-row",
+            "removed-row",
+            "colliding-id",
+            "agent-pane",
+            "wsl",
+            "universe",
+            "failed-resume",
+            "invalid-session",
+        ] {
+            let reg = InMemoryRegistry::new();
+            let mut expected = copilot_prompt_history();
+            match case {
+                "ended" => expected.status = Some(AgentStatus::Ended),
+                "agent-pane" => expected.origin = Some(SessionOrigin::AgentPane),
+                "wsl" => {
+                    expected.location = SessionLocation::Wsl {
+                        distro: "Ubuntu".into(),
+                    }
+                }
+                "universe" => expected.session_universe = Some("acp".into()),
+                "failed-resume" => expected.last_error = Some("resume failed".into()),
+                "invalid-session" => {
+                    expected.session_id = acp::schema::v1::SessionId::new("sidekick-child")
+                }
+                _ => {}
+            }
+            reg.upsert(expected.clone()).await;
+            if case != "unknown-pane" {
+                reg.record_pane_connected(pane).await;
+            }
+            match case {
+                "closed-pane" => {
+                    reg.apply_event(SessionEvent::PaneClosed {
+                        pane_session_id: pane.into(),
+                    })
+                    .await;
+                }
+                "failed-pane" => {
+                    reg.record_pane_connection_failure(pane, "closed", Some(true))
+                        .await;
+                }
+                "other-owner" => {
+                    reg.apply_event(SessionEvent::SessionStarted {
+                        key: "real-owner".into(),
+                        cli_source: CliSource::Copilot,
+                        pane_session_id: pane.into(),
+                        cwd: PathBuf::from("C:\\owner"),
+                        title: "owner".into(),
+                    })
+                    .await;
+                }
+                "changed-row" => {
+                    let mut changed = expected.clone();
+                    changed.title = Some("newer metadata".into());
+                    reg.upsert(changed).await;
+                }
+                "removed-row" => {
+                    reg.remove(&expected.session_id).await;
+                }
+                "colliding-id" => {
+                    let mut other = expected.clone();
+                    other.provider_id = Some("claude".into());
+                    other.cli_source = Some(CliSource::Claude);
+                    reg.upsert(other).await;
+                }
+                _ => {}
+            }
+            let before = reg.snapshot().await;
+            assert!(
+                !reg.recover_copilot_prompt(&expected, pane, PathBuf::from("C:\\current"))
+                    .await,
+                "{case}"
+            );
+            assert_eq!(reg.snapshot().await, before, "{case}");
+        }
+    }
+
     #[tokio::test]
     async fn upsert_is_idempotent_and_replaces() {
         let reg = InMemoryRegistry::new();
@@ -8179,6 +9167,24 @@ mod tests {
                 .expect("empty is valid")
                 .rescan
         );
+        assert!(!parse_sessions_list_params(&empty).unwrap().retry_history);
+        assert!(
+            !parse_sessions_list_params(&req_rescan.params)
+                .unwrap()
+                .retry_history
+        );
+
+        let retry = build_sessions_list_request_with_params(SessionsListParams {
+            rescan: true,
+            retry_history: true,
+        });
+        assert!(matches!(
+            parse_ext_request(retry),
+            WtaExtRequest::SessionsList(SessionsListParams {
+                rescan: true,
+                retry_history: true,
+            })
+        ));
     }
 
     #[test]
@@ -8671,6 +9677,153 @@ mod tests {
         assert_eq!(row.pane_session_id.as_deref(), Some("new-pane"));
     }
 
+    #[tokio::test]
+    async fn resume_pane_callback_after_started_then_closed_does_not_revive() {
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("resumed");
+        let pane = "{ABCDEFAB-1234-5678-9ABC-DEFABCDEFABC}";
+        assert!(
+            reg.apply_event(SessionEvent::SessionStarted {
+                key: "resumed".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: pane.into(),
+                cwd: "C:\\repo".into(),
+                title: "Resumed session".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::PaneClosed {
+                pane_session_id: pane.to_ascii_lowercase(),
+            })
+            .await
+        );
+        let ended = reg.lookup(&sid).await.unwrap();
+        assert_eq!(ended.status, Some(AgentStatus::Ended));
+        assert!(ended.pane_session_id.is_none());
+        assert!(!ended.born_bound_pane);
+        assert!(
+            !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: pane.trim_matches(['{', '}']).into(),
+            })
+            .await
+        );
+        assert_eq!(reg.lookup(&sid).await.unwrap(), ended);
+        assert!(reg.lookup_active_by_pane(pane).await.is_none());
+        assert!(reg.inner.lock().await.active_by_pane.is_empty());
+
+        // Explicit master activation still atomically revives and binds.
+        let identity = SessionIdentity::from_info(&ended);
+        assert!(
+            reg.assign_resume_pane_identity(&identity, "explicit-retry-pane".into())
+                .await
+        );
+        let retried = reg.lookup(&sid).await.unwrap();
+        assert_eq!(retried.status, Some(AgentStatus::Idle));
+        assert_eq!(
+            retried.pane_session_id.as_deref(),
+            Some("explicit-retry-pane")
+        );
+        assert!(retried.born_bound_pane);
+        assert_eq!(
+            reg.lookup_active_by_pane("explicit-retry-pane").await,
+            Some(retried)
+        );
+
+        assert!(
+            reg.apply_event(SessionEvent::PaneClosed {
+                pane_session_id: "explicit-retry-pane".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::ResumeDispatched {
+                key: "resumed".into(),
+            })
+            .await
+        );
+        assert!(
+            reg.apply_event(SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: "helper-retry-pane".into(),
+            })
+            .await
+        );
+        let retried = reg.lookup(&sid).await.unwrap();
+        assert_eq!(retried.status, Some(AgentStatus::Idle));
+        assert_eq!(
+            retried.pane_session_id.as_deref(),
+            Some("helper-retry-pane")
+        );
+        assert!(retried.born_bound_pane);
+        assert_eq!(
+            reg.lookup_active_by_pane("helper-retry-pane").await,
+            Some(retried)
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_pane_assignment_missing_target_preserves_current_pane_owner() {
+        let reg = InMemoryRegistry::new();
+        let history = listed_native("resumed", 1);
+        let identity = SessionIdentity::from_info(&history);
+        reg.upsert(history).await;
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "bootstrap".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "RETURNED-PANE".into(),
+            cwd: "C:\\repo".into(),
+            title: "Bootstrap session".into(),
+        })
+        .await;
+        let owner = reg.lookup_active_by_pane("returned-pane").await.unwrap();
+        let active_by_pane = reg.inner.lock().await.active_by_pane.clone();
+
+        // History reconciliation removes the selected row while create_tab is in flight.
+        assert!(reg.remove_identity(&identity).await.is_some());
+        assert!(
+            !reg.assign_resume_pane_identity(&identity, "RETURNED-PANE".into())
+                .await
+        );
+
+        assert!(reg.lookup_identity(&identity).await.is_none());
+        assert_eq!(reg.lookup(&owner.session_id).await, Some(owner.clone()));
+        assert_eq!(
+            reg.lookup_active_by_pane("returned-pane").await,
+            Some(owner)
+        );
+        assert_eq!(reg.inner.lock().await.active_by_pane, active_by_pane);
+    }
+
+    #[tokio::test]
+    async fn resume_pane_callback_for_history_preserves_current_pane_owner() {
+        let reg = InMemoryRegistry::new();
+        let history = listed_native("resumed", 1);
+        let sid = history.session_id.clone();
+        reg.upsert(history).await;
+        reg.apply_event(SessionEvent::SessionStarted {
+            key: "current".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "CURRENT-PANE".into(),
+            cwd: "C:\\repo".into(),
+            title: "Current session".into(),
+        })
+        .await;
+        let historical = reg.lookup(&sid).await.unwrap();
+        assert_eq!(historical.status, Some(AgentStatus::Historical));
+        let owner = reg.lookup_active_by_pane("current-pane").await.unwrap();
+        assert!(
+            !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: "current-pane".into(),
+            })
+            .await
+        );
+        assert_eq!(reg.lookup(&sid).await.unwrap(), historical);
+        assert_eq!(reg.lookup_active_by_pane("current-pane").await, Some(owner));
+    }
+
     /// Seed a `/sessions` resume: a historical row promoted to Idle and bound
     /// to a freshly-spawned pane by WTA itself, before the CLI has started.
     async fn seed_resumed_pane(reg: &InMemoryRegistry, key: &str, pane: &str) {
@@ -8688,6 +9841,497 @@ mod tests {
             pane_session_id: pane.into(),
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn resume_startup_failure_is_historical_before_or_after_pane_assignment() {
+        for failure_first in [false, true] {
+            let reg = InMemoryRegistry::new();
+            let failure = SessionEvent::ConnectionFailed {
+                pane_session_id: "RESUME-PANE".into(),
+                reason: "The system cannot find the path specified.".into(),
+            };
+            if failure_first {
+                reg.record_pane_connection_failure(
+                    "RESUME-PANE",
+                    "The system cannot find the path specified.",
+                    Some(false),
+                )
+                .await;
+                assert!(!reg.apply_event(failure.clone()).await);
+            }
+            let sid = acp::schema::v1::SessionId::new("resumed");
+            let mut history = SessionInfo::new(sid.clone(), "C:\\deleted-worktree".into());
+            history.status = Some(AgentStatus::Historical);
+            history.cli_source = Some(CliSource::Copilot);
+            history.pane_session_id = Some("stale-pane".into());
+            reg.upsert(history).await;
+            reg.mark_resume_dispatched(&sid).await.unwrap();
+            assert!(reg.lookup_active_by_pane("stale-pane").await.is_none());
+            reg.apply_event(SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: "resume-pane".into(),
+            })
+            .await;
+            if !failure_first {
+                assert!(reg.apply_event(failure.clone()).await);
+                assert!(
+                    reg.record_pane_connection_failure(
+                        "RESUME-PANE",
+                        "The system cannot find the path specified.",
+                        Some(false),
+                    )
+                    .await
+                );
+                assert!(!reg.apply_event(failure.clone()).await);
+            }
+            let row = reg.lookup(&sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Historical));
+            assert!(row.pane_session_id.is_none());
+            assert!(!row.born_bound_pane);
+            assert_eq!(
+                row.last_error.as_deref(),
+                Some("The system cannot find the path specified.")
+            );
+            assert!(reg.lookup_active_by_pane("resume-pane").await.is_none());
+
+            assert!(!reg.apply_event(failure).await);
+            assert!(
+                !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                    key: "resumed".into(),
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert!(
+                !reg.apply_event(SessionEvent::PaneClosed {
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert_eq!(reg.lookup(&sid).await.unwrap(), row);
+
+            reg.mark_resume_dispatched(&sid).await.unwrap();
+            let pending_retry = reg.lookup(&sid).await.unwrap();
+            assert!(
+                !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                    key: "resumed".into(),
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert_eq!(reg.lookup(&sid).await.unwrap(), pending_retry);
+            assert!(
+                reg.apply_event(SessionEvent::ResumePaneAssigned {
+                    key: "resumed".into(),
+                    pane_session_id: "retry-pane".into(),
+                })
+                .await
+            );
+            let retried = reg.lookup(&sid).await.unwrap();
+            assert_eq!(retried.status, Some(AgentStatus::Idle));
+            assert_eq!(retried.pane_session_id.as_deref(), Some("retry-pane"));
+            assert!(reg.lookup_active_by_pane("retry-pane").await.is_some());
+            assert!(
+                !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                    key: "resumed".into(),
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert_eq!(reg.lookup(&sid).await.unwrap(), retried);
+
+            reg.apply_event(SessionEvent::SessionStarted {
+                key: "resumed".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "retry-pane".into(),
+                cwd: "C:\\repo".into(),
+                title: "Resumed session".into(),
+            })
+            .await;
+            let started = reg.lookup(&sid).await.unwrap();
+            assert!(
+                !reg.apply_event(SessionEvent::ResumePaneAssigned {
+                    key: "resumed".into(),
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert_eq!(reg.lookup(&sid).await.unwrap(), started);
+        }
+    }
+
+    #[tokio::test]
+    async fn retry_resume_startup_failure_is_not_suppressed_by_consumed_assignment() {
+        let reg = InMemoryRegistry::new();
+        let history = listed_native("resumed", 1);
+        let sid = history.session_id.clone();
+        reg.upsert(history).await;
+        for pane in ["first-pane", "retry-pane"] {
+            reg.mark_resume_dispatched(&sid).await.unwrap();
+            reg.record_pane_connection_failure(pane, "launch failed", Some(false))
+                .await;
+            let assignment = SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: pane.into(),
+            };
+            assert!(reg.apply_event(assignment.clone()).await);
+            let row = reg.lookup(&sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Historical));
+            assert!(row.pane_session_id.is_none());
+            assert!(!reg.apply_event(assignment).await);
+            assert_eq!(reg.lookup(&sid).await.unwrap(), row);
+        }
+    }
+
+    #[tokio::test]
+    async fn native_off_reset_respects_connection_failure_before_binding() {
+        for process_started in [Some(false), Some(true), None] {
+            let reg = InMemoryRegistry::new();
+            let history = listed_native("resumed", 1);
+            let identity = SessionIdentity::from_info(&history);
+            reg.upsert(history).await;
+            reg.record_pane_connection_failure(NATIVE_PANE, "connection failed", process_started)
+                .await;
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false,
+                    "agent_session_id":"resumed", "location":"Host"
+                }),
+                1,
+            );
+            assert!(reg.apply_native_observation(reset.clone()).await);
+            let row = reg.lookup_identity(&identity).await.unwrap();
+            let startup_failed = process_started == Some(false);
+            assert_eq!(
+                row.status,
+                Some(if startup_failed {
+                    AgentStatus::Historical
+                } else {
+                    AgentStatus::Error
+                })
+            );
+            assert_eq!(
+                row.pane_session_id.as_deref(),
+                (!startup_failed).then_some(NATIVE_PANE)
+            );
+            assert_eq!(
+                reg.inner.lock().await.native_panes[NATIVE_PANE].bound_identity,
+                (!startup_failed).then_some(identity.clone())
+            );
+            assert!(!reg.apply_native_observation(reset.clone()).await);
+            reset.mode_epoch = 2;
+            assert!(reg.apply_native_observation(reset.clone()).await);
+            assert_eq!(reg.lookup_identity(&identity).await.unwrap(), row);
+            reset.event = NativeObservationKind::Removed;
+            assert!(reg.apply_native_observation(reset.clone()).await);
+            let removed = reg.lookup_identity(&identity).await.unwrap();
+            if startup_failed {
+                assert_eq!(removed, row);
+                reset.event = NativeObservationKind::Reset {
+                    tracking_enabled: false,
+                };
+                reset.mode_epoch = 3;
+                assert!(reg.apply_native_observation(reset).await);
+                assert_eq!(reg.lookup_identity(&identity).await.unwrap(), row);
+            } else {
+                assert_eq!(removed.status, Some(AgentStatus::Ended));
+                assert!(removed.pane_session_id.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn native_off_trusted_failure_after_reset_reconciles_before_removal() {
+        for (connected, process_started) in [
+            (false, Some(false)),
+            (false, Some(true)),
+            (false, None),
+            (true, Some(false)),
+        ] {
+            let reg = InMemoryRegistry::new();
+            let history = listed_native("resumed", 1);
+            let identity = SessionIdentity::from_info(&history);
+            reg.upsert(history).await;
+            let mut reset = native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false,
+                    "agent_session_id":"resumed", "location":"Host"
+                }),
+                1,
+            );
+            assert!(reg.apply_native_observation(reset.clone()).await);
+            let before = reg.lookup_identity(&identity).await.unwrap();
+            assert_eq!(before.status, Some(AgentStatus::Idle));
+            assert!(
+                !reg.apply_event(SessionEvent::ConnectionFailed {
+                    pane_session_id: NATIVE_PANE.into(),
+                    reason: "untrusted helper failure".into(),
+                })
+                .await
+            );
+            assert_eq!(reg.lookup_identity(&identity).await.unwrap(), before);
+            if connected {
+                reg.record_pane_connected(NATIVE_PANE).await;
+            }
+            assert!(
+                reg.record_pane_connection_failure(NATIVE_PANE, "launch failed", process_started,)
+                    .await
+            );
+            let failed = reg.lookup_identity(&identity).await.unwrap();
+            let startup_failed = !connected && process_started == Some(false);
+            assert_eq!(
+                failed.status,
+                Some(if startup_failed {
+                    AgentStatus::Historical
+                } else {
+                    AgentStatus::Error
+                })
+            );
+            assert_eq!(
+                failed.pane_session_id.as_deref(),
+                (!startup_failed).then_some(NATIVE_PANE)
+            );
+            assert_eq!(
+                reg.inner.lock().await.native_panes[NATIVE_PANE].bound_identity,
+                (!startup_failed).then_some(identity.clone())
+            );
+            assert!(
+                !reg.record_pane_connection_failure(NATIVE_PANE, "launch failed", process_started,)
+                    .await
+            );
+            assert_eq!(reg.lookup_identity(&identity).await.unwrap(), failed);
+            reset.event = NativeObservationKind::Removed;
+            assert!(reg.apply_native_observation(reset.clone()).await);
+            let removed = reg.lookup_identity(&identity).await.unwrap();
+            if startup_failed {
+                assert_eq!(removed, failed);
+            } else {
+                assert_eq!(removed.status, Some(AgentStatus::Ended));
+            }
+            assert!(!reg.apply_native_observation(reset).await);
+            assert_eq!(reg.lookup_identity(&identity).await.unwrap(), removed);
+        }
+    }
+
+    #[tokio::test]
+    async fn native_off_consumed_birth_replay_does_not_revive_or_replace_owner() {
+        let reg = InMemoryRegistry::new();
+        let history = listed_native("resumed", 1);
+        let identity = SessionIdentity::from_info(&history);
+        reg.upsert(history).await;
+        reg.record_pane_connection_failure(NATIVE_PANE, "launch failed", Some(false))
+            .await;
+        assert!(
+            reg.register_native_born_binding(
+                &identity,
+                NATIVE_PANE,
+                std::path::Path::new(r"C:\repo"),
+                None,
+                None,
+            )
+            .await
+        );
+        assert!(
+            reg.apply_native_observation(native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false,
+                    "agent_session_id":"resumed", "location":"Host"
+                }),
+                1
+            ))
+            .await
+        );
+        let before = reg.lookup_identity(&identity).await.unwrap();
+        assert_eq!(before.status, Some(AgentStatus::Historical));
+        let native_before = reg.native_pane_observations().await;
+        for pane in [NATIVE_PANE.to_string(), NATIVE_PANE.to_uppercase()] {
+            assert!(
+                !reg.register_native_born_binding(
+                    &identity,
+                    &pane,
+                    std::path::Path::new(r"C:\other"),
+                    Some(2),
+                    None,
+                )
+                .await
+            );
+            assert_eq!(reg.lookup_identity(&identity).await.unwrap(), before);
+            assert_eq!(reg.native_pane_observations().await, native_before);
+            assert!(reg.lookup_active_by_pane(NATIVE_PANE).await.is_none());
+            assert!(reg.inner.lock().await.native_panes[NATIVE_PANE]
+                .bound_identity
+                .is_none());
+        }
+        reg.record_pane_connected(NATIVE_PANE).await;
+        let successor = listed_native("successor", 2);
+        let successor_identity = SessionIdentity::from_info(&successor);
+        reg.upsert(successor).await;
+        assert!(
+            reg.apply_native_observation(native_event(
+                serde_json::json!({
+                    "kind":"reset", "tracking_enabled":false,
+                    "agent_session_id":"successor", "location":"Host"
+                }),
+                2,
+            ))
+            .await
+        );
+        let successor = reg.lookup_identity(&successor_identity).await.unwrap();
+        let native_before = reg.native_pane_observations().await;
+        assert!(
+            !reg.register_native_born_binding(
+                &identity,
+                NATIVE_PANE,
+                std::path::Path::new(r"C:\repo"),
+                Some(3),
+                Some(&NativePaneBindingPredecessor {
+                    agent_session_id: "successor".into(),
+                    mode_epoch: 2,
+                }),
+            )
+            .await
+        );
+        assert_eq!(reg.lookup_identity(&identity).await.unwrap(), before);
+        assert_eq!(
+            reg.lookup_active_by_pane(NATIVE_PANE).await.unwrap(),
+            successor
+        );
+        assert_eq!(reg.native_pane_observations().await, native_before);
+        // A stale birth must not disturb a later owner on another pane either.
+        assert!(
+            reg.register_native_born_binding(
+                &identity,
+                "retry-pane",
+                std::path::Path::new(r"C:\repo"),
+                None,
+                None,
+            )
+            .await
+        );
+        let retry = reg.lookup_identity(&identity).await.unwrap();
+        assert!(
+            !reg.register_native_born_binding(
+                &identity,
+                NATIVE_PANE,
+                std::path::Path::new(r"C:\repo"),
+                None,
+                None,
+            )
+            .await
+        );
+        assert_eq!(reg.lookup_identity(&identity).await.unwrap(), retry);
+        assert_eq!(
+            reg.lookup_active_by_pane("retry-pane").await.unwrap(),
+            retry
+        );
+        assert_eq!(reg.native_pane_observations().await, native_before);
+    }
+
+    #[tokio::test]
+    async fn connected_resume_failure_remains_error_before_or_after_pane_assignment() {
+        for failure_first in [false, true] {
+            let reg = InMemoryRegistry::new();
+            reg.record_pane_connected("RESUME-PANE").await;
+            let failure = SessionEvent::ConnectionFailed {
+                pane_session_id: "resume-pane".into(),
+                reason: "process exited with code 1".into(),
+            };
+            if failure_first {
+                reg.record_pane_connection_failure(
+                    "resume-pane",
+                    "process exited with code 1",
+                    None,
+                )
+                .await;
+                assert!(!reg.apply_event(failure.clone()).await);
+            }
+            seed_resumed_pane(&reg, "resumed", "resume-pane").await;
+            if !failure_first {
+                assert!(
+                    reg.record_pane_connection_failure(
+                        "resume-pane",
+                        "process exited with code 1",
+                        None,
+                    )
+                    .await
+                );
+                assert!(!reg.apply_event(failure).await);
+            }
+            let sid = acp::schema::v1::SessionId::new("resumed");
+            let row = reg.lookup(&sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Error));
+            assert_eq!(row.pane_session_id.as_deref(), Some("resume-pane"));
+            assert_eq!(
+                row.last_error.as_deref(),
+                Some("process exited with code 1")
+            );
+            assert!(
+                reg.apply_event(SessionEvent::PaneClosed {
+                    pane_session_id: "resume-pane".into(),
+                })
+                .await
+            );
+            assert_eq!(
+                reg.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Ended)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn missed_connected_resume_failure_retains_binding_without_startup_evidence() {
+        for process_started in [None, Some(true)] {
+            for failure_first in [false, true] {
+                let reg = InMemoryRegistry::new();
+                let failure = SessionEvent::ConnectionFailed {
+                    pane_session_id: "resume-pane".into(),
+                    reason: "process exited with code 1".into(),
+                };
+                if failure_first {
+                    reg.record_pane_connection_failure(
+                        "resume-pane",
+                        "process exited with code 1",
+                        process_started,
+                    )
+                    .await;
+                    assert!(!reg.apply_event(failure.clone()).await);
+                }
+                seed_resumed_pane(&reg, "resumed", "resume-pane").await;
+                if !failure_first {
+                    assert!(
+                        reg.record_pane_connection_failure(
+                            "resume-pane",
+                            "process exited with code 1",
+                            process_started,
+                        )
+                        .await
+                    );
+                    assert!(!reg.apply_event(failure.clone()).await);
+                }
+                let sid = acp::schema::v1::SessionId::new("resumed");
+                let row = reg.lookup(&sid).await.unwrap();
+                assert_eq!(row.status, Some(AgentStatus::Error));
+                assert_eq!(row.pane_session_id.as_deref(), Some("resume-pane"));
+                assert!(reg.lookup_active_by_pane("resume-pane").await.is_some());
+                reg.record_pane_connection_failure(
+                    "resume-pane",
+                    "process exited with code 1",
+                    None,
+                )
+                .await;
+                assert!(!reg.apply_event(failure.clone()).await);
+                reg.record_pane_connected("resume-pane").await;
+                reg.record_pane_connection_failure(
+                    "resume-pane",
+                    "process exited with code 1",
+                    Some(false),
+                )
+                .await;
+                assert!(!reg.apply_event(failure).await);
+                assert_eq!(reg.lookup(&sid).await.unwrap(), row);
+            }
+        }
     }
 
     /// Regression: Copilot's `--resume` boots a throwaway bootstrap session and
@@ -8938,7 +10582,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn acp_cwd_wins_over_hook_and_rejects_in_flight_old_listing() {
+    async fn newer_hook_cwd_replaces_acp_and_rejects_in_flight_old_listing() {
         use crate::agent_sessions::{CliSource, SessionEvent};
 
         let reg = InMemoryRegistry::new();
@@ -8964,9 +10608,8 @@ mod tests {
             .await
         );
         let acp_row = reg.lookup(&sid).await.unwrap();
-        let activity_at = acp_row.last_activity_at_ms;
         assert!(
-            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            reg.apply_event(SessionEvent::WorkingDirectoryChanged {
                 key: sid.to_string(),
                 pane_session_id: "pane-cwd".into(),
                 cwd: PathBuf::from("C:\\new-hook"),
@@ -8974,7 +10617,8 @@ mod tests {
             .await
         );
         let after_hook = reg.lookup(&sid).await.unwrap();
-        assert_eq!(after_hook.cwd, PathBuf::from("C:\\acp"));
+        assert_eq!(after_hook.cwd, PathBuf::from("C:\\new-hook"));
+        let activity_at = after_hook.last_activity_at_ms;
         assert_eq!(
             after_hook.cwd_evidence.hook,
             Some(PathBuf::from("C:\\new-hook"))
@@ -9247,7 +10891,7 @@ mod tests {
         })
         .await;
         assert!(
-            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision(),)
+            !reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision(),)
                 .await
         );
         assert_eq!(
@@ -9263,7 +10907,7 @@ mod tests {
         )
         .await;
         assert!(
-            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            reg.apply_event(SessionEvent::WorkingDirectoryChanged {
                 key: sid.to_string(),
                 pane_session_id: "pane".into(),
                 cwd: PathBuf::from("C:\\fresh-hook"),
@@ -9271,7 +10915,7 @@ mod tests {
             .await
         );
         assert!(
-            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
+            !reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
                 .await
         );
         assert_eq!(
@@ -9294,7 +10938,7 @@ mod tests {
         .await;
         let before_confirmation = reg.lookup(&sid).await.unwrap();
         assert!(
-            !reg.adopt_acp_cwd_identity(
+            reg.adopt_acp_cwd_identity(
                 &identity,
                 before_confirmation.cwd_revision(),
                 agent,
@@ -10377,7 +12021,10 @@ mod tests {
                 .clone(),
         );
         let parsed = extract_wta_meta(&mut meta);
-        assert!(meta.is_none(), "private retry intent must not reach the agent");
+        assert!(
+            meta.is_none(),
+            "private retry intent must not reach the agent"
+        );
         inject_wta_meta(&mut meta, &parsed);
         assert_eq!(
             meta.as_ref().unwrap()["wta"]["startup_intent"],

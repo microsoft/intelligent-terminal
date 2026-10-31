@@ -9018,6 +9018,111 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     );
 }
 
+#[tokio::test]
+async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionOrigin};
+    use crate::protocol::acp::client::MasterExtRequest;
+    use crate::session_registry::{InMemoryRegistry, SessionInfo, SessionRegistry};
+
+    for origin in [SessionOrigin::Unknown, SessionOrigin::AgentPane] {
+        for failure_first in [false, true] {
+            let _capture = crate::wt_protocol_events::capture_test_published_events();
+            let (mut app, mut master_rx) = test_app_with_master_rx();
+            let (hook_tx, mut hook_rx) = tokio::sync::mpsc::unbounded_channel();
+            app.set_session_hook_tx(hook_tx);
+            app.window_id = Some("42".into());
+            app.agent_sessions.apply(SessionEvent::SessionStarted {
+                key: "resume-once".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "old-pane".into(),
+                cwd: std::path::PathBuf::new(),
+                title: "Resume once".into(),
+            });
+            app.agent_sessions.apply(SessionEvent::SessionStopped {
+                key: "resume-once".into(),
+                reason: "exit".into(),
+            });
+            app.agent_sessions.set_origin("resume-once", origin.clone());
+            app.agent_sessions
+                .set_location("resume-once", SessionLocation::Host);
+            let row = app
+                .agent_sessions
+                .get(&"resume-once".into())
+                .unwrap()
+                .clone();
+            let registry = InMemoryRegistry::new();
+            let sid = agent_client_protocol::schema::v1::SessionId::new("resume-once");
+            let mut history = SessionInfo::new(sid.clone(), std::path::PathBuf::new());
+            history.status = Some(AgentStatus::Historical);
+            history.cli_source = Some(CliSource::Copilot);
+            registry.upsert(history).await;
+
+            app.activate_agent_session_routed(&row);
+            let dispatch = hook_rx.try_recv().expect("resume must reach master");
+            let wire = crate::session_registry::build_session_hook_request(&dispatch);
+            let dispatch =
+                crate::session_registry::parse_session_hook_params(&wire.params).unwrap();
+            assert!(matches!(dispatch, SessionEvent::ResumeDispatched { .. }));
+            assert!(registry.apply_event(dispatch).await);
+            let assignment = SessionEvent::ResumePaneAssigned {
+                key: "resume-once".into(),
+                pane_session_id: "failed-pane".into(),
+            };
+            if !failure_first {
+                assert!(registry.apply_event(assignment.clone()).await);
+            }
+            registry
+                .record_pane_connection_failure("failed-pane", "launch failed", Some(false))
+                .await;
+            if failure_first {
+                assert!(registry.apply_event(assignment.clone()).await);
+            }
+            // Drain the other real producer channel only AFTER recovery: the old
+            // duplicate RPC used to revive Historical without a viable binding.
+            while let Ok(request) = master_rx.try_recv() {
+                match request {
+                    MasterExtRequest::SessionResumeDispatched { sid, .. } => {
+                        registry.mark_resume_dispatched(&sid).await;
+                    }
+                    other => panic!("unexpected resume request: {other:?}"),
+                }
+            }
+            let failed = registry.lookup(&sid).await.unwrap();
+            assert_eq!(failed.status, Some(AgentStatus::Historical));
+            assert!(failed.pane_session_id.is_none());
+            assert!(hook_rx.try_recv().is_err());
+            assert!(!registry.apply_event(assignment.clone()).await);
+            assert_eq!(registry.lookup(&sid).await.unwrap(), failed);
+
+            app.agent_sessions.apply(SessionEvent::ResumeFailed {
+                key: "resume-once".into(),
+                reason: "launch failed".into(),
+            });
+            let retry = app
+                .agent_sessions
+                .get(&"resume-once".into())
+                .unwrap()
+                .clone();
+            app.activate_agent_session_routed(&retry);
+            assert!(registry.apply_event(hook_rx.try_recv().unwrap()).await);
+            assert!(master_rx.try_recv().is_err());
+            assert!(!registry.apply_event(assignment).await);
+            assert!(
+                registry
+                    .apply_event(SessionEvent::ResumePaneAssigned {
+                        key: "resume-once".into(),
+                        pane_session_id: "retry-pane".into(),
+                    })
+                    .await
+            );
+            let retried = registry.lookup(&sid).await.unwrap();
+            assert_eq!(retried.status, Some(AgentStatus::Idle));
+            assert_eq!(retried.pane_session_id.as_deref(), Some("retry-pane"));
+            assert!(registry.lookup_active_by_pane("retry-pane").await.is_some());
+        }
+    }
+}
+
 /// When the stored cwd no longer exists on disk (e.g. user deleted
 /// the project), `dispatch_resume` must omit `-d <cwd>` entirely so
 /// wtcli falls back to the profile's startingDirectory. Without
@@ -9709,7 +9814,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": "unrelated-restart" }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": "unrelated-restart",
+        }),
     });
     assert!(
         !app.pending_acp_start,
@@ -9719,7 +9827,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": restart_request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": restart_request_id,
+        }),
     });
     assert!(!app.pending_acp_start);
     assert!(app.reconnect_after_transport_retired);
@@ -9790,6 +9901,33 @@ fn start_timed_auth_recovery() -> (App, String) {
 }
 
 #[test]
+fn auth_recovery_ignores_restart_without_matching_request() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let generation = app.auth_recovery_generation;
+    for params in [
+        json!({ "operation_id": request_id }),
+        json!({ "operation_id": request_id, "request_id": "unrelated-request" }),
+        json!({ "operation_id": "retirement-operation", "request_id": "" }),
+        json!({ "operation_id": "", "request_id": request_id }),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_master_restarted".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params,
+        });
+
+        assert!(!app.pending_acp_start);
+        assert!(!app.reconnect_after_transport_retired);
+        assert_eq!(app.auth_recovery_generation, generation);
+        assert!(matches!(
+            &app.auth_recovery_state,
+            AuthRecoveryState::WaitingForMaster { request_id: expected } if expected == &request_id
+        ));
+    }
+}
+
+#[test]
 fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
     let (mut app, request_id) = start_timed_auth_recovery();
     let readiness_generation = app.auth_recovery_generation;
@@ -9803,7 +9941,10 @@ fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
 
     assert!(!app.pending_acp_start);
@@ -9846,7 +9987,10 @@ fn auth_recovery_connection_timeout_starts_when_master_is_ready() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
     let connection_generation = app.auth_recovery_generation;
     assert_eq!(

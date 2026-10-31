@@ -49,6 +49,63 @@ namespace NativeMock
     HRESULT registerResult = S_OK;
     unsigned loadCalls = 0;
     unsigned registerCalls = 0;
+    ITerminalProtocol* queryServer = nullptr;
+
+    struct ProfileServer : ITerminalProtocol
+    {
+        const char* capabilities = R"(["list_profiles"])";
+        const char* profiles = R"([{"id":"{5784e726-2a17-4932-bd11-18a387ef9c02}","name":"Copilot","is_default":false,"agent_id":"copilot"}])";
+        HRESULT queryResult = S_OK;
+        unsigned queryCalls = 0;
+
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
+        {
+            *object = nullptr;
+            if (iid == __uuidof(IUnknown) || iid == __uuidof(ITerminalProtocol))
+            {
+                *object = static_cast<ITerminalProtocol*>(this);
+                AddRef();
+                return S_OK;
+            }
+            return E_NOINTERFACE;
+        }
+        ULONG STDMETHODCALLTYPE AddRef() override { return 2; }
+        ULONG STDMETHODCALLTYPE Release() override { return 1; }
+        HRESULT STDMETHODCALLTYPE Authenticate(BSTR, BSTR* json) override
+        {
+            *json = Bstr(R"({"authenticated":true,"protocol_version":"2.4"})");
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE GetCapabilities(BSTR* json) override
+        {
+            *json = Bstr(capabilities);
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE ListProfiles(BSTR* json) override
+        {
+            ++queryCalls;
+            *json = SUCCEEDED(queryResult) ? Bstr(profiles) : nullptr;
+            return queryResult;
+        }
+        HRESULT STDMETHODCALLTYPE GetActivePane(BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE ListWindows(BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE ListTabs(unsigned __int64, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE ListPanes(unsigned __int64, unsigned long, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE ReadPaneOutput(GUID, BSTR, long, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetProcessStatus(GUID, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetSessionVariable(GUID, BSTR, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetSettings(BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CreateTab(unsigned __int64, BSTR, BSTR, BSTR, BSTR, boolean, boolean, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SplitPane(GUID, BSTR, float, BSTR, BSTR, boolean, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE ClosePane(GUID) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SendInput(GUID, BSTR) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE FocusPane(GUID) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SetSessionVariable(GUID, BSTR, BSTR) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Subscribe(ITerminalProtocolEventSink*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Unsubscribe() override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SendEvent(BSTR) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetPaneContext(GUID, boolean, long, long, BSTR*) override { return E_NOTIMPL; }
+    };
 
     HRESULT LoadProxy(wil::unique_hmodule& module)
     {
@@ -103,6 +160,12 @@ namespace NativeMock
     HRESULT WINAPI CoCreateInstance(REFCLSID, IUnknown*, DWORD, REFIID, void** object)
     {
         ++activationCalls;
+        if (queryServer)
+        {
+            *object = queryServer;
+            queryServer->AddRef();
+            return S_OK;
+        }
         *object = nullptr;
         return activationResult;
     }
@@ -114,6 +177,7 @@ namespace NativeMock
         registered = supportsFactory = true;
         loadResult = registerResult = S_OK;
         loadCalls = registerCalls = 0;
+        queryServer = nullptr;
     }
 
     void Require(bool condition, const char* message = "listener connection contract failed")
@@ -220,6 +284,37 @@ namespace NativeMock
         winrt::uninit_apartment();
         return result;
     }
+
+    void CheckProfileQueries()
+    {
+        Reset();
+        ProfileServer server;
+        queryServer = &server;
+        const auto reset = wil::scope_exit([]() noexcept { queryServer = nullptr; });
+        const auto query = []() {
+            wchar_t executable[] = L"wtcli";
+            wchar_t json[] = L"--json";
+            wchar_t command[] = L"list-profiles";
+            wchar_t* argv[]{ executable, json, command };
+            const auto result = WtcliMain(3, argv);
+            winrt::uninit_apartment();
+            return result;
+        };
+
+        Require(query() == 0 && server.queryCalls == 1, "profile queries must reach the runtime server");
+        server.profiles = "[]";
+        Require(query() == 0 && server.queryCalls == 2, "an empty profile list must remain a successful query");
+        server.queryResult = E_FAIL;
+        Require(query() == 1 && server.queryCalls == 3, "profile query failures must not become empty lists");
+        server.queryResult = S_OK;
+        server.profiles = "{}";
+        Require(query() == 1 && server.queryCalls == 4, "malformed profile results must fail explicitly");
+        server.capabilities = "[]";
+        Require(query() == 2 && server.queryCalls == 4, "older servers must not receive the appended profile query");
+        server.capabilities = "{}";
+        Require(query() == 1 && server.queryCalls == 4, "malformed capabilities must not reach the appended method");
+        puts("Profile query compatibility tests passed.");
+    }
 }
 
 int wmain()
@@ -229,6 +324,7 @@ int wmain()
     {
         CheckListenTimestampFormatting();
         SetEnvironmentVariableW(L"WT_COM_CLSID", L"{11111111-1111-1111-1111-111111111111}");
+        CheckProfileQueries();
         for (const auto failLoad : { false, true })
         {
             for (const auto existingOnly : { false, true })

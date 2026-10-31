@@ -40,6 +40,7 @@ namespace winrt::TerminalApp::implementation
         void ReloadSettings();
         void ReloadSettingsThrottled();
         void NotifyRootInitialized();
+        void ShutdownBackgroundServices() noexcept;
 
         bool HasSettingsStartupActions() const noexcept;
 
@@ -89,6 +90,7 @@ namespace winrt::TerminalApp::implementation
         void _ProcessLazySettingsChanges();
         void _RegisterSettingsChange();
         void _RegisterAgentPolicyChange();
+        void _UpdateWtaServicePolicy();
 
         void _setupFolderPathEnvVar();
 

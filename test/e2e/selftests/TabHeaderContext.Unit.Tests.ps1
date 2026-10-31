@@ -5,7 +5,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '..\tests\helpers\TabHeaderContext.ps1')
     . (Join-Path $PSScriptRoot '..\tests\helpers\PackageProfileActivation.ps1')
     . (Join-Path $PSScriptRoot '..\tests\helpers\KeptTabReattachment.ps1')
-    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
     $script:headerSource = (Get-Command Invoke-TestTabHeaderContextMenu).Definition
     function Read-FixtureAst([string]$Name) {
         $errors = $null
@@ -387,6 +387,70 @@ Describe 'Opaque host independent header guards' -Tag 'Unit' {
         $header.Row.RuntimeId = @(42, 7, 4, 30)
         $header.Text.Current.BoundingRectangle = [Windows.Rect]::new(128, 227, 136, 19)
         (& $geometry $header).Fingerprint | Should -Not -Be $original
+    }
+    It 'revalidates a hover-revealed close action before using the new stable geometry baseline' {
+        $header = New-HeaderGeometryFixture
+        $header.Text.Current.Name = 'controlled'
+        $header.Row.Parts = @($header.Row.Parts | Where-Object { $_.Current.AutomationId -ne 'TabGroupToggleButton' })
+        $close = @($header.Row.Parts | Where-Object { $_.Current.AutomationId -eq 'TabCloseButton' })[0]
+        $close.Current.IsOffscreen = $true
+        $header.Row.Parts += [pscustomobject]@{ Current = @{
+            ProcessId = 42; IsOffscreen = $false; AutomationId = ''; Name = 'controlled'
+            ControlType = [Windows.Automation.ControlType]::Text
+            BoundingRectangle = [Windows.Rect]::new(128, 226, 136, 19)
+        } }
+        $before = & $geometry $header
+        $close.Current.IsOffscreen = $false
+        $after = & $geometry $header
+        $before.Fingerprint | Should -Not -Be $after.Fingerprint
+        $after.InHeaderBand | Should -BeTrue
+        $after.OutsideActions | Should -BeTrue
+        $source = (Get-Command Invoke-TestTabHeaderContextMenu).Definition
+        $cursorPlaced = $source.IndexOf('$cursorMoved = $true')
+        $baseline = $source.IndexOf('$second = $hoverSecond', $cursorPlaced)
+        $guarded = $source.IndexOf('Assert-TestTabHeaderPointSafety $hoverGuard', $cursorPlaced)
+        $final = $source.IndexOf('$final = & $geometry $header', $cursorPlaced)
+        $cursorPlaced | Should -BeGreaterThan 0
+        $baseline | Should -BeGreaterThan $cursorPlaced
+        $guarded | Should -BeGreaterThan $cursorPlaced
+        $guarded | Should -BeLessThan $final
+        $baseline | Should -BeLessThan $final
+        foreach ($probe in @('$hoverHit = [Windows.Automation.AutomationElement]::FromPoint($point)',
+            'GetAncestor($hoverNativeHit, 2)', '$hoverGuard.ForbiddenHit = $hoverForbiddenHit',
+            '$hoverGuard.NoKnownOverlay = & $overlayClear')) {
+            $position = $source.IndexOf($probe, $cursorPlaced)
+            $position | Should -BeGreaterThan $cursorPlaced
+            $position | Should -BeLessThan $guarded
+        }
+        $source | Should -Match '\$final.Fingerprint -cne \$second.Fingerprint'
+    }
+    It 'never accepts a hover baseline on the close action or outside the canonical header' {
+        $header = New-HeaderGeometryFixture
+        $point = [Windows.Point]::new(277, 233)
+        $after = & $geometry $header
+        $guard.FullyVisible = $after.FullyVisible
+        $guard.InHeaderBand = $after.InHeaderBand
+        $guard.OutsideActions = $after.OutsideActions
+        { Assert-TestTabHeaderPointSafety $guard } | Should -Throw '*FullyVisible*'
+        $point = [Windows.Point]::new(196, 267)
+        $after = & $geometry $header
+        $guard.FullyVisible = $after.FullyVisible
+        $guard.InHeaderBand = $after.InHeaderBand
+        $guard.OutsideActions = $after.OutsideActions
+        $after.InHeaderBand | Should -BeFalse
+        { Assert-TestTabHeaderPointSafety $guard } | Should -Throw '*FullyVisible*'
+        $point = [Windows.Point]::new(196, 236)
+        $close = @($header.Row.Parts | Where-Object { $_.Current.AutomationId -eq 'TabCloseButton' })[0]
+        $close.Current.BoundingRectangle = [Windows.Rect]::new(180, 220, 28, 28)
+        $after = & $geometry $header
+        $guard.FullyVisible = $after.FullyVisible
+        $guard.InHeaderBand = $after.InHeaderBand
+        $guard.OutsideActions = $after.OutsideActions
+        $after.FullyVisible | Should -BeTrue
+        { Assert-TestTabHeaderPointSafety $guard } | Should -Throw '*OutsideActions*'
+        $close.Current.BoundingRectangle = [Windows.Rect]::new(264, 220, 28, 28)
+        $header.Text.Current.BoundingRectangle = [Windows.Rect]::new(202, 226, 62, 19)
+        (& $geometry $header).FullyVisible | Should -BeFalse
     }
 }
 

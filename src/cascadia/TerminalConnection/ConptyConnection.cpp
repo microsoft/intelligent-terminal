@@ -232,6 +232,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             &siEx.StartupInfo, // lpStartupInfo
             &_piClient // lpProcessInformation
             ));
+        _processStarted.store(true, std::memory_order_release);
 
         DeleteProcThreadAttributeList(siEx.lpAttributeList);
 
@@ -313,6 +314,8 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             _commandline = winrt::hstring{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) };
             _startingDirectory = unbox_prop_or<winrt::hstring>(settings, L"startingDirectory", _startingDirectory);
             _startingTitle = unbox_prop_or<winrt::hstring>(settings, L"startingTitle", _startingTitle);
+            _startupError = unbox_prop_or<int32_t>(settings, L"startupError", S_OK);
+            _startupErrorMessage = unbox_prop_or<winrt::hstring>(settings, L"startupErrorMessage", {});
             _rows = unbox_prop_or<uint32_t>(settings, L"initialRows", _rows);
             _cols = unbox_prop_or<uint32_t>(settings, L"initialCols", _cols);
             _sessionId = unbox_prop_or<winrt::guid>(settings, L"sessionId", _sessionId);
@@ -418,6 +421,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         ownedSignal.release();
 
         _piClient.hProcess = ownedClient.release();
+        _processStarted.store(true, std::memory_order_release);
 
         _startupInfo.title = winrt::hstring{ startupInfo->pszTitle, SysStringLen(startupInfo->pszTitle) };
         _startupInfo.iconPath = winrt::hstring{ startupInfo->pszIconPath, SysStringLen(startupInfo->pszIconPath) };
@@ -466,6 +470,8 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     try
     {
         _transitionToState(ConnectionState::Connecting);
+
+        THROW_IF_FAILED(_startupError);
 
         const til::size dimensions{ gsl::narrow<til::CoordType>(_cols), gsl::narrow<til::CoordType>(_rows) };
 
@@ -548,6 +554,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
 
         // GH#11556 - make sure to format the error code to this string as an UNSIGNED int
         auto failureText = RS_fmt(L"ProcessFailedToLaunch", _formatStatus(hr), _commandline);
+
+        if (!_startupErrorMessage.empty())
+        {
+            failureText.append(L"\r\n");
+            failureText.append(_startupErrorMessage);
+        }
 
         // If the path was invalid, let's present an informative message to the user
         if (hr == HRESULT_FROM_WIN32(ERROR_DIRECTORY))
@@ -727,6 +739,12 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
     {
 #pragma warning(disable : 26490) // Don't use reinterpret_cast (type.1).
         return reinterpret_cast<uint64_t>(_piClient.hProcess);
+    }
+
+    bool ConptyConnection::ProcessStarted() const noexcept
+    {
+        // Process cleanup precedes Failed; retain launch evidence for this connection.
+        return _processStarted.load(std::memory_order_acquire);
     }
 
     void ConptyConnection::Close() noexcept

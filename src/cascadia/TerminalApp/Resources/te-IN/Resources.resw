@@ -462,7 +462,8 @@
     <value>ట్యాబ్‌లను శోధించండి</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>ట్యాబ్‌లను శోధించండి</value>
+    <value>శోధన</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ట్యాబ్‌లను శోధించండి</value>
@@ -518,7 +519,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>ఇటీవలి ఏజెంట్ సెషన్‌లు</value>
+    <value>ఏజెంట్‌ల ఇటీవలి సెషన్‌లు</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -548,6 +549,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>సరిపోలే ఏజెంట్ సెషన్‌లు లేవు.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>మీ శోధనకు సరిపోలే తెరిచిన ట్యాబ్‌లు లేదా ఏజెంట్‌ల గత సెషన్‌లు లేవు.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ఏజెంట్ సెషన్‌లను లోడ్ చేయడం సాధ్యం కాలేదు.</value>
@@ -643,6 +648,10 @@
     <value>నిష్క్రియం</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>పూర్తయింది</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>వినియోగంలో</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -652,7 +661,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>సక్రియం</value>
+    <value>పని చేస్తోంది</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -725,7 +734,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>ట్యాబ్‌లు మరియు ఇటీవలి ఏజెంట్ సెషన్‌లను శోధించండి</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · మరో విండోలో</value>
@@ -739,6 +748,7 @@
   <data name="ExportTabText"><value>పాఠ్యాన్ని ఎగుమతి చేయండి</value></data>
   <data name="FindText"><value>శోధన</value></data>
   <data name="RestartConnectionText"><value>సెషన్‌ను పునఃప్రారంభించండి</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} పేన్‌లు</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>మూసివేయండి</value></data>
   <data name="TabClose"><value>ట్యాబ్‌ను మూసివేయండి</value></data>
   <data name="MoveTabToNewWindowText"><value>ట్యాబ్‌ను కొత్త విండోకు తరలించండి</value></data>

@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "TabHeaderControl.h"
+#include <winrt/Windows.UI.Xaml.Markup.h>
 
 #include "TabHeaderControl.g.cpp"
 #include "TabHeaderPresentation.g.cpp"
@@ -17,11 +18,27 @@ namespace winrt::TerminalApp::implementation
         Presentation(winrt::make<TabHeaderPresentation>());
         InitializeComponent();
         _progressRingPresenter = HeaderProgressRingPresenter();
+        _compactCompletionIndicator = HeaderCompactCompletionIndicator();
+        Windows::UI::Xaml::Data::Binding completionBrush;
+        completionBrush.Source(HeaderCompletionDot());
+        completionBrush.Path(Windows::UI::Xaml::PropertyPath{ L"Fill" });
+        completionBrush.Mode(Windows::UI::Xaml::Data::BindingMode::OneWay);
+        _compactCompletionIndicator.Children().GetAt(0).as<Windows::UI::Xaml::Shapes::Ellipse>().SetBinding(
+            Windows::UI::Xaml::Shapes::Shape::FillProperty(), completionBrush);
+        _initialized = true;
+        _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
 
         Loaded([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self = weakThis.get())
             {
                 self->_AttachProgressToNativeIconSlot();
+            }
+        });
+        Unloaded([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self = weakThis.get())
+            {
+                self->_ClearNativeHeaderObserver();
             }
         });
 
@@ -77,10 +94,29 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
+    TabHeaderControl::~TabHeaderControl()
+    {
+        try
+        {
+            _ClearNativeHeaderObserver();
+        }
+        CATCH_LOG()
+    }
+
+    void TabHeaderControl::_ClearNativeHeaderObserver()
+    {
+        if (const auto presenter = _nativeHeaderPresenter.get())
+        {
+            presenter.UnregisterPropertyChangedCallback(Windows::UI::Xaml::UIElement::VisibilityProperty(), _nativeHeaderVisibilityToken);
+            SetMetadataForeground(nullptr, false);
+        }
+        _nativeHeaderPresenter = nullptr;
+    }
+
     void TabHeaderControl::_AttachProgressToNativeIconSlot()
     {
         // WinUI Compact hides the unselected tab's entire header. Move this
-        // header's existing progress presenter into the native leading icon
+        // header's existing bell/progress presenter into the native leading icon
         // slot instead; never share a UIElement between two visual parents.
         using namespace Windows::UI::Xaml;
         using namespace Windows::UI::Xaml::Controls;
@@ -103,6 +139,20 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        _ClearNativeHeaderObserver();
+        if (const auto presenter = root.FindName(L"ContentPresenter").try_as<UIElement>())
+        {
+            _nativeHeaderPresenter = winrt::make_weak(presenter);
+            // Native tabs own their selection/hover contrast palette.
+            SetMetadataForeground(nullptr, true);
+            _nativeHeaderVisibilityToken = presenter.RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [weakThis = get_weak()](auto&&, auto&&) {
+                if (const auto self = weakThis.get())
+                {
+                    self->_UpdateUnreadActivityVisibility();
+                }
+            });
+        }
+        _UpdateUnreadActivityVisibility();
         const auto progress = _progressRingPresenter;
         const auto previousProgressParent = Media::VisualTreeHelper::GetParent(progress);
         if (previousProgressParent == box.Child() && Media::VisualTreeHelper::GetParent(icon) == box.Child())
@@ -128,7 +178,7 @@ namespace winrt::TerminalApp::implementation
         slot.Children().Append(icon);
         slot.Children().Append(progress);
         box.Child(slot);
-        icon.Visibility(TabStatus() && TabStatus().IsProgressRingActive() ?
+        icon.Visibility(TabStatus() && (TabStatus().BellIndicator() || TabStatus().IsProgressRingActive()) ?
                             Windows::UI::Xaml::Visibility::Collapsed :
                             Windows::UI::Xaml::Visibility::Visible);
     }
@@ -152,11 +202,50 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 self->PropertyChanged.raise(*self, args);
+                if (args.PropertyName() == L"SearchText")
+                {
+                    self->_UpdateTitleVisibility();
+                }
+                if (args.PropertyName() == L"HasUnreadActivity" || args.PropertyName() == L"UnreadActivityProjectedToPaneRows")
+                {
+                    self->_UpdateUnreadActivityVisibility();
+                }
             }
         });
         for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName", L"MetadataHighlightColor", L"MetadataHighlightRanges" })
         {
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
+        }
+        _UpdateUnreadActivityVisibility();
+        _UpdateTitleVisibility();
+    }
+
+    void TabHeaderControl::PaneRowsVisibility(const Windows::UI::Xaml::Visibility value)
+    {
+        if (_paneRowsVisibility != value)
+        {
+            _paneRowsVisibility = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"PaneRowsVisibility" });
+            _UpdateUnreadActivityVisibility();
+        }
+    }
+
+    void TabHeaderControl::_UpdateUnreadActivityVisibility()
+    {
+        if (_initialized)
+        {
+            const auto presenter = _nativeHeaderPresenter.get();
+            const auto compact = presenter && presenter.Visibility() == Windows::UI::Xaml::Visibility::Collapsed;
+            const auto unread = _presentation.HasUnreadActivity() &&
+                                _paneRowsVisibility != Windows::UI::Xaml::Visibility::Visible;
+            HeaderCompletionIndicator().Visibility(
+                unread && !compact ?
+                    Windows::UI::Xaml::Visibility::Visible :
+                    Windows::UI::Xaml::Visibility::Collapsed);
+            _compactCompletionIndicator.Visibility(
+                unread && compact ?
+                    Windows::UI::Xaml::Visibility::Visible :
+                    Windows::UI::Xaml::Visibility::Collapsed);
         }
     }
 
@@ -196,6 +285,56 @@ namespace winrt::TerminalApp::implementation
         return Windows::UI::Xaml::Visibility::Visible == HeaderRenamerTextBox().Visibility();
     }
 
+    bool TabHeaderControl::IsTitleHighlighted()
+    {
+        return !SearchText().empty() && !InRename();
+    }
+
+    void TabHeaderControl::SetSidebarTextStyles(const Windows::UI::Xaml::Style& titleStyle,
+                                                const Windows::UI::Xaml::Style& metadataStyle)
+    {
+        _sidebarTitleTextStyle = titleStyle;
+        _sidebarMetadataTextStyle = metadataStyle;
+        HeaderTextBlock().Style(titleStyle);
+        if (_highlightedTitle)
+        {
+            _highlightedTitle.TextBlockStyle(titleStyle);
+        }
+        if (_metadataTextBlock)
+        {
+            _metadataTextBlock.TextBlockStyle(metadataStyle);
+            _metadataTextBlock.Margin({});
+        }
+    }
+
+    void TabHeaderControl::_UpdateTitleVisibility()
+    {
+        if (_initialized)
+        {
+            HeaderTextBlock().Visibility(InRename() || IsTitleHighlighted() ?
+                                             Windows::UI::Xaml::Visibility::Collapsed :
+                                             Windows::UI::Xaml::Visibility::Visible);
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsTitleHighlighted" });
+            // Bound x:Load emits an unavailable projected UnloadObject call; realize static stubs explicitly.
+            if (IsTitleHighlighted())
+            {
+                if (!_highlightedTitle)
+                {
+                    _highlightedTitle = FindName(L"HeaderHighlightedTextBlock").as<TerminalApp::HighlightedTextControl>();
+                    if (_sidebarTitleTextStyle)
+                    {
+                        _highlightedTitle.TextBlockStyle(_sidebarTitleTextStyle);
+                    }
+                }
+            }
+            else if (_highlightedTitle)
+            {
+                Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_highlightedTitle);
+                _highlightedTitle = nullptr;
+            }
+        }
+    }
+
     bool TabHeaderControl::IsMetadataVisible() const noexcept
     {
         return _isMetadataVisible;
@@ -227,9 +366,59 @@ namespace winrt::TerminalApp::implementation
 
     void TabHeaderControl::_UpdateMetadataVisibility()
     {
-        HeaderMetadataTextBlock().Visibility(_isMetadataVisible && !InRename() ?
-                                                 Windows::UI::Xaml::Visibility::Visible :
-                                                 Windows::UI::Xaml::Visibility::Collapsed);
+        if (_isMetadataVisible)
+        {
+            if (!_metadataTextBlock)
+            {
+                _metadataTextBlock = FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+                if (_sidebarMetadataTextStyle)
+                {
+                    _metadataTextBlock.TextBlockStyle(_sidebarMetadataTextStyle);
+                    _metadataTextBlock.Margin({});
+                }
+                _UpdateMetadataForeground();
+            }
+            _metadataTextBlock.Visibility(!InRename() ?
+                                              Windows::UI::Xaml::Visibility::Visible :
+                                              Windows::UI::Xaml::Visibility::Collapsed);
+        }
+        else if (_metadataTextBlock)
+        {
+            Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_metadataTextBlock);
+            _metadataTextBlock = nullptr;
+        }
+    }
+
+    void TabHeaderControl::SetMetadataForeground(const Windows::UI::Xaml::Media::Brush& foreground, const bool followTitle)
+    {
+        _metadataForeground = foreground;
+        _metadataFollowsTitle = followTitle;
+        _UpdateMetadataForeground();
+    }
+
+    void TabHeaderControl::_UpdateMetadataForeground()
+    {
+        if (!_metadataTextBlock)
+        {
+            return;
+        }
+        using namespace Windows::UI::Xaml;
+        if (_metadataFollowsTitle)
+        {
+            Data::Binding binding;
+            binding.Source(HeaderTextBlock());
+            binding.Path(PropertyPath{ L"Foreground" });
+            binding.Mode(Data::BindingMode::OneWay);
+            _metadataTextBlock.SetBinding(Controls::Control::ForegroundProperty(), binding);
+        }
+        else if (_metadataForeground)
+        {
+            _metadataTextBlock.Foreground(_metadataForeground);
+        }
+        else
+        {
+            _metadataTextBlock.ClearValue(Controls::Control::ForegroundProperty());
+        }
     }
 
     // Method Description:
@@ -240,8 +429,8 @@ namespace winrt::TerminalApp::implementation
         _receivedKeyDown = false;
         _renameCancelled = false;
 
-        HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
         HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Visible);
+        _UpdateTitleVisibility();
         _UpdateMetadataVisibility();
 
         HeaderRenamerTextBox().Text(Title());
@@ -306,7 +495,7 @@ namespace winrt::TerminalApp::implementation
         if (HeaderRenamerTextBox().Visibility() == Windows::UI::Xaml::Visibility::Visible)
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
-            HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
+            _UpdateTitleVisibility();
             _UpdateMetadataVisibility();
             if (notify)
             {

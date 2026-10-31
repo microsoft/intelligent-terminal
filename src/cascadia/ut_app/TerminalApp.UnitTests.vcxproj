@@ -23,10 +23,12 @@
   <ItemGroup>
     <ClCompile Include="JsonUtilsTests.cpp" />
     <ClCompile Include="FzfTests.cpp" />
+    <ClCompile Include="FreLayoutMetricsTests.cpp" />
     <ClCompile Include="AcpModelUtilsTests.cpp" />
     <ClCompile Include="AgentSourceUtilsTests.cpp" />
     <ClCompile Include="AgentUsageTests.cpp" />
     <ClCompile Include="AgentSessionTelemetryTests.cpp" />
+    <ClCompile Include="AgentCompletionTests.cpp" />
     <ClCompile Include="CommandPaletteTelemetryTests.cpp" />
     <ClCompile Include="AgentPaneTransferTests.cpp" />
     <ClCompile Include="AutofixStateTests.cpp" />

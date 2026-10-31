@@ -583,6 +583,9 @@ pub(crate) enum SessionsAction {
         /// Owning wta-master named pipe path.
         #[arg(long, value_name = "PIPE_NAME")]
         master: String,
+        /// Reopen history recovery paused after repeated failed query cycles.
+        #[arg(long)]
+        retry_history: bool,
     },
     /// Activate one exact session row from the Sidebar History projection.
     #[command(hide = true)]

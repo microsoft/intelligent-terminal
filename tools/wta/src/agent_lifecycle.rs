@@ -4,14 +4,10 @@ pub(crate) mod providers;
 pub(crate) mod verification;
 
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
@@ -356,46 +352,23 @@ impl std::fmt::Display for StartupCleanupUnconfirmed {
 
 impl std::error::Error for StartupCleanupUnconfirmed {}
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 struct StartupState {
     attempts: usize,
-    #[serde(default)]
     retry_epoch: u64,
-    #[serde(default)]
     last_failure: Option<StartupFailure>,
-    #[serde(default)]
     cleanup_failed: bool,
 }
 
 #[derive(Default)]
 pub(crate) struct StartupRegistry {
     states: Mutex<HashMap<String, Arc<AsyncMutex<StartupState>>>>,
-    directory: Option<PathBuf>,
 }
 
 impl StartupRegistry {
-    pub(crate) fn runtime() -> Result<Self> {
-        let root = crate::runtime_paths::intelligent_terminal_local_root()
-            .context("ACP startup state directory is unavailable")?;
-        let executable = std::env::current_exe().context("resolve WTA startup identity")?;
-        let metadata = executable
-            .metadata()
-            .context("inspect WTA startup identity")?;
-        let identity = format!(
-            "{}:{}:{}",
-            executable.display(),
-            metadata.file_size(),
-            metadata.last_write_time()
-        );
-        let build = format!("{:x}", Sha256::digest(identity.as_bytes()));
-        Ok(Self::persistent(root.join("acp-startup").join(build)))
-    }
-
-    fn persistent(directory: PathBuf) -> Self {
-        Self {
-            states: Mutex::new(HashMap::new()),
-            directory: Some(directory),
-        }
+    pub(crate) fn runtime() -> Arc<Self> {
+        static REGISTRY: OnceLock<Arc<StartupRegistry>> = OnceLock::new();
+        Arc::clone(REGISTRY.get_or_init(|| Arc::new(Self::default())))
     }
 
     pub(crate) async fn lock(&self, key: &str) -> Result<StartupLease> {
@@ -407,32 +380,11 @@ impl StartupRegistry {
             Arc::clone(states.entry(key.to_string()).or_default())
         };
         let deadline = tokio::time::Instant::now() + ADMISSION_TIMEOUT;
-        let mut state = tokio::time::timeout_at(deadline, state.lock_owned())
+        let state = tokio::time::timeout_at(deadline, state.lock_owned())
             .await
             .context("another ACP startup operation is still in progress")?;
-        let file = if let Some(directory) = &self.directory {
-            let path = directory.join(format!("{:x}.json", Sha256::digest(key.as_bytes())));
-            loop {
-                let path = path.clone();
-                let opened = tokio::task::spawn_blocking(move || open_startup_state(path))
-                    .await
-                    .context("ACP startup state task failed")??;
-                if let Some((file, saved)) = opened {
-                    *state = saved;
-                    break Some(file);
-                }
-                ensure!(
-                    tokio::time::Instant::now() < deadline,
-                    "another ACP startup operation is still in progress"
-                );
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        } else {
-            None
-        };
         Ok(StartupLease {
             state,
-            file,
             attempt_number: 0,
             dependency_present: false,
             startup_verified: false,
@@ -450,7 +402,7 @@ impl StartupRegistry {
             .context("ACP startup retry epoch exhausted")?;
         lease.state.attempts = 0;
         lease.state.last_failure = None;
-        lease.save()
+        Ok(())
     }
 
     pub(crate) async fn retry_epoch(&self, key: &str) -> Result<u64> {
@@ -458,62 +410,8 @@ impl StartupRegistry {
     }
 }
 
-fn open_startup_state(path: PathBuf) -> Result<Option<(File, StartupState)>> {
-    let parent = path.parent().context("ACP startup state has no parent")?;
-    std::fs::create_dir_all(parent).context("create ACP startup state directory")?;
-    let options = |create_new| {
-        let mut options = OpenOptions::new();
-        options
-            .read(true)
-            .write(true)
-            .share_mode(0)
-            .create_new(create_new)
-            .custom_flags(0x0020_0000);
-        options
-    };
-    let (mut file, fresh) = match options(true).open(&path) {
-        Ok(file) => (file, true),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            match options(false).open(&path) {
-                Ok(file) => (file, false),
-                Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) => return Ok(None),
-                Err(error) => return Err(error).context("open ACP startup state"),
-            }
-        }
-        Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) => return Ok(None),
-        Err(error) => return Err(error).context("create ACP startup state"),
-    };
-    let metadata = file.metadata().context("inspect ACP startup state")?;
-    ensure!(
-        metadata.is_file() && metadata.file_attributes() & 0x400 == 0 && metadata.len() <= 4096,
-        "ACP startup state is not a bounded regular file"
-    );
-    let state = if fresh {
-        let state = StartupState::default();
-        save_startup_state(&mut file, &state)?;
-        state
-    } else {
-        let mut text = String::new();
-        file.read_to_string(&mut text)
-            .context("read ACP startup state")?;
-        serde_json::from_str(&text).context("parse ACP startup state")?
-    };
-    Ok(Some((file, state)))
-}
-
-fn save_startup_state(file: &mut File, state: &StartupState) -> Result<()> {
-    let data = serde_json::to_vec(state).context("serialize ACP startup state")?;
-    file.seek(SeekFrom::Start(0))
-        .context("seek ACP startup state")?;
-    file.write_all(&data).context("write ACP startup state")?;
-    file.set_len(data.len() as u64)
-        .context("truncate ACP startup state")?;
-    file.sync_data().context("persist ACP startup state")
-}
-
 pub(crate) struct StartupLease {
     state: OwnedMutexGuard<StartupState>,
-    file: Option<File>,
     attempt_number: usize,
     dependency_present: bool,
     startup_verified: bool,
@@ -539,13 +437,6 @@ impl StartupLease {
         Ok(())
     }
 
-    fn save(&mut self) -> Result<()> {
-        match &mut self.file {
-            Some(file) => save_startup_state(file, &self.state),
-            None => Ok(()),
-        }
-    }
-
     pub(crate) fn begin(&mut self) -> Result<()> {
         self.ensure_cleanup()?;
         if self.state.attempts >= MAX_STARTUP_ATTEMPTS {
@@ -559,15 +450,13 @@ impl StartupLease {
         }
         self.state.attempts += 1;
         self.attempt_number = self.state.attempts;
-        self.save()?;
         Ok(())
     }
 
-    pub(crate) fn succeeded(&mut self) -> Result<()> {
+    pub(crate) fn succeeded(&mut self) {
         self.startup_verified = true;
         self.state.attempts = 0;
         self.state.last_failure = None;
-        self.save()
     }
 
     pub(crate) fn prepared(&mut self, artifact: providers::PreparedArtifact) {
@@ -595,15 +484,12 @@ impl StartupLease {
             self.startup_verified,
         );
         failure.retry_epoch = self.retry_epoch();
-        let mut error = error.context(failure.clone());
+        let error = error.context(failure.clone());
         if failure.phase == StartupPhase::Cleanup {
             self.state.cleanup_failed = true;
         }
         if !self.startup_verified || self.state.cleanup_failed {
             self.state.last_failure = Some(failure);
-            if let Err(persist_error) = self.save() {
-                error = error.context(persist_error);
-            }
         }
         if !self.startup_verified && self.state.attempts >= MAX_STARTUP_ATTEMPTS {
             error.context(StartupLimitReached {
@@ -750,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_details_are_utf8_bounded_and_fit_the_persistent_ledger() {
+    fn startup_details_are_utf8_and_line_bounded() {
         for text in [
             vec!["\\".repeat(512); 4].join("\n"),
             "\u{4e2d}".repeat(2048),
@@ -762,13 +648,6 @@ mod tests {
             let details = StartupDetails::from_text(&text).unwrap();
             assert!(details.0.len() <= MAX_STARTUP_DETAILS_BYTES);
             assert!(details.0.lines().count() <= 4);
-            let failure =
-                StartupFailure::from_error(&anyhow::Error::new(details), 1, Some(true), false);
-            let state = StartupState {
-                last_failure: Some(failure),
-                ..Default::default()
-            };
-            assert!(serde_json::to_vec(&state).unwrap().len() <= 4096);
         }
     }
 
@@ -859,7 +738,7 @@ mod tests {
         registry.lock("failed").await.unwrap().begin().unwrap();
         let mut ready = registry.lock("ready").await.unwrap();
         ready.begin().unwrap();
-        ready.succeeded().unwrap();
+        ready.succeeded();
         assert_eq!(ready.retry_epoch(), 0);
         drop(ready);
         assert_eq!(registry.lock("ready").await.unwrap().state.attempts, 0);
@@ -878,20 +757,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn independent_callers_share_persisted_failure_limits() {
-        let directory = std::env::temp_dir().join(format!("wta-startup-{}", uuid::Uuid::new_v4()));
-        let first = StartupRegistry::persistent(directory.clone());
-        let second = StartupRegistry::persistent(directory.clone());
+    async fn runtime_callers_share_failure_limits() {
+        let key = format!("startup-test-{}", uuid::Uuid::new_v4());
+        let first = StartupRegistry::runtime();
+        let second = StartupRegistry::runtime();
         for registry in [&first, &second, &first] {
-            registry.lock("same-target").await.unwrap().begin().unwrap();
+            registry.lock(&key).await.unwrap().begin().unwrap();
         }
-        assert!(second.lock("same-target").await.unwrap().begin().is_err());
-        assert_eq!(first.retry_epoch("same-target").await.unwrap(), 0);
-        second.retry("same-target").await.unwrap();
-        assert_eq!(first.retry_epoch("same-target").await.unwrap(), 1);
-        first.lock("same-target").await.unwrap().begin().unwrap();
-        drop((first, second));
-        std::fs::remove_dir_all(directory).unwrap();
+        assert!(second.lock(&key).await.unwrap().begin().is_err());
+        assert_eq!(first.retry_epoch(&key).await.unwrap(), 0);
+        second.retry(&key).await.unwrap();
+        assert_eq!(first.retry_epoch(&key).await.unwrap(), 1);
+        first.lock(&key).await.unwrap().begin().unwrap();
     }
 
     #[tokio::test]
@@ -906,8 +783,6 @@ mod tests {
             1
         );
         assert_eq!(registry.retry_epoch("one").await.unwrap(), 1);
-        let old: StartupState = serde_json::from_str(r#"{"attempts":3}"#).unwrap();
-        assert_eq!(old.retry_epoch, 0);
     }
 
     #[tokio::test]

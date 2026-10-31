@@ -1253,6 +1253,10 @@
     <value>이 프로필에서 명령 팔레트 위임에 사용할 에이전트를 선택합니다. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>전역 설정 사용 ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -3105,5 +3109,13 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>다시 시도</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>에이전트 프로필이 자동으로 추가됨</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal은 설치된 에이전트 CLI를 프로필로 자동 추가합니다. 새 탭 메뉴에서 프로필을 열어 시작하세요.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>
