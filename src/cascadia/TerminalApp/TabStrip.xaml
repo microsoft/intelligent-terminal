@@ -70,7 +70,7 @@
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
-            <!--  Remove the native horizontal tab border within this vertical-only scope.  -->
+            <!--  Hide the native horizontal tab border within this vertical-only scope.  -->
             <Thickness x:Key="TabViewItemBorderThickness">0</Thickness>
             <CornerRadius x:Key="SidebarTabCornerRadius">6</CornerRadius>
             <SolidColorBrush x:Key="TreeViewItemSelectionIndicatorForeground"
