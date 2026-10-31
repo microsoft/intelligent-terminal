@@ -9719,6 +9719,12 @@ namespace TerminalAppLocalTests
             palette.Visibility(Visibility::Collapsed);
             suggestions.Visibility(Visibility::Collapsed);
             VERIFY_IS_TRUE(page->_CanShowAgentProfilesIntroduction());
+            page->WindowMoveSizeChanged(true);
+            VERIFY_IS_FALSE(page->_CanShowAgentProfilesIntroduction());
+            page->WindowMoved();
+            VERIFY_IS_FALSE(page->_CanShowAgentProfilesIntroduction());
+            page->WindowMoveSizeChanged(false);
+            VERIFY_IS_TRUE(page->_CanShowAgentProfilesIntroduction());
             for (const auto& overlay : { palette, suggestions })
             {
                 overlay.Visibility(Visibility::Visible);
