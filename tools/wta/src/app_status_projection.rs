@@ -44,6 +44,9 @@ impl App {
         let mut event = build_agent_state_changed_event(target_tab, tab, yolo_control_owner);
         event["params"]["session_started"] = serde_json::json!({
             "start_id": uuid::Uuid::new_v4().to_string(),
+            "telemetry_session_id": tab.telemetry_observation.as_ref()
+                .filter(|(sid, _)| sid == session_id)
+                .map(|(_, id)| id.to_string()),
             "start_kind": if loaded { "Load" } else { "New" },
             "agent_id": self.current_agent_id,
             "agent_source": self.current_agent_source.kind(),
@@ -204,12 +207,18 @@ pub(super) fn build_agent_state_changed_event(
         crate::usage::UsageProjection::with_staleness(snapshot, tab.usage_staleness)
     });
     let projected_session_id = tab.resumable_session_id();
+    let telemetry_session_id = tab
+        .telemetry_observation
+        .as_ref()
+        .filter(|(sid, _)| Some(sid.as_str()) == projected_session_id.or(tab.session_id.as_deref()))
+        .map(|(_, id)| id.to_string());
     serde_json::json!({
         "type": "event",
         "method": "agent_state_changed",
         "params": {
             "tab_id": target_tab,
             "agent_session_id": projected_session_id,
+            "telemetry_session_id": telemetry_session_id,
             "yolo_control_owner": yolo_control_owner.map(crate::app_contracts::YoloControlOwner::as_wire),
             "view": view,
             "pane_open": tab.pane_open,
@@ -329,16 +338,55 @@ mod session_telemetry_tests {
         let mut app = test_app();
         app.handle_event(connected("pending-load", false));
         assert!(starts().is_empty());
+        let observation_id = uuid::Uuid::new_v4();
+        app.handle_event(AppEvent::SessionTelemetryBound {
+            tab_id: DEFAULT_TAB_ID.to_string(),
+            session_id: "created".to_string(),
+            observation_id,
+        });
         app.handle_event(connected("created", true));
         let snapshots = starts();
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0]["start_kind"], "New");
+        assert_eq!(
+            snapshots[0]["telemetry_session_id"],
+            observation_id.to_string()
+        );
         assert!(snapshots[0].get("session_id").is_none());
         assert_eq!(app.current_tab().session_id.as_deref(), Some("created"));
         assert!(uuid::Uuid::parse_str(snapshots[0]["start_id"].as_str().unwrap()).is_ok());
         app.project_active_tab_state();
         app.handle_event(connected("created", true));
         assert!(starts().is_empty());
+    }
+
+    #[test]
+    fn observation_projection_survives_first_prompt_but_not_an_unbound_load() {
+        let _locale = crate::test_support::lock_locale();
+        let mut app = test_app();
+        let observation_id = uuid::Uuid::new_v4();
+        let tab = app.tab_mut(DEFAULT_TAB_ID);
+        tab.session_id = Some("prewarmed".into());
+        tab.telemetry_observation = Some(("prewarmed".into(), observation_id));
+        let before = build_agent_state_changed_event(DEFAULT_TAB_ID, tab, None);
+        assert!(before["params"]["agent_session_id"].is_null());
+        assert_eq!(
+            before["params"]["telemetry_session_id"],
+            observation_id.to_string()
+        );
+
+        tab.has_meaningful_conversation = true;
+        let after = build_agent_state_changed_event(DEFAULT_TAB_ID, tab, None);
+        assert_eq!(after["params"]["agent_session_id"], "prewarmed");
+        assert_eq!(
+            after["params"]["telemetry_session_id"],
+            before["params"]["telemetry_session_id"]
+        );
+
+        tab.loading_target_session_id = Some("other-session".into());
+        let loading = build_agent_state_changed_event(DEFAULT_TAB_ID, tab, None);
+        assert_eq!(loading["params"]["agent_session_id"], "other-session");
+        assert!(loading["params"]["telemetry_session_id"].is_null());
     }
 
     #[test]

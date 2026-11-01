@@ -13812,6 +13812,10 @@ async fn sidebar_antigravity_resume_preserves_interface_and_source() {
                     .find(|event| event["method"] == "resume_in_new_agent_tab")
                     .unwrap();
                 assert_eq!(event["params"]["agent_id"], "antigravity");
+                assert_eq!(
+                    event["params"]["sidebar_activation_id"],
+                    params.activation_id
+                );
                 assert_eq!(event["params"]["cwd"], cwd);
                 assert_eq!(
                     event["params"]["agent_source"],

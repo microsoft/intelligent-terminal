@@ -8679,6 +8679,7 @@ async fn execute_session_activation(
                 "type": "event",
                 "method": "resume_in_new_agent_tab",
                 "params": {
+                    "sidebar_activation_id": parsed.activation_id,
                     "window_id": parsed.window_id.to_string(),
                     "session_id": row.session_id.to_string(),
                     "cwd": row.cwd.to_string_lossy(),

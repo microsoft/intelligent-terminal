@@ -349,6 +349,14 @@ pub fn log_agent_slash_command_used(command: &str) {
     let Some(command) = builtin_slash_command(command) else {
         return;
     };
+    log_slash_command_category(command, "builtin");
+}
+
+pub fn log_agent_provided_slash_command_used() {
+    log_slash_command_category("agentProvided", "agentProvided");
+}
+
+fn log_slash_command_category(command: &'static str, kind: &'static str) {
     #[cfg(test)]
     capture::record(capture::Event::AgentSlashCommandUsed(command));
     tlg::write_event!(
@@ -357,6 +365,7 @@ pub fn log_agent_slash_command_used(command: &str) {
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("command", command),
+        str8("CommandKind", kind),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }
@@ -629,6 +638,11 @@ mod tests {
                 .iter()
                 .map(|spec| capture::Event::AgentSlashCommandUsed(spec.name))
                 .collect::<Vec<_>>()
+        );
+        log_agent_provided_slash_command_used();
+        assert_eq!(
+            capture::take(),
+            vec![capture::Event::AgentSlashCommandUsed("agentProvided")]
         );
     }
 

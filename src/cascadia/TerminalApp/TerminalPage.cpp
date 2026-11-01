@@ -562,6 +562,25 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        GettingFocus([weakThis{ get_weak() }](auto&&, const WUX::Input::GettingFocusEventArgs& args) {
+            if (const auto page = weakThis.get())
+            {
+                page->_sidebarKeyboardEntry.Preparing(
+                    page->_IsSidebarElement(args.OldFocusedElement()),
+                    page->_IsSidebarElement(args.NewFocusedElement()),
+                    args.InputDevice() == WUX::Input::FocusInputDeviceKind::Keyboard || page->_sidebarKeyboardAction);
+            }
+        });
+        GotFocus([weakThis{ get_weak() }](auto&&, const WUX::RoutedEventArgs& args) {
+            if (const auto page = weakThis.get(); page && page->_sidebarKeyboardEntry.Focused(page->_IsSidebarElement(args.OriginalSource())))
+            {
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarKeyboardEntered",
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
+        });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
             [weakThis{ get_weak() }](const TerminalApp::TabStripHistoryItem& item) {
                 const auto page = weakThis.get();
@@ -6910,6 +6929,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto previousApplying = std::exchange(_applyingSidebarFilters, true);
+        const auto restoreApplying = wil::scope_exit([&]() noexcept { _applyingSidebarFilters = previousApplying; });
         const auto globals = _settings.GlobalSettings();
         const auto filters = _tabStrip.SidebarFilters();
         filters.ShowAgentsOnly(globals.SidebarShowAgentsOnly());
@@ -6948,6 +6969,19 @@ namespace winrt::TerminalApp::implementation
 
         if (_settings.WriteSettingsToDisk())
         {
+            if (!_applyingSidebarFilters && _isVerticalLayout && _isVerticalRailVisible)
+            {
+                const auto oldAgents = agentsOnlyChanged ? previous : globals.SidebarShowAgentsOnly();
+                const auto oldRecent = agentsOnlyChanged ? globals.SidebarShowRecentAgentSessions() : previous;
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarViewSwitched",
+                    TraceLoggingString(::TerminalApp::SidebarTelemetry::View(oldAgents, oldRecent), "from_view"),
+                    TraceLoggingString(::TerminalApp::SidebarTelemetry::View(filters.ShowAgentsOnly(), filters.ShowRecentAgentSessions()), "to_view"),
+                    TraceLoggingString(_sidebarViewMethod, "method"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
             return;
         }
 
@@ -7746,13 +7780,24 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto pending = _historyUnresolvedActivations.find(args); pending != _historyUnresolvedActivations.end())
         {
-            return { std::move(args), pending->second, true };
+            const auto age = _historyActivationAges.find(pending->second);
+            return { std::move(args), pending->second, true, age == _historyActivationAges.end() ? -1 : age->second };
         }
         winrt::guid activationGuid{};
         THROW_IF_FAILED(CoCreateGuid(reinterpret_cast<GUID*>(&activationGuid)));
         const auto activationId = winrt::to_hstring(activationGuid);
         _historyUnresolvedActivations.emplace(args, activationId);
-        return { std::move(args), activationId, false };
+        const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                     std::chrono::system_clock::now().time_since_epoch())
+                                                     .count());
+        const auto ageDays = ::TerminalApp::SidebarTelemetry::AgeDays(
+            winrt::get_self<TabStripHistoryItem>(item)->LastActivityAtMs(), nowMs);
+        if (_historyActivationAges.size() >= 512)
+        {
+            _historyActivationAges.clear();
+        }
+        _historyActivationAges.emplace(activationId, ageDays);
+        return { std::move(args), activationId, false, ageDays };
     }
 
     TerminalPage::_SidebarHistoryActivationResult TerminalPage::_ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId)
@@ -7775,7 +7820,7 @@ namespace winrt::TerminalApp::implementation
         const auto state = response.get("state", "complete").asString();
         if (state == "complete")
         {
-            return { State::Complete, response["accepted"].asBool(), winrt::to_hstring(response.get("detail", "").asString()) };
+            return { State::Complete, response["accepted"].asBool(), winrt::to_hstring(response.get("detail", "").asString()), response["action"].asString() };
         }
         if (state == "pending" && !response["accepted"].asBool())
         {
@@ -7797,8 +7842,28 @@ namespace winrt::TerminalApp::implementation
             if (pending != _historyUnresolvedActivations.end() && pending->second == request.id)
             {
                 _historyUnresolvedActivations.erase(pending);
+                if (result.accepted && result.action == "resume_cli")
+                {
+                    _LogSidebarSessionResumed(request.ageDays, "cli", "launched");
+                }
+                if (!result.accepted || result.action != "resume_agent_pane")
+                {
+                    _historyActivationAges.erase(request.id);
+                }
             }
         }
+    }
+
+    void TerminalPage::_LogSidebarSessionResumed(const int64_t ageDays, const char* route, const char* outcome) const
+    {
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "SidebarSessionResumed",
+            TraceLoggingInt64(ageDays, "age_days"),
+            TraceLoggingString(route, "Route"),
+            TraceLoggingString(outcome, "Outcome"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
@@ -9382,7 +9447,11 @@ namespace winrt::TerminalApp::implementation
             const auto contentArgs = split ?
                                          _PrepareSplitDirectory(_GetFocusedTabImpl(), newTerminalArgs, false) :
                                          newTerminalArgs.as<INewContentArgs>();
+            const auto previousSource = std::exchange(_sidebarLaunchSource,
+                                                      _isVerticalLayout && _isVerticalRailVisible && _startupActionReplayDepth == 0 ? (split ? "split" : "plus") : "other");
+            auto restoreSource = wil::scope_exit([&]() noexcept { _sidebarLaunchSource = previousSource; });
             const auto newPane = _MakePane(contentArgs);
+            restoreSource.reset();
             // If the newTerminalArgs caused us to open an elevated window
             // instead of creating a pane, it may have returned nullptr. Just do
             // nothing then.
@@ -9452,6 +9521,7 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
+        bool managedAgent = false;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9475,6 +9545,7 @@ namespace winrt::TerminalApp::implementation
         else
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
+            managedAgent = settingsInternal->UsesManagedAgentCommand();
             auto environment = settingsInternal->EnvironmentVariables();
             HRESULT startupError = S_OK;
             winrt::hstring startupErrorMessage;
@@ -9569,6 +9640,26 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
+        const auto agentId = managedAgent ? AgentSessionTelemetry::AgentId(winrt::to_string(profile.AgentProfileId())) : "none";
+        const auto defaultProfile = profile.Guid() == _settings.GlobalSettings().DefaultProfile();
+        if (managedAgent && std::string_view{ _sidebarLaunchSource } != "other")
+        {
+            const auto source = _sidebarLaunchSource;
+            auto sent = std::make_shared<std::atomic<bool>>(false);
+            connection.StateChanged([source, agentId, defaultProfile, sent](const auto& sender, auto&&) {
+                if (sender.State() == TerminalConnection::ConnectionState::Connected && !sent->exchange(true))
+                {
+                    TraceLoggingWrite(
+                        g_hTerminalAppProvider,
+                        "SidebarAgentStarted",
+                        TraceLoggingString(source, "source"),
+                        TraceLoggingString(agentId, "profile"),
+                        TraceLoggingBool(defaultProfile, "IsDefaultProfile"),
+                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                }
+            });
+        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -9577,6 +9668,10 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingGuid(connectionType, "ConnectionTypeGuid", "The type of the connection"),
             TraceLoggingGuid(profile.Guid(), "ProfileGuid", "The profile's GUID"),
             TraceLoggingGuid(connection.SessionId(), "SessionGuid", "The WT_SESSION's GUID"),
+            TraceLoggingString(_sidebarLaunchSource, "LaunchSource"),
+            TraceLoggingString(managedAgent ? "agent" : "shell", "ProfileKind"),
+            TraceLoggingString(agentId, "AgentId"),
+            TraceLoggingBool(defaultProfile, "IsDefaultProfile"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -10367,6 +10462,9 @@ namespace winrt::TerminalApp::implementation
                     "AgentSessionStarted",
                     TraceLoggingDescription("Effective settings snapshot after successful ACP session creation or load"),
                     TraceLoggingString(start->startId.c_str(), "StartId"),
+                    TraceLoggingString(start->telemetrySessionId.c_str(), "TelemetrySessionId"),
+                    TraceLoggingBool(targetTab->KeepRunning(), "KeepRunningEnabled"),
+                    TraceLoggingWideString(targetTab->KeepRunningTelemetryId().c_str(), "KeepId"),
                     TraceLoggingString(start->kind, "StartKind"),
                     TraceLoggingString(start->agentId, "AgentId"),
                     TraceLoggingString(start->source, "AgentSource"),
@@ -10391,6 +10489,23 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingValue(distribution, "Distribution"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                if (const auto pane = targetTab->FindAgentPaneContent(); pane && agentSessionId)
+                {
+                    winrt::get_self<AgentPaneContent>(pane)->SetTelemetrySessionId(*agentSessionId, winrt::to_hstring(start->telemetrySessionId));
+                }
+                if (const auto pending = _pendingSidebarResumeTelemetry.find(targetTab->StableId());
+                    pending != _pendingSidebarResumeTelemetry.end() && agentSessionId)
+                {
+                    if (std::string_view{ start->kind } == "Load" && winrt::to_string(*agentSessionId) == pending->second.first)
+                    {
+                        _LogSidebarSessionResumed(pending->second.second, "agentPane", "loaded");
+                        _pendingSidebarResumeTelemetry.erase(pending);
+                    }
+                    else if (std::string_view{ start->kind } == "New")
+                    {
+                        _pendingSidebarResumeTelemetry.erase(pending);
+                    }
+                }
             }
         }
 
@@ -10406,6 +10521,12 @@ namespace winrt::TerminalApp::implementation
                 // agent, so a session left behind by `/agent` is never paired
                 // with the agent that replaced it.
                 impl->SetAgentSessionOwner(_GetAgentPaneIdentity(targetTab.get()));
+            }
+            if (params.isMember("telemetry_session_id"))
+            {
+                impl->SetTelemetrySessionId(
+                    impl->AgentSessionId(),
+                    winrt::to_hstring(AgentSessionTelemetry::ParseTelemetrySessionId(params["telemetry_session_id"])));
             }
             if (yoloControlOwner.has_value())
             {
@@ -11277,6 +11398,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto newStableId = newTab->StableId();
+        if (params["sidebar_activation_id"].isString())
+        {
+            const auto activationId = winrt::to_hstring(params["sidebar_activation_id"].asString());
+            if (const auto age = _historyActivationAges.find(activationId); age != _historyActivationAges.end())
+            {
+                _pendingSidebarResumeTelemetry.insert_or_assign(newStableId, std::pair{ sessionIdStr, age->second });
+                _historyActivationAges.erase(age);
+            }
+        }
         if (newStableId.empty())
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
@@ -11996,6 +12126,22 @@ namespace winrt::TerminalApp::implementation
         _DispatchKeyEvent(e, KeyDispatchScope::SidebarNavigation);
     }
 
+    bool TerminalPage::_IsSidebarElement(const IInspectable& element) const
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible)
+        {
+            return false;
+        }
+        for (auto current = element.try_as<DependencyObject>(); current; current = Media::VisualTreeHelper::GetParent(current))
+        {
+            if (current == _tabStrip || current == _tabRow)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void TerminalPage::_DispatchKeyEvent(const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e, const KeyDispatchScope scope)
     {
         const auto keyStatus = e.KeyStatus();
@@ -12065,7 +12211,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto handled = (action.Action() == ShortcutAction::ToggleSidebar ||
-                              action.Action() == ShortcutAction::SwitchToTab) ?
+                              action.Action() == ShortcutAction::SwitchToTab ||
+                              action.Action() == ShortcutAction::OpenAgentSessions ||
+                              action.Action() == ShortcutAction::TabSearch || sidebarFilter) ?
                                  _actionDispatch->DoAction(chord, action) :
                                  _actionDispatch->DoAction(action);
         if (!handled)

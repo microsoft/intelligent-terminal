@@ -161,7 +161,9 @@ async fn probe_models_impl(
         let session_started = std::time::Instant::now();
         let session_result = tokio::time::timeout(
             Duration::from_secs(20),
-            probe.connection.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
+            probe
+                .connection
+                .new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
         )
         .await;
         crate::telemetry::log_acp_new_session_complete(

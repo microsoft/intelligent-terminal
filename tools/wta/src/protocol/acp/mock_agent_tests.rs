@@ -4213,6 +4213,21 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionTelemetryBound {
+                    tab_id,
+                    session_id,
+                    observation_id,
+                })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert_eq!(session_id, "mock-session-1");
+                    assert_eq!(
+                        observation_id,
+                        h.client.state.prompt_timing.observation_id(&session_id)
+                    );
+                }
+                _ => panic!("expected SessionTelemetryBound before SessionAttached"),
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
                 Ok(Some(AppEvent::SessionAttached {
                     tab_id, session_id, ..
                 })) => {
@@ -4314,6 +4329,21 @@ async fn dispatch_new_session_replaces_old_binding() {
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionTelemetryBound {
+                    tab_id,
+                    session_id,
+                    observation_id,
+                })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert_eq!(session_id, "mock-session-1");
+                    assert_eq!(
+                        observation_id,
+                        h.client.state.prompt_timing.observation_id(&session_id)
+                    );
+                }
+                _ => panic!("expected SessionTelemetryBound before SessionAttached"),
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
                 Ok(Some(AppEvent::SessionAttached { session_id, .. })) => {
                     assert_eq!(session_id, "mock-session-1");
                 }
@@ -4357,6 +4387,21 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 false,
             );
 
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionTelemetryBound {
+                    tab_id,
+                    session_id,
+                    observation_id,
+                })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert_eq!(session_id, "hist-sess-7");
+                    assert_eq!(
+                        observation_id,
+                        h.client.state.prompt_timing.observation_id(&session_id)
+                    );
+                }
+                _ => panic!("expected SessionTelemetryBound before SessionAttached"),
+            }
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
                 Ok(Some(AppEvent::SessionAttached {
                     tab_id, session_id, ..

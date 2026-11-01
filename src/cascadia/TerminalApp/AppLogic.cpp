@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "AppLogic.h"
+#include "SidebarTelemetry.h"
 #include "AppLogic.g.cpp"
 #include "SettingsLoadEventArgs.h"
 #include "SharedWta.h"
@@ -240,6 +241,7 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingString(policy.allowedAgentsCategory, "AllowedAgentsPolicy"),
             TraceLoggingString(policy.allowCustomAgentsCategory, "AllowCustomAgentsPolicy"),
             TraceLoggingBool(globals.TabLayout() == TabLayout::Vertical, "SidebarEnabled"),
+            TraceLoggingString(::TerminalApp::SidebarTelemetry::View(globals.SidebarShowAgentsOnly(), globals.SidebarShowRecentAgentSessions()), "SidebarView"),
             TraceLoggingWideString(rolloutName.c_str(), "SidebarRolloutName"),
             TraceLoggingWideString(rolloutAssignment.c_str(), "SidebarRolloutAssignment"),
             TraceLoggingBool(_usingDefaultSettings, "DefaultsFallback"),

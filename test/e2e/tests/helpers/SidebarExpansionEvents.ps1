@@ -9,7 +9,7 @@ function Set-TestSidebarScope {
         @{ Id = 'RecentAgentSessionsFilterMenuItem'; Value = $Recent }
     )) {
         if ($null -eq $entry.Value) { continue }
-        Invoke-UiClick -App $App -Selector FilterTabsButton | Out-Null
+        Invoke-UiElement -App $App -Selector FilterTabsButton | Out-Null
         $item = Wait-Until -TimeoutSec 30 -Because "$($entry.Id) is visible in the owned filter flyout" -Condition {
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$App.Hwnd)
             if ($root.Current.ProcessId -ne $App.Pid) { throw 'Filter flyout window ownership changed.' }

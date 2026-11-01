@@ -310,6 +310,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             AllowedAgentsPolicy = 'AnsiString'
             AllowCustomAgentsPolicy = 'AnsiString'
             SidebarEnabled = 'Boolean'
+            SidebarView = 'AnsiString'
             SidebarRolloutName = 'UnicodeString'
             SidebarRolloutAssignment = 'UnicodeString'
             DefaultsFallback = 'Boolean'
@@ -352,7 +353,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             Should -BeLessThan ([DateTimeOffset]$script:phases['second-window'].Data.ActivationUtc).UtcDateTime
         @($script:records | Where-Object { $_.ProcessId -eq $script:primaryAppPid -and $_.Name -eq 'AppCreated' }) |
             Should -HaveCount 2 -Because 'initial and secondary windows each emit once; activation and settings reload do not'
-        @($created[0].Fields.Keys | Where-Object { $_ -ne 'PartA_PrivTags' }) | Should -HaveCount 15
+        @($created[0].Fields.Keys | Where-Object { $_ -ne 'PartA_PrivTags' }) | Should -HaveCount 16
         $created[0].Types.SidebarRolloutName | Should -Match 'UnicodeString$'
         $created[0].Types.SidebarRolloutAssignment | Should -Match 'UnicodeString$'
         $created[0].Fields.SidebarRolloutName | Should -Be 'sidebar-upgrade-v1'
@@ -591,7 +592,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         @($script:records | Where-Object { $_.ProcessId -eq $script:startupCases.noAgent -and $_.Name -eq 'AgentSessionStarted' }) |
             Should -HaveCount 0
         foreach ($snapshot in @($inventory, $none)) {
-            @($snapshot.Fields.Keys | Where-Object { $_ -ne 'PartA_PrivTags' }) | Should -HaveCount 15
+            @($snapshot.Fields.Keys | Where-Object { $_ -ne 'PartA_PrivTags' }) | Should -HaveCount 16
             $snapshot.Types.SidebarRolloutName | Should -Match 'UnicodeString$'
             $snapshot.Types.SidebarRolloutAssignment | Should -Match 'UnicodeString$'
             $snapshot.Fields.SidebarRolloutName | Should -Be 'sidebar-upgrade-v1'

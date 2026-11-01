@@ -18282,7 +18282,12 @@ namespace TerminalAppLocalTests
             page->_tabStrip.HistoryActive(true);
             const std::wstring normalMaster{ L"\\\\.\\pipe\\wta-master-normal" };
             const std::wstring adminMaster{ L"\\\\.\\pipe\\wta-master-admin" };
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs - 3 * 86'400'000ULL);
             const auto first = page->_PrepareSidebarHistoryActivation(item, normalMaster);
+            VERIFY_ARE_EQUAL(int64_t{ 3 }, first.ageDays);
             VERIFY_IS_TRUE(first.arguments.find(L"--master \"" + normalMaster + L"\"") != std::wstring::npos);
             const auto admin = page->_PrepareSidebarHistoryActivation(item, adminMaster);
             VERIFY_IS_FALSE(admin.statusOnly);
@@ -18295,7 +18300,9 @@ namespace TerminalAppLocalTests
             page->_CloseSidebarHistory(false);
             page->_tabStrip.HistoryActive(true);
             item.Title(L"Updated title");
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs);
             const auto retry = page->_PrepareSidebarHistoryActivation(item, normalMaster);
+            VERIFY_ARE_EQUAL(first.ageDays, retry.ageDays);
             VERIFY_IS_TRUE(retry.statusOnly);
             VERIFY_ARE_EQUAL(first.id, retry.id);
             VERIFY_ARE_EQUAL(first.arguments, retry.arguments);
@@ -18349,6 +18356,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(result.state == State::Complete);
             VERIFY_IS_TRUE(result.accepted);
             VERIFY_IS_TRUE(result.detail.empty());
+            VERIFY_ARE_EQUAL(std::string{ "focus" }, result.action);
         }
         const auto failed = Page::_ParseSidebarHistoryActivation(
             R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":false,"detail":"Cannot focus"})", activationId);
@@ -32742,9 +32750,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
             impl->SetAgentSessionId(L"old-session");
+            impl->SetTelemetrySessionId(L"old-session", L"0ba8a608-26c5-40a2-8020-5a1cd873f251");
+            VERIFY_IS_FALSE(impl->TelemetrySessionId().empty());
             impl->SetYoloControlOwner(L"manual");
             impl->SetAgentSessionId(L"new-session");
             VERIFY_IS_TRUE(impl->YoloControlOwner().empty());
+            VERIFY_IS_TRUE(impl->TelemetrySessionId().empty());
 
             sendStatus(focusedTab->StableId(), "model-b");
 

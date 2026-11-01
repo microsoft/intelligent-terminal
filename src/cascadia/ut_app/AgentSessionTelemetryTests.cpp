@@ -18,6 +18,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsIncompleteSnapshots);
         TEST_METHOD(AcceptsLegacySnapshotWithoutRetainingSessionId);
         TEST_METHOD(ReportsRawAutoFixPolicy);
+        TEST_METHOD(ObservationIdentityRejectsContentAndAcceptsRandomUuid);
     };
 
     static Json::Value Snapshot()
@@ -34,6 +35,17 @@ namespace TerminalAppUnitTests
         value["yolo_policy_blocked"] = false;
         value["yolo_control_owner"] = "provider-restored";
         return value;
+    }
+
+    void AgentSessionTelemetryTests::ObservationIdentityRejectsContentAndAcceptsRandomUuid()
+    {
+        auto value = Snapshot();
+        value["telemetry_session_id"] = "private-provider-session";
+        VERIFY_IS_TRUE(Telemetry::Parse(value)->telemetrySessionId.empty());
+        value["telemetry_session_id"] = "0ba8a608-26c5-40a2-8020-5a1cd873f251";
+        VERIFY_ARE_EQUAL(value["telemetry_session_id"].asString(), Telemetry::Parse(value)->telemetrySessionId);
+        value["telemetry_session_id"] = "0ba8a608-26c5-40a2-8020-5a1cd873f25Z";
+        VERIFY_IS_TRUE(Telemetry::Parse(value)->telemetrySessionId.empty());
     }
 
     void AgentSessionTelemetryTests::ReportsRawAutoFixPolicy()

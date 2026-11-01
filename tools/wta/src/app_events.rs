@@ -1147,6 +1147,18 @@ impl App {
                     self.publish_session_started(&bind_tab, false);
                 }
             }
+            AppEvent::SessionTelemetryBound {
+                tab_id,
+                session_id,
+                observation_id,
+            } => {
+                if self.tab_sessions.contains_key(&tab_id)
+                    || self.owner_tab_id.as_deref() == Some(tab_id.as_str())
+                {
+                    self.tab_mut(&tab_id).telemetry_observation =
+                        Some((session_id, observation_id));
+                }
+            }
             AppEvent::SessionAttached {
                 tab_id,
                 session_id,
