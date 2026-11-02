@@ -19,7 +19,7 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             language = 'en-US'
             tabLayout = 'vertical'
             sidebarShowRecentAgentSessions = $false
-            actions = @()
+            actions = @(@{ command = @{ action = 'splitPane'; type = 'snippets'; split = 'right' }; keys = 'ctrl+shift+f11' })
             keybindings = @()
             startupActions = ''
             firstWindowPreference = 'defaultProfile'
@@ -905,6 +905,48 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
         }
         finally {
             Close-WtPane -App $script:app -SessionId $split.session_id
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        }
+    }
+
+    It 'F6 skips the hidden agent toggle beside a non-terminal pane' -Tag 'SidebarF6HiddenAgentToggle' {
+        $script:app.Launched | Should -BeTrue
+        if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
+            Set-ItResult -Skipped -Because 'the owned window cannot take foreground for physical keyboard input'
+            return
+        }
+        Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+        $snippetsOpened = $false
+        try {
+            Send-WtWindowKey -App $script:app -Vk 0x7A -Ctrl -Shift -RequireForeground | Out-Null
+            (Test-UiElementExists -App $script:app -Selector 'Close pane' -TimeoutSec 2) |
+                Should -BeTrue -Because 'the non-terminal Snippets pane opened'
+            $snippetsOpened = $true
+            Set-WtPaneFocus -App $script:app -SessionId $script:tabA.session_id
+            @(Get-VisibleTabRows)[2].SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
+            (Test-Until -TimeoutSec 6 -Condition {
+                $agentToggle = Get-SidebarElement AgentToggleButton
+                -not $agentToggle -or $agentToggle.Current.IsOffscreen
+            }) | Should -BeTrue -Because 'the non-terminal Snippets pane collapses the bottom bar'
+            @(Get-VisibleTabRows)[2].SetFocus()
+            (Get-FocusedTabRowIndex) | Should -Be 2 -Because 'the owning tab stays selected'
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            $paneStop = Assert-FocusedShellPaneStop
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            [Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
+                Should -Be 'Collapse sidebar' -Because 'F6 skips the hidden agent toggle after the shell outline'
+            $paneStop.Current.HasKeyboardFocus | Should -BeFalse
+            Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
+                Should -BeTrue -Because 'Shift+F6 returns to the still-visible shell outline'
+        }
+        finally {
+            if ($snippetsOpened) {
+                Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
+                Invoke-UiElement -App $script:app -Selector 'Close pane' | Out-Null
+            }
             Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
         }
     }

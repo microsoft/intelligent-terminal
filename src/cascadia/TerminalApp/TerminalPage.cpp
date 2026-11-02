@@ -6847,7 +6847,8 @@ namespace winrt::TerminalApp::implementation
         }
         else if (focused == _sidebarPaneFocusStop)
         {
-            e.Handled(agentToggle.Focus(FocusState::Keyboard));
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
         }
         else if (focused == agentToggle)
         {
