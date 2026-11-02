@@ -6879,8 +6879,7 @@ namespace winrt::TerminalApp::implementation
             }
             else if (focused == DiagnosticsButton())
             {
-                e.Handled(agentVisible ? agentToggle.Focus(FocusState::Keyboard) :
-                                         (_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab()));
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
             }
             else if (focused == toggle)
             {

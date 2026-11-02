@@ -99,6 +99,16 @@ Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
         Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
         [Windows.Automation.Automation]::Compare(
             [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) | Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
+        [Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
+            Should -Be 'SidebarShellPaneFocusStop' -Because 'Shift+F6 leaves diagnostics for the shell region'
+        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
+            Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+        [Windows.Automation.Automation]::Compare(
+            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) | Should -BeTrue
         Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
         [Windows.Automation.Automation]::Compare(
             [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
