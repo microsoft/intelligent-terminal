@@ -49,6 +49,64 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    // TreeView 2.8 writes native node moves back through IBindableVector, not IVector<IInspectable>.
+    struct SidebarViewportItems :
+        implements<SidebarViewportItems,
+                   IObservableVector<IInspectable>,
+                   IVector<IInspectable>,
+                   IVectorView<IInspectable>,
+                   IIterable<IInspectable>,
+                   WUX::Interop::IBindableVector,
+                   WUX::Interop::IBindableVectorView,
+                   WUX::Interop::IBindableIterable>,
+        observable_vector_base<SidebarViewportItems, IInspectable>
+    {
+        using Base = observable_vector_base<SidebarViewportItems, IInspectable>;
+
+        auto& get_container() noexcept { return _items; }
+        const auto& get_container() const noexcept { return _items; }
+        // The two interface families need different ABI pointers for views and iterators.
+        struct ViewInterfaces
+        {
+            IVectorView<IInspectable> Value;
+            operator IVectorView<IInspectable>() const { return Value; }
+            operator WUX::Interop::IBindableVectorView() const { return Value.as<WUX::Interop::IBindableVectorView>(); }
+        };
+
+        ViewInterfaces GetView() const noexcept { return { Base::GetView() }; }
+
+        struct Iterator : implements<Iterator, IIterator<IInspectable>, WUX::Interop::IBindableIterator>
+        {
+            explicit Iterator(IIterator<IInspectable> iterator) :
+                _iterator(std::move(iterator))
+            {
+            }
+
+            IInspectable Current() const { return _iterator.Current(); }
+            bool HasCurrent() const { return _iterator.HasCurrent(); }
+            bool MoveNext() { return _iterator.MoveNext(); }
+            uint32_t GetMany(array_view<IInspectable> values) { return _iterator.GetMany(values); }
+
+        private:
+            IIterator<IInspectable> _iterator;
+        };
+
+        struct IteratorInterfaces
+        {
+            IIterator<IInspectable> Value;
+            operator IIterator<IInspectable>() const { return Value; }
+            operator WUX::Interop::IBindableIterator() const { return Value.as<WUX::Interop::IBindableIterator>(); }
+        };
+
+        IteratorInterfaces First()
+        {
+            return { make<Iterator>(Base::First()) };
+        }
+
+    private:
+        std::vector<IInspectable> _items;
+    };
+
     static void _updateSidebarActionLayout(const FrameworkElement& row);
     void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
     {
@@ -734,7 +792,7 @@ namespace winrt::TerminalApp::implementation
         _tabItems = single_threaded_observable_vector<IInspectable>();
         _displayItems = single_threaded_observable_vector<TerminalApp::TabStripDisplayItem>();
         _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
-        _viewportItems = single_threaded_observable_vector<IInspectable>();
+        _viewportItems = make<SidebarViewportItems>();
 
         InitializeComponent();
         SidebarTree().ApplyTemplate();
@@ -4896,22 +4954,20 @@ namespace winrt::TerminalApp::implementation
                 destinationIndex.has_value() &&
                 *destinationIndex != sourceIndex)
             {
-                _syncingNativeReorder = true;
-                auto endSync = wil::scope_exit([&]() noexcept {
-                    _syncingNativeReorder = false;
-                });
-                const auto item = _tabItems.GetAt(sourceIndex);
-                _tabItems.RemoveAt(sourceIndex);
-                _tabItems.InsertAt(*destinationIndex, item);
-                const auto display = _displayItems.GetAt(sourceIndex);
-                _displayItems.RemoveAt(sourceIndex);
-                _displayItems.InsertAt(*destinationIndex, display);
+                MoveTabItem(sourceIndex, *destinationIndex);
             }
-            _syncViewportItems();
+            else
+            {
+                _syncViewportItems();
+            }
         }
         else if (_dragCollectionChanged)
         {
             _syncDisplayItems();
+        }
+        else
+        {
+            _syncViewportItems();
         }
 
         TabDragCompleted.raise(*this, nullptr);

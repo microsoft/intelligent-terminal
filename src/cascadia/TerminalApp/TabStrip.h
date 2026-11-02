@@ -437,6 +437,7 @@ namespace winrt::TerminalApp::implementation
         void SetVerticalPresentation(bool vertical);
         bool IsVerticalPresentation() const noexcept { return _isVerticalPresentation; }
         void RestoreTabOrder(const std::vector<winrt::Windows::Foundation::IInspectable>& items);
+        bool DraggedTabCollectionChanged() const noexcept { return _dragCollectionChanged; }
         void SetTabPinned(const winrt::Microsoft::UI::Xaml::Controls::TabViewItem& item, bool pinned);
         bool RichTabRepositoryVisible() const noexcept { return _richTabRepositoryVisible; }
         void RichTabRepositoryVisible(bool value);

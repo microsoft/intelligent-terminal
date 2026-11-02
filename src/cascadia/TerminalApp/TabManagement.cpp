@@ -2958,7 +2958,9 @@ namespace winrt::TerminalApp::implementation
                                   *from >= 0 && *to >= 0 &&
                                   *from < gsl::narrow_cast<int32_t>(_tabs.Size()) &&
                                   *to < gsl::narrow_cast<int32_t>(_tabs.Size());
-        const auto canCommitReorder = _tabDragReorderAuthorized && validIndices &&
+        const auto collectionChanged = _isVerticalLayout &&
+                                       winrt::get_self<implementation::TabStrip>(_tabStrip)->DraggedTabCollectionChanged();
+        const auto canCommitReorder = _tabDragReorderAuthorized && !collectionChanged && validIndices &&
                                       _GetTabImpl(_tabs.GetAt(*from))->IsPinned() ==
                                           _GetTabImpl(_tabs.GetAt(*to))->IsPinned();
 
