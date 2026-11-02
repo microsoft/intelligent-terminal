@@ -7,7 +7,8 @@ BeforeDiscovery {
     # Missing candidate inputs are an external prerequisite, not release credit.
     $script:NativeProfileProofReady = $env:ITE2E_PACKAGE -like 'IntelligentTerminal.Worktree.*_rd9vj3e6a2mbr' -and
         $env:ITE2E_SOURCE_COMMIT -and $env:ITE2E_EXPECTED_APP_SHA256 -and
-        $env:ITE2E_EXPECTED_WTA_SHA256 -and $env:ITE2E_NATIVE_PROFILE_MODEL
+        $env:ITE2E_EXPECTED_WTA_SHA256 -and $env:ITE2E_NATIVE_PROFILE_MODEL -and
+        $env:ITE2E_ARTIFACT_ROOT
 }
 
 Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgentProfileArguments') -Skip:(-not $script:NativeProfileProofReady) {
