@@ -302,6 +302,11 @@ namespace winrt::TerminalApp::implementation
     winrt::hstring Tab::ToolTipTextForKeyChord(const winrt::hstring& keyChord)
     {
         std::wstring text{ _CreateToolTipTitle() };
+        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
+        {
+            text.append(L" ");
+            text.append(paneCount);
+        }
         if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
             text.append(L"\n");
@@ -315,23 +320,22 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ text };
     }
 
-    // Method Description:
-    // - Sets tab tool tip to a concatenation of title and key chord
-    // Arguments:
-    // - <none>
-    // Return Value:
-    // - <none>
-    void Tab::_UpdateToolTip()
+    WUX::Controls::TextBlock Tab::ToolTipContentForKeyChord(const winrt::hstring& keyChord)
     {
-        const auto title = _CreateToolTipTitle();
-
-        auto titleRun = WUX::Documents::Run();
-        titleRun.Text(title);
-
         auto textBlock = WUX::Controls::TextBlock{};
         textBlock.TextWrapping(WUX::TextWrapping::Wrap);
-        textBlock.TextAlignment(WUX::TextAlignment::Center);
+        textBlock.TextAlignment(_isVerticalTabLayout ? WUX::TextAlignment::Left : WUX::TextAlignment::Center);
+
+        auto titleRun = WUX::Documents::Run();
+        titleRun.Text(_CreateToolTipTitle());
         textBlock.Inlines().Append(titleRun);
+
+        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
+        {
+            auto paneCountRun = WUX::Documents::Run();
+            paneCountRun.Text(til::hstring_format(FMT_COMPILE(L"    {}"), paneCount));
+            textBlock.Inlines().Append(paneCountRun);
+        }
 
         if (_isPinned)
         {
@@ -349,20 +353,39 @@ namespace winrt::TerminalApp::implementation
             textBlock.Inlines().Append(metadataRun);
         }
 
-        if (!_keyChord.empty())
+        if (!keyChord.empty())
         {
             auto keyChordRun = WUX::Documents::Run();
-            keyChordRun.Text(_keyChord);
+            keyChordRun.Text(keyChord);
             keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
             textBlock.Inlines().Append(WUX::Documents::LineBreak{});
             textBlock.Inlines().Append(keyChordRun);
         }
 
+        return textBlock;
+    }
+
+    // Method Description:
+    // - Sets tab tool tip to a concatenation of title and key chord
+    // Arguments:
+    // - <none>
+    // Return Value:
+    // - <none>
+    void Tab::_UpdateToolTip(const bool notifyPropertyChanged)
+    {
         WUX::Controls::ToolTip toolTip{};
-        toolTip.Content(textBlock);
+        toolTip.Content(ToolTipContentForKeyChord(_keyChord));
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
         Automation::AutomationProperties::SetHelpText(TabViewItem(), ToolTipTextForKeyChord(_keyChord));
-        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        if (notifyPropertyChanged)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        }
+    }
+
+    void Tab::RefreshToolTip()
+    {
+        _UpdateToolTip(false);
     }
 
     // Method Description:
@@ -3314,6 +3337,16 @@ namespace winrt::TerminalApp::implementation
         }
 
         return Title();
+    }
+
+    winrt::hstring Tab::_CreateToolTipPaneCount()
+    {
+        uint32_t paneCount = 0;
+        for (const auto& pane : GetVisiblePaneSnapshot())
+        {
+            paneCount += !pane.IsAgentPane;
+        }
+        return paneCount > 1 ? winrt::hstring{ RS_fmt(L"TabToolTipPaneCount", paneCount) } : winrt::hstring{};
     }
 
     // Method Description:

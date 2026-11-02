@@ -34,11 +34,15 @@ namespace winrt::TerminalApp::implementation
         ~TabHeaderControl();
         void BeginRename();
         void CancelRename();
+        void SetSidebarTextStyles(const winrt::Windows::UI::Xaml::Style& titleStyle,
+                                  const winrt::Windows::UI::Xaml::Style& metadataStyle);
+        void SetMetadataForeground(const winrt::Windows::UI::Xaml::Media::Brush& foreground, bool followTitle);
 
         void RenameBoxLostFocusHandler(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         bool InRename();
+        bool IsTitleHighlighted();
         bool IsMetadataVisible() const noexcept;
         void IsMetadataVisible(bool value);
         bool ShowProgressRing() const noexcept;
@@ -86,11 +90,19 @@ namespace winrt::TerminalApp::implementation
         // This view remains owned here when its visual parent is the native slot.
         winrt::Windows::UI::Xaml::Controls::Grid _progressRingPresenter{ nullptr };
         winrt::Windows::UI::Xaml::Controls::Grid _compactCompletionIndicator{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl _highlightedTitle{ nullptr };
+        winrt::TerminalApp::HighlightedTextControl _metadataTextBlock{ nullptr };
+        winrt::Windows::UI::Xaml::Style _sidebarTitleTextStyle{ nullptr };
+        winrt::Windows::UI::Xaml::Style _sidebarMetadataTextStyle{ nullptr };
+        winrt::Windows::UI::Xaml::Media::Brush _metadataForeground{ nullptr };
+        bool _metadataFollowsTitle{ false };
         winrt::weak_ref<winrt::Windows::UI::Xaml::UIElement> _nativeHeaderPresenter;
         int64_t _nativeHeaderVisibilityToken{ 0 };
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _UpdateMetadataForeground();
+        void _UpdateTitleVisibility();
         void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();
         void _ClearNativeHeaderObserver();

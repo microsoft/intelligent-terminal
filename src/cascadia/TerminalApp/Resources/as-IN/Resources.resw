@@ -579,6 +579,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>মিল থকা কোনো এজেণ্ট অধিৱেশন নাই।</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>আপোনাৰ সন্ধানৰ সৈতে মিল থকা কোনো খোলা টেব বা এজেণ্টৰ পূৰ্বৰ অধিৱেশন নাই।</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>এজেণ্ট অধিৱেশনসমূহ ল'ড কৰিব পৰা নগ'ল।</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
@@ -773,6 +777,7 @@
   <data name="ExportTabText"><value>পাঠ ৰপ্তানি কৰক</value></data>
   <data name="FindText"><value>সন্ধান</value></data>
   <data name="RestartConnectionText"><value>অধিবেশন পুনৰ আৰম্ভ কৰক</value></data>
+  <data name="TabToolTipPaneCount"><value>{0}টা পেন</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>বন্ধ কৰক</value></data>
   <data name="TabClose"><value>টেব বন্ধ কৰক</value></data>
   <data name="MoveTabToNewWindowText"><value>টেব নতুন উইণ্ড'লৈ স্থানান্তৰ কৰক</value></data>

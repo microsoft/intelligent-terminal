@@ -6,6 +6,7 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
         $script:app = $null
         $script:listener = $null
+        $script:originalEnvironment = @{}
         $script:fixtures = [Collections.Generic.List[object]]::new()
         $script:package = Get-ItTestPackage
         if ($script:package -cnotmatch '^IntelligentTerminal\.Worktree\.[A-Za-z][A-Za-z0-9]{0,20}_rd9vj3e6a2mbr$') {
@@ -52,7 +53,14 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
             $path = Join-Path $env:USERPROFILE $relative
             $script:hookHashes[$path] = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
         }
-        $script:evidence = Join-Path $env:ITE2E_ARTIFACT_ROOT ('osc-hook-' + [guid]::NewGuid().ToString('N'))
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { [IO.Path]::GetFullPath($env:ITE2E_ARTIFACT_ROOT) } else {
+            Join-Path $script:root 'Generated Files\osc-hook'
+        }
+        $generated = [IO.Path]::GetFullPath((Join-Path $script:root 'Generated Files')).TrimEnd('\') + '\'
+        if (-not ($artifactRoot.TrimEnd('\') + '\').StartsWith($generated, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Keep private automation artifacts under this worktree''s Generated Files directory.'
+        }
+        $script:evidence = Join-Path $artifactRoot ('osc-hook-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:evidence -Force | Out-Null
         $script:hookHashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence 'global-hook-hashes-before.json')
         $script:pwsh = (Get-Command pwsh.exe -ErrorAction Stop | Select-Object -First 1).Source
@@ -64,6 +72,26 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
             PATH = "$($script:target.InstallLocation);$env:PATH"
             WTCLI_PATH = $script:target.WtcliPath
             WT_WTCLI_PATH = $script:target.WtcliPath
+        }
+        $homeRoot = Join-Path $script:evidence 'home'
+        $isolated = @{
+            USERPROFILE = $homeRoot; HOME = $homeRoot
+            COPILOT_HOME = (Join-Path $homeRoot '.copilot')
+            CLAUDE_CONFIG_DIR = (Join-Path $homeRoot '.claude')
+            CODEX_HOME = (Join-Path $homeRoot '.codex')
+            GEMINI_CLI_HOME = (Join-Path $homeRoot '.gemini')
+            XDG_CONFIG_HOME = (Join-Path $homeRoot '.config')
+            OPENCODE_CONFIG_DIR = (Join-Path $homeRoot '.config\opencode')
+        }
+        New-Item -ItemType Directory -Path (Join-Path $homeRoot 'AppData\Local\Packages'),
+            (Join-Path $homeRoot 'AppData\Roaming') -Force | Out-Null
+        New-Item -ItemType Junction -Path (Join-Path $homeRoot "AppData\Local\Packages\$script:package") `
+            -Target (Split-Path $script:target.LocalStateDir -Parent) | Out-Null
+        foreach ($key in $isolated.Keys) {
+            New-Item -ItemType Directory -Path $isolated[$key] -Force | Out-Null
+            $environment[$key] = $isolated[$key]
+            $script:originalEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+            [Environment]::SetEnvironmentVariable($key, $isolated[$key], 'Process')
         }
         $script:app = Start-Terminal -Package $script:package -PassFre $true -TimeoutSec 90 -State @{
             featureRolloutId = '{00000000-0000-0000-0000-000000000001}'
@@ -290,20 +318,27 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
     }
 
     AfterAll {
-        if ($script:listener) {
-            $script:listener.Events | ConvertTo-Json -Depth 20 |
-                Set-Content -LiteralPath (Join-Path $script:evidence 'events.json')
-            Stop-WtEventListener -Listener $script:listener
+        try {
+            if ($script:listener) {
+                $script:listener.Events | ConvertTo-Json -Depth 20 |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'events.json')
+                Stop-WtEventListener -Listener $script:listener
+            }
+            if ($script:app) { Stop-Terminal -App $script:app }
+            if ($script:target) { Assert-WtPackageInactive -App $script:target }
+            foreach ($path in $script:hookHashes.Keys) {
+                $actual = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
+                $actual | Should -Be $script:hookHashes[$path] -Because 'private E2E must never modify global agent hooks'
+            }
+            if ($script:evidence) {
+                @{ verified = $true; files = $script:hookHashes.Keys } | ConvertTo-Json |
+                    Set-Content -LiteralPath (Join-Path $script:evidence 'global-hooks-unchanged.json')
+            }
         }
-        if ($script:app) { Stop-Terminal -App $script:app }
-        if ($script:target) { Assert-WtPackageInactive -App $script:target }
-        foreach ($path in $script:hookHashes.Keys) {
-            $actual = if (Test-Path -LiteralPath $path) { (Get-FileHash -LiteralPath $path).Hash } else { $null }
-            $actual | Should -Be $script:hookHashes[$path] -Because 'private E2E must never modify global agent hooks'
-        }
-        if ($script:evidence) {
-            @{ verified = $true; files = $script:hookHashes.Keys } | ConvertTo-Json |
-                Set-Content -LiteralPath (Join-Path $script:evidence 'global-hooks-unchanged.json')
+        finally {
+            foreach ($key in $script:originalEnvironment.Keys) {
+                [Environment]::SetEnvironmentVariable($key, $script:originalEnvironment[$key], 'Process')
+            }
         }
     }
 
@@ -406,5 +441,90 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
         $rows[0].Current.Name | Should -Not -Match '(?<![\w\\/-])(Working|Idle|Complete|Waiting for input|Error)(?![\w\\/-])'
         Wait-Activity $a Idle | Out-Null
         Wait-Activity $b Idle | Out-Null
+    }
+
+    It 'Failed bound native restart retires the old lifetime before replacement' -Tag 'ConnectionLifecycle1285' {
+        $a = New-ActivityFixture failed-restart
+        $guard = New-ActivityFixture failed-restart-guard
+        Send-ActivityHook $a 'agent.prompt.submit'
+        Wait-Activity $a Working -Spinner $false | Out-Null
+        $oldPane = $a.Pane
+        $oldSession = $a.SessionId
+        $before = $script:listener.Events.Count
+        $token = [guid]::NewGuid().ToString('N')
+        $pending = Join-Path $a.Inbox "$token.pending"
+        @{ token = $token; kind = 'fail' } | ConvertTo-Json | Set-Content -LiteralPath $pending
+        Move-Item -LiteralPath $pending -Destination (Join-Path $a.Inbox "$token.request.json")
+        Wait-Until -TimeoutSec 20 -Because 'a real nonzero ConPTY process exit emits Failed for the bound old GUID' -Condition {
+            @(Get-WtEvents -Listener $script:listener | Select-Object -Skip $before | Where-Object {
+                $_.method -eq 'connection_state' -and $_.params.state -eq 'failed' -and
+                [guid]$_.params.pane_id -eq [guid]$oldPane
+            }).Count -eq 1
+        } | Out-Null
+        $exitReceipt = Get-Content -LiteralPath (Join-Path $a.Inbox "$token.reply.json") -Raw | ConvertFrom-Json
+        $exitReceipt.exit_code | Should -Be 17
+        [guid]$exitReceipt.pane | Should -Be ([guid]$oldPane)
+        @(Get-WtPanes -App $script:app -TabId $a.Tab -WindowId $script:app.WindowId |
+            Where-Object { [guid]$_.session_id -eq [guid]$oldPane }) | Should -HaveCount 1
+        Invoke-WtCli -App $script:app -Arguments @('focus-pane', '-t', $oldPane) | Out-Null
+        Set-WtWindowForeground -App $script:app | Should -BeTrue
+        Send-WtWindowKey -App $script:app -Vk 0x52 -Ctrl -Alt -Shift -RequireForeground | Out-Null
+        $replacement = Wait-Until -TimeoutSec 20 -Because 'the public accelerator replaces the failed connection in its existing tab' -Condition {
+            $panes = @(Get-WtPanes -App $script:app -TabId $a.Tab -WindowId $script:app.WindowId)
+            if ($panes.Count -eq 1 -and [guid]$panes[0].session_id -ne [guid]$oldPane) { $panes[0] }
+        }
+        $a.Pane = [string]$replacement.session_id
+        Wait-Until -TimeoutSec 20 -Because 'the same non-resume child command starts with the replacement GUID' -Condition {
+            if (Test-Path -LiteralPath $a.Ready) {
+                [guid](Get-Content -LiteralPath $a.Ready -Raw | ConvertFrom-Json).pane -eq [guid]$a.Pane
+            }
+        } | Out-Null
+        $events = Wait-Until -TimeoutSec 20 -Because 'Closed bypasses the prior Failed fence and precedes replacement Connected' -Condition {
+            $all = @(Get-WtEvents -Listener $script:listener | Select-Object -Skip $before)
+            $closed = @($all | Where-Object {
+                $_.method -eq 'connection_state' -and $_.params.state -eq 'closed' -and
+                [guid]$_.params.pane_id -eq [guid]$oldPane
+            })
+            $connected = @($all | Where-Object {
+                $_.method -eq 'connection_state' -and $_.params.state -eq 'connected' -and
+                [guid]$_.params.pane_id -eq [guid]$a.Pane
+            })
+            if ($closed.Count -and $connected.Count) {
+                [array]::IndexOf($all, $closed[0]) | Should -BeLessThan ([array]::IndexOf($all, $connected[0]))
+                $all
+            }
+        }
+        $events | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $script:evidence 'failed-restart-order.json')
+        $retired = Wait-Until -TimeoutSec 20 -Because 'the master retires the old bound session without prebinding the replacement' -Condition {
+            $snapshot = Read-ActivitySnapshot
+            $old = @($snapshot.sessions | Where-Object session_id -EQ $oldSession)
+            if ($old.Count -eq 1 -and -not $old[0].pane_session_id -and $old[0].status -eq 'Ended' -and
+                @($snapshot.pane_statuses | Where-Object { [guid]$_.pane_id -in @([guid]$oldPane, [guid]$a.Pane) }).Count -eq 0 -and
+                @($snapshot.sessions | Where-Object {
+                    $_.pane_session_id -and [guid]$_.pane_session_id -in @([guid]$oldPane, [guid]$a.Pane)
+                }).Count -eq 0) { $snapshot }
+        }
+        $retired | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $script:evidence 'failed-restart-retired.json')
+        # A completed no-op bounds the negative observation after the replacement is responsive.
+        Send-ActivityOsc $a 0 -Noop
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            $snapshot = Read-ActivitySnapshot
+            @($snapshot.sessions | Where-Object {
+                $_.pane_session_id -and [guid]$_.pane_session_id -in @([guid]$oldPane, [guid]$a.Pane)
+            }) | Should -HaveCount 0
+            Start-Sleep -Milliseconds 150
+        } while ($clock.Elapsed.TotalSeconds -lt 1)
+        Wait-Activity $guard Idle -Spinner $false | Out-Null
+        $a.SessionId = [guid]::NewGuid().ToString('D')
+        Send-ActivityHook $a 'agent.session.start'
+        Send-ActivityHook $a 'agent.prompt.submit'
+        Send-ActivityOsc $a 0 | Out-Null
+        Wait-Activity $a Idle -Spinner $false | Out-Null
+        Send-ActivityOsc $a 3 | Out-Null
+        Wait-Activity $a Working -Spinner $true | Out-Null
+        Send-ActivityOsc $a 0 | Out-Null
+        Wait-Activity $a Idle -Spinner $false | Out-Null
+        Wait-Activity $guard Idle -Spinner $false | Out-Null
     }
 }

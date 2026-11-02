@@ -324,7 +324,12 @@ namespace winrt::TerminalApp::implementation
         if (TextOpacity() != 1.0 && _foreground && !text.empty())
         {
             // Keep inherited/custom foreground intact; only neutral glyphs are muted.
-            Media::SolidColorBrush brush{ _foreground.Color() };
+            Media::SolidColorBrush brush;
+            Data::Binding colorBinding;
+            colorBinding.Source(_textBlock);
+            colorBinding.Path(PropertyPath{ L"Foreground.Color" });
+            colorBinding.Mode(Data::BindingMode::OneWay);
+            Data::BindingOperations::SetBinding(brush, Media::SolidColorBrush::ColorProperty(), colorBinding);
             brush.Opacity(_foreground.Opacity() * TextOpacity());
             Documents::TextHighlighter neutral;
             neutral.Foreground(brush);

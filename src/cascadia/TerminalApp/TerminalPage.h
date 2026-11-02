@@ -8,6 +8,7 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
+#include <winrt/Windows.UI.ViewManagement.h>
 
 #include "TerminalPage.g.h"
 #include "Tab.h"
@@ -448,6 +449,7 @@ namespace winrt::TerminalApp::implementation
         winrt::com_ptr<ShortcutActionDispatch> _actionDispatch{ winrt::make_self<implementation::ShortcutActionDispatch>() };
 
         winrt::Windows::UI::Xaml::Controls::Grid::LayoutUpdated_revoker _layoutUpdatedRevoker;
+        winrt::Windows::UI::ViewManagement::AccessibilitySettings::HighContrastChanged_revoker _highContrastChangedRevoker;
         StartupState _startupState{ StartupState::NotInitialized };
         Windows::UI::Xaml::DispatcherTimer _sidebarIntroductionTimer{ nullptr };
         uint64_t _sidebarIntroductionClaim{ 0 };
@@ -979,6 +981,7 @@ namespace winrt::TerminalApp::implementation
         bool _windowCloseAccepted{ false };
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout _closingStartupRestoreLayout{ nullptr };
         bool _windowPanesShutdown{ false };
+        bool _hiddenAgentThemeRefreshQueued{ false };
         std::vector<winrt::guid> _startupKeptGroups;
         bool _restoringStartupKeptGroups{ false };
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
@@ -1324,6 +1327,7 @@ namespace winrt::TerminalApp::implementation
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
+        void _OnTerminalBackgroundBrushChanged(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForSessionId(std::string_view sessionId);
@@ -1593,6 +1597,7 @@ namespace winrt::TerminalApp::implementation
         static void _DismissMessage(const winrt::Microsoft::Terminal::Settings::Model::InfoBarMessage& message);
 
         void _updateThemeColors();
+        void _updateThemeColors(bool highContrast);
         void _updateAllTabCloseButtons();
         void _updatePaneResources(const winrt::Windows::UI::Xaml::ElementTheme& requestedTheme);
 

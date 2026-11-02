@@ -242,18 +242,11 @@ change. It will reuse the exact same id-pinning and born-bound registration as
 
 ## Managed native agent profiles
 
-Managed Copilot, Claude, and Gemini profiles also pin a fresh UUID with
-`--session-id` when Terminal creates their ConPTY connection. The connection's
-pane GUID and evaluated starting directory are retained with that UUID, using
-the existing pending born-bound registration and subscribed-helper replay path.
-Registration waits for the owning tab and the ready master generation, so
-startup does not depend on hooks or on a helper subscribing before the launch.
-
-The explicit binding also supplies the native status path when session
-management is disabled. A profile restart generates a new conversation UUID
-and binds it to the replacement connection; persisted layouts retain a resume
-command for the known conversation instead of replaying the new-session command.
-Real hooks can still take ownership of the same session.
+Managed native profiles do not reserve conversation UUIDs, append session-ID
+flags, or pre-bind conversations when Terminal creates their ConPTY connections.
+The CLI creates its own conversation ID, and the existing hook and session
+discovery paths establish the actual binding. Profile restarts follow the same
+behavior. Restore and resume bindings for known conversations remain unchanged.
 
 Command previews and profile settings do not contain a generated UUID.
 Handwritten command overrides, resume/continue commands, help/version commands,
@@ -282,6 +275,6 @@ master before announcing its replacement, even if a failure was already reported
 Host resume actions retain the evaluated session cwd when the terminal has no
 usable cwd report, rather than saving an empty or relative profile directory.
 
-A pinned UUID is not proof that a conversation was persisted. Restore uses the
+A known session ID is not proof that a conversation was persisted. Restore uses the
 saved resume command without inspecting Claude transcripts or replacing its
 session ID; an empty Claude session can still report that no conversation exists.

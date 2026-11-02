@@ -144,6 +144,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         Int32 LeadingContentColumnSpan;
         Boolean ShowStatusIcon;
+        Object ToolTipContent;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

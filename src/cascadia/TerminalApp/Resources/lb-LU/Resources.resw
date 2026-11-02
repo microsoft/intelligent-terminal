@@ -463,6 +463,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Keng passend Agent-Sessiounen.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Keng oppen Tabs oder fréier Agent-Sessioune passen op Är Sich.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>D’Agent-Sessioune konnten net geluede ginn.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
@@ -657,6 +661,7 @@
   <data name="ExportTabText"><value>Text exportéieren</value></data>
   <data name="FindText"><value>Sichen</value></data>
   <data name="RestartConnectionText"><value>Sessioun nei starten</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} Beräicher</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Zoumaachen</value></data>
   <data name="TabClose"><value>Tab zoumaachen</value></data>
   <data name="MoveTabToNewWindowText"><value>Tab an eng nei Fënster réckelen</value></data>

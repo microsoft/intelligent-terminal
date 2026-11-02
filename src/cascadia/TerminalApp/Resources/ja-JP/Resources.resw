@@ -169,6 +169,10 @@
   <data name="MultiplePanes" xml:space="preserve">
     <value>複数ペイン</value>
   </data>
+  <data name="TabToolTipPaneCount" xml:space="preserve">
+    <value>{0} 個のペイン</value>
+    <comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment>
+  </data>
   <data name="TabCloseSubMenu" xml:space="preserve">
     <value>閉じる</value>
   </data>
@@ -298,6 +302,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>一致するエージェント セッションがありません。</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>検索に一致する開いているタブや過去のエージェント セッションはありません。</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>エージェント セッションを読み込めませんでした。</value>

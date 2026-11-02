@@ -463,6 +463,10 @@
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>შესაბამისი აგენტის სესიები არ არის.</value>
   </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>თქვენს ძიებას არცერთი გახსნილი ჩანართი ან აგენტის წინა სესია არ შეესაბამება.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
+  </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>აგენტის სესიების ჩატვირთვა ვერ მოხერხდა.</value>
     <comment>Error shown when the Agent sessions sidebar view cannot load its list of live and historical AI-agent sessions. This refers to loading the session list, not starting or resuming a session.</comment>
@@ -657,6 +661,7 @@
   <data name="ExportTabText"><value>ტექსტის ექსპორტი</value></data>
   <data name="FindText"><value>ძიება</value></data>
   <data name="RestartConnectionText"><value>სესიის ხელახლა დაწყება</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} პანელი</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>დახურვა</value></data>
   <data name="TabClose"><value>ჩანართის დახურვა</value></data>
   <data name="MoveTabToNewWindowText"><value>ჩანართის ახალ ფანჯარაში გადატანა</value></data>
