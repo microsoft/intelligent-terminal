@@ -13256,8 +13256,8 @@ namespace winrt::TerminalApp::implementation
         const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
         const auto manager = winrt::get_self<ContentManager>(_manager);
         const auto provider = manager->NativeAgentProviderId(control.ContentId());
-        if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
-            _richTabEndedSessionByPaneId.contains(*paneId) || manager->HasReportedAgentStatus(control.ContentId()))
+        if (!paneId || provider.empty() || _richTabEndedSessionByPaneId.contains(*paneId) ||
+            manager->HasReportedAgentStatus(control.ContentId()))
         {
             return std::nullopt;
         }

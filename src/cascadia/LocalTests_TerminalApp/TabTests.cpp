@@ -8283,11 +8283,23 @@ namespace TerminalAppLocalTests
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
-        for (const auto status : { "Idle", "Working" })
+        using Owner = winrt::TerminalApp::implementation::SharedWta;
+        for (const auto& [status, replacementReceiverPending] : { std::pair{ "Idle", false },
+                                                                  std::pair{ "Idle", true },
+                                                                  std::pair{ "Working", false },
+                                                                  std::pair{ "Working", true } })
         {
             auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
             const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
             TestOnUIThread([&]() {
+                auto& owner = Owner::Instance();
+                VERIFY_IS_FALSE(owner.IsRunning());
+                const auto receiver = owner.MasterGeneration();
+                const auto restoreReceiver = wil::scope_exit([&]() {
+                    std::lock_guard lock{ owner._mtx };
+                    owner._masterGeneration = receiver;
+                });
+                page->_lastReadyNativeAgentReceiverGeneration = receiver;
                 page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
                 page->_SyncNativeAgentStatusMode();
                 page->_agentSnapshotRefreshInFlight = true;
@@ -8318,9 +8330,14 @@ namespace TerminalAppLocalTests
                 const auto initialIdle = std::string_view{ status } == "Idle";
                 VERIFY_ARE_EQUAL(!initialIdle, manager->HasReportedAgentStatus(control.ContentId()));
 
+                if (replacementReceiverPending)
+                {
+                    std::lock_guard lock{ owner._mtx };
+                    owner._masterGeneration = receiver + 1;
+                }
                 page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
                 page->_SyncNativeAgentStatusMode();
-                VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.contains(paneId));
+                VERIFY_ARE_EQUAL(replacementReceiverPending, page->_richTabAgentStatusByPaneId.contains(paneId));
                 const auto info = page->_RichTabAgentInfoForControl(control);
                 if (initialIdle)
                 {
