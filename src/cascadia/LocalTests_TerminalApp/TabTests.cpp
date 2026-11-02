@@ -538,6 +538,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(IndeterminateProgressStopsHiddenClocks);
         TEST_METHOD(TabProgressSurvivesMoveTabReorder);
         TEST_METHOD(NativeTabReorderReleasesHeaderOwnership);
+        TEST_METHOD(NativeTabReorderKeepsTreeAndSourceInSync);
+        TEST_METHOD(NativeTabReorderRejectsConcurrentCollectionChanges);
         TEST_METHOD(SidebarTemplatesOwnHeaderVisuals);
         TEST_METHOD(SidebarHeaderRenameUsesRealizedView);
         TEST_METHOD(SidebarHeaderRenamerStaysAtTitlePosition);
@@ -2188,24 +2190,23 @@ namespace TerminalAppLocalTests
             const auto selected = page->_selectedTabItem();
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             const auto displays = strip->_displayItems;
-            page->_rearranging = true;
-            page->_tabDragReorderAuthorized = true;
-            page->_tabDragSelectedItem = selected;
-            const auto firstDisplay = displays.GetAt(0);
-            displays.RemoveAt(0);
-            displays.InsertAt(1, firstDisplay);
+            page->_TabDragStarted(page->_tabStrip, nullptr);
+            strip->_draggingItem = pinned->TabViewItem();
+            const auto roots = strip->SidebarTree().RootNodes();
+            const auto firstNode = roots.GetAt(0);
+            roots.RemoveAt(0);
+            roots.InsertAt(1, firstNode);
             const auto items = page->_tabStrip.TabItems();
-            const auto firstItem = items.GetAt(0);
-            strip->_syncingNativeReorder = true;
-            items.RemoveAt(0);
-            items.InsertAt(1, firstItem);
-            strip->_syncingNativeReorder = false;
-            page->_TabDragCompleted(page->_tabStrip, nullptr);
+            strip->_completeDrag(DataPackageOperation::Move);
 
             VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == pinned);
             VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == regular);
             VERIFY_IS_TRUE(items.GetAt(0) == pinned->TabViewItem());
             VERIFY_IS_TRUE(displays.GetAt(0).Tab() == pinned->TabViewItem());
+            VERIFY_IS_TRUE(roots.GetAt(0).Content() == displays.GetAt(0));
+            VERIFY_IS_TRUE(roots.GetAt(1).Content() == displays.GetAt(1));
+            VERIFY_IS_TRUE(strip->_viewportItems.GetAt(0) == displays.GetAt(0));
+            VERIFY_IS_TRUE(strip->_viewportItems.GetAt(1) == displays.GetAt(1));
             VERIFY_IS_TRUE(page->_selectedTabItem() == selected);
         });
     }
@@ -21340,6 +21341,112 @@ namespace TerminalAppLocalTests
             page->_TryMoveTab(0, 1);
             VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == progressTab);
             verify();
+        });
+    }
+
+    void TabTests::NativeTabReorderKeepsTreeAndSourceInSync()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            std::vector<winrt::MUX::Controls::TabViewItem> tabs;
+            for (const auto title : { L"First", L"Second", L"Third" })
+            {
+                winrt::MUX::Controls::TabViewItem tab;
+                tab.Header(winrt::box_value(winrt::hstring{ title }));
+                strip.TabItems().Append(tab);
+                tabs.push_back(tab);
+            }
+            strip.SelectedItem(tabs.front());
+            const auto selectedDisplay = impl->DisplayItemForTab(tabs.front());
+            const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            history.SessionId(L"native-reorder-history");
+            history.Title(L"Recent session");
+            impl->CommitHistorySnapshot({ history }, true);
+
+            const auto source = impl->_viewportItems;
+            const auto bindable = source.as<winrt::Windows::UI::Xaml::Interop::IBindableVector>();
+            VERIFY_IS_TRUE(bindable.GetView().GetAt(0) == source.GetAt(0));
+            VERIFY_IS_TRUE(bindable.as<winrt::Windows::UI::Xaml::Interop::IBindableIterable>().First().Current() == source.First().Current());
+            for (const auto combined : { false, true })
+            {
+                strip.HistoryActive(combined);
+                const auto roots = impl->SidebarTree().RootNodes();
+                const auto historyNode = impl->_historyNode;
+                const auto historyChild = historyNode ? historyNode.Children().GetAt(0) : nullptr;
+                for (const auto destination : { 2u, 0u })
+                {
+                    uint32_t from{};
+                    VERIFY_IS_TRUE(strip.TabItems().IndexOf(tabs.front(), from));
+                    const auto movedNode = roots.GetAt(from);
+                    impl->_draggingItem = tabs.front();
+                    roots.RemoveAt(from);
+                    roots.InsertAt(destination, movedNode);
+
+                    // This is the native move, before the application's completion handler runs.
+                    for (uint32_t index = 0; index < roots.Size(); ++index)
+                    {
+                        VERIFY_IS_TRUE(source.GetAt(index) == roots.GetAt(index).Content());
+                    }
+                    impl->_completeDrag(DataPackageOperation::Move);
+                    VERIFY_ARE_EQUAL(3u + (combined ? 1u : 0u), roots.Size());
+                    VERIFY_IS_TRUE(roots.GetAt(destination) == movedNode);
+                    VERIFY_IS_TRUE(strip.TabItems().GetAt(destination) == tabs.front());
+                    VERIFY_IS_TRUE(impl->DisplayItemForTab(tabs.front()) == selectedDisplay);
+                    VERIFY_IS_TRUE(strip.SelectedItem() == tabs.front());
+                    for (uint32_t index = 0; index < 3; ++index)
+                    {
+                        const auto display = impl->DisplayItemAt(index);
+                        VERIFY_IS_TRUE(display.Tab() == strip.TabItems().GetAt(index));
+                        VERIFY_IS_TRUE(source.GetAt(index) == display);
+                        VERIFY_IS_TRUE(roots.GetAt(index).Content() == display);
+                        VERIFY_IS_TRUE(impl->ItemsList().Items().GetAt(index) == display);
+                    }
+                    if (combined)
+                    {
+                        VERIFY_IS_TRUE(impl->_historyNode == historyNode);
+                        VERIFY_IS_TRUE(roots.GetAt(3) == historyNode);
+                        VERIFY_IS_TRUE(historyNode.Children().GetAt(0) == historyChild);
+                        VERIFY_IS_TRUE(historyChild.Content() == history);
+                        VERIFY_IS_TRUE(historyNode.IsExpanded());
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::NativeTabReorderRejectsConcurrentCollectionChanges()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto second = page->_GetTabImpl(page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, nullptr)));
+            const auto selected = page->_selectedTabItem();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_TabDragStarted(page->_tabStrip, nullptr);
+            strip->_draggingItem = first->TabViewItem();
+            const auto items = strip->TabItems();
+            items.RemoveAt(0);
+            items.InsertAt(1, first->TabViewItem());
+            VERIFY_IS_TRUE(strip->DraggedTabCollectionChanged());
+            VERIFY_IS_TRUE(page->_rearrangeFrom.has_value());
+            VERIFY_IS_TRUE(page->_rearrangeTo.has_value());
+            strip->_completeDrag(DataPackageOperation::Move);
+
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == first);
+            VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == second);
+            VERIFY_IS_TRUE(page->_selectedTabItem() == selected);
+            VERIFY_IS_FALSE(page->_rearranging);
+            VERIFY_IS_FALSE(strip->DraggedTabCollectionChanged());
+            for (uint32_t index = 0; index < items.Size(); ++index)
+            {
+                const auto display = strip->DisplayItemAt(index);
+                VERIFY_IS_TRUE(items.GetAt(index) == page->_tabs.GetAt(index).TabViewItem());
+                VERIFY_IS_TRUE(display.Tab() == items.GetAt(index));
+                VERIFY_IS_TRUE(strip->_viewportItems.GetAt(index) == display);
+                VERIFY_IS_TRUE(strip->SidebarTree().RootNodes().GetAt(index).Content() == display);
+            }
         });
     }
 
