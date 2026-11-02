@@ -6713,6 +6713,41 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    static void _AppendSplitSidebarControls(const DependencyObject& element,
+                                            const DependencyObject& row,
+                                            std::vector<WUX::Controls::Control>& controls)
+    {
+        if (const auto named = element.try_as<FrameworkElement>())
+        {
+            if (const auto name = named.Name();
+                name == L"TabGroupToggleButton" || name == L"PaneActivateButton")
+            {
+                if (const auto control = named.try_as<WUX::Controls::Control>();
+                    control && control.IsTabStop() && _IsVisibleControlInSubtree(control, row))
+                {
+                    controls.push_back(control);
+                }
+            }
+        }
+        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+        {
+            _AppendSplitSidebarControls(Media::VisualTreeHelper::GetChild(element, index), row, controls);
+        }
+    }
+
+    static WUX::Controls::ListViewItem _FocusedSidebarRow(const DependencyObject& focused,
+                                                           const WUX::Controls::ListView& list)
+    {
+        for (auto element = focused; element && element != list; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto row = element.try_as<WUX::Controls::ListViewItem>())
+            {
+                return row;
+            }
+        }
+        return nullptr;
+    }
+
     bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
     {
         const auto titlebar = _tabRow ?
@@ -6918,26 +6953,44 @@ namespace winrt::TerminalApp::implementation
         const auto diagnosticsVisible = _IsVisibleControlInSubtree(diagnostics, BottomBarRoot());
         const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
         const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        const auto list = winrt::get_self<implementation::TabStrip>(_tabStrip)->ItemsList();
+        const auto focusLastSidebarStop = [&]() {
+            if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop())
+            {
+                return false;
+            }
+            const auto row = _FocusedSidebarRow(WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot()).try_as<DependencyObject>(), list);
+            if (row)
+            {
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                if (!controls.empty())
+                {
+                    return controls.back().Focus(FocusState::Keyboard) || row.Focus(FocusState::Keyboard);
+                }
+            }
+            return true;
+        };
         if (shift && toggle.FocusState() != FocusState::Unfocused)
         {
             e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
                       (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
                       _FocusSidebarShellPaneStop() ||
-                      winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+                      focusLastSidebarStop());
         }
         else if (shift && focused == diagnostics)
         {
             e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
                       _FocusSidebarShellPaneStop() ||
-                      winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+                      focusLastSidebarStop());
         }
         else if (shift && focused == agentToggle)
         {
-            e.Handled(_FocusSidebarShellPaneStop() || winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+            e.Handled(_FocusSidebarShellPaneStop() || focusLastSidebarStop());
         }
         else if (shift && focused == _sidebarPaneFocusStop)
         {
-            e.Handled(winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop());
+            e.Handled(focusLastSidebarStop());
         }
         else if (!shift && focused == agentToggle)
         {
@@ -6954,19 +7007,44 @@ namespace winrt::TerminalApp::implementation
         {
             e.Handled(toggle.Focus(FocusState::Keyboard));
         }
-        else if (!shift)
+        else
         {
-            auto element = focused.try_as<DependencyObject>();
-            const auto list = winrt::get_self<implementation::TabStrip>(_tabStrip)->ItemsList();
-            for (; element; element = Media::VisualTreeHelper::GetParent(element))
+            const auto row = _FocusedSidebarRow(focused.try_as<DependencyObject>(), list);
+            if (row)
             {
-                if (element == list || element == last)
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                const auto current = std::find(controls.begin(), controls.end(), focused.try_as<WUX::Controls::Control>());
+                if (shift && current != controls.end())
                 {
-                    e.Handled(_FocusSidebarShellPaneStop() ||
-                              (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
-                              (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
-                              toggle.Focus(FocusState::Keyboard));
-                    break;
+                    e.Handled(current == controls.begin() ?
+                                  row.Focus(FocusState::Keyboard) :
+                                  (current - 1)->Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && !controls.empty() && focused == row)
+                {
+                    e.Handled(controls.front().Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && current != controls.end() && current + 1 != controls.end())
+                {
+                    e.Handled((*(current + 1)).Focus(FocusState::Keyboard));
+                    return;
+                }
+            }
+            if (!shift)
+            {
+                for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+                {
+                    if (element == list || element == last)
+                    {
+                        e.Handled(_FocusSidebarShellPaneStop() ||
+                                  (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                                  (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                                  toggle.Focus(FocusState::Keyboard));
+                        break;
+                    }
                 }
             }
         }

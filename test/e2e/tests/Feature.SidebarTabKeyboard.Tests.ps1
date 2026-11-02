@@ -811,7 +811,28 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             $shell = [Windows.Automation.AutomationElement]::FocusedElement
             $shell.Current.ClassName | Should -Be 'TermControl'
             $lastRow = @(Get-VisibleTabRows)[2]
+            $groupCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'TabGroupToggleButton')
+            $paneCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'PaneActivateButton')
+            (Test-Until -TimeoutSec 6 -IntervalSec 0.2 -Condition {
+                $lastRow.FindAll([Windows.Automation.TreeScope]::Descendants, $paneCondition).Count -eq 2
+            }) | Should -BeTrue -Because 'both split pane controls must be realized before traversal'
+            $group = $lastRow.FindFirst([Windows.Automation.TreeScope]::Descendants, $groupCondition)
+            $panes = $lastRow.FindAll([Windows.Automation.TreeScope]::Descendants, $paneCondition)
+            $group | Should -Not -BeNullOrEmpty
+            $panes.Count | Should -Be 2
             $lastRow.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $group) |
+                Should -BeTrue -Because 'Tab from a split tab row reaches its group toggle'
+            foreach ($pane in $panes) {
+                Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+                [Windows.Automation.Automation]::Compare(
+                    [Windows.Automation.AutomationElement]::FocusedElement, $pane) |
+                    Should -BeTrue -Because 'Tab visits each pane activation button in order'
+            }
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
             $paneStop = Assert-FocusedShellPaneStop
             $shell.Current.HasKeyboardFocus | Should -BeFalse -Because 'the selected split pane outline must not enter its shell'
@@ -830,6 +851,20 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
                 Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            for ($i = $panes.Count - 1; $i -ge 0; $i--) {
+                [Windows.Automation.Automation]::Compare(
+                    [Windows.Automation.AutomationElement]::FocusedElement, $panes[$i]) |
+                    Should -BeTrue -Because 'reverse Tab visits both pane activation buttons'
+                Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            }
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $group) |
+                Should -BeTrue -Because 'reverse Tab returns to the group toggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $lastRow) |
+                Should -BeTrue -Because 'reverse Tab returns to the split tab row'
         }
         finally {
             Close-WtPane -App $script:app -SessionId $split.session_id
