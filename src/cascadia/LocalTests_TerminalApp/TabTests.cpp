@@ -662,6 +662,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryMetadataLayout);
         TEST_METHOD(VerticalTabHistoryStatusOrAge);
         TEST_METHOD(VerticalTabHistoryAlignsWithLiveRows);
+        TEST_METHOD(VerticalTabHistoryRecyclingPreservesRowInsets);
         TEST_METHOD(VerticalTabHistoryWslDistroMetadata);
         TEST_METHOD(VerticalTabHistoryCurrentSessionTracksPane);
         TEST_METHOD(VerticalTabHistoryKeepRunningTracksOwningTab);
@@ -17263,6 +17264,122 @@ namespace TerminalAppLocalTests
                 }
             }
         });
+    }
+
+    void TabTests::VerticalTabHistoryRecyclingPreservesRowInsets()
+    {
+        HistoryTestView view{ true };
+        const auto strip = view.strip;
+        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+        ScrollViewer scroll{ nullptr };
+        std::function<ScrollViewer(const DependencyObject&)> findScroll;
+        findScroll = [&](const DependencyObject& parent) -> ScrollViewer {
+            if (const auto viewer = parent.try_as<ScrollViewer>())
+            {
+                return viewer;
+            }
+            for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(parent); ++index)
+            {
+                if (const auto viewer = findScroll(Media::VisualTreeHelper::GetChild(parent, index)))
+                {
+                    return viewer;
+                }
+            }
+            return nullptr;
+        };
+        ListViewBase::ContainerContentChanging_revoker recycling;
+        uint32_t recycled = 0;
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { recycling.revoke(); });
+        });
+        TestOnUIThread([&]() {
+            strip.Width(320);
+            strip.Height(400);
+            impl->SetVerticalPresentation(true);
+            for (uint32_t index = 0; index < 2; ++index)
+            {
+                winrt::MUX::Controls::TabViewItem tab;
+                tab.Header(winrt::box_value(winrt::hstring{ L"Live tab " } + winrt::to_hstring(index)));
+                strip.TabItems().Append(tab);
+            }
+            for (uint32_t index = 0; index < 80; ++index)
+            {
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(winrt::to_hstring(index));
+                item.AgentId(L"copilot");
+                item.Title(winrt::hstring{ L"Session " } + winrt::to_hstring(index));
+                item.Cwd(L"C:\\work\\session");
+                item.Subtitle(L"4 days ago");
+                item.IsHistorical(true);
+                items.emplace_back(item);
+            }
+            impl->CommitHistorySnapshot(items);
+            recycling = impl->ItemsList().ContainerContentChanging(winrt::auto_revoke, [&](auto&&, const ContainerContentChangingEventArgs& args) {
+                if (args.InRecycleQueue())
+                {
+                    ++recycled;
+                }
+            });
+            strip.UpdateLayout();
+            strip.CanReorderTabs(true);
+            strip.CanDragTabs(true);
+            scroll = findScroll(impl->ItemsList());
+            VERIFY_IS_NOT_NULL(scroll);
+        });
+
+        for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+        {
+            TestOnUIThread([&]() { strip.FlowDirection(direction); });
+            for (const auto index : { 0u, 40u, 79u, 0u })
+            {
+                const auto item = items[index];
+                TestOnUIThread([&]() {
+                    scroll.ChangeView(nullptr, scroll.ScrollableHeight() * index / 79.0, nullptr, true);
+                    strip.UpdateLayout();
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    strip.UpdateLayout();
+                    const auto container = impl->ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+                    const auto row = container ? container.ContentTemplateRoot().try_as<Grid>() : nullptr;
+                    if (row && row.IsLoaded() && row.ActualWidth() > 0)
+                    {
+                        const auto list = impl->ItemsList();
+                        const auto bounds = row.TransformToVisual(list).TransformBounds(
+                            { 0, 0, static_cast<float>(row.ActualWidth()), static_cast<float>(row.ActualHeight()) });
+                        if (bounds.Y < list.ActualHeight() && bounds.Y + bounds.Height > 0)
+                        {
+                            return true;
+                        }
+                    }
+                    scroll.ChangeView(nullptr, scroll.ScrollableHeight() * index / 79.0, nullptr, true);
+                    return false;
+                });
+                TestOnUIThread([&]() {
+                    const auto list = impl->ItemsList();
+                    const auto container = list.ContainerFromItem(item).as<ListViewItem>();
+                    const auto row = container.ContentTemplateRoot().as<Grid>();
+                    const auto bounds = [&](const FrameworkElement& element) {
+                        return element.TransformToVisual(view.coordinateHost).TransformBounds({ 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+                    };
+                    const auto containerBounds = bounds(container);
+                    const auto rowBounds = bounds(row);
+                    Log::Comment(NoThrowString().Format(L"History row direction=%d index=%u containerX=%.2f rowX=%.2f containerWidth=%.2f rowWidth=%.2f",
+                                                        static_cast<int>(direction),
+                                                        index,
+                                                        containerBounds.X,
+                                                        rowBounds.X,
+                                                        containerBounds.Width,
+                                                        rowBounds.Width));
+                    VERIFY_IS_TRUE(std::abs(rowBounds.X - containerBounds.X) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(rowBounds.Width - containerBounds.Width) <= 1.0);
+                    VERIFY_IS_TRUE(list.CanDragItems());
+                    VERIFY_IS_TRUE(list.CanReorderItems());
+                    VERIFY_IS_TRUE(list.AllowDrop());
+                });
+            }
+        }
+        TestOnUIThread([&]() { VERIFY_IS_TRUE(recycled > 0); });
     }
 
     void TabTests::VerticalTabHistoryWslDistroMetadata()

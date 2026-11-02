@@ -3176,12 +3176,31 @@ namespace winrt::TerminalApp::implementation
         const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
         const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
         const auto status = !e.InRecycleQueue() && e.Item() == _historyStatusItem;
-        container.Style(header || history || status ?
-                            Resources().Lookup(box_value(status ? L"SidebarHistoryStatusContainerStyle" :
-                                                         header ? L"SidebarHistoryHeaderContainerStyle" :
-                                                                  L"SidebarHistoryContainerStyle"))
-                                .as<WUX::Style>() :
-                            ItemsList().ItemContainerStyle());
+        if (e.Phase() > 0)
+        {
+            if (history || header)
+            {
+                container.ApplyTemplate();
+                _flattenHistoryContainer(container, header);
+            }
+            return;
+        }
+
+        if (history || header)
+        {
+            e.RegisterUpdateCallback({ get_weak(), &TabStrip::OnContainerContentChanging });
+        }
+
+        // Restyling recycled containers recreates native indentation without reloading their cached rows.
+        if (!e.InRecycleQueue())
+        {
+            container.Style(header || history || status ?
+                                Resources().Lookup(box_value(status ? L"SidebarHistoryStatusContainerStyle" :
+                                                             header ? L"SidebarHistoryHeaderContainerStyle" :
+                                                                      L"SidebarHistoryContainerStyle"))
+                                    .as<WUX::Style>() :
+                                ItemsList().ItemContainerStyle());
+        }
         container.AllowDrop(false);
         const auto treeItem = container.as<MUX::Controls::TreeViewItem>();
         treeItem.HasUnrealizedChildren(header);
