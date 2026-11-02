@@ -7721,6 +7721,7 @@ namespace TerminalAppLocalTests
                     const auto restoreConnection = wil::scope_exit([&]() { control.Connection(*connection); });
                     profile.StartingDirectory(L"C:\\profile-edited-after-launch");
                     page->_richTabAgentCwdAvailable = false;
+                    const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
                     const auto initial = page->_RichTabAgentInfoForControl(control);
                     VERIFY_IS_TRUE(initial.has_value());
                     VERIFY_IS_TRUE(initial->launchMetadata);
@@ -7751,8 +7752,9 @@ namespace TerminalAppLocalTests
                         VERIFY_ARE_EQUAL(initial->cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
                     }
 
+                    page->_UpdateAgentCompletions();
+                    VERIFY_IS_FALSE(manager->HasReportedAgentStatus(control.ContentId()));
                     page->_PublishNativeAgentObservation(control, "reset", true);
-                    const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
                     const auto identity = manager->NativeAgentObservationForContent(control.ContentId());
                     VERIFY_IS_TRUE(identity.has_value());
                     winrt::TerminalApp::implementation::TerminalPage::_RichTabAgentInfo confirmed{
@@ -7769,7 +7771,42 @@ namespace TerminalAppLocalTests
                     page->_richTabAgentCwdAvailable = true;
                     VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
                     VERIFY_ARE_EQUAL(confirmed.cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
-                    page->_richTabAgentStatusByPaneId.erase(paneId);
+                    page->_GetFocusedTabImpl()->Focus(FocusState::Unfocused);
+                    page->_UpdateAgentCompletions();
+                    VERIFY_IS_TRUE(manager->HasReportedAgentStatus(control.ContentId()));
+                    VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(paneId, confirmed.sessionId, confirmed.providerId));
+
+                    using Page = winrt::TerminalApp::implementation::TerminalPage;
+                    const auto receiver = winrt::TerminalApp::implementation::SharedWta::Instance().MasterGeneration();
+                    Json::Value response;
+                    response["sessions"] = Json::arrayValue;
+                    response["pane_statuses"] = Json::arrayValue;
+                    response["native_observation_receiver_generation"] = Json::UInt64{ receiver };
+                    response["native_observation_listener_ready"] = false;
+                    const auto complete = [&](const std::vector<Page::_RichTabAgentInfo>& rows) {
+                        ::Microsoft::Terminal::WtaProcess::CaptureResult capture;
+                        capture.completed = true;
+                        capture.exitCode = 0;
+                        const Page::_AgentSnapshotRequest request{
+                            ++page->_agentSnapshotRequestGeneration, receiver, std::nullopt, {}
+                        };
+                        page->_agentSnapshotRefreshInFlight = true;
+                        page->_agentSnapshotRefreshPending = false;
+                        page->_CompleteAgentSnapshot(
+                            request, capture, response, Page::_BuildAgentStatusSnapshot(rows, page->_richTabAgentStatusByPaneId), true);
+                    };
+                    complete({});
+                    VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
+                    VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(control).contains("agentStatusId"));
+                    VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(control).second.has_value());
+                    VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(paneId, confirmed.sessionId, confirmed.providerId));
+                    complete({ confirmed });
+                    VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
+                    VERIFY_ARE_EQUAL(confirmed.cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
+                    confirmed.status = "Idle";
+                    complete({ confirmed });
+                    VERIFY_ARE_EQUAL(std::string{ "Complete" }, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
+                    complete({});
                     if (enabled)
                     {
                         const auto ended = _keepRunningHook(paneId, "agent.session.end", "confirmed", winrt::to_string(winrt::hstring{ provider }));
@@ -22933,10 +22970,13 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto manager = winrt::get_self<Manager>(page->_manager);
             manager->RetainQualifiedNativeAgentIdentity(control.ContentId(), oldIdentity.modeEpoch, "old-session", "Host");
+            manager->UpdateAgentCompletion(control.ContentId(), oldConnection->SessionId(), "old-session", "copilot", "Working", true);
+            VERIFY_IS_TRUE(manager->HasReportedAgentStatus(control.ContentId()));
             constexpr std::u16string_view progress{ u"\x1b]9;4;1;50\x1b\\" };
             oldConnection->TerminalOutput.raise(winrt::array_view<const char16_t>{ progress.data(), progress.data() + progress.size() });
             page->_RestartPaneWithConnection(content, *newConnection);
             VERIFY_ARE_EQUAL(uint64_t{ 0 }, control.TaskbarState());
+            VERIFY_IS_FALSE(manager->HasReportedAgentStatus(control.ContentId()));
         });
         TestOnUIThread([&]() {
             VERIFY_IS_TRUE(std::ranges::any_of(observations, [&](const auto& observation) {

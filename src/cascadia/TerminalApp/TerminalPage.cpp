@@ -12908,9 +12908,10 @@ namespace winrt::TerminalApp::implementation
             return std::nullopt;
         }
         const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
-        const auto provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
+        const auto manager = winrt::get_self<ContentManager>(_manager);
+        const auto provider = manager->NativeAgentProviderId(control.ContentId());
         if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
-            _richTabEndedSessionByPaneId.contains(*paneId))
+            _richTabEndedSessionByPaneId.contains(*paneId) || manager->HasReportedAgentStatus(control.ContentId()))
         {
             return std::nullopt;
         }
@@ -13143,7 +13144,7 @@ namespace winrt::TerminalApp::implementation
                     root->WalkTree([&](const auto& pane) {
                         if (const auto control = pane->GetTerminalControl())
                         {
-                            if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
+                            if (const auto info = _RichTabAgentInfoForControl(control); info && !info->launchMetadata && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
                                     control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId());

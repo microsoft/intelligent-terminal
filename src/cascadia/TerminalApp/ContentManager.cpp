@@ -309,6 +309,7 @@ namespace winrt::TerminalApp::implementation
             it->second.observation = {};
             it->second.observationAdmitted = false;
             it->second.completion = {};
+            it->second.reportedAgentStatusPaneId.reset();
             it->second.parsedProgress.reset();
             it->second.lastConfirmedOwner = {};
             if (!_nativeAgentSessionEventsEnabled)
@@ -390,12 +391,25 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
+            it->second.reportedAgentStatusPaneId = paneId;
             changed = it->second.completion.Update(paneId, sessionId, providerId, status, focused);
         }
         if (changed)
         {
             AgentCompletionChanged.raise(paneId);
         }
+    }
+
+    bool ContentManager::HasReportedAgentStatus(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && it->second.reportedAgentStatusPaneId)
+        {
+            const auto connection = it->second.core.Core().Connection();
+            return connection && connection.SessionId() == *it->second.reportedAgentStatusPaneId;
+        }
+        return false;
     }
 
     bool ContentManager::HasUnreadAgentCompletion(
