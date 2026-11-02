@@ -225,6 +225,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(int32_t, LeadingContentColumnSpan, PropertyChanged.raise, 1);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::IInspectable, ToolTipContent, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipBody, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipShortcutLine, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AcceleratorKey, PropertyChanged.raise);
 
     public:
@@ -234,7 +236,7 @@ namespace winrt::TerminalApp::implementation
         void SetKeyboardFocused(bool focused, bool railCollapsed);
         bool IsPointerOver() const noexcept { return _pointerOver; }
         void SetSidebarHints(std::optional<std::pair<winrt::hstring, winrt::hstring>> hints,
-                             winrt::Windows::Foundation::IInspectable const& toolTipContent,
+                             winrt::hstring const& toolTipBody,
                              bool verticalPresentation);
         void SyncIcon(winrt::hstring const& iconPath);
         void SyncIcon(winrt::hstring const& iconPath, winrt::Microsoft::UI::Xaml::Controls::IconSource const& source);
@@ -253,7 +255,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::UI::Xaml::Controls::IconSource _iconSource{ nullptr };
         bool _headerProgressProjectedToPaneRows{ false };
         std::optional<std::pair<winrt::hstring, winrt::hstring>> _sidebarHints;
-        winrt::Windows::Foundation::IInspectable _sidebarToolTipContent{ nullptr };
+        winrt::hstring _sidebarToolTipBody;
         void _publishHints(bool verticalPresentation);
         void _setIconSource(winrt::Windows::Foundation::IInspectable const& value, std::optional<winrt::hstring> iconPath);
     };
