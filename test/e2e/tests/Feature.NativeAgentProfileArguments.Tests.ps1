@@ -2,7 +2,15 @@
 # Real native profile -> Windows argv -> ConPTY -> installed native CLI.
 # Version and parser-error cases submit no model work.
 
-Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgentProfileArguments') {
+BeforeDiscovery {
+    # This opt-in proof must not change an arbitrary Dev/Store installation.
+    # Missing candidate inputs are an external prerequisite, not release credit.
+    $script:NativeProfileProofReady = $env:ITE2E_PACKAGE -like 'IntelligentTerminal.Worktree.*_rd9vj3e6a2mbr' -and
+        $env:ITE2E_SOURCE_COMMIT -and $env:ITE2E_EXPECTED_APP_SHA256 -and
+        $env:ITE2E_EXPECTED_WTA_SHA256 -and $env:ITE2E_NATIVE_PROFILE_MODEL
+}
+
+Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgentProfileArguments') -Skip:(-not $script:NativeProfileProofReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = $null
