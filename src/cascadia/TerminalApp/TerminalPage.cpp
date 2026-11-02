@@ -12252,17 +12252,22 @@ namespace winrt::TerminalApp::implementation
             if (const auto actionMap = _settings.ActionMap())
             {
                 const KeyChord chord{
-                        modifiers.IsCtrlPressed(),
-                        modifiers.IsAltPressed(),
-                        modifiers.IsShiftPressed(),
-                        modifiers.IsWinPressed(),
-                        gsl::narrow_cast<int32_t>(vkey),
-                        scanCode,
-                    };
+                    modifiers.IsCtrlPressed(),
+                    modifiers.IsAltPressed(),
+                    modifiers.IsShiftPressed(),
+                    modifiers.IsWinPressed(),
+                    gsl::narrow_cast<int32_t>(vkey),
+                    scanCode,
+                };
                 if (const auto cmd = actionMap.GetActionByKeyChord(chord))
                 {
                     const auto action = cmd.ActionAndArgs();
-                    return action.Action() == ShortcutAction::ToggleSidebar ?
+                    return (action.Action() == ShortcutAction::ToggleSidebar ||
+                            action.Action() == ShortcutAction::SwitchToTab ||
+                            action.Action() == ShortcutAction::ToggleSidebarAgentsOnly ||
+                            action.Action() == ShortcutAction::ToggleSidebarRecentAgentSessions ||
+                            action.Action() == ShortcutAction::OpenAgentSessions ||
+                            action.Action() == ShortcutAction::TabSearch) ?
                                _actionDispatch->DoAction(chord, action) :
                                _actionDispatch->DoAction(action);
                 }
@@ -14337,6 +14342,20 @@ namespace winrt::TerminalApp::implementation
                             // pane's last resumable agent-session binding.
                             if (autoFixPolicyLocked)
                             {
+                                // Keep raw OSC and diagnostics blocked; only send the content-free failure count.
+                                if (!tabIdStr.empty() &&
+                                    ::TerminalApp::AgentPolicyTelemetry::ShouldRecordBlockedCommandFailure(
+                                        page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled(),
+                                        ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked,
+                                        seqStr))
+                                {
+                                    Json::Value params;
+                                    params["pane_id"] = paneIdStr;
+                                    params["tab_id"] = tabIdStr;
+                                    params["autofix_policy_state"] = "disabled";
+                                    params["autofix_enabled"] = false;
+                                    page->_RaiseProtocolEvent("shell_command_failed", params);
+                                }
                                 return;
                             }
 

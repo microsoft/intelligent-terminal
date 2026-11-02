@@ -153,9 +153,13 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                     Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id `
                         -Command ("throw 'telemetry-new-" + [guid]::NewGuid().ToString('N') + "'") | Out-Null
                     Wait-WtCommandFailure -Listener $listener -PaneId $script:shell.session_id -TimeoutSec 20 | Out-Null
-                    Wait-Until -TimeoutSec 20 -Because 'the helper classifies this new failure with the current effective flag' -Condition {
-                        (Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart) -match
-                            $(if ($hostEnabled) { 'sending auto-fix prompt' } else { 'surfacing Detected pill' })
+                    Wait-Until -TimeoutSec 20 -Because 'the helper handles this new failure with the current effective flag' -Condition {
+                        if ($hostEnabled) {
+                            @(Select-String -LiteralPath $script:requestLog -Pattern '\|session/prompt\|').Count -eq ($beforeToggle + 3)
+                        }
+                        else {
+                            (Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart) -match 'surfacing Detected pill'
+                        }
                     } | Out-Null
                     $script:readyResults[[string]$hostEnabled] = @{ Responses = $responses; Error = $null }
                 }
@@ -634,7 +638,10 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             }
         }
         else {
-            $events | Should -HaveCount 0 -Because 'blocked policy suppresses the shell VT event before helper classification'
+            $events | Should -HaveCount 1 -Because 'blocked policy counts the failure without forwarding raw shell content'
+            $events[0].Fields.Method | Should -Be 'vt_sequence'
+            $events[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
+            $events[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
             @(Get-TelemetryPhaseEvents -Phase "autofix-policy-$Allowed" | Where-Object {
                 $_.ProcessId -eq $script:agent.HelperProcessId -and
                 $_.Name -in @('AgentPromptSent', 'ErrorFixOffered', 'ErrorFixAccepted')
@@ -653,16 +660,21 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $events = @($events | Where-Object {
             $_.ProcessId -eq $data.HelperPid -and $_.Fields.PaneId -eq $data.SourcePane
         })
-        $events | Should -HaveCount 1 -Because 'the enabled OSC failure or disabled shell connection failure must be classified exactly once'
+        $connections = @($events | Where-Object { $_.Fields.Method -eq 'connection_state' })
+        $events = @($events | Where-Object { $_.Fields.Method -eq 'vt_sequence' })
+        $events | Should -HaveCount 1 -Because 'the actual shell failure must be counted exactly once in either policy group'
         $events[0].Fields.AllowAutoFixPolicy | Should -Be $(if ($Allowed) { 'enabled' } else { 'disabled' })
         $events[0].Fields.AutoFixEnabled | Should -BeIn $(if ($Allowed) { @('true', '1') } else { @('false', '0') })
         $events[0].Types.AllowAutoFixPolicy | Should -Match 'AnsiString$'
         $events[0].Types.AutoFixEnabled | Should -Match 'Boolean$'
         $events[0].Types.PartA_PrivTags | Should -Match 'UInt64$'
-        $events[0].Fields.Method | Should -Be $(if ($Allowed) { 'vt_sequence' } else { 'connection_state' })
+        $events[0].Fields.Method | Should -Be 'vt_sequence'
         $events[0].Types.Method | Should -Match 'AnsiString$'
         $events[0].Fields.Method | Should -Be $data.DetectionMethod
         if (-not $Allowed) {
+            $connections | Should -HaveCount 1 -Because 'the separate connection-failure control must remain covered'
+            $connections[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
+            $connections[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
             $data.ConnectionEnd.params.state | Should -Be 'failed'
             $data.ConnectionEnd.params.pane_id | Should -Be $data.SourcePane
             @(Get-TelemetryPhaseEvents -Phase $phaseName | Where-Object {
@@ -677,6 +689,24 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             $prompts[0].Fields.IsAutofix | Should -BeIn @('true', '1')
             $prompts[0].Types.IsAutofix | Should -Match 'Boolean$'
         }
+    }
+
+    It 'Policy-blocked shell failures remain telemetry-only' {
+        $phaseName = 'cold-autofix-policy-False'
+        $events = @(Get-TelemetryPhaseEvents -Phase $phaseName -Name ErrorDetected -Provider '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b')
+        $data = $script:phases[$phaseName].Data
+        $data.BlockedFailure.method | Should -Be 'shell_command_failed'
+        $data.BlockedFailure.params.pane_id | Should -Be $data.SourcePane
+        $failures = @($events | Where-Object {
+            $_.ProcessId -eq $data.HelperPid -and $_.Fields.PaneId -eq $data.SourcePane -and $_.Fields.Method -eq 'vt_sequence'
+        })
+        $failures | Should -HaveCount 1
+        $failures[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
+        $failures[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
+        @(Get-TelemetryPhaseEvents -Phase $phaseName | Where-Object {
+            $_.ProcessId -eq $data.HelperPid -and
+            $_.Name -in @('AgentPromptSent', 'ErrorFixOffered', 'ErrorFixAccepted')
+        }) | Should -HaveCount 0
     }
 
     It 'Startup policy buckets retain configured inventory and effective provider gates' {

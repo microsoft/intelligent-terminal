@@ -57,6 +57,7 @@ enum MockBehavior {
     StreamTwoChunks,
     /// Keep the prompt request in flight briefly so cancellation can race it.
     DelayedReply,
+    ControlledReply,
     /// Reject the prompt before accepting the provider command.
     RejectPrompt,
     /// Return a provider-level refusal without accepting the command.
@@ -80,6 +81,7 @@ struct MockAgent {
     seen_prompts: Arc<Mutex<Vec<String>>>,
     /// Side-channel: number of `session/cancel` notifications received.
     seen_cancels: Arc<AtomicUsize>,
+    prompt_release: Arc<tokio::sync::Notify>,
     /// Side-channel: every image content block (mime, base64 data) that reached
     /// the agent on the wire — used by the Alt+V image-paste integration test.
     seen_images: Arc<Mutex<Vec<(String, String)>>>,
@@ -481,6 +483,9 @@ impl MockAgent {
                 MockBehavior::DelayedReply => {
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
+                MockBehavior::ControlledReply => {
+                    self.prompt_release.notified().await;
+                }
                 MockBehavior::RejectPrompt
                 | MockBehavior::RefusePrompt
                 | MockBehavior::CancelPrompt => {
@@ -561,6 +566,7 @@ fn connect_with(
         behavior,
         seen_prompts: seen_prompts.clone(),
         seen_cancels: Arc::new(AtomicUsize::new(0)),
+        prompt_release: Arc::new(tokio::sync::Notify::new()),
         seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: Arc::new(Mutex::new(Vec::new())),
@@ -707,6 +713,19 @@ fn spawn_mock_pair(
                                 responder,
                                 m.set_session_mode(a).await.map(R::SetSessionModeResponse),
                             ),
+                            Q::PromptRequest(a)
+                                if matches!(m.behavior, MockBehavior::ControlledReply) =>
+                            {
+                                // Keep the mock's receive loop available for session/cancel.
+                                tokio::task::spawn_local(async move {
+                                    conn::respond_enum(
+                                        responder,
+                                        m.prompt(a).await.map(R::PromptResponse),
+                                    )
+                                    .expect("gated prompt response failed");
+                                });
+                                Ok(())
+                            }
                             Q::PromptRequest(a) => conn::respond_enum(
                                 responder,
                                 m.prompt(a).await.map(R::PromptResponse),
@@ -926,6 +945,7 @@ pub(crate) struct DispatchHarness {
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
     pub seen_cancels: Arc<AtomicUsize>,
+    pub prompt_release: Arc<tokio::sync::Notify>,
     pub permission_outcome: Arc<Mutex<Option<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -983,6 +1003,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let seen_cancels = Arc::new(AtomicUsize::new(0));
+    let prompt_release = Arc::new(tokio::sync::Notify::new());
     let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let closed_sessions = Arc::new(Mutex::new(Vec::new()));
@@ -1010,6 +1031,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         behavior,
         seen_prompts: seen_prompts.clone(),
         seen_cancels: seen_cancels.clone(),
+        prompt_release: Arc::clone(&prompt_release),
         seen_images: seen_images.clone(),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: closed_sessions.clone(),
@@ -1045,6 +1067,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         proposal_channels,
         seen_prompts,
         seen_cancels,
+        prompt_release,
         permission_outcome,
         seen_images,
         seen_config_updates,
@@ -3852,6 +3875,7 @@ async fn tab_reset_invalidates_queued_and_in_progress_session_operations() {
 
 #[tokio::test]
 async fn cancelled_queued_prompt_never_reaches_provider_or_creates_session() {
+    crate::telemetry::capture::take();
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -3894,16 +3918,19 @@ async fn cancelled_queued_prompt_never_reaches_provider_or_creates_session() {
             assert!(tab_to_session.lock().await.is_empty());
             assert!(in_flight.lock().unwrap().is_empty());
             task.handle.await.expect("settlement task failed");
+            assert!(crate::telemetry::capture::take().is_empty());
         })
         .await;
 }
 
 #[tokio::test]
 async fn started_prompt_cancels_its_resolved_session_before_app_attaches_it() {
+    use crate::telemetry::capture::{self, Event};
+    capture::take();
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            let h = connect_for_dispatch(MockBehavior::DelayedReply);
+            let h = connect_for_dispatch(MockBehavior::ControlledReply);
             h.conn
                 .initialize(acp::schema::v1::InitializeRequest::new(
                     acp::schema::ProtocolVersion::LATEST,
@@ -3940,7 +3967,26 @@ async fn started_prompt_cancels_its_resolved_session_before_app_attaches_it() {
             })
             .await
             .expect("prompt did not start");
+            let identity = h
+                .prompt_timing
+                .telemetry_identity("mock-session-1", false)
+                .expect("sent prompt must retain its tracker");
             cancellation.cancel();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while h.seen_cancels.load(Ordering::SeqCst) == 0 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("provider did not receive cancellation");
+            assert!(!task.handle.is_finished());
+            assert_eq!(
+                h.prompt_timing.telemetry_identity("mock-session-1", false),
+                Some(identity),
+                "requesting cancellation must not finish the RPC timing"
+            );
+            assert!(capture::take().is_empty());
+            h.prompt_release.notify_one();
 
             let mut attached_seen = false;
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
@@ -3980,6 +4026,14 @@ async fn started_prompt_cancels_its_resolved_session_before_app_attaches_it() {
                 "session attachment remained queued in App events"
             );
             assert_eq!(h.seen_cancels.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                capture::take(),
+                vec![Event::AgentResponseComplete(identity, true)]
+            );
+            assert!(h
+                .prompt_timing
+                .telemetry_identity("mock-session-1", false)
+                .is_none());
         })
         .await;
 }

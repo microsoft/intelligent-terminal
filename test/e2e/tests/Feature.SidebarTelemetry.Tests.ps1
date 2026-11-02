@@ -367,7 +367,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 acpModel = ''; autoErrorDetectionEnabled = $false; autoFixEnabled = $false
                 actions = @(
                     @{ command = 'tabSearch'; keys = 'ctrl+alt+f' }
+                    @{ command = 'tabSearch'; keys = 'alt+shift+space' }
                     @{ command = 'toggleSidebarAgentsOnly'; keys = 'ctrl+alt+a' }
+                    @{ command = 'toggleSidebarRecentAgentSessions'; keys = 'alt+space' }
                     @{ command = @{ action = 'splitPane'; splitMode = 'duplicate'; split = 'right' }; keys = 'ctrl+shift+f12' }
                     @{ command = 'closeTab'; keys = 'ctrl+shift+f11' }
                 )
@@ -435,7 +437,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             function Invoke-OtherSidebarScenarios {
                 Invoke-TelemetryPhase -Name keyboard-enter -Action {
                     Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
-                    Send-WtWindowKey -App $script:app -Vk 0x46 -Ctrl -Alt -RequireForeground | Out-Null
+                    Send-WtWindowKey -App $script:app -Vk 0x20 -Alt -Shift -RequireForeground | Out-Null
                     Wait-Until -TimeoutSec 10 -Because 'the keyboard search action focuses the real sidebar search box' -Condition {
                         [Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId -eq 'SearchTextBox'
                     } | Out-Null
@@ -459,11 +461,16 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
                 Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
                 Invoke-TelemetryPhase -Name keyboard-filter -Action {
                     Set-WtPaneFocus -App $script:app -SessionId $script:tabB.session_id
-                    foreach ($expected in @($true, $false)) {
-                        Send-WtWindowKey -App $script:app -Vk 0x41 -Ctrl -Alt -RequireForeground | Out-Null
-                        Wait-Until -TimeoutSec 10 -Because 'the keyboard filter action persists its actual state' -Condition {
-                            [bool](Get-WtSettingsObject -App $script:app).sidebarShowAgentsOnly -eq $expected
-                        } | Out-Null
+                    foreach ($filter in @(
+                        @{ Key = 0x41; Ctrl = $true; Setting = 'sidebarShowAgentsOnly' }
+                        @{ Key = 0x20; Ctrl = $false; Setting = 'sidebarShowRecentAgentSessions' }
+                    )) {
+                        foreach ($expected in @($true, $false)) {
+                            Send-WtWindowKey -App $script:app -Vk $filter.Key -Ctrl:$filter.Ctrl -Alt -RequireForeground | Out-Null
+                            Wait-Until -TimeoutSec 10 -Because 'the keyboard filter action persists its actual state' -Condition {
+                                [bool](Get-WtSettingsObject -App $script:app).($filter.Setting) -eq $expected
+                            } | Out-Null
+                        }
                     }
                 }
                 Invoke-TelemetryPhase -Name fields-menu-only -Action {
@@ -944,7 +951,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarViewSwitched) | Should -HaveCount 0
         }
         $keyboard = @(Get-TelemetryPhaseEvents -Phase keyboard-filter -Name SidebarViewSwitched)
-        $keyboard | Should -HaveCount 2
+        $keyboard | Should -HaveCount 4
         @($keyboard.Fields.method | Select-Object -Unique) | Should -Be @('keyboard')
     }
 

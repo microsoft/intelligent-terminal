@@ -100,6 +100,20 @@ function Invoke-TelemetryConversation {
     @{ SessionId = $script:agent.AcpSessionId; ExplicitPrompts = 2 }
 }
 
+function Wait-TelemetryBlockedShellFailure {
+    param([Parameter(Mandatory)]$Listener, [Parameter(Mandatory)][string]$PaneId)
+    $failure = Wait-WtEvent -Listener $Listener -TimeoutSec 20 -Predicate {
+        $_.method -eq 'shell_command_failed' -and $_.params.pane_id -eq $PaneId
+    }
+    @($failure.params.PSObject.Properties.Name | Sort-Object) |
+        Should -Be @('autofix_enabled', 'autofix_policy_state', 'pane_id', 'tab_id') -Because 'blocked failures must not forward shell content'
+    $failure.params.tab_id | Should -Not -BeNullOrEmpty
+    $failure.params.autofix_policy_state | Should -Be 'disabled'
+    ($failure.params.autofix_enabled -is [bool]) | Should -BeTrue
+    $failure.params.autofix_enabled | Should -BeFalse
+    $failure
+}
+
 function Invoke-TelemetryHotPolicyFailure {
     param([Parameter(Mandatory)][bool]$Allowed, [Parameter(Mandatory)]$Listener, [int]$Baseline)
     Initialize-LogOffsets -App $script:app | Out-Null
@@ -107,8 +121,8 @@ function Invoke-TelemetryHotPolicyFailure {
     if ($Allowed) {
         Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id -Command "throw '$marker'" | Out-Null
         Wait-WtCommandFailure -Listener $Listener -PaneId $script:shell.session_id -TimeoutSec 20 | Out-Null
-        Wait-Until -TimeoutSec 20 -Because 'the enabled helper classifies the forwarded shell failure' -Condition {
-            (Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart) -match 'sending auto-fix prompt'
+        Wait-Until -TimeoutSec 20 -Because 'the enabled helper dispatches the failure to the real ACP fixture' -Condition {
+            @(Select-String -LiteralPath $script:requestLog -Pattern '\|session/prompt\|').Count -eq ($Baseline + 1)
         } | Out-Null
     }
     else {
@@ -117,6 +131,7 @@ function Invoke-TelemetryHotPolicyFailure {
         Assert-Pane -App $script:app -SessionId $script:shell.session_id -Match ("(?m)^\s*Exception:\s*" + [regex]::Escape($marker) + "\s*$") -TimeoutSec 20
         Get-WtCapture -App $script:app -SessionId $script:shell.session_id -MaxLines 100 |
             Set-Content -LiteralPath (Join-Path $script:root 'hot-policy-disabled-shell-failure.txt')
+        Wait-TelemetryBlockedShellFailure -Listener $Listener -PaneId $script:shell.session_id | Out-Null
         Start-Sleep -Seconds 1
         @(Get-WtEvents -Listener $Listener -Predicate {
             $_.method -eq 'vt_sequence' -and $_.params.pane_id -eq $script:shell.session_id
@@ -225,12 +240,10 @@ function Invoke-TelemetryColdAutoFixPolicy {
         Initialize-LogOffsets -App $script:app | Out-Null
         $marker = 'TELEMETRY_COLD_POLICY_' + [guid]::NewGuid().ToString('N')
         $connectionEnd = $null
+        $blockedFailure = $null
         if ($Allowed) {
             Invoke-RunCommand -App $script:app -SessionId $shell.session_id -Command "throw '$marker'" | Out-Null
             Wait-WtCommandFailure -Listener $listener -PaneId $shell.session_id -TimeoutSec 20 | Out-Null
-            Wait-Until -TimeoutSec 20 -Because 'the enabled helper classifies the actual forwarded shell failure' -Condition {
-                (Get-ItLogText -App $script:app -Name "wta-main_helper-$($agent.HelperProcessId).log" -SinceStart) -match 'sending auto-fix prompt'
-            } | Out-Null
             Wait-Until -TimeoutSec 20 -Because 'enabled startup policy produces one real fixture Autofix prompt' -Condition {
                 @(Select-String -LiteralPath $script:requestLog -Pattern '\|session/prompt\|').Count -eq ($before + 1)
             } | Out-Null
@@ -241,6 +254,7 @@ function Invoke-TelemetryColdAutoFixPolicy {
             Assert-Pane -App $script:app -SessionId $shell.session_id -Match ("(?m)^\s*Exception:\s*" + [regex]::Escape($marker) + "\s*$") -TimeoutSec 20
             Get-WtCapture -App $script:app -SessionId $shell.session_id -MaxLines 100 |
                 Set-Content -LiteralPath (Join-Path $script:root 'cold-policy-disabled-shell-failure.txt')
+            $blockedFailure = Wait-TelemetryBlockedShellFailure -Listener $listener -PaneId $shell.session_id
             @(Get-WtEvents -Listener $listener -Predicate {
                 $_.method -eq 'vt_sequence' -and $_.params.pane_id -eq $shell.session_id
             }) | Should -HaveCount 0 -Because 'blocked policy intentionally suppresses OSC forwarding, despite the rendered real failure'
@@ -262,8 +276,8 @@ function Invoke-TelemetryColdAutoFixPolicy {
             ProcessId = $script:app.Pid; HelperPid = $agent.HelperProcessId
             SourcePane = $shell.session_id; SessionId = $agent.AcpSessionId; Marker = $marker
             StartupPolicy = $true; HotRefreshValidated = $false
-            DetectionMethod = $(if ($Allowed) { 'vt_sequence' } else { 'connection_state' })
-            ConnectionEnd = $connectionEnd
+            DetectionMethod = 'vt_sequence'
+            ConnectionEnd = $connectionEnd; BlockedFailure = $blockedFailure
         }
     }
     finally {

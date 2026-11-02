@@ -6157,11 +6157,6 @@ async fn dispatch_prompt_body(
             // session and keep its future alive until the producer resolves.
             let started = prompt_started.load(Ordering::Acquire);
             tracing::info!(target: "acp_cancel", session_id = %prompt_session_id_str, "waiting for cancelled prompt to quiesce");
-            let _ = prompt_timing_task.complete(
-                &prompt_session_id_str,
-                false,
-                Some("cancelled"),
-            );
             if started {
                 if let Err(e) = conn_task
                     .cancel(acp::schema::v1::CancelNotification::new(prompt_session_id.clone()))
@@ -6173,11 +6168,24 @@ async fn dispatch_prompt_body(
                 // not synthesize completion on a timeout unless master can
                 // atomically retire this exact session; otherwise late output
                 // can be attached to the next turn on the same session.
-                let _ = (&mut prompt_fut).await;
+                let result = (&mut prompt_fut).await;
+                let success = result.is_ok();
+                let error = result.err().map(|error| error.to_string());
+                let _ = prompt_timing_task.complete(
+                    &prompt_session_id_str,
+                    success,
+                    error.as_deref(),
+                );
                 // Some providers flush trailing chunks just after returning
                 // PromptResponse, so a scheduler yield is not a sufficient
                 // compatibility drain here.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            } else {
+                let _ = prompt_timing_task.complete(
+                    &prompt_session_id_str,
+                    false,
+                    Some("cancelled"),
+                );
             }
             publish_prompt_cancellation_settled(
                 &mut cleanup,

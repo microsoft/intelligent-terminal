@@ -2859,6 +2859,29 @@ impl App {
                 // envelope in Debug builds, or INFO with method only in Release.
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
+                if method == "shell_command_failed" {
+                    // Capture-time policy may precede the helper's config refresh.
+                    // This signal is telemetry-only, never an Autofix/UI input.
+                    if !pane_id.is_empty()
+                        && tab_id.as_deref().is_some_and(|tab| {
+                            !tab.is_empty() && self.agent_routing_tab_id() == Some(tab)
+                        })
+                        && params.get("autofix_policy_state").and_then(|v| v.as_str())
+                            == Some("disabled")
+                        && params.get("autofix_enabled").and_then(|v| v.as_bool()) == Some(false)
+                    {
+                        crate::telemetry::log_error_detected(
+                            "Actionable",
+                            "vt_sequence",
+                            &pane_id,
+                            crate::telemetry::AutoFixPolicyState::Disabled,
+                            false,
+                            uuid::Uuid::new_v4(),
+                        );
+                    }
+                    return;
+                }
+
                 if method == "fre_auto_install_selected_agent" {
                     let targets_this_helper = tab_id
                         .as_deref()

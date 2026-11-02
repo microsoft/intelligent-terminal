@@ -162,7 +162,7 @@ first-token and completion populations need not be nested.
 
 | # | Required measurement | Current event / fields | Query / aggregation | Interpretation boundary |
 |---|---|---|---|---|
-| 3.1 | Command failures, segmented by policy | `WTA.ErrorDetected`: `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled` | Report counts and devices by all four fields. Treat `AllowAutoFixPolicy=disabled` as policy-blocked; retain `notConfigured`, `enabled`, and `unknown` separately. | Classified actionable/critical signals, not all command failures or unique incidents. `AutoFixEnabled=false` alone does not establish a policy block. |
+| 3.1 | Command failures, segmented by policy | `WTA.ErrorDetected`: `Severity`, `Method`, `AllowAutoFixPolicy`, `AutoFixEnabled` | Report counts and devices by all four fields. Treat `AllowAutoFixPolicy=disabled` as policy-blocked; retain `notConfigured`, `enabled`, and `unknown` separately. | Eligible OSC failures include policy-blocked counts; detection opt-out remains excluded. Classified signals are not unique incidents. `AutoFixEnabled=false` alone does not establish a policy block. |
 | 3.2 | Detection-to-offer conversion | Detection and offer `OfferId`, `Source` | Form a detected-ID cohort and intersect with presented IDs during follow-up. Segment `Method` and policy. | Independent Manual flows have no detection. Classifications include non-command signals and do not guarantee analysis eligibility; do not count all offers over all detections. |
 | 3.3 | Offer accepted; value of the offer | `WTA.ErrorFixAccepted` joined to `WTA.ErrorFixOffered` by `OfferId` | Choose an offered-ID cohort `O`; compute `size(O intersect Ids(accepted events, OfferId)) / size(O)`. Allow a defined follow-up interval and report pending/unaccepted offers separately. | Deduplicate both sets. Acceptance means confirmed Run successfully queued, not command success or an error fixed. |
 
@@ -191,7 +191,7 @@ first-token and completion populations need not be nested.
 |---|---|---|---|---|
 | 6.1 | Keep running enable reach and ACP-session adoption | `App.KeepRunningMarked.TelemetrySessionId`; `App.AgentSessionStarted`: `TelemetrySessionId`, `KeepRunningEnabled` | Device reach uses Active as before. For a distinct nonempty started-observation-ID cohort S, take IDs enabled in a start snapshot or marked during follow-up, intersect S, then divide by size(S). | Deduplicate observations, not StartId or marks. Already-enabled snapshots count session state, not new clicks. Empty IDs are unknown and excluded; native CLI sessions are outside this ACP-session denominator. |
 | 6.2 | Terminal closed with the marked tab alive | `App.KeepRunningDetached.KeepId` joined to marked `KeepId` | Report distinct detached IDs. For opt-in cohort `M`, compute `size(M intersect Ids(detached events, KeepId)) / size(M)` as observed retention-after-close incidence. | Successful in-process retention only. Marks that were never closed are in the denominator unless an eligible close cohort is known; this is not a close-operation success rate. |
-| 6.3 | Restore a Keep running tab | Started/result `AttemptId`; result `KeepId`, `Outcome` | Form a started-attempt cohort; report live, gone, failed, and no-result separately. Separately measure detached KeepId cohorts later restored. | Gone means no retained target at lookup, not a known process crash. No-result remains unknown. Historical ACP load is a different scenario. |
+| 6.3 | Restore a Keep running tab | Started/result `AttemptId`; result `KeepId`, `Outcome` | Form a started-attempt cohort; report live, gone, failed, and no-result separately. Separately measure detached KeepId cohorts later restored. | Relaunch means reopening the interface and attaching to content retained by a surviving process, not recovery after all processes exit, crash, or a reboot. Gone means no retained target at lookup; no-result remains unknown. Historical ACP load is a different scenario. |
 | 6.4 | Agent-pane prompt after reattachment | Restore result and prompt `KeepId`, `AttemptId` | For live attempts with HasAgentSession=true, count members with matching non-autofix, Reattached user dispatches during follow-up. | Eligibility means a bound agent session at restore, not guaranteed provider readiness. Excludes ordinary CLI chat and shell use. Multiple prompts count as one continued restore. |
 
 ### 7. Settings configuration
@@ -842,11 +842,17 @@ or the user's task was completed. `TotalResponseBytes` is not emitted.
 Join to sent turns by `TurnId` and check `SessionId` and `IsAutofix`.
 It does not include `TemplateKind`. A missing result is unknown, not proof
 of failure; canceled-before-send requests are excluded.
+For an already dispatched turn, cancellation only requests `session/cancel`:
+completion is emitted when the outstanding prompt RPC actually settles, using
+its RPC outcome, not when cancellation is requested.
 
 ### WTA.ErrorDetected
 
 **Trigger:** a terminal notification is classified as non-acknowledged
 `Actionable` or `Critical`, after the owning-tab filter.
+Policy-blocked shell failures also emit through a content-free native
+`shell_command_failed` signal, counted as `Method=vt_sequence` because the
+underlying failure is OSC 133;D.
 
 | Field | Type | Meaning / values |
 |---|---|---|
@@ -856,7 +862,7 @@ of failure; canceled-before-send requests are excluded.
 | `Method` | String | Classified terminal event method: `connection_state` or `vt_sequence` |
 | `PaneId` | String | Terminal pane identity, not an ACP session ID |
 | `AllowAutoFixPolicy` | String | Raw host policy: `notConfigured`, `enabled`, `disabled`, or `unknown` |
-| `AutoFixEnabled` | Bool | Effective helper runtime autofix switch, independent of the policy category |
+| `AutoFixEnabled` | Bool | Effective autofix switch at detection; blocked OSC uses the native capture-time snapshot rather than a potentially stale helper cache |
 
 Informational and auto-silenced classifications do not emit. There is no
 command text, exit-code field, deduplicated real-world incident ID, or fix result. Multiple signals
@@ -870,6 +876,12 @@ the effective autofix switch remains off.
 On helper connection, the host resends both the raw policy and the current
 effective switch, recovering updates missed between bootstrap argument
 capture and event subscription. This refresh does not replay earlier errors.
+When `AllowAutoFix` is blocked, the host still suppresses raw OSC forwarding.
+With automatic error detection enabled, a valid nonzero OSC 133;D sends only
+pane/tab identity and the capture-time `disabled`/`false` policy snapshot.
+The owning helper emits this count without creating Autofix UI, capturing
+diagnostics, or submitting an AI prompt, even if its cached policy is stale.
+Successful/malformed exits and detection opt-out do not send this signal.
 
 ### WTA.ErrorFixOffered
 

@@ -18,6 +18,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsIncompleteSnapshots);
         TEST_METHOD(AcceptsLegacySnapshotWithoutRetainingSessionId);
         TEST_METHOD(ReportsRawAutoFixPolicy);
+        TEST_METHOD(BlockedCommandFailuresRespectPolicyAndDetectionConsent);
         TEST_METHOD(ObservationIdentityRejectsContentAndAcceptsRandomUuid);
     };
 
@@ -55,6 +56,23 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "notConfigured" }, std::string{ AutoFixPolicyName(PolicyState::NotConfigured) });
         VERIFY_ARE_EQUAL(std::string{ "enabled" }, std::string{ AutoFixPolicyName(PolicyState::Allowed) });
         VERIFY_ARE_EQUAL(std::string{ "disabled" }, std::string{ AutoFixPolicyName(PolicyState::Blocked) });
+    }
+
+    void AgentSessionTelemetryTests::BlockedCommandFailuresRespectPolicyAndDetectionConsent()
+    {
+        using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
+        using ::TerminalApp::AgentPolicyTelemetry::ShouldRecordBlockedCommandFailure;
+        for (const auto sequence : { "osc:133;D;1", "osc:133;D;-1", "osc:133;D; +37 " })
+        {
+            VERIFY_IS_TRUE(ShouldRecordBlockedCommandFailure(true, PolicyState::Blocked, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(false, PolicyState::Blocked, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::Allowed, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::NotConfigured, sequence));
+        }
+        for (const auto sequence : { "", "osc:133;A", "osc:133;D", "osc:133;D;", "osc:133;D;0", "osc:133;D;-0", "osc:133;D;+", "osc:133;D;+-1", "osc:133;D;private", "osc:133;D;1suffix", "osc:133;D;2147483648" })
+        {
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::Blocked, sequence));
+        }
     }
 
     void AgentSessionTelemetryTests::ParsesSessionSettings()

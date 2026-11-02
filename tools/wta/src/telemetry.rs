@@ -318,6 +318,8 @@ pub fn log_agent_response_complete(
     agent_id: &str,
     identity: PromptIdentity,
 ) {
+    #[cfg(test)]
+    capture::record(capture::Event::AgentResponseComplete(identity, success));
     let success_i32: i32 = if success { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
     tlg::write_event!(
@@ -615,6 +617,7 @@ pub(crate) mod capture {
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) enum Event {
+        AgentResponseComplete(super::PromptIdentity, bool),
         AgentColdStartComplete {
             agent_id: String,
             source: String,
