@@ -105,7 +105,7 @@
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
-                Background="#000000"
+                Background="{ThemeResource TabViewBackground}"
                 BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,1,0,0"
                 VerticalAlignment="Top">

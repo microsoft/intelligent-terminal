@@ -659,6 +659,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SharedWtaTrackingOnlyLaunchHasNoDefaultAgent);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
+        TEST_METHOD(BottomBarBackgroundFollowsTheme);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
@@ -11536,6 +11537,27 @@ namespace TerminalAppLocalTests
                 }
             });
         }
+    }
+
+    void TabTests::BottomBarBackgroundFollowsTheme()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                page->RequestedTheme(theme);
+                page->UpdateLayout();
+
+                const auto expected = ThemeLookup(Application::Current().Resources(), theme,
+                                                  winrt::box_value(L"TabViewBackground"))
+                                          .as<Media::SolidColorBrush>()
+                                          .Color();
+                const auto actual = page->BottomBarRoot().Background()
+                                        .as<Media::SolidColorBrush>()
+                                        .Color();
+                VERIFY_ARE_EQUAL(expected, actual);
+            }
+        });
     }
 
     void TabTests::BottomBarSessionsButtonDispatchesExistingAction()
