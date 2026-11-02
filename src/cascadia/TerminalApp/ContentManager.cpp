@@ -391,7 +391,11 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            it->second.reportedAgentStatusPaneId = paneId;
+            // An unbound native Idle report is still provisional launch metadata.
+            if (!sessionId.empty() || status != "Idle")
+            {
+                it->second.reportedAgentStatusPaneId = paneId;
+            }
             changed = it->second.completion.Update(paneId, sessionId, providerId, status, focused);
         }
         if (changed)

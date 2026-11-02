@@ -494,6 +494,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentProfileSessionsAreBornBound);
         TEST_METHOD(NativeAgentProfileLaunchCwdIsPaneMetadata);
         TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
+        TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
         TEST_METHOD(ManagedProfileRestartRetiresOldPaneAfterFailure);
         TEST_METHOD(VerticalTabStripBindsBackground);
         TEST_METHOD(VerticalTabHistorySharesBackdrop);
@@ -7824,6 +7825,70 @@ namespace TerminalAppLocalTests
                     metadata.Close();
                     VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
                 }
+            });
+        }
+    }
+
+    void TabTests::ManagedProfileLaunchMetadataSurvivesTrackingModeChanges()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        for (const auto status : { "Idle", "Working" })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+                page->_SyncNativeAgentStatusMode();
+                page->_agentSnapshotRefreshInFlight = true;
+                const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+                const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                profile.AgentProfileId(L"copilot");
+                profile.StartingDirectory(winrt::hstring{ directory });
+                const winrt::guid paneId{ Utils::CreateGuid() };
+                const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                NewTerminalArgs args;
+                args.Profile(Utils::GuidToString(profile.Guid()));
+                const auto pane = page->_MakePane(args, nullptr, *connection);
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                const auto metadata = Conpty{};
+                metadata.Initialize(Conpty::CreateSettings(L"cmd.exe", winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, profile.Guid()));
+                control.Connection(metadata);
+                const auto restoreConnection = wil::scope_exit([&]() { control.Connection(*connection); });
+                _applyNativeRegistrySnapshot(page, control, status);
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                page->_nativeAgentStatusSnapshotReceiverGeneration = manager->NativeAgentObservationForContent(control.ContentId())->receiverGeneration;
+                auto& report = page->_richTabAgentStatusByPaneId.at(paneId);
+                VERIFY_IS_TRUE(report.sessionId.empty());
+                report.cwd = winrt::to_string(winrt::hstring{ directory });
+                page->_richTabAgentCwdAvailable = true;
+                page->_GetFocusedTabImpl()->Focus(FocusState::Unfocused);
+                page->_UpdateAgentCompletions();
+                const auto initialIdle = std::string_view{ status } == "Idle";
+                VERIFY_ARE_EQUAL(!initialIdle, manager->HasReportedAgentStatus(control.ContentId()));
+
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+                page->_SyncNativeAgentStatusMode();
+                VERIFY_IS_FALSE(page->_richTabAgentStatusByPaneId.contains(paneId));
+                const auto info = page->_RichTabAgentInfoForControl(control);
+                if (initialIdle)
+                {
+                    VERIFY_IS_TRUE(info.has_value());
+                    VERIFY_IS_TRUE(info->launchMetadata);
+                    VERIFY_ARE_EQUAL(std::string{ "Idle" }, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
+                    VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ directory }), page->_RichTabAgentCwdForControl(control).second.value());
+                }
+                else
+                {
+                    VERIFY_IS_FALSE(info.has_value());
+                    VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(control).contains("agentStatusId"));
+                    VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(control).second.has_value());
+                }
+                page->_UpdateAgentCompletions();
+                VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(paneId, "", "copilot"));
+                VERIFY_ARE_EQUAL(!initialIdle, manager->HasReportedAgentStatus(control.ContentId()));
+                metadata.Close();
             });
         }
     }
