@@ -445,11 +445,11 @@
               Padding="{StaticResource SidebarToolbarPadding}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               BorderThickness="0,1,0,1"
-              ColumnSpacing="{StaticResource SidebarActionColumnSpacing}">
+              ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
-                <ColumnDefinition Width="{StaticResource SidebarActionCellWidth}" />
+                <ColumnDefinition Width="{StaticResource SidebarToolbarActionCellWidth}" />
+                <ColumnDefinition Width="{StaticResource SidebarToolbarActionCellWidth}" />
             </Grid.ColumnDefinitions>
 
             <TextBlock x:Name="VerticalTabsHeader"
@@ -477,8 +477,8 @@
                     <ResourceDictionary>
                         <ResourceDictionary.ThemeDictionaries>
                             <ResourceDictionary x:Key="Dark">
-                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
-                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
+                                                 Color="Transparent" />
                                 <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
                                                 ResourceKey="ControlFillColorSecondaryBrush" />
                                 <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
@@ -491,8 +491,8 @@
                                                 ResourceKey="TextFillColorSecondaryBrush" />
                             </ResourceDictionary>
                             <ResourceDictionary x:Key="Light">
-                                <StaticResource x:Key="ToggleButtonBackgroundChecked"
-                                                ResourceKey="ControlFillColorDefaultBrush" />
+                                <SolidColorBrush x:Key="ToggleButtonBackgroundChecked"
+                                                 Color="Transparent" />
                                 <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver"
                                                 ResourceKey="ControlFillColorSecondaryBrush" />
                                 <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed"
@@ -712,7 +712,7 @@
               Height="0"
               Opacity="0"
               Visibility="Collapsed">
-            <Grid Margin="20,4">
+            <Grid Margin="16,4">
                 <TextBox x:Name="SearchTextBox"
                          x:Uid="VerticalTabsSearchBox"
                          Height="32"
