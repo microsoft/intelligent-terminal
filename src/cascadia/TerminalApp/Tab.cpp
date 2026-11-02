@@ -668,12 +668,13 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
-        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
+        const auto highlightColor = presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None;
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
+        _headerControl.MetadataHighlightColor(highlightColor);
     }
 
     void Tab::SetUnreadAgentActivity(const bool unread, const bool needsAttention)
@@ -705,9 +706,8 @@ namespace winrt::TerminalApp::implementation
         const auto hasVisibleMetadata = !text.empty();
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
-        _headerControl.MetadataText(text);
-        _headerControl.MetadataHighlightRanges(highlightRanges);
-        _headerControl.MetadataAutomationName(_richTabAccessibilityText);
+        const auto highlightColor = _richTabPresentation ? TabHeaderControl::AgentStatusHighlightColor(_richTabPresentation->agentStatus) : TerminalApp::TextHighlightColor::None;
+        winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();

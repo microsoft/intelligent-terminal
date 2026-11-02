@@ -13,6 +13,11 @@ namespace winrt::TerminalApp::implementation
 {
     struct TabHeaderPresentation : TabHeaderPresentationT<TabHeaderPresentation>
     {
+        void SetMetadata(const winrt::hstring& text,
+                         const winrt::hstring& automationName,
+                         winrt::TerminalApp::TextHighlightColor color,
+                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges);
+
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchText, PropertyChanged.raise);
@@ -110,6 +115,7 @@ namespace winrt::TerminalApp::implementation
 
         void _CloseRenameBox(bool notify = true);
         void _UpdateMetadataVisibility();
+        void _UpdateMetadataPresentation();
         void _UpdateMetadataForeground();
         void _UpdateTitleVisibility();
         void _UpdateSidebarLayout();

@@ -199,13 +199,10 @@
                                       x:Load="False"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
-                                      ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
-                                      ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                       CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
                                       Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
-                                      Text="{x:Bind MetadataText, Mode=OneWay}"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
                 <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"
