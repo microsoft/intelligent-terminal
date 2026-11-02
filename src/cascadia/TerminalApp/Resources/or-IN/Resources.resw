@@ -432,6 +432,14 @@
     <value>PowerShell କାର୍ଯ୍ୟକାରୀ ନୀତି ସ୍କ୍ରିପ୍ଟ୍‌କୁ ଅବରୋଧ କରୁଛି।</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>ଶେଲ୍ ପେନ୍</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>ଶେଲ୍ ଉପରେ ଫୋକସ୍ କରିବାକୁ Enter ଦବାନ୍ତୁ।</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ବ୍ୟବହାର</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>ଟୋକେନ</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>ପ୍ରସଙ୍ଗ ୱିଣ୍ଡୋ</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -571,6 +579,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>ମେଳ ଖାଉଥିବା କୌଣସି ଏଜେଣ୍ଟ ସେସନ୍ ନାହିଁ।</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>ଆପଣଙ୍କ ସନ୍ଧାନ ସହିତ ମେଳ ଖାଉଥିବା କୌଣସି ଖୋଲା ଟ୍ୟାବ୍ କିମ୍ବା ଏଜେଣ୍ଟମାନଙ୍କ ପୂର୍ବ ସେସନ୍ ନାହିଁ।</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ ସେସନ୍‌ଗୁଡ଼ିକ ଲୋଡ୍ କରିହେଲା ନାହିଁ।</value>

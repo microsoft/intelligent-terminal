@@ -77,8 +77,17 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::TerminalTabStatus TabStatus() const { return _presentation.TabStatus(); }
         void TabStatus(const winrt::TerminalApp::TerminalTabStatus& value) { _presentation.TabStatus(value); }
         WINRT_OBSERVABLE_PROPERTY(bool, ShowPinnedIcon, PropertyChanged.raise, true);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::UIElement, TrailingContent, PropertyChanged.raise, nullptr);
+
+    public:
+        winrt::Windows::UI::Xaml::UIElement LeadingContent() const noexcept { return _leadingContent; }
+        void LeadingContent(const winrt::Windows::UI::Xaml::UIElement& value);
+        winrt::Windows::UI::Xaml::Visibility TitleVisibility() const noexcept { return _isCompact ? winrt::Windows::UI::Xaml::Visibility::Collapsed : winrt::Windows::UI::Xaml::Visibility::Visible; }
+        void TitleVisibility(winrt::Windows::UI::Xaml::Visibility value);
 
     private:
+        winrt::Windows::UI::Xaml::UIElement _leadingContent{ nullptr };
+        bool _isCompact{ false };
         bool _receivedKeyDown{ false };
         bool _renameCancelled{ false };
         bool _isMetadataVisible{ false };
@@ -103,6 +112,7 @@ namespace winrt::TerminalApp::implementation
         void _UpdateMetadataVisibility();
         void _UpdateMetadataForeground();
         void _UpdateTitleVisibility();
+        void _UpdateSidebarLayout();
         void _UpdateUnreadActivityVisibility();
         void _AttachProgressToNativeIconSlot();
         void _ClearNativeHeaderObserver();

@@ -21,6 +21,7 @@ BeforeAll {
         'Mixed Sidebar keyboard crosses the Recent Sessions boundary without activation',
         'Sidebar header search and options show their actual action tooltips',
         'Sidebar navigation hotkeys cycle through displayed tabs',
+        'F6 skips the hidden agent toggle beside a non-terminal pane',
         'Introduction survives window movement, maximize and restore until dismissed (vertical)',
         'Introduction survives window movement, maximize and restore until dismissed (horizontal)'
     )
