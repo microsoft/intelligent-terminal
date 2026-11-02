@@ -137,6 +137,15 @@ pub(crate) struct PromptTimingState {
 }
 
 impl PromptTimingState {
+    pub(crate) fn observation_id(&self, session_id: &str) -> uuid::Uuid {
+        *self
+            .observation_ids
+            .lock()
+            .unwrap()
+            .entry(session_id.to_string())
+            .or_insert_with(uuid::Uuid::new_v4)
+    }
+
     pub(crate) fn record_user_prompt_dispatch(
         &self,
         session_id: &str,
@@ -183,12 +192,7 @@ impl PromptTimingState {
     ) {
         let now = now_unix_s();
         let preview = prompt_preview(prompt_text);
-        let observation_id = *self
-            .observation_ids
-            .lock()
-            .unwrap()
-            .entry(session_id.to_string())
-            .or_insert_with(uuid::Uuid::new_v4);
+        let observation_id = self.observation_id(session_id);
         let mut active = self.active.lock().unwrap();
         active.insert(
             session_id.to_string(),
@@ -584,10 +588,12 @@ mod tests {
     #[test]
     fn telemetry_identity_is_per_observation_and_turn() {
         let timing = PromptTimingState::default();
+        let lifecycle_identity = timing.observation_id("private-agent-session");
         timing.activate("private-agent-session", 1, "", 0.0, false, "copilot");
         let first = timing
             .telemetry_identity("private-agent-session", false)
             .unwrap();
+        assert_eq!(lifecycle_identity, first.session_id);
         assert_eq!(
             timing.record_user_prompt_dispatch("private-agent-session", false),
             "First"

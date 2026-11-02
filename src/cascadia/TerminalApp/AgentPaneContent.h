@@ -41,6 +41,15 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
         const winrt::hstring& AgentSessionOwner() const noexcept { return _agentSessionOwner; }
         void SetAgentSessionId(const winrt::hstring& sessionId);
+        void SetTelemetrySessionId(const winrt::hstring& sessionId, const winrt::hstring& telemetryId)
+        {
+            _telemetryAgentSessionId = sessionId;
+            _telemetrySessionId = telemetryId;
+        }
+        winrt::hstring TelemetrySessionId() const
+        {
+            return _telemetryAgentSessionId == _agentSessionId ? _telemetrySessionId : winrt::hstring{};
+        }
         const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
         void SetYoloControlOwner(const winrt::hstring& owner) noexcept
         {
@@ -96,6 +105,8 @@ namespace winrt::TerminalApp::implementation
         {
             // A save before helper status replay must retain the same resumable session.
             _agentSessionId = source._agentSessionId;
+            _telemetryAgentSessionId = source._telemetryAgentSessionId;
+            _telemetrySessionId = source._telemetrySessionId;
             _agentSessionOwner = source._agentSessionOwner;
             _agentRestoreIdentity = source._agentRestoreIdentity;
             _agentRestoreCustomCommand = source._agentRestoreCustomCommand;
@@ -234,6 +245,8 @@ namespace winrt::TerminalApp::implementation
         bool _isSessionsView{ false };
         bool _canEnableSessions{ false };
         winrt::hstring _agentSessionId{};
+        winrt::hstring _telemetryAgentSessionId{};
+        winrt::hstring _telemetrySessionId{};
         winrt::hstring _agentSessionOwner{};
         winrt::hstring _yoloControlOwner{};
         winrt::hstring _agentRestoreIdentity{};

@@ -196,9 +196,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             agent,
             agent_id,
             retry_startup,
-        } => {
-            probes::run_models(&agent, agent_id.as_deref(), retry_startup).await
-        }
+        } => probes::run_models(&agent, agent_id.as_deref(), retry_startup).await,
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
         Command::ProbeHostAgents => probes::run_host_agents(),
         Command::ProbeProfileAgents => native_agent::probe(),
@@ -221,15 +219,11 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         Command::ProbeSessions {
             agent,
             retry_startup,
-        } => {
-            probes::run_sessions(&agent, retry_startup).await
-        }
+        } => probes::run_sessions(&agent, retry_startup).await,
         Command::ProbeHostSessions {
             agent,
             retry_startup,
-        } => {
-            probes::run_host_sessions(&agent, retry_startup).await
-        }
+        } => probes::run_host_sessions(&agent, retry_startup).await,
     }
 }
 

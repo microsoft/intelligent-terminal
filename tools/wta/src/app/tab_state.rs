@@ -590,6 +590,8 @@ pub struct TabSession {
     pub(super) prompt_queue: super::prompt_queue::PromptQueue,
     pub(super) pending_autofix_captures: VecDeque<super::prompt_queue::QueuedRequest>,
     pub(crate) last_telemetry_session_id: Option<String>,
+    pub(crate) telemetry_observation: Option<(String, uuid::Uuid)>,
+    pub(crate) pending_telemetry_observation: Option<(String, uuid::Uuid)>,
     pub(crate) telemetry_model_pending: Option<(String, uuid::Uuid)>,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,

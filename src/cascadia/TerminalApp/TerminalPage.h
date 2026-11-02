@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include "SidebarTelemetry.h"
 
 #include <ThrottledFunc.h>
 #include <atomic>
@@ -375,6 +376,8 @@ namespace winrt::TerminalApp::implementation
         uint64_t _historyRequestGeneration{ 0 };
         uint64_t _historyActivationSerial{ 0 };
         std::unordered_map<std::wstring, winrt::hstring> _historyUnresolvedActivations;
+        std::unordered_map<winrt::hstring, int64_t> _historyActivationAges;
+        std::unordered_map<winrt::hstring, std::pair<std::string, int64_t>> _pendingSidebarResumeTelemetry;
         bool _preserveSidebarHistory{ false };
         Windows::UI::Xaml::DispatcherTimer _historyRefreshTimer{ nullptr };
         Windows::UI::Xaml::DispatcherTimer _historyMasterRecoveryTimer{ nullptr };
@@ -987,6 +990,12 @@ namespace winrt::TerminalApp::implementation
         std::vector<winrt::TerminalApp::Tab> _RuntimeTabs() const;
         std::pair<uint32_t, uint32_t> _KeepRunningTabCounts() const;
         void _LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab);
+        const char* _sidebarLaunchSource{ "other" };
+        const char* _sidebarViewMethod{ "menu" };
+        bool _sidebarKeyboardAction{ false };
+        bool _applyingSidebarFilters{ false };
+        ::TerminalApp::SidebarTelemetry::KeyboardEntry _sidebarKeyboardEntry;
+        bool _IsSidebarElement(const Windows::Foundation::IInspectable& element) const;
         bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -1188,6 +1197,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring arguments;
             winrt::hstring id;
             bool statusOnly{ false };
+            int64_t ageDays{ -1 };
         };
         struct _SidebarHistoryActivationResult
         {
@@ -1200,10 +1210,13 @@ namespace winrt::TerminalApp::implementation
             State state{ State::Unknown };
             bool accepted{ false };
             winrt::hstring detail;
+            std::string action;
+            bool launched{ false };
         };
         _SidebarHistoryActivationRequest _PrepareSidebarHistoryActivation(TerminalApp::TabStripHistoryItem const& item, std::wstring_view masterPipe);
         static _SidebarHistoryActivationResult _ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId);
         void _ReconcileSidebarHistoryActivation(const _SidebarHistoryActivationRequest& request, const _SidebarHistoryActivationResult& result);
+        void _LogSidebarSessionResumed(int64_t ageDays, const char* route, const char* outcome) const;
         safe_void_coroutine _ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item);
         bool _CompleteSidebarHistoryActivation(uint64_t activationSerial, bool accepted, const winrt::hstring& detail);
         bool _IsCollapsedVerticalRail() const noexcept

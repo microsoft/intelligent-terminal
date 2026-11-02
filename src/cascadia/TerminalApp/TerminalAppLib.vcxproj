@@ -109,6 +109,7 @@
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
     <ClInclude Include="CommandPaletteTelemetry.h" />
+    <ClInclude Include="SidebarTelemetry.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
     <ClInclude Include="MinMaxCloseControl.h">

@@ -109,8 +109,8 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery, passive WTA publisher/listener shutdown suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 4 |
-| `Feature.TelemetryFunnels.Tests.ps1` | Opt-in real ETW: daily activity, correlated prompt/completion, detection/offer/Run, foreground palette visits, startup/provider configuration and policy state; AppCreated schema includes rejected enrollment (empty rollout name / NotEnrolled, typed UnicodeString) without changing the user's chosen layout. Run results remain unknown, not execution success | 18 required + 2 optional hot-policy diagnostics (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
-| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW: sidebar actions, real tab-order pin/unpin, KeepId/AttemptId restoration and surviving observation sessions, Launch/UserChange field snapshots, raw-provider-ID exclusion and negative controls | 10 (requires `ITE2E_TELEMETRY=1`; no policy changes) |
+| `Feature.TelemetryFunnels.Tests.ps1` | Opt-in real ETW: daily activity, correlated prompt/completion, detection/offer/Run, foreground palette visits, startup/provider configuration and policy state, including content-free blocked-policy shell-failure counting without Autofix and the separate connection-failure control. AppCreated schema includes rejected enrollment (empty rollout name / NotEnrolled, typed UnicodeString) without changing the user's chosen layout. Run results remain unknown, not execution success | 19 required + 2 optional hot-policy diagnostics (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |
+| `Feature.SidebarTelemetry.Tests.ps1` | Opt-in typed ETW: startup view, menu/keyboard transitions, external keyboard entry, gated ACP history resume, connected managed Agent-profile plus/split and ordinary-shell control, tab-order pinning, retired misleading pin event, KeepId/AttemptId and shared observation correlation, row fields and privacy | 14 (requires `ITE2E_TELEMETRY=1` and installed native Copilot CLI; no model prompts to that CLI or policy changes) |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.SettingsUi.Tests.ps1` | Live Settings editor: Agent controls, explicit global versus fixed profile agents with save/reopen and changed-global checks, visible collapsed-header agent previews, long spaced/unbroken selected-label wrapping measured by actual Text peer height against the same header's short Windows label at existing system scale (hidden non-default cmd profile, no Save/WSL execution; not 200% scale validation), cached Defaults/named-profile refresh after unsaved global UI edits with fixed-selection controls (Windows Copilot/Claude and required npx prerequisite), Appearance's retained localized Tab Mode control, and Arabic/Hebrew/mirrored/English layout and footer actions; C409 requires the complete matrix | 13 |
@@ -574,14 +574,17 @@ files to release it.
 
 Its `row_count` oracle counts the unified Agent view's session rows
 on first successful load, independently of live-tab search and split-pane
-children. `SidebarTabPinned` means enabling headless mode,
-not tab-order pinning. Row-field selection verifies canonical field IDs for
+children. The misleading `SidebarTabPinned` event is retired:
+`KeepRunningMarked` measures headless opt-ins and `TabPinChanged` measures
+tab-order pinning. Row-field selection verifies canonical field IDs for
 empty, single, and paired selections, a disabled third choice, and suppression
 during menu-only actions and metadata/layout refresh.
 Window creation emits the selection with Source=Launch, while actual edits use
 Source=UserChange. A new fixture session after a non-default selection must not
 emit another field snapshot. Real tab-order pin/unpin is tested separately from
 Keep running and carries typed Pinned/PinnedCount.
+Keyboard entry and filter-source assertions exercise both ordinary shortcuts
+and the Win32-intercepted Alt+Space path (including Alt+Shift+Space search).
 The same scenario checks that explicit opt-ins emit distinct random `KeepId`
 values and typed post-enable `TotalTabCount` / `KeepRunningTabCount` snapshots,
 including search-hidden attached tabs. A real tab close and restoration emit
@@ -624,6 +627,14 @@ This focused run is not a pass for the complete sidebar suite. Expanded split
 tabs repeat their title in child rows; context-menu targeting selects the
 shallowest matching tab header. The elevated ETW collector runs with its window
 hidden so it does not compete with the unelevated UI runner for foreground.
+
+Container discovery selects 14 cases by default, 9 with `CoreOnly = $true`,
+and 7 with `KeepRunningOnly = $true` (the filter above still selects the same
+three keep-running contracts). Core mode retains native resume and Agent launch
+checks but omits keyboard/filter, row-field editing and tab-order pin scenarios.
+Both focused modes retain search-opening and launch-snapshot assertions against
+only their executed phases; neither substitutes for full-suite acceptance.
+Use `Run.SkipRun = $true` for non-live discovery.
 
 `Feature.TelemetryFunnels` requires a **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`

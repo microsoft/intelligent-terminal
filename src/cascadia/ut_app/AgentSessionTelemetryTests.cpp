@@ -18,6 +18,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsIncompleteSnapshots);
         TEST_METHOD(AcceptsLegacySnapshotWithoutRetainingSessionId);
         TEST_METHOD(ReportsRawAutoFixPolicy);
+        TEST_METHOD(BlockedCommandFailuresRespectPolicyAndDetectionConsent);
+        TEST_METHOD(ObservationIdentityRejectsContentAndAcceptsRandomUuid);
     };
 
     static Json::Value Snapshot()
@@ -36,6 +38,17 @@ namespace TerminalAppUnitTests
         return value;
     }
 
+    void AgentSessionTelemetryTests::ObservationIdentityRejectsContentAndAcceptsRandomUuid()
+    {
+        auto value = Snapshot();
+        value["telemetry_session_id"] = "private-provider-session";
+        VERIFY_IS_TRUE(Telemetry::Parse(value)->telemetrySessionId.empty());
+        value["telemetry_session_id"] = "0ba8a608-26c5-40a2-8020-5a1cd873f251";
+        VERIFY_ARE_EQUAL(value["telemetry_session_id"].asString(), Telemetry::Parse(value)->telemetrySessionId);
+        value["telemetry_session_id"] = "0ba8a608-26c5-40a2-8020-5a1cd873f25Z";
+        VERIFY_IS_TRUE(Telemetry::Parse(value)->telemetrySessionId.empty());
+    }
+
     void AgentSessionTelemetryTests::ReportsRawAutoFixPolicy()
     {
         using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
@@ -43,6 +56,23 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string{ "notConfigured" }, std::string{ AutoFixPolicyName(PolicyState::NotConfigured) });
         VERIFY_ARE_EQUAL(std::string{ "enabled" }, std::string{ AutoFixPolicyName(PolicyState::Allowed) });
         VERIFY_ARE_EQUAL(std::string{ "disabled" }, std::string{ AutoFixPolicyName(PolicyState::Blocked) });
+    }
+
+    void AgentSessionTelemetryTests::BlockedCommandFailuresRespectPolicyAndDetectionConsent()
+    {
+        using ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState;
+        using ::TerminalApp::AgentPolicyTelemetry::ShouldRecordBlockedCommandFailure;
+        for (const auto sequence : { "osc:133;D;1", "osc:133;D;-1", "osc:133;D; +37 " })
+        {
+            VERIFY_IS_TRUE(ShouldRecordBlockedCommandFailure(true, PolicyState::Blocked, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(false, PolicyState::Blocked, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::Allowed, sequence));
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::NotConfigured, sequence));
+        }
+        for (const auto sequence : { "", "osc:133;A", "osc:133;D", "osc:133;D;", "osc:133;D;0", "osc:133;D;-0", "osc:133;D;+", "osc:133;D;+-1", "osc:133;D;private", "osc:133;D;1suffix", "osc:133;D;2147483648" })
+        {
+            VERIFY_IS_FALSE(ShouldRecordBlockedCommandFailure(true, PolicyState::Blocked, sequence));
+        }
     }
 
     void AgentSessionTelemetryTests::ParsesSessionSettings()

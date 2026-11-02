@@ -18787,7 +18787,12 @@ namespace TerminalAppLocalTests
             page->_tabStrip.HistoryActive(true);
             const std::wstring normalMaster{ L"\\\\.\\pipe\\wta-master-normal" };
             const std::wstring adminMaster{ L"\\\\.\\pipe\\wta-master-admin" };
+            const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count());
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs - 3 * 86'400'000ULL);
             const auto first = page->_PrepareSidebarHistoryActivation(item, normalMaster);
+            VERIFY_ARE_EQUAL(int64_t{ 3 }, first.ageDays);
             VERIFY_IS_TRUE(first.arguments.find(L"--master \"" + normalMaster + L"\"") != std::wstring::npos);
             const auto admin = page->_PrepareSidebarHistoryActivation(item, adminMaster);
             VERIFY_IS_FALSE(admin.statusOnly);
@@ -18800,7 +18805,9 @@ namespace TerminalAppLocalTests
             page->_CloseSidebarHistory(false);
             page->_tabStrip.HistoryActive(true);
             item.Title(L"Updated title");
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->LastActivityAtMs(nowMs);
             const auto retry = page->_PrepareSidebarHistoryActivation(item, normalMaster);
+            VERIFY_ARE_EQUAL(first.ageDays, retry.ageDays);
             VERIFY_IS_TRUE(retry.statusOnly);
             VERIFY_ARE_EQUAL(first.id, retry.id);
             VERIFY_ARE_EQUAL(first.arguments, retry.arguments);
@@ -18834,7 +18841,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_NOT_EQUAL(first.id, next.id);
             page->_ReconcileSidebarHistoryActivation(first, { State::Complete, true, {} });
             VERIFY_ARE_EQUAL(next.id, page->_PrepareSidebarHistoryActivation(item, normalMaster).id);
-            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Rejected" });
+            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Cannot focus", "resume_cli", true });
+            VERIFY_IS_TRUE(page->_historyUnresolvedActivations.find(next.arguments) == page->_historyUnresolvedActivations.end());
+            VERIFY_IS_TRUE(page->_historyActivationAges.find(next.id) == page->_historyActivationAges.end());
+            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Cannot focus", "resume_cli", true });
             VERIFY_IS_FALSE(page->_PrepareSidebarHistoryActivation(item, normalMaster).statusOnly);
             item.AgentId(L"claude");
             VERIFY_ARE_EQUAL(otherProvider.id, page->_PrepareSidebarHistoryActivation(item, normalMaster).id);
@@ -18854,6 +18864,31 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(result.state == State::Complete);
             VERIFY_IS_TRUE(result.accepted);
             VERIFY_IS_TRUE(result.detail.empty());
+            VERIFY_ARE_EQUAL(std::string{ "focus" }, result.action);
+            VERIFY_IS_FALSE(result.launched);
+        }
+        for (const auto json : {
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":true,"detail":"Cannot focus"})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":true})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Complete);
+            VERIFY_IS_TRUE(result.launched);
+            VERIFY_ARE_EQUAL(std::string{ "resume_cli" }, result.action);
+        }
+        const auto launchedWithoutFocus = Page::_ParseSidebarHistoryActivation(
+            R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":true,"detail":"Cannot focus"})", activationId);
+        VERIFY_IS_FALSE(launchedWithoutFocus.accepted);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus" }, launchedWithoutFocus.detail);
+        for (const auto json : {
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":false})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":false})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Complete);
+            VERIFY_IS_FALSE(result.launched);
         }
         const auto failed = Page::_ParseSidebarHistoryActivation(
             R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":false,"detail":"Cannot focus"})", activationId);
@@ -18878,6 +18913,8 @@ namespace TerminalAppLocalTests
                  R"({"activation_id":"activation-1","state":"unexpected","action":"","accepted":true})",
                  R"({"activation_id":"activation-1","state":"pending","action":"","accepted":true})",
                  R"({"activation_id":"activation-1","state":42,"action":"focus","accepted":true})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":"true"})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":null})",
                  R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":"true"})",
                  R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":true,"detail":{}})" })
         {
@@ -33487,9 +33524,12 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
             impl->SetAgentSessionId(L"old-session");
+            impl->SetTelemetrySessionId(L"old-session", L"0ba8a608-26c5-40a2-8020-5a1cd873f251");
+            VERIFY_IS_FALSE(impl->TelemetrySessionId().empty());
             impl->SetYoloControlOwner(L"manual");
             impl->SetAgentSessionId(L"new-session");
             VERIFY_IS_TRUE(impl->YoloControlOwner().empty());
+            VERIFY_IS_TRUE(impl->TelemetrySessionId().empty());
 
             sendStatus(focusedTab->StableId(), "model-b");
 
