@@ -19222,18 +19222,17 @@ namespace TerminalAppLocalTests
             const auto groupHover = headerRoot.FindName(L"TabHoverBackground").as<Border>();
             const auto groupSelection = headerRoot.FindName(L"TabColorSelectionBackground").as<Border>();
             const auto nativeGroupSelection = headerRoot.FindName(L"TabSelectionBackground").as<Border>();
-            const auto verifyHoverInset = [](const FrameworkElement& row, const wchar_t* name) {
-                const auto hover = row.FindName(name).as<FrameworkElement>();
-                const auto position = hover.TransformToVisual(row).TransformPoint({ 0, 0 });
-                VERIFY_IS_TRUE(std::abs(position.X - 5.0f) <= 1.0f);
-                VERIFY_IS_TRUE(std::abs(position.Y - 3.0f) <= 1.0f);
-                VERIFY_IS_TRUE(std::abs(row.ActualWidth() - 10.0 - hover.ActualWidth()) <= 1.0);
-                VERIFY_IS_TRUE(std::abs(row.ActualHeight() - 6.0 - hover.ActualHeight()) <= 1.0);
+            const auto verifyBackgroundBounds = [](const FrameworkElement& row, const wchar_t* name, double horizontalInset, double verticalInset) {
+                const auto background = row.FindName(name).as<FrameworkElement>();
+                const auto position = background.TransformToVisual(row).TransformPoint({ 0, 0 });
+                VERIFY_IS_TRUE(std::abs(position.X - horizontalInset) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(position.Y - verticalInset) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(row.ActualWidth() - 2 * horizontalInset - background.ActualWidth()) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(row.ActualHeight() - 2 * verticalInset - background.ActualHeight()) <= 1.0);
             };
-            verifyHoverInset(headerRoot, L"TabHoverBackground");
-            verifyHoverInset(headerRoot, L"TabColorHoverBackground");
-            VERIFY_ARE_EQUAL(headerRoot.ActualWidth(), groupSelection.ActualWidth());
-            VERIFY_ARE_EQUAL(headerRoot.ActualHeight(), groupSelection.ActualHeight());
+            verifyBackgroundBounds(headerRoot, L"TabHoverBackground", 0, 0);
+            verifyBackgroundBounds(headerRoot, L"TabColorHoverBackground", 0, 0);
+            verifyBackgroundBounds(headerRoot, L"TabColorSelectionBackground", 0, 0);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, nativeGroupSelection.Visibility());
             stripImpl->OnSidebarRowPointerEntered(headerRoot, nullptr);
             VERIFY_ARE_EQUAL(winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast() ? 0.0 : 1.0,
@@ -19257,6 +19256,7 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, nativeGroupSelection.Visibility());
+            verifyBackgroundBounds(headerRoot, L"TabSelectionBackground", 0, 0);
             VERIFY_ARE_EQUAL(Visibility::Visible, groupButton.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, iconPresenter.Visibility());
             VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
@@ -19300,8 +19300,8 @@ namespace TerminalAppLocalTests
                 {
                     const auto button = paneRoot.FindName(L"PaneActivateButton").as<Button>();
                     VERIFY_IS_TRUE(std::abs(paneRoot.ActualWidth() - button.ActualWidth()) <= 1.0);
-                    verifyHoverInset(paneRoot, L"PaneHoverBackground");
-                    verifyHoverInset(paneRoot, L"PaneColorHoverBackground");
+                    verifyBackgroundBounds(paneRoot, L"PaneHoverBackground", 5, 3);
+                    verifyBackgroundBounds(paneRoot, L"PaneColorHoverBackground", 5, 3);
                 }
             };
             verifyPaneLayout();
