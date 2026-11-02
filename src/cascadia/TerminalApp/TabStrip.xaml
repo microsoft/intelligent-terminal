@@ -786,6 +786,7 @@
                                       Drop="OnListDrop"
                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                       GotFocus="OnSidebarListFocusChanged"
+                                      GettingFocus="OnSidebarListGettingFocus"
                                       IsItemClickEnabled="False"
                                       LostFocus="OnSidebarListFocusChanged"
                                       ReorderMode="Disabled"
