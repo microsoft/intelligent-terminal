@@ -4868,7 +4868,7 @@ mod tests {
             let decoded: SessionInfo = serde_json::from_value(wire).unwrap();
             let helper = crate::app::session_info_to_agent_session(&decoded);
             let round_trip = agent_session_to_session_info(&helper);
-            assert_eq!(round_trip.attention_cooldown_until_ms, Some(40_000));
+            assert_eq!(round_trip.attention_cooldown_until_ms, Some(25_000));
             assert_eq!(round_trip.attention_timestamp_ms, attention_timestamp);
             assert!(!apply_event_at_ms(
                 &mut state,
@@ -4876,7 +4876,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                39_999,
+                24_999,
             ));
             assert_eq!(state.sessions.values().next().unwrap(), &before);
             apply_event_at_ms(
@@ -4886,7 +4886,7 @@ mod tests {
                     pane_session_id: "owner".into(),
                     cwd: PathBuf::from("/at-expiry"),
                 },
-                40_000,
+                25_000,
             );
             assert_eq!(
                 state.sessions.values().next().unwrap().status,
@@ -4898,7 +4898,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                40_000,
+                25_000,
             ));
             let recovered = state.sessions.values().next().unwrap();
             assert_eq!(recovered.status, Some(AgentStatus::Working));
@@ -4928,7 +4928,7 @@ mod tests {
                 .next()
                 .unwrap()
                 .attention_cooldown_until_ms,
-            Some(70_000)
+            Some(55_000)
         );
         assert!(!apply_event_at_ms(
             &mut state,
