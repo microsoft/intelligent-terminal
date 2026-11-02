@@ -731,6 +731,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CliAgentClassifiesTab);
         TEST_METHOD(VisibleFieldsControlRichTabComposition);
         TEST_METHOD(RichTabAgentStatusColors);
+        TEST_METHOD(RichTabAgentStatusColorsOnFirstConversation);
         TEST_METHOD(RichTabStatusColorsUsePresentationRevision);
         TEST_METHOD(RichTabPaneStatusColorsAreRetainedOnReuse);
         TEST_METHOD(RichTabMetadataSelectionIsLimitedToTwo);
@@ -28240,6 +28241,114 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(isSource ? TextHighlightColor::Success : TextHighlightColor::Caution, item.MetadataHighlightColor());
             }
         });
+    }
+
+    void TabTests::RichTabAgentStatusColorsOnFirstConversation()
+    {
+        using ::Microsoft::Terminal::RichTab::Provider::Presentation;
+
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        UIElement previousContent{ nullptr };
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        TestOnUIThread([&]() {
+            previousContent = Window::Current().Content();
+            tab = page->_GetFocusedTabImpl();
+        });
+        const auto restore = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                Window::Current().Content(previousContent);
+            });
+        });
+        const auto presentation = [](const std::string_view status) {
+            Presentation value;
+            value.text = winrt::TerminalApp::implementation::TerminalPage::_SidebarHistoryStatusText(status);
+            value.agentStatusRanges.push_back({ 0, value.text.size() });
+            value.text.append(L"\nC:\\first-turn");
+            value.agentStatus = status;
+            return value;
+        };
+        const auto working = presentation("Working");
+        const auto idle = presentation("Idle");
+        for (const auto theme : { ElementTheme::Dark, ElementTheme::Light })
+        {
+            for (const auto alreadyLoaded : { false, true })
+            {
+                StackPanel host{ nullptr };
+                winrt::TerminalApp::TabHeaderControl header{ nullptr };
+                winrt::TerminalApp::HighlightedTextControl metadata{ nullptr };
+                TestOnUIThread([&]() {
+                    auto initial = alreadyLoaded ? idle : working;
+                    if (alreadyLoaded)
+                    {
+                        // Native startup can show Idle before the first prompt reports a cwd.
+                        initial.text.resize(initial.agentStatusRanges[0].length);
+                    }
+                    tab->SetRichTabPresentation(initial);
+                    header = winrt::TerminalApp::TabHeaderControl{};
+                    header.Presentation(tab->_headerControl.Presentation());
+                    header.IsMetadataVisible(true);
+                    host = StackPanel{};
+                    host.RequestedTheme(theme);
+                    host.Children().Append(header);
+                    Window::Current().Content(host);
+                    Window::Current().Activate();
+                    metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    return metadata.IsLoaded() && metadata.ActualWidth() > 0 && metadata.ActualTheme() == theme;
+                });
+                const auto colorChanged = header.Presentation().PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                    if (args.PropertyName() == L"MetadataHighlightColor" &&
+                        header.MetadataHighlightColor() == winrt::TerminalApp::TextHighlightColor::Success)
+                    {
+                        VERIFY_ARE_EQUAL(winrt::hstring{ working.text }, metadata.Text());
+                        VERIFY_IS_NOT_NULL(metadata.ColorHighlightRanges());
+                        VERIFY_ARE_EQUAL(static_cast<uint64_t>(working.agentStatusRanges[0].length - 1), metadata.ColorHighlightRanges().GetAt(0).End);
+                    }
+                });
+                const auto verifyWorkingPixels = [&]() {
+                    Media::Imaging::RenderTargetBitmap bitmap{ nullptr };
+                    winrt::Windows::Foundation::IAsyncAction render{ nullptr };
+                    TestOnUIThread([&]() {
+                        VERIFY_ARE_EQUAL(winrt::hstring{ working.text }, metadata.Text());
+                        VERIFY_ARE_EQUAL(winrt::TerminalApp::TextHighlightColor::Success, metadata.ColorHighlight());
+                        host.UpdateLayout();
+                        bitmap = Media::Imaging::RenderTargetBitmap{};
+                        render = bitmap.RenderAsync(metadata);
+                    });
+                    VERIFY_IS_TRUE(render.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+                    render.get();
+                    winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::Streams::IBuffer> read{ nullptr };
+                    TestOnUIThread([&]() { read = bitmap.GetPixelsAsync(); });
+                    VERIFY_IS_TRUE(read.wait_for(std::chrono::seconds{ 10 }) == winrt::Windows::Foundation::AsyncStatus::Completed);
+                    const auto buffer = read.get();
+                    std::vector<uint8_t> pixels(buffer.Length());
+                    winrt::Windows::Storage::Streams::DataReader::FromBuffer(buffer).ReadBytes(pixels);
+                    bool hasGreenGlyph = false;
+                    for (size_t offset = 0; offset + 3 < pixels.size(); offset += 4)
+                    {
+                        hasGreenGlyph |= pixels[offset + 3] != 0 &&
+                                         pixels[offset + 1] > pixels[offset] + 10 &&
+                                         pixels[offset + 1] > pixels[offset + 2] + 10;
+                    }
+                    VERIFY_IS_TRUE(hasGreenGlyph);
+                };
+                TestOnUIThread([&]() {
+                    tab->SetRichTabPresentation(working);
+                });
+                verifyWorkingPixels();
+                TestOnUIThread([&]() {
+                    tab->SetRichTabPresentation(idle);
+                });
+                _waitForContentTransferReviewUI([&]() {
+                    return metadata.Text() == winrt::hstring{ idle.text };
+                });
+                TestOnUIThread([&]() {
+                    tab->SetRichTabPresentation(working);
+                });
+                verifyWorkingPixels();
+            }
+        }
     }
 
     void TabTests::RichTabAgentStatusColors()

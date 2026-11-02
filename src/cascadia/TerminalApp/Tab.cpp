@@ -671,12 +671,14 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
-        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
+        const auto highlightColor = presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None;
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
+        // Publish color after the text, ranges, and deferred metadata control are current.
+        _headerControl.MetadataHighlightColor(highlightColor);
     }
 
     void Tab::SetUnreadAgentActivity(const bool unread, const bool needsAttention)
