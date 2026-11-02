@@ -1114,6 +1114,15 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if session_capabilities_ready && !loading_session {
+                    if let Some(binding) = tab
+                        .pending_telemetry_observation
+                        .take()
+                        .filter(|(sid, _)| sid == &session_id)
+                    {
+                        tab.telemetry_observation = Some(binding);
+                    }
+                }
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {
                         tab.pending_queue_action = None;
@@ -1155,7 +1164,9 @@ impl App {
                 if self.tab_sessions.contains_key(&tab_id)
                     || self.owner_tab_id.as_deref() == Some(tab_id.as_str())
                 {
-                    self.tab_mut(&tab_id).telemetry_observation =
+                    // This event precedes attachment acceptance. Do not replace
+                    // the active correlation until its ownership checks pass.
+                    self.tab_mut(&tab_id).pending_telemetry_observation =
                         Some((session_id, observation_id));
                 }
             }
@@ -1219,6 +1230,13 @@ impl App {
                     .insert(session_id.clone(), tab_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                if let Some(binding) = tab
+                    .pending_telemetry_observation
+                    .take()
+                    .filter(|(sid, _)| sid == &session_id)
+                {
+                    tab.telemetry_observation = Some(binding);
+                }
                 tab.telemetry_model_pending = None;
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {

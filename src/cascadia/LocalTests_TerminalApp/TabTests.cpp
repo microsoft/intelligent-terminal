@@ -18336,7 +18336,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_NOT_EQUAL(first.id, next.id);
             page->_ReconcileSidebarHistoryActivation(first, { State::Complete, true, {} });
             VERIFY_ARE_EQUAL(next.id, page->_PrepareSidebarHistoryActivation(item, normalMaster).id);
-            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Rejected" });
+            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Cannot focus", "resume_cli", true });
+            VERIFY_IS_TRUE(page->_historyUnresolvedActivations.find(next.arguments) == page->_historyUnresolvedActivations.end());
+            VERIFY_IS_TRUE(page->_historyActivationAges.find(next.id) == page->_historyActivationAges.end());
+            page->_ReconcileSidebarHistoryActivation(next, { State::Complete, false, L"Cannot focus", "resume_cli", true });
             VERIFY_IS_FALSE(page->_PrepareSidebarHistoryActivation(item, normalMaster).statusOnly);
             item.AgentId(L"claude");
             VERIFY_ARE_EQUAL(otherProvider.id, page->_PrepareSidebarHistoryActivation(item, normalMaster).id);
@@ -18357,6 +18360,30 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(result.accepted);
             VERIFY_IS_TRUE(result.detail.empty());
             VERIFY_ARE_EQUAL(std::string{ "focus" }, result.action);
+            VERIFY_IS_FALSE(result.launched);
+        }
+        for (const auto json : {
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":true,"detail":"Cannot focus"})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":true})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Complete);
+            VERIFY_IS_TRUE(result.launched);
+            VERIFY_ARE_EQUAL(std::string{ "resume_cli" }, result.action);
+        }
+        const auto launchedWithoutFocus = Page::_ParseSidebarHistoryActivation(
+            R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":true,"detail":"Cannot focus"})", activationId);
+        VERIFY_IS_FALSE(launchedWithoutFocus.accepted);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Cannot focus" }, launchedWithoutFocus.detail);
+        for (const auto json : {
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false,"launched":false})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":false})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":false})" })
+        {
+            const auto result = Page::_ParseSidebarHistoryActivation(json, activationId);
+            VERIFY_IS_TRUE(result.state == State::Complete);
+            VERIFY_IS_FALSE(result.launched);
         }
         const auto failed = Page::_ParseSidebarHistoryActivation(
             R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":false,"detail":"Cannot focus"})", activationId);
@@ -18381,6 +18408,8 @@ namespace TerminalAppLocalTests
                  R"({"activation_id":"activation-1","state":"unexpected","action":"","accepted":true})",
                  R"({"activation_id":"activation-1","state":"pending","action":"","accepted":true})",
                  R"({"activation_id":"activation-1","state":42,"action":"focus","accepted":true})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":"true"})",
+                 R"({"activation_id":"activation-1","state":"complete","action":"resume_cli","accepted":true,"launched":null})",
                  R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":"true"})",
                  R"({"activation_id":"activation-1","state":"complete","action":"focus","accepted":true,"detail":{}})" })
         {

@@ -401,7 +401,10 @@ If the activation CLI times out, the sidebar checks the receipt using
 never start another focus or restore. Master continues an accepted activation
 after the requesting CLI disconnects. Retrying an unresolved row checks the
 same receipt, including after closing and reopening History; it does not generate
-a fresh activation ID. See
+a fresh activation ID. Receipts include `launched: true` only after a new native
+CLI pane has been created and bound. This remains true if subsequent focusing
+fails (`accepted: false`); focusing an existing pane does not count as a launch.
+See
 [session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
 retention and refresh cancellation/backoff behavior.
 

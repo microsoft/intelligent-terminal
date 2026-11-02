@@ -1206,6 +1206,7 @@ namespace winrt::TerminalApp::implementation
             bool accepted{ false };
             winrt::hstring detail;
             std::string action;
+            bool launched{ false };
         };
         _SidebarHistoryActivationRequest _PrepareSidebarHistoryActivation(TerminalApp::TabStripHistoryItem const& item, std::wstring_view masterPipe);
         static _SidebarHistoryActivationResult _ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId);

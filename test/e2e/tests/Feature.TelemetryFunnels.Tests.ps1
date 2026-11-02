@@ -404,8 +404,16 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         [guid]::Parse($sourceConnections[0].Fields.ConnectionTypeGuid) | Should -Be ([guid]::Empty)
         [guid]::Parse($sourceConnections[0].Fields.ProfileGuid) | Should -Not -Be ([guid]::Empty)
         [guid]::Parse($sourceConnections[0].Fields.SessionGuid) | Should -Be ([guid]$script:shell.session_id)
+        foreach ($field in @('LaunchSource', 'ProfileKind', 'AgentId')) {
+            $sourceConnections[0].Types[$field] | Should -Match 'AnsiString$'
+        }
+        $sourceConnections[0].Fields.LaunchSource | Should -BeExactly 'other'
+        $sourceConnections[0].Fields.ProfileKind | Should -BeExactly 'shell'
+        $sourceConnections[0].Fields.AgentId | Should -BeExactly 'none'
+        $sourceConnections[0].Types.IsDefaultProfile | Should -Match 'Boolean$'
+        $sourceConnections[0].Fields.IsDefaultProfile | Should -BeIn @('true', '1')
         @($sourceConnections[0].Fields.Keys | Sort-Object) |
-            Should -Be @('ConnectionTypeGuid', 'PartA_PrivTags', 'ProfileGuid', 'SessionGuid')
+            Should -Be @('AgentId', 'ConnectionTypeGuid', 'IsDefaultProfile', 'LaunchSource', 'PartA_PrivTags', 'ProfileGuid', 'ProfileKind', 'SessionGuid')
     }
 
     It 'ACP session creation and completed ordinary prompts expose engagement' {

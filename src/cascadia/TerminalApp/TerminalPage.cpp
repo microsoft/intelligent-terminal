@@ -7809,6 +7809,7 @@ namespace winrt::TerminalApp::implementation
         if (!Json::parseFromStream(builder, json, &response, &errors) || !response.isObject() ||
             !response["activation_id"].isString() || response["activation_id"].asString() != winrt::to_string(activationId) ||
             !response["accepted"].isBool() || !response["action"].isString() ||
+            (response.isMember("launched") && !response["launched"].isBool()) ||
             (response.isMember("state") && !response["state"].isString()) ||
             (!response["detail"].isNull() && !response["detail"].isString()))
         {
@@ -7820,7 +7821,10 @@ namespace winrt::TerminalApp::implementation
         const auto state = response.get("state", "complete").asString();
         if (state == "complete")
         {
-            return { State::Complete, response["accepted"].asBool(), winrt::to_hstring(response.get("detail", "").asString()), response["action"].asString() };
+            const auto accepted = response["accepted"].asBool();
+            const auto action = response["action"].asString();
+            const auto launched = response.get("launched", accepted && action == "resume_cli").asBool();
+            return { State::Complete, accepted, winrt::to_hstring(response.get("detail", "").asString()), action, launched };
         }
         if (state == "pending" && !response["accepted"].asBool())
         {
@@ -7842,7 +7846,7 @@ namespace winrt::TerminalApp::implementation
             if (pending != _historyUnresolvedActivations.end() && pending->second == request.id)
             {
                 _historyUnresolvedActivations.erase(pending);
-                if (result.accepted && result.action == "resume_cli")
+                if (result.launched && result.action == "resume_cli")
                 {
                     _LogSidebarSessionResumed(request.ageDays, "cli", "launched");
                 }

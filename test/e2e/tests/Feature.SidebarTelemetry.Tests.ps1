@@ -889,21 +889,28 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
     }
 
     It 'Sidebar search telemetry counts opening rather than editing' {
-        foreach ($phase in @('keyboard-enter', 'search-open', 'search-reopen', 'filter-all', 'filter-live-search', 'filter-live-no-match', 'pin-second-hidden-first')) {
+        $openingPhases = @('pin-second-hidden-first')
+        $silentPhases = @('layout-refresh')
+        if (-not $KeepRunningOnly -and -not $CoreOnly) {
+            $openingPhases = @('keyboard-enter', 'search-open', 'search-reopen', 'filter-all', 'filter-live-search', 'filter-live-no-match') + $openingPhases
+            $silentPhases = @('search-edit', 'search-close', 'filter-search-edit') + $silentPhases
+        }
+        foreach ($phase in $openingPhases) {
             $events = @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarSearchOpened -Provider $script:appProvider)
             $events | Should -HaveCount 1
             Assert-SidebarSchema -Event $events[0]
         }
-        foreach ($phase in @('search-edit', 'search-close', 'filter-search-edit', 'layout-refresh')) {
+        foreach ($phase in $silentPhases) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarSearchOpened) | Should -HaveCount 0
         }
         $beforeHistoryResume = ([DateTimeOffset]$script:phases['layout-refresh'].EndedUtc).UtcDateTime
         @($script:records | Where-Object {
             $_.Name -eq 'SidebarSearchOpened' -and
             ([DateTimeOffset]$_.Timestamp).UtcDateTime.Add($script:traceClockCorrection) -le $beforeHistoryResume
-        }) | Should -HaveCount 7
+        }) | Should -HaveCount $openingPhases.Count
     }
 
+    if (-not $KeepRunningOnly -and -not $CoreOnly) {
     It 'Sidebar filter telemetry counts loaded agent session rows' {
         foreach ($phase in @('filter-all', 'filter-live-search', 'filter-live-no-match')) {
             $events = @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarAgentFilterApplied -Provider $script:appProvider)
@@ -916,11 +923,13 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
         @($script:records | Where-Object Name -eq SidebarAgentFilterApplied).Count | Should -BeGreaterOrEqual 3
     }
+    }
 
     It 'Sidebar pin telemetry counts explicit keep-running opt-ins' {
         @($script:records | Where-Object Name -eq SidebarTabPinned) | Should -HaveCount 0 -Because 'the misleading event is retired; KeepRunningMarked owns opt-in counts'
     }
 
+    if (-not $KeepRunningOnly -and -not $CoreOnly) {
     It 'Sidebar view transitions distinguish user changes from settings reloads' {
         $events = @(Get-TelemetryPhaseEvents -Phase filter-all -Name SidebarViewSwitched)
         $events | Should -HaveCount 2 -Because 'Agents-only and Recent are independent controls'
@@ -949,7 +958,9 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             @(Get-TelemetryPhaseEvents -Phase $phase -Name SidebarKeyboardEntered) | Should -HaveCount 0
         }
     }
+    }
 
+    if (-not $KeepRunningOnly) {
     It 'Sidebar resume telemetry counts native launches rather than focus or rejection' {
         $events = @(Get-TelemetryPhaseEvents -Phase resume-launched -Name SidebarSessionResumed)
         $events | Should -HaveCount 1
@@ -978,6 +989,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             $events[0].Types.IsDefaultProfile | Should -Match 'Boolean$'
         }
         @(Get-TelemetryPhaseEvents -Phase ordinary-shell-plus -Name SidebarAgentStarted) | Should -HaveCount 0
+    }
     }
 
     It 'Keep-running telemetry correlates opt-in, retention, and live reattachment' {
@@ -1067,6 +1079,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         }
     }
 
+    if (-not $KeepRunningOnly -and -not $CoreOnly) {
     It 'Sidebar row-field telemetry reports only selected field identifiers' {
         foreach ($case in $script:rowFieldCases) {
             $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name SidebarRowFieldsChanged -Provider $script:appProvider)
@@ -1081,6 +1094,7 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         $launches = @($script:records | Where-Object Name -eq AppCreated)
         @($script:records | Where-Object Name -eq SidebarRowFieldsChanged) | Should -HaveCount ($script:rowFieldCases.Count + $launches.Count)
     }
+    }
 
     It 'Sidebar row-field telemetry separates window launch from user changes' {
         $launches = @($script:records | Where-Object Name -eq AppCreated)
@@ -1090,10 +1104,13 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
             Assert-SidebarSchema -Event $snapshot -Field fields -Type AnsiString
             $snapshot.Fields.fields | Should -BeExactly 'agentStatus,workingDirectory'
         }
-        @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name AgentSessionStarted) | Should -HaveCount 1
-        @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name SidebarRowFieldsChanged) | Should -HaveCount 0
+        if (-not $KeepRunningOnly -and -not $CoreOnly) {
+            @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name AgentSessionStarted) | Should -HaveCount 1
+            @(Get-TelemetryPhaseEvents -Phase fields-session-start -Name SidebarRowFieldsChanged) | Should -HaveCount 0
+        }
     }
 
+    if (-not $KeepRunningOnly -and -not $CoreOnly) {
     It 'Tab-order pin telemetry remains distinct from keep-running opt-ins' {
         foreach ($case in @(@{ Phase = 'tab-order-pin'; Pinned = $true; Count = 1 }, @{ Phase = 'tab-order-unpin'; Pinned = $false; Count = 0 })) {
             $events = @(Get-TelemetryPhaseEvents -Phase $case.Phase -Name TabPinChanged)
@@ -1107,5 +1124,6 @@ Describe 'Feature: sidebar telemetry' -Tag 'Feature', 'Telemetry', 'SidebarTelem
         foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'unpin', 'repin', 'retain-restore')) {
             @(Get-TelemetryPhaseEvents -Phase $phase -Name TabPinChanged) | Should -HaveCount 0
         }
+    }
     }
 }

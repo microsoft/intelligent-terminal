@@ -8452,6 +8452,7 @@ async fn handle_session_activation_status(
             state: crate::session_registry::SessionActivationState::Unknown,
             action: String::new(),
             accepted: false,
+            launched: false,
             detail: None,
         },
     ))
@@ -8492,6 +8493,7 @@ async fn handle_session_activate(
                 state: SessionActivationState::Pending,
                 action: String::new(),
                 accepted: false,
+                launched: false,
                 detail: None,
             },
         },
@@ -8540,6 +8542,7 @@ async fn execute_session_activation(
                 state: crate::session_registry::SessionActivationState::$state,
                 action: $action.to_string(),
                 accepted: $accepted,
+                launched: false,
                 detail: $detail,
             }
         }};
@@ -8897,7 +8900,7 @@ async fn execute_session_activation(
                     }
                     // Only this History activation preserves the sidebar: background
                     // creation followed by focus of the exact newly returned pane.
-                    match wt
+                    let mut response = match wt
                         .request(
                             "focus_pane",
                             serde_json::json!({ "session_id": pane_session_id }),
@@ -8912,7 +8915,9 @@ async fn execute_session_activation(
                                 "The session was created but could not be focused: {error}"
                             ))
                         ),
-                    }
+                    };
+                    response.launched = true;
+                    response
                 }
                 Err(error) => failed("resume_cli", error),
             }

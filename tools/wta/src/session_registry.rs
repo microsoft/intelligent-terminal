@@ -599,6 +599,9 @@ pub struct SessionActivateResponse {
     pub state: SessionActivationState,
     pub action: String,
     pub accepted: bool,
+    /// A native CLI was created and bound, independently of subsequent focus.
+    #[serde(default)]
+    pub launched: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
@@ -9236,6 +9239,7 @@ mod tests {
                 state,
                 action: String::new(),
                 accepted: false,
+                launched: false,
                 detail: None,
             };
             let raw = serde_json::value::to_raw_value(&response).unwrap();
@@ -9249,6 +9253,22 @@ mod tests {
             parse_session_activate_response(&legacy).unwrap().state,
             SessionActivationState::Complete
         );
+        assert!(!parse_session_activate_response(&legacy).unwrap().launched);
+        let launched = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"launch","action":"resume_cli","accepted":false,"launched":true}"#
+                .to_string(),
+        )
+        .unwrap();
+        let response = parse_session_activate_response(&launched).unwrap();
+        assert!(response.launched);
+        assert!(!response.accepted);
+        let raw = serde_json::value::to_raw_value(&response).unwrap();
+        assert_eq!(parse_session_activate_response(&raw).unwrap(), response);
+        let invalid = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"launch","action":"resume_cli","accepted":false,"launched":"true"}"#.to_string(),
+        )
+        .unwrap();
+        assert!(parse_session_activate_response(&invalid).is_err());
     }
 
     #[test]

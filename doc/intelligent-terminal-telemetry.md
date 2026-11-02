@@ -373,8 +373,9 @@ initial dispatch acceptance, failed loads, and saved-layout restores do not emit
 | `Route` | String | `cli` or `agentPane` |
 | `Outcome` | String | `launched` for native CLI launch; `loaded` for confirmed ACP load |
 
-CLI process/pane launch does not prove provider authentication, transcript
-verification, or task success. ACP completion must match the new owning tab and
+CLI process/pane launch is counted even if subsequently focusing that pane fails;
+it does not prove provider authentication, transcript verification, or task
+success. ACP completion must match the new owning tab and
 requested session; another session's successful Load is not evidence.
 
 ### App.SidebarKeyboardEntered

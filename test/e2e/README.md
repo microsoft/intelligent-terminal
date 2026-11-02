@@ -625,6 +625,14 @@ tabs repeat their title in child rows; context-menu targeting selects the
 shallowest matching tab header. The elevated ETW collector runs with its window
 hidden so it does not compete with the unelevated UI runner for foreground.
 
+Container discovery selects 14 cases by default, 9 with `CoreOnly = $true`,
+and 7 with `KeepRunningOnly = $true` (the filter above still selects the same
+three keep-running contracts). Core mode retains native resume and Agent launch
+checks but omits keyboard/filter, row-field editing and tab-order pin scenarios.
+Both focused modes retain search-opening and launch-snapshot assertions against
+only their executed phases; neither substitutes for full-suite acceptance.
+Use `Run.SkipRun = $true` for non-live discovery.
+
 `Feature.TelemetryFunnels` requires a **Dev** package built from the target revision,
 the build receipt's `ITE2E_EXPECTED_WTA_SHA256` and `ITE2E_EXPECTED_APP_SHA256`
 (`TerminalApp.dll`), explicit UAC approval, and permission for temporary HKCU policy

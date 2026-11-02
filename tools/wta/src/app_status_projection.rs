@@ -332,6 +332,85 @@ mod session_telemetry_tests {
     }
 
     #[test]
+    fn session_telemetry_rejected_attachment_preserves_replacement_observation() {
+        let _locale = crate::test_support::lock_locale();
+        for stale_prompt in [false, true] {
+            let mut app = test_app();
+            let replacement = uuid::Uuid::new_v4();
+            let tab = app.tab_mut(DEFAULT_TAB_ID);
+            tab.session_id = Some("replacement".into());
+            tab.telemetry_observation = Some(("replacement".into(), replacement));
+            if !stale_prompt {
+                tab.loading_session = true;
+                tab.loading_target_session_id = Some("load-target".into());
+            }
+            app.handle_event(AppEvent::SessionTelemetryBound {
+                tab_id: DEFAULT_TAB_ID.into(),
+                session_id: "stale".into(),
+                observation_id: uuid::Uuid::new_v4(),
+            });
+            let mut attachment = attached(DEFAULT_TAB_ID, "stale");
+            if let AppEvent::SessionAttached { prompt_id, .. } = &mut attachment {
+                *prompt_id = stale_prompt.then_some(u64::MAX);
+            }
+            app.handle_event(attachment);
+            assert_eq!(app.current_tab().session_id.as_deref(), Some("replacement"));
+            assert_eq!(
+                app.current_tab().telemetry_observation,
+                Some(("replacement".into(), replacement))
+            );
+            let event = build_agent_state_changed_event(DEFAULT_TAB_ID, app.current_tab(), None);
+            if stale_prompt {
+                assert_eq!(
+                    event["params"]["telemetry_session_id"],
+                    replacement.to_string()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn session_telemetry_accepted_attachment_commits_new_and_load_correlation() {
+        let _locale = crate::test_support::lock_locale();
+        let _capture = crate::wt_protocol_events::capture_test_published_events();
+        for loaded in [false, true] {
+            let mut app = test_app();
+            let old = uuid::Uuid::new_v4();
+            let observation_id = uuid::Uuid::new_v4();
+            let tab = app.tab_mut(DEFAULT_TAB_ID);
+            tab.session_id = Some("replacement".into());
+            tab.telemetry_observation = Some(("replacement".into(), old));
+            tab.loading_session = loaded;
+            tab.loading_target_session_id = loaded.then(|| "accepted".into());
+            app.handle_event(AppEvent::SessionTelemetryBound {
+                tab_id: DEFAULT_TAB_ID.into(),
+                session_id: "accepted".into(),
+                observation_id,
+            });
+            assert_eq!(
+                app.current_tab().telemetry_observation,
+                Some(("replacement".into(), old))
+            );
+            app.handle_event(attached(DEFAULT_TAB_ID, "accepted"));
+            assert_eq!(
+                app.current_tab().telemetry_observation,
+                Some(("accepted".into(), observation_id))
+            );
+            let snapshots = starts();
+            assert_eq!(snapshots.len(), 1);
+            assert_eq!(
+                snapshots[0]["telemetry_session_id"],
+                observation_id.to_string()
+            );
+            assert_eq!(
+                snapshots[0]["start_kind"],
+                if loaded { "Load" } else { "New" }
+            );
+            assert!(snapshots[0].get("session_id").is_none());
+        }
+    }
+
+    #[test]
     fn session_telemetry_bootstrap_emits_once_not_on_projection_or_handshake_only() {
         let _locale = crate::test_support::lock_locale();
         let _capture = crate::wt_protocol_events::capture_test_published_events();

@@ -12279,6 +12279,7 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             assert_eq!(response.action, "resume_cli");
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {status:?}: {response:?}");
+            assert!(response.launched);
             let expected_calls = vec![
                 (
                     "create_tab".to_string(),
@@ -12317,6 +12318,77 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
         }
     }
     assert_eq!(supported_cases, 40);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_launch_receipt_survives_focus_failure_and_replay() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    let _resolver = mock_native_delegate_executables();
+    for failed_method in ["focus_pane", "create_tab"] {
+        let mut channel = MockWtChannel::responding(serde_json::json!({
+            "session_id": "created-pane"
+        }));
+        channel.fail_with = Some("terminal request failed".into());
+        channel.fail_on_method = Some(failed_method);
+        let mock = Arc::new(channel);
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("launch-receipt"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(AgentStatus::Historical);
+        let params = SessionActivateParams {
+            identity: SessionIdentity::from_info(&row),
+            window_id: 42,
+            activation_id: "launch-receipt".into(),
+        };
+        state.registry.upsert(row).await;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let raw = handle_session_activate(&state, &params).await.unwrap();
+                let response =
+                    crate::session_registry::parse_session_activate_response(&raw.0).unwrap();
+                assert_eq!(response.action, "resume_cli");
+                assert!(!response.accepted);
+                assert_eq!(response.launched, failed_method == "focus_pane");
+                if response.launched {
+                    assert!(response
+                        .detail
+                        .as_deref()
+                        .unwrap()
+                        .contains("could not be focused"));
+                    assert_eq!(
+                        state
+                            .registry
+                            .lookup_identity(&params.identity)
+                            .await
+                            .unwrap()
+                            .pane_session_id
+                            .as_deref(),
+                        Some("created-pane")
+                    );
+                }
+                let calls = mock.calls();
+                let replay = handle_session_activate(&state, &params).await.unwrap();
+                assert_eq!(
+                    crate::session_registry::parse_session_activate_response(&replay.0).unwrap(),
+                    response
+                );
+                assert_eq!(mock.calls(), calls);
+                assert_eq!(
+                    calls
+                        .iter()
+                        .filter(|(method, _)| method == "create_tab")
+                        .count(),
+                    1
+                );
+            })
+            .await;
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -12533,6 +12605,7 @@ async fn sidebar_activation_live_bound_focus_does_not_require_launchable_provide
                 assert_eq!(response.state, SessionActivationState::Complete);
                 assert_eq!(response.action, "focus", "{cli:?}: {response:?}");
                 assert_eq!(response.accepted, !fail);
+                assert!(!response.launched);
                 assert_eq!(
                     response.detail.as_deref(),
                     fail.then_some("pane lookup unavailable")
@@ -13622,6 +13695,7 @@ async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
                         state: SessionActivationState::Pending,
                         action: String::new(),
                         accepted: false,
+                        launched: false,
                         detail: None,
                     },
                     params: pending,

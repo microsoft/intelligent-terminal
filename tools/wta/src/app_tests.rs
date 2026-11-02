@@ -24027,6 +24027,12 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
     );
     app.request_turn_cancel_for_tab(DEFAULT_TAB_ID);
 
+    let observation_id = uuid::Uuid::new_v4();
+    app.handle_event(AppEvent::SessionTelemetryBound {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "lazy-session".into(),
+        observation_id,
+    });
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "lazy-session".into(),
@@ -24035,6 +24041,10 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
         current_model_id: None,
     });
 
+    assert_eq!(
+        app.current_tab().telemetry_observation,
+        Some(("lazy-session".into(), observation_id))
+    );
     assert_eq!(
         app.current_tab()
             .active_prompt_cancellation
