@@ -18,6 +18,9 @@ namespace winrt::TerminalApp::implementation
         ~HighlightedTextControl();
 
         void OnApplyTemplate();
+        void SetTextAndColor(const winrt::hstring& text,
+                             winrt::TerminalApp::TextHighlightColor color,
+                             const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges);
 
         DEPENDENCY_PROPERTY(winrt::hstring, Text);
         DEPENDENCY_PROPERTY(winrt::hstring, SearchText);
@@ -42,6 +45,7 @@ namespace winrt::TerminalApp::implementation
         int64_t _foregroundToken{};
         int64_t _colorToken{};
         int64_t _opacityToken{};
+        bool _updatingTextAndColor{ false };
         void _observeForeground();
     };
 }

@@ -13,6 +13,34 @@ using namespace winrt::Microsoft::UI::Xaml;
 
 namespace winrt::TerminalApp::implementation
 {
+    void TabHeaderPresentation::SetMetadata(
+        const winrt::hstring& text,
+        const winrt::hstring& automationName,
+        const TerminalApp::TextHighlightColor color,
+        const Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun>& ranges)
+    {
+        const auto textChanged = MetadataText() != text;
+        const auto automationChanged = MetadataAutomationName() != automationName;
+        const auto colorChanged = MetadataHighlightColor() != color;
+        const auto rangesChanged = MetadataHighlightRanges() != ranges;
+        // Every subscriber must see the complete text/color/range revision.
+        _setMetadataText(text);
+        _setMetadataAutomationName(automationName);
+        _setMetadataHighlightColor(color);
+        _setMetadataHighlightRanges(ranges);
+        for (const auto& [changed, name] : {
+                 std::pair{ textChanged, L"MetadataText" },
+                 std::pair{ automationChanged, L"MetadataAutomationName" },
+                 std::pair{ colorChanged, L"MetadataHighlightColor" },
+                 std::pair{ rangesChanged, L"MetadataHighlightRanges" } })
+        {
+            if (changed)
+            {
+                PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
+            }
+        }
+    }
+
     TabHeaderControl::TabHeaderControl()
     {
         Presentation(winrt::make<TabHeaderPresentation>());
@@ -201,6 +229,11 @@ namespace winrt::TerminalApp::implementation
         _presentationChanged = value.PropertyChanged(winrt::auto_revoke, [weakThis = get_weak()](auto&&, const auto& args) {
             if (const auto self = weakThis.get())
             {
+                const auto name = args.PropertyName();
+                if (name.empty() || name == L"MetadataText" || name == L"MetadataHighlightColor" || name == L"MetadataHighlightRanges")
+                {
+                    self->_UpdateMetadataPresentation();
+                }
                 self->PropertyChanged.raise(*self, args);
                 if (args.PropertyName() == L"SearchText")
                 {
@@ -216,6 +249,7 @@ namespace winrt::TerminalApp::implementation
         {
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
         }
+        _UpdateMetadataPresentation();
         _UpdateUnreadActivityVisibility();
         _UpdateTitleVisibility();
     }
@@ -371,6 +405,7 @@ namespace winrt::TerminalApp::implementation
             if (!_metadataTextBlock)
             {
                 _metadataTextBlock = FindName(L"HeaderMetadataTextBlock").as<TerminalApp::HighlightedTextControl>();
+                _UpdateMetadataPresentation();
                 if (_sidebarMetadataTextStyle)
                 {
                     _metadataTextBlock.TextBlockStyle(_sidebarMetadataTextStyle);
@@ -386,6 +421,14 @@ namespace winrt::TerminalApp::implementation
         {
             Windows::UI::Xaml::Markup::XamlMarkupHelper::UnloadObject(_metadataTextBlock);
             _metadataTextBlock = nullptr;
+        }
+    }
+
+    void TabHeaderControl::_UpdateMetadataPresentation()
+    {
+        if (_metadataTextBlock)
+        {
+            _metadataTextBlock.SetTextAndColor(MetadataText(), MetadataHighlightColor(), MetadataHighlightRanges());
         }
     }
 

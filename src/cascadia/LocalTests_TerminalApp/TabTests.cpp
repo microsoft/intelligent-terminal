@@ -28297,13 +28297,19 @@ namespace TerminalAppLocalTests
                 _waitForContentTransferReviewUI([&]() {
                     return metadata.IsLoaded() && metadata.ActualWidth() > 0 && metadata.ActualTheme() == theme;
                 });
-                const auto colorChanged = header.Presentation().PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
-                    if (args.PropertyName() == L"MetadataHighlightColor" &&
-                        header.MetadataHighlightColor() == winrt::TerminalApp::TextHighlightColor::Success)
+                const auto metadataChanged = header.Presentation().PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                    if (args.PropertyName() == L"MetadataText" || args.PropertyName() == L"MetadataHighlightColor" ||
+                        args.PropertyName() == L"MetadataHighlightRanges")
                     {
-                        VERIFY_ARE_EQUAL(winrt::hstring{ working.text }, metadata.Text());
+                        const auto isWorking = header.MetadataText() == winrt::hstring{ working.text };
+                        VERIFY_IS_TRUE(isWorking || header.MetadataText() == winrt::hstring{ idle.text });
+                        const auto expectedColor = isWorking ? winrt::TerminalApp::TextHighlightColor::Success : winrt::TerminalApp::TextHighlightColor::None;
+                        const auto& expected = isWorking ? working : idle;
+                        VERIFY_ARE_EQUAL(expectedColor, header.MetadataHighlightColor());
+                        VERIFY_ARE_EQUAL(header.MetadataText(), metadata.Text());
+                        VERIFY_ARE_EQUAL(expectedColor, metadata.ColorHighlight());
                         VERIFY_IS_NOT_NULL(metadata.ColorHighlightRanges());
-                        VERIFY_ARE_EQUAL(static_cast<uint64_t>(working.agentStatusRanges[0].length - 1), metadata.ColorHighlightRanges().GetAt(0).End);
+                        VERIFY_ARE_EQUAL(static_cast<uint64_t>(expected.agentStatusRanges[0].length - 1), metadata.ColorHighlightRanges().GetAt(0).End);
                     }
                 });
                 const auto verifyWorkingPixels = [&]() {

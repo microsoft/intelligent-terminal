@@ -677,7 +677,6 @@ namespace winrt::TerminalApp::implementation
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
-        // Publish color after the text, ranges, and deferred metadata control are current.
         _headerControl.MetadataHighlightColor(highlightColor);
     }
 
@@ -710,9 +709,8 @@ namespace winrt::TerminalApp::implementation
         const auto hasVisibleMetadata = !text.empty();
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
-        _headerControl.MetadataText(text);
-        _headerControl.MetadataHighlightRanges(highlightRanges);
-        _headerControl.MetadataAutomationName(_richTabAccessibilityText);
+        const auto highlightColor = _richTabPresentation ? TabHeaderControl::AgentStatusHighlightColor(_richTabPresentation->agentStatus) : TerminalApp::TextHighlightColor::None;
+        winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();

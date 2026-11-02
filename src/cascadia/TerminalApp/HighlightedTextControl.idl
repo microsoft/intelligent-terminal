@@ -53,5 +53,7 @@ namespace TerminalApp
 
         Double TextOpacity;
         static Windows.UI.Xaml.DependencyProperty TextOpacityProperty { get; };
+
+        void SetTextAndColor(String text, TextHighlightColor color, IVector<HighlightedRun> ranges);
     }
 }
