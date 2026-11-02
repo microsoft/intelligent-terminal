@@ -49,7 +49,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed);
+    static void _updateSidebarActionLayout(const FrameworkElement& row);
     void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
     {
         if (_showAgentsOnly != value)
@@ -1803,7 +1803,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root, _isRailCollapsed);
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1829,7 +1829,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed)
+    static void _updateSidebarActionLayout(const FrameworkElement& row)
     {
         ListViewItem container{ nullptr };
         for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
@@ -1851,33 +1851,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto slot = row.FindName(name).try_as<FrameworkElement>())
             {
                 FrameworkElement title{ nullptr };
-                if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
-                {
-                    const auto titleName = header.InRename()           ? L"HeaderRenamerTextBox" :
-                                           header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" :
-                                                                         L"HeaderTextBlock";
-                    title = header.FindName(titleName).try_as<FrameworkElement>();
-                    if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
-                    {
-                        const auto alignment = railCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
-                        if (leading.VerticalAlignment() != alignment)
-                        {
-                            leading.VerticalAlignment(alignment);
-                        }
-                        auto leadingMargin = leading.Margin();
-                        leadingMargin.Top = 0;
-                        if (!railCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
-                        {
-                            const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
-                            leadingMargin.Top = position.Y + title.ActualHeight() / 2.0 - leading.ActualHeight() / 2.0;
-                        }
-                        if (leading.Margin() != leadingMargin)
-                        {
-                            leading.Margin(leadingMargin);
-                        }
-                    }
-                }
-                else
+                if (name == std::wstring_view{ L"PaneCloseButtonSlot" })
                 {
                     title = row.FindName(L"PaneTitleText").try_as<FrameworkElement>();
                 }
@@ -1924,9 +1898,8 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            const auto row = root.Name() == L"TabLeadingContent" ? root.Parent().as<FrameworkElement>() : root;
-            _updateSidebarActionLayout(row, _isRailCollapsed);
-            _updateSidebarRowToolTipPlacement(row);
+            _updateSidebarActionLayout(root);
+            _updateSidebarRowToolTipPlacement(root);
         }
     }
 
@@ -2060,7 +2033,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root, _isRailCollapsed);
+            _updateSidebarActionLayout(root);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);

@@ -290,6 +290,41 @@ namespace winrt::TerminalApp::implementation
         return !SearchText().empty() && !InRename();
     }
 
+    void TabHeaderControl::LeadingContent(const Windows::UI::Xaml::UIElement& value)
+    {
+        if (_leadingContent != value)
+        {
+            _leadingContent = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"LeadingContent" });
+            _UpdateSidebarLayout();
+        }
+    }
+
+    void TabHeaderControl::TitleVisibility(const Windows::UI::Xaml::Visibility value)
+    {
+        const auto compact = value == Windows::UI::Xaml::Visibility::Collapsed;
+        if (_isCompact != compact)
+        {
+            _isCompact = compact;
+            _UpdateSidebarLayout();
+        }
+    }
+
+    void TabHeaderControl::_UpdateSidebarLayout()
+    {
+        using namespace Windows::UI::Xaml;
+        if (!_initialized)
+        {
+            return;
+        }
+        const auto visibility = _isCompact ? Visibility::Collapsed : Visibility::Visible;
+        HeaderStackPanel().Visibility(visibility);
+        HeaderTitleGrid().Visibility(visibility);
+        HeaderTrailingContentPresenter().Visibility(visibility);
+        Controls::Grid::SetColumnSpan(HeaderLeadingContentPresenter(), _isCompact ? 4 : 1);
+        HeaderLayout().Padding(_leadingContent && !_isCompact ? Thickness{ 0, 10, 0, 10 } : Thickness{});
+    }
+
     void TabHeaderControl::SetSidebarTextStyles(const Windows::UI::Xaml::Style& titleStyle,
                                                 const Windows::UI::Xaml::Style& metadataStyle)
     {

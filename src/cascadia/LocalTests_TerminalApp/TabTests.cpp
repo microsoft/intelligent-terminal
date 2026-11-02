@@ -590,6 +590,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripContrastsRenderedColors);
         TEST_METHOD(VerticalTabStripCloseAffordanceTracksRowState);
         TEST_METHOD(VerticalTabStripLeadingIconsFollowTitleRow);
+        TEST_METHOD(VerticalTabStripAlignsAfterDeferredTitleMeasurement);
         TEST_METHOD(VerticalTabStripRefreshesHighContrastColors);
         TEST_METHOD(VerticalTabGroupingIgnoresAgentPane);
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
@@ -9469,7 +9470,7 @@ namespace TerminalAppLocalTests
 
             page->_tabStrip.IsRailCollapsed(true);
             page->UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdHeader.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, thirdHeader.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>().TitleVisibility());
             verifyPlacementRect();
             VERIFY_ARE_EQUAL(tooltipText(third->TabViewItem()), verticalTooltipText());
             page->_tabStrip.IsRailCollapsed(false);
@@ -26776,6 +26777,57 @@ namespace TerminalAppLocalTests
             inactive.Color(winrt::Windows::UI::Colors::Transparent());
             impl->RefreshTabColor(tab);
             VERIFY_IS_TRUE(headerText.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+        });
+    }
+
+    void TabTests::VerticalTabStripAlignsAfterDeferredTitleMeasurement()
+    {
+        TestOnUIThread([&]() {
+            winrt::TerminalApp::TabStrip strip;
+            strip.Width(240);
+            strip.Height(700);
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Settings"));
+            strip.TabItems().Append(tab);
+            strip.SetTabPresentation(tab, L"Settings", L"\xE713");
+
+            const auto previousContent = Window::Current().Content();
+            const auto restoreContent = wil::scope_exit([&]() {
+                Window::Current().Content(previousContent);
+            });
+            Window::Current().Content(strip);
+            Window::Current().Activate();
+            strip.UpdateLayout();
+
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            const auto row = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>().FindName(L"TabHeaderGrid").as<FrameworkElement>();
+            const auto header = row.FindName(L"TabHeaderPresenter").as<winrt::TerminalApp::TabHeaderControl>();
+            const auto title = header.FindName(L"HeaderTextBlock").as<FrameworkElement>();
+            const auto icon = row.FindName(L"TabIconPresenter").as<FrameworkElement>();
+            const auto close = row.FindName(L"TabCloseButtonSlot").as<FrameworkElement>();
+            const auto verifyAlignment = [&]() {
+                const auto titlePosition = title.TransformToVisual(row).TransformPoint({ 0, 0 });
+                for (const auto& element : { icon, close })
+                {
+                    const auto position = element.TransformToVisual(row).TransformPoint({ 0, 0 });
+                    VERIFY_IS_TRUE(std::abs(position.Y + element.ActualHeight() / 2 - titlePosition.Y - title.ActualHeight() / 2) <= 1.0);
+                }
+            };
+            verifyAlignment();
+
+            // A title can finish measuring after the fixed-size row and icon have raised SizeChanged.
+            title.Height(0);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(0.0, title.ActualHeight());
+            impl->OnSidebarRowSizeChanged(row, nullptr);
+            strip.UpdateLayout();
+            const auto rowHeight = row.ActualHeight();
+            const auto iconHeight = icon.ActualHeight();
+            title.ClearValue(FrameworkElement::HeightProperty());
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(rowHeight, row.ActualHeight());
+            VERIFY_ARE_EQUAL(iconHeight, icon.ActualHeight());
+            verifyAlignment();
         });
     }
 
