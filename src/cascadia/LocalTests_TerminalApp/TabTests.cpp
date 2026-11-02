@@ -8530,12 +8530,15 @@ namespace TerminalAppLocalTests
             using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
             VERIFY_ARE_EQUAL(State::Failed, tab->GetActiveTerminalControl().Connection().State());
             const auto profile = page->_settings.ActiveProfiles().GetAt(0);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"--unsupported-native-argument" }, profile.AgentProfileArguments());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"--native-user-argument" }, profile.AgentProfileArguments());
 
+            profile.AgentProfileModel(L"");
             profile.AgentProfileArguments(L"--version");
+            const auto validCommand = Microsoft::Terminal::AgentProfiles::Command(profile, true);
             const auto validSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
             const auto valid = page->_CreateConnectionFromSettings(profile, *validSettings.DefaultSettings(), false);
             VERIFY_ARE_EQUAL(State::NotConnected, valid.State());
+            VERIFY_ARE_EQUAL(winrt::hstring{ validCommand }, valid.as<Conpty>().Commandline());
             VERIFY_IS_TRUE(std::wstring_view{ valid.as<Conpty>().Commandline() }.find(L"--version") != std::wstring_view::npos);
             valid.Close();
             // Drain normal-priority handlers first; disabled animations keep pane closes synchronous.
