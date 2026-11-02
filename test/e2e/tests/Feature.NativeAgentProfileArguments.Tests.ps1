@@ -1,8 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Real native profile -> launch validation -> ConPTY -> installed Copilot.
+# Real native profile -> Windows argv -> ConPTY -> installed native CLI.
 # --version exits without a prompt or session; no unrestricted model work is submitted.
 
-Describe 'Feature: Copilot profile arguments' -Tag @('Feature', 'CopilotProfileArguments') {
+Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgentProfileArguments') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = $null
@@ -31,9 +31,15 @@ Describe 'Feature: Copilot profile arguments' -Tag @('Feature', 'CopilotProfileA
         $env:COPILOT_HOME = $script:automationHome
         $script:copilotHomeOwned = $true
         $script:runId = [guid]::NewGuid().ToString('N')
+        $script:provider = if ($env:ITE2E_NATIVE_PROFILE_PROVIDER) { $env:ITE2E_NATIVE_PROFILE_PROVIDER } else { 'copilot' }
+        if ($script:provider -notin @('copilot', 'claude', 'codex', 'gemini', 'opencode', 'antigravity')) {
+            throw 'Select a supported native profile provider.'
+        }
+        $script:model = $env:ITE2E_NATIVE_PROFILE_MODEL
+        if (-not $script:model) { throw 'Supply a model supported by the installed native CLI.' }
         $script:cwd = Join-Path $env:ITE2E_ARTIFACT_ROOT "auto-profile-args-$script:runId"
         New-Item -ItemType Directory -Force -Path $script:cwd | Out-Null
-        function Start-CopilotArgumentProfile {
+        function Start-NativeArgumentProfile {
             param([string]$Arguments, [string]$PermissionMode = '')
             $profileId = '{b22d61a8-5509-4694-82fc-263214f54fb3}'
             $script:app = Start-Terminal -Package $env:ITE2E_PACKAGE -PassFre $true -Settings @{
@@ -44,8 +50,9 @@ Describe 'Feature: Copilot profile arguments' -Tag @('Feature', 'CopilotProfileA
                 autoErrorDetectionEnabled = $false; autoFixEnabled = $false
                 'warning.confirmOnClose' = 'never'
                 profiles = @{ list = @(@{
-                    guid = $profileId; name = "auto:test:copilot-profile-args:$script:runId"
-                    'agentProfile.id' = 'copilot'
+                    guid = $profileId; name = "auto:test:native-profile-args:$script:runId"
+                    'agentProfile.id' = $script:provider
+                    'agentProfile.model' = $script:model
                     'agentProfile.arguments' = $Arguments
                     'agentProfile.permissionMode' = $PermissionMode
                     startingDirectory = $script:cwd; closeOnExit = 'never'
@@ -74,10 +81,14 @@ Describe 'Feature: Copilot profile arguments' -Tag @('Feature', 'CopilotProfileA
         }
     }
 
-    It 'Copilot profile yolo arguments launch the native CLI' {
-        $pane = Start-CopilotArgumentProfile -Arguments '--yolo --version'
-        Wait-Until -TimeoutSec 30 -Because 'the real Copilot version reaches the managed profile buffer' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $pane.session_id) -match '(?m)^GitHub Copilot CLI \S+'
+    It 'Native agent profile customizations reach the CLI' {
+        $arguments = if ($script:provider -eq 'copilot') { '--yolo --version' } else { '--version' }
+        $mode = if ($script:provider -eq 'copilot') { 'allow-all-tools' } else { '' }
+        $pane = Start-NativeArgumentProfile -Arguments $arguments -PermissionMode $mode
+        $pane.native_agent_provider_id | Should -Be $script:provider
+        $pane.cwd | Should -Be $script:cwd
+        Wait-Until -TimeoutSec 30 -Because 'the native CLI version reaches the profile buffer' -Condition {
+            (Get-WtCapture -App $script:app -SessionId $pane.session_id) -match '\b\d+\.\d+\.\d+'
         } | Out-Null
         $text = Get-WtCapture -App $script:app -SessionId $pane.session_id
         $text | Should -Not -Match '0x80070057|Unsupported or conflicting native agent argument'
@@ -89,19 +100,14 @@ Describe 'Feature: Copilot profile arguments' -Tag @('Feature', 'CopilotProfileA
             Should -Match '\[process exited with code 0 \(0x00000000\)\]'
     }
 
-    It 'Copilot profile unsupported and conflicting arguments fail before launch' {
-        foreach ($case in @(
-            @{ Arguments = '--unsupported-native-argument'; Mode = '' },
-            @{ Arguments = '--yolo --version'; Mode = 'allow-all-tools' }
-        )) {
-            $pane = Start-CopilotArgumentProfile -Arguments $case.Arguments -PermissionMode $case.Mode
-            Wait-Until -TimeoutSec 15 -Because 'Terminal displays the managed argument rejection' -Condition {
-                (Get-WtCapture -App $script:app -SessionId $pane.session_id).Contains('Unsupported or conflicting native agent argument')
-            } | Out-Null
-            (Get-WtCapture -App $script:app -SessionId $pane.session_id) | Should -Match '0x80070057'
-            (Get-WtPaneStatus -App $script:app -SessionId $pane.session_id).pid | Should -Be 0
-            Stop-Terminal -App $script:app
-            $script:app = $null
-        }
+    It 'Native agent CLI owns invalid argument errors' {
+        $unknown = "--intelligent-terminal-unknown-option-$script:runId"
+        $pane = Start-NativeArgumentProfile -Arguments "$unknown --version"
+        Wait-Until -TimeoutSec 30 -Because 'the native CLI reports the unknown argument and exits' -Condition {
+            $capture = Get-WtCapture -App $script:app -SessionId $pane.session_id
+            $capture.Contains($unknown) -and $capture -match '\[process exited with code (?!0\b)\d+'
+        } | Out-Null
+        $text = Get-WtCapture -App $script:app -SessionId $pane.session_id
+        $text | Should -Not -Match '0x80070057|Unsupported or conflicting native agent argument'
     }
 }

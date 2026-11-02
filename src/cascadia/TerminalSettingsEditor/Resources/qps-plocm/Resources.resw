@@ -3012,7 +3012,7 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>‮Üšë ‬Windows‮ çöḿḿåñđ-ŀïñë ɋüöŧïñģ ƒöŕ ṽåŀüëš çöñŧåïñïñģ šƥåçëš. Åŕģüḿëñŧš ŧħåŧ çöñƒŀïçŧ ŵïŧħ ḿåñåģëđ šëŧŧïñģš öŕ ƥöŀïçÿ åŕë ŕëĵëçŧëđ. Šħëŀŀ çöḿḿåñđš åŕë ñöŧ šüƥƥöŕŧëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <value>‮Üšë ‬Windows‮ çöḿḿåñđ-ŀïñë ɋüöŧïñģ ƒöŕ ṽåŀüëš çöñŧåïñïñģ šƥåçëš. Åŕģüḿëñŧš åŕë ƥåššëđ ŧö ŧħë åģëñŧ, ŵħïçħ ṽåŀïđåŧëš ïŧš öƥŧïöñš. Šħëŀŀ çöḿḿåñđš åŕë ñöŧ šüƥƥöŕŧëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
@@ -3020,8 +3020,8 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
   </data>
   <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>‮Ÿöüŕ öŕģåñïžåŧïöñ ƀŀöçķš ḿåñåģëđ ñåŧïṽë åģëñŧ ŀåüñçħëš. Ŧħë åģëñŧ ḿüšŧ ƀë åŀŀöŵëđ, åñđ ƥöŀïçÿ ḿüšŧ ƥëŕḿïŧ åüŧöḿåŧïç åƥƥŕöṽåŀ ƀëçåüšë ñåŧïṽë åģëñŧš çöñŧŕöŀ ŧħëïŕ öŵñ åƥƥŕöṽåŀ šëŧŧïñģš.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
+    <value>‮Ÿöüŕ öŕģåñïžåŧïöñ đöëš ñöŧ åŀŀöŵ ŧħïš åģëñŧ.‬ !!! !!! !!!</value>
+    <comment>Warning when the AllowedAgents organization policy blocks this agent provider. Applies to native agent profiles, not the agent-pane automatic approval policy.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>[!! Ťôğğļê ƀêţŵêêñ ţĥê ñêŵ šîđêƀåŕ ôŕ çļåššîç ĥôŕîžôñţåļ ţåƀš vîêŵ !!]</value>

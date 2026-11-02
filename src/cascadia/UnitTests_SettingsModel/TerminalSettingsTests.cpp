@@ -65,14 +65,27 @@ namespace SettingsModelUnitTests
     {
         const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
             "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
-            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
-                         "agentProfile.id":"claude","agentProfile.model":"chosen"}]})" });
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"My native agent",
+                         "startingDirectory":"C:\\Project with spaces",
+                         "agentProfile.id":"claude","agentProfile.model":"chosen",
+                         "agentProfile.arguments":"--new-option \"two words\" --model \"user model\""}]})" });
         const auto profile = settings.ActiveProfiles().GetAt(0);
         const auto direct = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
         VERIFY_IS_TRUE(direct->UsesManagedAgentCommand());
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"wta.exe") == std::wstring_view::npos);
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"launch-agent") == std::wstring_view::npos);
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"--model") != std::wstring_view::npos);
+        const auto argv = ::Microsoft::Terminal::AgentProfiles::ParseArguments(
+            ::Microsoft::Terminal::AgentProfiles::Command(profile, false, L""));
+        VERIFY_ARE_EQUAL(size_t{ 7 }, argv.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, argv[1]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"chosen" }, argv[2]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--new-option" }, argv[3]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"two words" }, argv[4]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, argv[5]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"user model" }, argv[6]);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\Project with spaces" }, direct->StartingDirectory());
+        VERIFY_ARE_EQUAL(profile.Name(), direct->StartingTitle());
         direct->UsesManagedAgentCommand(false);
         VERIFY_IS_FALSE(direct->UsesManagedAgentCommand());
         NewTerminalArgs args;
@@ -176,7 +189,7 @@ namespace SettingsModelUnitTests
         policy.allowedAgents->insert(L"claude");
         ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy);
         policy.yoloMode = ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked;
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy), wil::ResultException);
+        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy);
         saved.NativeAgentProviderId(L"copilot");
         VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
         saved.NativeAgentProviderId(L"CLAUDE");

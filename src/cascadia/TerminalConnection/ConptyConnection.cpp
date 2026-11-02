@@ -311,7 +311,10 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             _commandline = unbox_prop_or<winrt::hstring>(settings, L"commandline", _commandline);
             // Capture the launch command once, just like the resolved launch cwd.
             // Later settings or environment changes must not change its identity.
-            _commandline = winrt::hstring{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) };
+            if (unbox_prop_or<bool>(settings, L"expandCommandline", true))
+            {
+                _commandline = winrt::hstring{ wil::ExpandEnvironmentStringsW<std::wstring>(_commandline.c_str()) };
+            }
             _startingDirectory = unbox_prop_or<winrt::hstring>(settings, L"startingDirectory", _startingDirectory);
             _startingTitle = unbox_prop_or<winrt::hstring>(settings, L"startingTitle", _startingTitle);
             _startupError = unbox_prop_or<int32_t>(settings, L"startupError", S_OK);

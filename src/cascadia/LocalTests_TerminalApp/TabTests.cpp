@@ -822,6 +822,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NaturalClosedEventThenNotifyPanesClosingEmitsOnce);
         TEST_METHOD(NaturalFailedEventThenNotifyPanesClosingEmitsOnce);
         TEST_METHOD(ConptyLaunchEvidenceSurvivesProcessExitAndNewConnection);
+        TEST_METHOD(ConptyLaunchCommandExpansionIsExplicit);
         TEST_METHOD(ConnectionFailureEventPreservesOptionalLaunchEvidence);
         TEST_METHOD(NativeOffTeardownBeforeQueuedFailurePublishesFailureBeforeRemoval);
         TEST_METHOD(ReusedSessionIdAcrossControlLifetimesEmitsEndStatePerLifetime);
@@ -8424,6 +8425,21 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::ConptyLaunchCommandExpansionIsExplicit()
+    {
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        const winrt::hstring literal{ L"agent.exe \"%USERPROFILE%\" \"two words\"" };
+        auto settings = Conpty::CreateSettings(literal, L".", L"", false, L"", nullptr, 24, 80, {}, {});
+        const Conpty ordinary;
+        ordinary.Initialize(settings);
+        VERIFY_ARE_EQUAL(winrt::hstring{ wil::ExpandEnvironmentStringsW<std::wstring>(literal.c_str()) }, ordinary.Commandline());
+
+        settings.Insert(L"expandCommandline", winrt::Windows::Foundation::PropertyValue::CreateBoolean(false));
+        const Conpty native;
+        native.Initialize(settings);
+        VERIFY_ARE_EQUAL(literal, native.Commandline());
+    }
+
     void TabTests::AgentProfileInvalidArgumentsDisplayStartupFailure()
     {
         auto page = _commonSetup();
@@ -8463,7 +8479,8 @@ namespace TerminalAppLocalTests
             const CascadiaSettings settings{
                 LR"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
                      "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
-                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.arguments":"--unsupported-native-argument",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"invalid\u0000model",
+                                  "agentProfile.arguments":"--native-user-argument",
                                   "closeOnExit":"always"}]})",
                 LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
                                   "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"copilot"}]})"
@@ -8486,8 +8503,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(State::Failed, connection.State());
             VERIFY_IS_FALSE(connection.as<Conpty>().ProcessStarted());
             VERIFY_IS_TRUE(output.find(L"0x80070057") != std::wstring::npos);
-            VERIFY_IS_TRUE(output.find(L"Unsupported or conflicting native agent argument") != std::wstring::npos);
-            VERIFY_IS_TRUE(output.find(L"--unsupported-native-argument") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"Native agent arguments contain an embedded NUL") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"--model") != std::wstring::npos);
 
             tabsBefore = page->_tabs.Size();
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, false, false, false, false);

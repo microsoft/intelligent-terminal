@@ -9541,6 +9541,12 @@ namespace winrt::TerminalApp::implementation
                                                                             winrt::guid(),
                                                                             profile.Guid());
 
+            if (settingsInternal->UsesManagedAgentCommand())
+            {
+                // Native profile argv is user-owned, not shell text or pane configuration.
+                valueSet.Insert(L"expandCommandline", Windows::Foundation::PropertyValue::CreateBoolean(false));
+            }
+
             if (FAILED(startupError))
             {
                 // Defer the failure until Start so the pane can display it without launching a process.

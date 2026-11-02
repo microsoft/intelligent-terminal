@@ -72,7 +72,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
         return IsManagedAgentProfile() &&
-               (!Policy::IsAgentAllowed(_profile.AgentProfileId()) || !Policy::IsYoloModeAllowed());
+               !Policy::IsAgentAllowed(_profile.AgentProfileId());
     }
 
     void ProfileViewModel::LaunchCommandline(const hstring& value)
