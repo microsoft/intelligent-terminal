@@ -31,7 +31,7 @@ use std::time::SystemTime;
 
 pub type AgentKey = String;
 
-pub(crate) const COPILOT_ATTENTION_COOLDOWN_MS: u64 = 15_000;
+pub(crate) const COPILOT_ATTENTION_COOLDOWN_MS: u64 = 10_000;
 
 pub(crate) fn system_time_ms(time: SystemTime) -> u64 {
     match time
@@ -1842,24 +1842,24 @@ mod tests {
                     pane_session_id: pane("owner"),
                     cwd: PathBuf::from("/other"),
                 },
-                cooldown_time(20_000),
+                cooldown_time(15_000),
             );
             let before = reg.get(&k("cooldown")).unwrap().clone();
-            assert_eq!(before.attention_cooldown_until_ms, Some(25_000));
+            assert_eq!(before.attention_cooldown_until_ms, Some(20_000));
             reg.take_dirty();
             reg.apply_at(
                 SessionEvent::ToolReturned {
                     key: k("cooldown"),
                     timestamp_ms: return_timestamp,
                 },
-                cooldown_time(24_999),
+                cooldown_time(19_999),
             );
             let blocked = reg.get(&k("cooldown")).unwrap();
             assert_eq!(blocked.status, AgentStatus::Attention);
             assert_eq!(blocked.attention_reason, before.attention_reason);
             assert_eq!(blocked.current_tool, before.current_tool);
             assert_eq!(blocked.last_activity_at, before.last_activity_at);
-            assert_eq!(blocked.attention_cooldown_until_ms, Some(25_000));
+            assert_eq!(blocked.attention_cooldown_until_ms, Some(20_000));
             assert!(!reg.take_dirty());
             reg.apply_at(
                 SessionEvent::WorkingDirectoryChanged {
@@ -1867,7 +1867,7 @@ mod tests {
                     pane_session_id: pane("owner"),
                     cwd: PathBuf::from("/at-expiry"),
                 },
-                cooldown_time(25_000),
+                cooldown_time(20_000),
             );
             assert_eq!(
                 reg.get(&k("cooldown")).unwrap().status,
@@ -1878,7 +1878,7 @@ mod tests {
                     key: k("cooldown"),
                     timestamp_ms: return_timestamp,
                 },
-                cooldown_time(25_000),
+                cooldown_time(20_000),
             );
             let recovered = reg.get(&k("cooldown")).unwrap();
             assert_eq!(recovered.status, AgentStatus::Working);
@@ -1902,7 +1902,7 @@ mod tests {
         }
         assert_eq!(
             reg.get(&k("cooldown")).unwrap().attention_cooldown_until_ms,
-            Some(55_000)
+            Some(50_000)
         );
         reg.apply_at(
             SessionEvent::ToolReturned {

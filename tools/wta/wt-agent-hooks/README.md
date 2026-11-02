@@ -239,7 +239,7 @@ without changing the underlying hook state or reading transcript activity.
 Complete is a UI projection of Idle, so it is withheld while OSC reports Working.
 
 A notification
-that enters Attention (Waiting for input) starts a 15-second receipt-time
+that enters Attention (Waiting for input) starts a 10-second receipt-time
 cooldown for that session. All successful `PostToolUse` returns during that
 window are ignored, regardless of tool name or provider timestamp. Another
 blocking notification restarts the window; informational notifications do not.
