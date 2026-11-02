@@ -60,7 +60,7 @@ are layered on the generated settings and are retained if a CLI disappears.
 Copy a profile to create multiple project configurations for the same agent.
 
 An empty model or permission mode adds no corresponding managed option. The CLI
-keeps its configured default unless an explicitly allowed additional argument
+keeps its configured default unless an explicitly provided additional argument
 changes it. Permission choices use provider-specific native
 modes, not a cross-provider promise of read-only access. Approval policies and
 agent sandbox options do not grant or revoke Windows filesystem permissions.
