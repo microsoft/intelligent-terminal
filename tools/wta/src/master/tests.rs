@@ -235,6 +235,133 @@ fn client_connection_to_pending_initialize_agent(
     connection
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_covers_missing_stdout_and_invalid_wsl_receipt() {
+    use crate::telemetry::capture::{self, Event};
+    use std::process::Stdio;
+
+    for source in ["Host", "Wsl"] {
+        capture::take();
+        let wsl = source == "Wsl";
+        let mut command = tokio::process::Command::new("cmd.exe");
+        command.args(["/d", "/c", "echo invalid-receipt"]);
+        command
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .stdout(if wsl { Stdio::piped() } else { Stdio::null() })
+            .kill_on_drop(true);
+        let mut child = crate::protocol::acp::process::AgentProcess::spawn(
+            &mut command,
+            wsl.then(|| {
+                (
+                    "unused-fixture-distro".to_string(),
+                    "expected-marker".to_string(),
+                )
+            }),
+        )
+        .unwrap();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "copilot",
+            source,
+            started: std::time::Instant::now(),
+        };
+        let error = telemetry.take_stdout(&mut child).await.unwrap_err();
+        drop(child);
+        let (failure, message) = if wsl {
+            (ColdStartFailureKind::CleanupFailed, "ownership receipt")
+        } else {
+            (
+                ColdStartFailureKind::TransportFailed,
+                "stdout is not available",
+            )
+        };
+        assert!(format!("{error:#}").contains(message), "{error:#}");
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "copilot".to_string(),
+                source: source.to_string(),
+                failure: Some(failure),
+            }]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_waits_for_failed_startup_cleanup() {
+    use crate::telemetry::capture::{self, Event};
+
+    for failure in [
+        ColdStartFailureKind::TransportFailed,
+        ColdStartFailureKind::InitializeFailed,
+        ColdStartFailureKind::Timeout,
+    ] {
+        capture::take();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "copilot",
+            source: "Wsl",
+            started: std::time::Instant::now(),
+        };
+        let (release, released) = tokio::sync::oneshot::channel();
+        let completion = telemetry.failed(failure, async {
+            released.await.unwrap();
+            Ok(vec!["fixture stderr".to_string()])
+        });
+        tokio::pin!(completion);
+        assert!(futures::poll!(&mut completion).is_pending());
+        assert!(capture::take().is_empty(), "cleanup is not complete yet");
+
+        release.send(()).unwrap();
+        assert_eq!(completion.await.unwrap(), vec!["fixture stderr"]);
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "copilot".to_string(),
+                source: "Wsl".to_string(),
+                failure: Some(failure),
+            }]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_reports_cleanup_failure_without_losing_error() {
+    use crate::telemetry::capture::{self, Event};
+
+    for failure in [
+        ColdStartFailureKind::TransportFailed,
+        ColdStartFailureKind::InitializeFailed,
+        ColdStartFailureKind::Timeout,
+    ] {
+        capture::take();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "custom:fixture",
+            source: "Wsl",
+            started: std::time::Instant::now(),
+        };
+        let cleanup = async {
+            Err::<(), _>(
+                anyhow!("fixture cleanup denied")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
+            )
+        };
+        let error = telemetry.failed(failure, cleanup).await.unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+            Some(&crate::agent_lifecycle::StartupPhase::Cleanup)
+        );
+        assert!(format!("{error:#}").contains("fixture cleanup denied"));
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "custom".to_string(),
+                source: "Wsl".to_string(),
+                failure: Some(ColdStartFailureKind::CleanupFailed),
+            }]
+        );
+    }
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn native_initialize_remains_pending_after_fifteen_seconds_and_accepts_reply() {
     LocalSet::new()

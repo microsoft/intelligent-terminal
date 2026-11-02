@@ -68,6 +68,7 @@ use crate::protocol::acp::spawn::{
     spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
     SharedProviderSelection,
 };
+use crate::telemetry::ColdStartFailureKind;
 
 pub(crate) mod config;
 mod history;
@@ -5997,6 +5998,52 @@ async fn wait_for_agent_exit(
     }
 }
 
+struct AgentColdStartTelemetry<'a> {
+    agent_id: &'a str,
+    source: &'static str,
+    started: std::time::Instant,
+}
+
+impl AgentColdStartTelemetry<'_> {
+    fn complete(&self, failure: Option<ColdStartFailureKind>) {
+        crate::telemetry::log_agent_cold_start_complete(
+            self.agent_id,
+            self.source,
+            self.started.elapsed().as_secs_f64() * 1000.0,
+            failure,
+        );
+    }
+
+    async fn failed<T>(
+        &self,
+        failure: ColdStartFailureKind,
+        cleanup: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let result = cleanup.await;
+        self.complete(Some(if result.is_err() {
+            ColdStartFailureKind::CleanupFailed
+        } else {
+            failure
+        }));
+        result
+    }
+
+    async fn take_stdout(
+        &self,
+        child: &mut crate::protocol::acp::process::AgentProcess,
+    ) -> Result<tokio::io::BufReader<tokio::process::ChildStdout>> {
+        match child.take_stdout().await {
+            Ok(stdout) => Ok(stdout),
+            Err(error) => {
+                let cleanup = self
+                    .failed(ColdStartFailureKind::TransportFailed, child.terminate())
+                    .await;
+                Err(cleanup.err().unwrap_or(error))
+            }
+        }
+    }
+}
+
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
     cell: &AgentCell,
@@ -6016,19 +6063,18 @@ async fn spawn_one_agent(
         crate::agent_source::AgentSource::Host => "Host",
         crate::agent_source::AgentSource::Wsl { .. } => "Wsl",
     };
+    let cold_start = AgentColdStartTelemetry {
+        agent_id: &resolved_agent_id,
+        source: source_kind,
+        started: cold_start_started,
+    };
     let telemetry_model_source =
         provider_binding.telemetry_model_source(&resolved_agent_id, source);
     let prepared =
         match crate::agent_lifecycle::providers::prepare(agent_cmd, agent_id, source).await {
             Ok(prepared) => prepared,
             Err(error) => {
-                crate::telemetry::log_agent_cold_start_complete(
-                    &resolved_agent_id,
-                    source_kind,
-                    cold_start_started.elapsed().as_secs_f64() * 1000.0,
-                    false,
-                    "DependencyInstallFailed",
-                );
+                cold_start.complete(Some(ColdStartFailureKind::DependencyInstallFailed));
                 return Err(error).context(crate::agent_lifecycle::StartupPhase::Preparation);
             }
         };
@@ -6050,13 +6096,7 @@ async fn spawn_one_agent(
     ) {
         Ok(result) => result,
         Err(error) => {
-            crate::telemetry::log_agent_cold_start_complete(
-                &resolved_agent_id,
-                source_kind,
-                cold_start_started.elapsed().as_secs_f64() * 1000.0,
-                false,
-                "SpawnFailed",
-            );
+            cold_start.complete(Some(ColdStartFailureKind::SpawnFailed));
             return Err(startup_error(
                 error,
                 crate::agent_lifecycle::StartupPhase::Spawn,
@@ -6071,11 +6111,13 @@ async fn spawn_one_agent(
         "agent CLI spawned"
     );
 
-    let stdin = spawn_result
-        .child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
+    let stdin = match spawn_result.child.stdin.take() {
+        Some(stdin) => stdin,
+        None => {
+            cold_start.complete(Some(ColdStartFailureKind::TransportFailed));
+            return Err(anyhow!("agent CLI child has no stdin"));
+        }
+    };
     let process_stop = spawn_result.child.stop_token();
     // Routine stderr stays at debug because it may contain prompt / file
     // content. Pre-initialize stderr is buffered and promoted to warning only
@@ -6086,13 +6128,7 @@ async fn spawn_one_agent(
         .stderr
         .take()
         .map(|stderr| stderr_log.drain(stderr));
-    let stdout = match spawn_result.child.take_stdout().await {
-        Ok(stdout) => stdout,
-        Err(error) => {
-            let cleanup = spawn_result.child.terminate().await;
-            return Err(cleanup.err().unwrap_or(error));
-        }
-    };
+    let stdout = cold_start.take_stdout(&mut spawn_result.child).await?;
 
     let client = MasterClient {
         state: Arc::clone(state),
@@ -6238,16 +6274,12 @@ async fn spawn_one_agent(
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
-            let stderr = stderr_log
-                .finish_failed_startup(&mut child, stderr_task)
+            let stderr = cold_start
+                .failed(
+                    ColdStartFailureKind::InitializeFailed,
+                    stderr_log.finish_failed_startup(&mut child, stderr_task),
+                )
                 .await?;
-            crate::telemetry::log_agent_cold_start_complete(
-                &resolved_agent_id,
-                source_kind,
-                cold_start_started.elapsed().as_secs_f64() * 1000.0,
-                false,
-                "InitializeFailed",
-            );
             let error = anyhow::Error::new(e).context(format!(
                 "ACP initialize failed for {}{}",
                 describe_agent_target(agent_cmd, source),
@@ -6260,16 +6292,12 @@ async fn spawn_one_agent(
             ));
         }
         Err(_) => {
-            let stderr = stderr_log
-                .finish_failed_startup(&mut child, stderr_task)
+            let stderr = cold_start
+                .failed(
+                    ColdStartFailureKind::Timeout,
+                    stderr_log.finish_failed_startup(&mut child, stderr_task),
+                )
                 .await?;
-            crate::telemetry::log_agent_cold_start_complete(
-                &resolved_agent_id,
-                source_kind,
-                cold_start_started.elapsed().as_secs_f64() * 1000.0,
-                false,
-                "Timeout",
-            );
             let error = anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI {} did not respond{}",
                 describe_agent_target(agent_cmd, source),
@@ -6281,13 +6309,7 @@ async fn spawn_one_agent(
             ));
         }
     };
-    crate::telemetry::log_agent_cold_start_complete(
-        &resolved_agent_id,
-        source_kind,
-        cold_start_started.elapsed().as_secs_f64() * 1000.0,
-        true,
-        "",
-    );
+    cold_start.complete(None);
 
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so

@@ -47,7 +47,7 @@ Business-field counts exclude the common `PartA_PrivTags` field.
 | App | [CommandPaletteAgentPromptEntered](#appcommandpaletteagentpromptentered) | Entry into visible foreground agent prompt mode | 1 | Usage |
 | App | [CommandPaletteDispatchedAgentPrompt](#appcommandpalettedispatchedagentprompt) | Submission of an agent prompt through the Command Palette | 2 | Usage |
 | App | [SidebarSearchOpened](#appsidebarsearchopened) | Explicit opening of sidebar tab search | 0 | Usage |
-| App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | First successfully loaded Agent-view row count after entry | 1 | Usage |
+| App | [SidebarAgentFilterApplied](#appsidebaragentfilterapplied) | First Ready session-row count after enabling Recent | 1 | Usage |
 | App | [SidebarViewSwitched](#appsidebarviewswitched) | Persisted user transition between sidebar filter states | 3 | Usage |
 | App | [SidebarSessionResumed](#appsidebarsessionresumed) | Sidebar history CLI launch or successful ACP load | 3 | Usage |
 | App | [SidebarKeyboardEntered](#appsidebarkeyboardentered) | Completed external keyboard focus entry into the visible sidebar | 0 | Usage |
@@ -324,26 +324,29 @@ and explicitly reopening tab search emits again.
 
 ### App.SidebarAgentFilterApplied
 
-**Trigger:** the user opens the dedicated Agent sessions sidebar view and its first
-explicitly `Ready` session snapshot is committed. `Loading` or `Error` snapshots
-may display cached rows but do not emit or consume the pending measurement.
-The pending measurement is canceled
-if the user leaves the view before a snapshot succeeds.
+**Trigger:** the unified Sidebar's Recent filter changes from off to on, arming
+one measurement that completes when a successful, explicitly `Ready` session
+snapshot is available and its row projection is committed. This includes applying
+saved settings at startup or reload; it is not restricted to user actions.
+An already-ready snapshot can complete the measurement immediately. `Loading`
+or `Error` snapshots may display cached rows but do not emit or consume it.
+Turning Recent off cancels the pending measurement.
 
 | Field | Type | Meaning / values |
 |---|---|---|
-| `row_count` | UInt32 | Visible Agent-view session rows after applying its current session-search query to the first successful snapshot; may be zero |
+| `row_count` | UInt32 | Projected Recent session rows after applying the current shared Sidebar search query to the successful snapshot; may be zero |
 
-The unified Agent view reads the global shell-origin session registry,
+The Recent section reads the global shell-origin session registry,
 including historical sessions. It does not count current-window tabs,
 split-pane children, or Agent-pane sessions excluded by that view's scope.
-Its search is independent of the live-tab search; entering the view clears
-the session query, but a query entered while loading is honored.
-Repeated open requests while the view is already active, closing the view,
-editing search, and automatic refreshes do not emit again. Closing and
-reopening Agent sessions arms another measurement. Load failure
+Search is shared with live tabs, and enabling Recent preserves the query.
+The query in effect when the measurement completes is honored. Search can
+also reveal historical rows while Recent is off, but does not itself arm
+this event. Repeated enable requests while Recent is already on, editing
+search, and automatic refreshes do not emit again after completion.
+Turning Recent off and back on arms another measurement. Load failure
 does not fabricate a zero-count event; a later successful refresh while
-the same entry remains active can complete the pending measurement.
+Recent remains enabled can complete the pending measurement.
 
 ### App.SidebarViewSwitched
 
@@ -697,8 +700,12 @@ interpret them as active security policy.
 | `AcpErrorCode` | Int32 | ACP error code for `AcpError`; otherwise `0` |
 
 `HelperPipe` measures helper/master initialization, not a fresh agent
-process startup. `Probe` measures model discovery and `SessionsCli` measures
-initialization for `wta sessions list`. These are different populations.
+process startup. `Probe` covers the shared startup path used by model discovery,
+agent verification, and session-list diagnostics. `SessionsCli` covers the
+shared session-fetch path used by `wta sessions list` and delegate session
+lookup. These routes identify shared code paths, not exclusive user actions;
+do not treat all Probe events as model discovery or all SessionsCli events
+as explicit list commands.
 
 ### WTA.AcpNewSessionComplete
 
@@ -735,7 +742,9 @@ failure-kind, or error-code field in this event.
 ### WTA.AgentColdStartComplete
 
 **Trigger:** the master completes a cold process-pool startup attempt,
-including process-spawn failure or ACP initialization failure/timeout.
+including dependency preparation, process spawn, transport setup, or ACP
+initialization failure/timeout. Failure outcomes wait for any explicit
+failed-startup cleanup to finish, even if cleanup itself fails.
 
 | Field | Type | Meaning / values |
 |---|---|---|
@@ -743,9 +752,23 @@ including process-spawn failure or ACP initialization failure/timeout.
 | `Source` | String | `Host` or `Wsl` |
 | `DurationMs` | Double | Monotonic elapsed time for the cold-start attempt in milliseconds |
 | `Success` | Bool | Whether the process was spawned and initialized successfully |
-| `FailureKind` | String | Empty on success; otherwise `SpawnFailed`, `InitializeFailed`, or `Timeout` |
+| `FailureKind` | String | Empty on success; otherwise one of the six bounded values below |
 
-Warm pool reuse does not emit this event. `Source` casing differs from
+| FailureKind | Meaning |
+|---|---|
+| `DependencyInstallFailed` | Provider dependency preparation failed before process spawn |
+| `SpawnFailed` | Creating the owned agent process failed |
+| `TransportFailed` | Required stdio setup failed, including a missing pipe or a timed-out/invalid WSL ownership receipt |
+| `InitializeFailed` | ACP initialize returned an error and failed-startup cleanup completed |
+| `Timeout` | The ACP initialize deadline expired and failed-startup cleanup completed |
+| `CleanupFailed` | Explicit cleanup after transport or initialize failure could not confirm reclamation; takes precedence over the original failure category |
+
+`Success` is true exactly when `FailureKind` is empty. A WSL ownership-receipt
+timeout is `TransportFailed`, not the initialize-only `Timeout`. `CleanupFailed`
+can supersede either category; the returned diagnostic error is preserved.
+Each completed cold attempt emits once; warm pool reuse does not emit.
+Process termination or cancellation before a terminal outcome can leave no
+event and must not be interpreted as success. `Source` casing differs from
 the App snapshot's `AgentSource`.
 
 ### WTA.AgentPromptSent
@@ -997,8 +1020,10 @@ recorded. This covers session MCP, not every tool owned by an agent CLI.
 
 ### WTA.HookOperationCompleted
 
-**Trigger:** hook installation or uninstallation finishes for one supported
-CLI.
+**Trigger:** an explicit `wta hooks install` or `wta hooks uninstall` command
+finishes its operation for one supported CLI. Master automatic hook
+reconciliation, including automatic installation or upgrade, is not instrumented
+by this event.
 
 | Field | Type | Meaning / values |
 |---|---|---|
@@ -1100,7 +1125,7 @@ SQL dialect.
 | App `CommandPaletteDispatchedAgentPrompt` | Join foreground EntryId to entry records. Background EntryId is empty. | Dispatch request, not delegate startup or task completion. |
 | App `AppCreated` | Count window-created snapshots; group by `SidebarEnabled`, provider/effective-provider fields, policy categories, and both custom-agent counts. Divide matching snapshots by all snapshots in the same cohort. | One observation per created window; do not sum primary and delegate custom counts as distinct agents or infer CLI availability. |
 | App `SidebarSearchOpened` | Count explicit search-box opens and distinct devices. | Search entry, not query edits, result views, or Agent-view search. |
-| App `SidebarAgentFilterApplied` | Count Agent-view entries; group or histogram `row_count`, including zero. | First successful Ready snapshot after entry, not tab-search filtering or unique sessions. |
+| App `SidebarAgentFilterApplied` | Count completed Recent-enable measurements; group or histogram `row_count`, including zero. | Includes startup/settings restoration, not just user entries. Uses the shared query; search alone does not arm a measurement. |
 | App `SidebarViewSwitched` | Count successful persisted transitions by from/to/method. | Separate from loaded-row observations and settings reload. |
 | App `SidebarSessionResumed` | Group successful sidebar-only activations by Route/Outcome and age_days. | CLI launch and ACP load have distinct success boundaries; unknown age is -1. |
 | App `SidebarKeyboardEntered` | Count completed external keyboard focus entries. | Not internal movement, pointer focus, or raw key counts. |
@@ -1114,7 +1139,7 @@ SQL dialect.
 | App `DelegateInvoked` | Count by `TriggerSource`. | App-side process launch only; do not merge with the WTA event solely by name. |
 | App `ErrorDetected` | Count by `Branding`. | Pending UI projections can repeat; cannot join one-to-one with WTA classifications. |
 | App `AgentSessionStarted` | Count distinct `StartId` by `StartKind`, `AgentId`, `AgentSource`, configuration fields, `Branding`, and `Distribution`. | Successful host-accepted New/Load observations include prewarm; a load is not necessarily a user resume. |
-| WTA `AcpInitializeComplete` | Group by `Route`, `Success`, `FailureKind`; compute successes / attempts and latency percentiles from `DurationMs` within each route and outcome. | Helper, probe, and sessions-CLI populations are different; not process cold-start time. |
+| WTA `AcpInitializeComplete` | Group by `Route`, `Success`, `FailureKind`; compute successes / attempts and latency percentiles from `DurationMs` within each route and outcome. | Routes are shared caller populations, not exclusive user actions; Probe includes verification/diagnostics and SessionsCli includes delegate lookup. Not process cold-start time. |
 | WTA `AcpNewSessionComplete` | Group by `Route`, `Success`; count successes and duration percentiles per route. Select one helper route population, excluding `Probe`, for chat-session starts. | `MasterForward` and helper routes can describe the same creation; do not sum them. |
 | WTA `AcpLoadSessionComplete` | Count by `Success`; calculate success share and `DurationMs` percentiles separately by outcome. | No route/session ID; cannot distinguish layout restore from session-view resume. |
 | WTA `AgentColdStartComplete` | Group by `AgentId`, `Source`, `Success`, `FailureKind`; compute cold-start success share and `DurationMs` percentiles. | Warm process reuse does not emit. |
@@ -1131,7 +1156,7 @@ SQL dialect.
 | WTA `SessionResumeInvoked` | Count by `Route` and `AgentId`. | Resume-route dispatch, not ACP load success or provider-native CLI completion. |
 | WTA `DelegateInvoked` | Count where `TriggerSource=Agent` separately from App `DelegateInvoked`. | Agent-requested delegation after target creation, not completed work. |
 | WTA `SessionMcpToolCalled` | Count by `ToolName`, retaining `unknown` as its own bucket. | Calls reaching dispatch, before validation, approval, or execution; not agent-owned tools. |
-| WTA `HookOperationCompleted` | Count by `Operation`, `Cli`, `Outcome`; compute `failed` share separately for installation and removal. | One command may emit for multiple CLIs; `skipped` is not necessarily an error. |
+| WTA `HookOperationCompleted` | Count by `Operation`, `Cli`, `Outcome`; compute `failed` share separately for installation and removal. | Explicit hooks commands only, not master automatic reconciliation. One command may emit for multiple CLIs; `skipped` is not necessarily an error. |
 | Model `AgentProviderChanged` | Count by `role`, `from`, `to`; use App `AppCreated` separately for current configuration share. | Successful settings reloads, not every UI edit; custom-to-custom may hide a raw ID change. |
 | Editor `AcpModelProbeStarted` | Count starts by `AgentId`, optionally by `CacheRevision` for diagnostics. | Revision is not a probe ID; do not use it for exact joins or as a retry count. |
 | Editor `AcpModelProbeDiscarded` | Count stale discards by `AgentId` separately from completions. | A discarded generation is not a provider failure. |

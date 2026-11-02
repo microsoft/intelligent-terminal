@@ -520,15 +520,45 @@ pub fn log_delegate_invoked(trigger_source: &str) {
     );
 }
 
-/// Emitted when a newly spawned agent process finishes its initialize flow.
-pub fn log_agent_cold_start_complete(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ColdStartFailureKind {
+    DependencyInstallFailed,
+    SpawnFailed,
+    TransportFailed,
+    InitializeFailed,
+    Timeout,
+    CleanupFailed,
+}
+
+impl ColdStartFailureKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DependencyInstallFailed => "DependencyInstallFailed",
+            Self::SpawnFailed => "SpawnFailed",
+            Self::TransportFailed => "TransportFailed",
+            Self::InitializeFailed => "InitializeFailed",
+            Self::Timeout => "Timeout",
+            Self::CleanupFailed => "CleanupFailed",
+        }
+    }
+}
+
+/// Emitted when a cold agent startup finishes, including failed-startup cleanup.
+pub(crate) fn log_agent_cold_start_complete(
     agent_id: &str,
     source: &str,
     duration_ms: f64,
-    success: bool,
-    failure_kind: &str,
+    failure: Option<ColdStartFailureKind>,
 ) {
-    let success_i32: i32 = if success { 1 } else { 0 };
+    #[cfg(test)]
+    capture::record(capture::Event::AgentColdStartComplete {
+        agent_id: sanitize_agent_id(agent_id).to_string(),
+        source: source.to_string(),
+        failure,
+    });
+
+    let success_i32: i32 = if failure.is_none() { 1 } else { 0 };
+    let failure_kind = failure.map(ColdStartFailureKind::as_str).unwrap_or("");
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentColdStartComplete",
@@ -585,6 +615,11 @@ pub(crate) mod capture {
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) enum Event {
+        AgentColdStartComplete {
+            agent_id: String,
+            source: String,
+            failure: Option<super::ColdStartFailureKind>,
+        },
         AgentSlashCommandUsed(&'static str),
         ErrorFixOffered(uuid::Uuid),
         ErrorFixAccepted(uuid::Uuid, &'static str),
