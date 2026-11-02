@@ -28353,6 +28353,26 @@ namespace TerminalAppLocalTests
                     tab->SetRichTabPresentation(working);
                 });
                 verifyWorkingPixels();
+                TestOnUIThread([&]() {
+                    const auto replacement = winrt::make<winrt::TerminalApp::implementation::TabHeaderPresentation>();
+                    replacement.MetadataText(winrt::hstring{ idle.text });
+                    replacement.MetadataHighlightColor(winrt::TerminalApp::TextHighlightColor::None);
+                    replacement.MetadataHighlightRanges(winrt::TerminalApp::implementation::TabHeaderControl::BuildMetadataHighlightRanges(idle));
+                    uint32_t notifications = 0;
+                    const auto changed = header.PropertyChanged(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                        if (args.PropertyName() == L"Presentation" || args.PropertyName() == L"MetadataText" ||
+                            args.PropertyName() == L"MetadataHighlightColor" || args.PropertyName() == L"MetadataHighlightRanges")
+                        {
+                            ++notifications;
+                            VERIFY_ARE_EQUAL(replacement.MetadataText(), metadata.Text());
+                            VERIFY_ARE_EQUAL(replacement.MetadataHighlightColor(), metadata.ColorHighlight());
+                            VERIFY_IS_TRUE(replacement.MetadataHighlightRanges() == metadata.ColorHighlightRanges());
+                        }
+                    });
+                    VERIFY_IS_TRUE(metadata.IsLoaded());
+                    header.Presentation(replacement);
+                    VERIFY_ARE_EQUAL(4u, notifications);
+                });
             }
         }
     }

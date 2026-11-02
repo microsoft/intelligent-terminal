@@ -245,11 +245,11 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+        _UpdateMetadataPresentation();
         for (const auto name : { L"Presentation", L"Title", L"SearchText", L"RenamerMaxWidth", L"TabStatus", L"MetadataText", L"MetadataAutomationName", L"MetadataHighlightColor", L"MetadataHighlightRanges" })
         {
             PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ name });
         }
-        _UpdateMetadataPresentation();
         _UpdateUnreadActivityVisibility();
         _UpdateTitleVisibility();
     }
