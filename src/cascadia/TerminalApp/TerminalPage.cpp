@@ -12914,11 +12914,6 @@ namespace winrt::TerminalApp::implementation
         {
             return std::nullopt;
         }
-        if (const auto active = _activeCliAgentPanes.find(*paneId);
-            active != _activeCliAgentPanes.end() && !active->second.sessionId.empty())
-        {
-            return std::nullopt;
-        }
         _RichTabAgentInfo info{ {}, "Idle", winrt::to_string(provider), std::nullopt, paneId };
         if (const auto binding = _paneAgentSessions.find(*paneId);
             binding != _paneAgentSessions.end())

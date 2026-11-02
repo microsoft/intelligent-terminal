@@ -7732,6 +7732,25 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(std::string{ "Idle" }, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
                     VERIFY_ARE_EQUAL(initial->cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
 
+                    if (enabled)
+                    {
+                        page->_agentSnapshotRefreshInFlight = true;
+                        const auto started = _keepRunningHook(paneId, "agent.session.start", "", winrt::to_string(winrt::hstring{ provider }));
+                        page->_manager.OnPaneAgentSessionChanged(started);
+                        page->OnPaneAgentSessionChanged(started);
+                        const auto submitted = _keepRunningHook(paneId, "agent.prompt.submit", "confirmed", winrt::to_string(winrt::hstring{ provider }));
+                        page->_manager.OnPaneAgentSessionChanged(submitted);
+                        page->OnPaneAgentSessionChanged(submitted);
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"confirmed" }, page->_activeCliAgentPanes.at(paneId).sessionId);
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"confirmed" }, page->_paneAgentSessions.at(paneId).sessionId);
+                        const auto pending = page->_RichTabAgentInfoForControl(control);
+                        VERIFY_IS_TRUE(pending.has_value());
+                        VERIFY_IS_TRUE(pending->launchMetadata);
+                        VERIFY_ARE_EQUAL(std::string{ "confirmed" }, pending->sessionId);
+                        VERIFY_ARE_EQUAL(initial->status, page->_BuildRichTabFirstPartyFields(control).at("agentStatusId"));
+                        VERIFY_ARE_EQUAL(initial->cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
+                    }
+
                     page->_PublishNativeAgentObservation(control, "reset", true);
                     const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
                     const auto identity = manager->NativeAgentObservationForContent(control.ContentId());
@@ -7751,6 +7770,16 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(std::string{ "Working" }, page->_RichTabAgentInfoForControl(control)->status);
                     VERIFY_ARE_EQUAL(confirmed.cwd.value(), page->_RichTabAgentCwdForControl(control).second.value());
                     page->_richTabAgentStatusByPaneId.erase(paneId);
+                    if (enabled)
+                    {
+                        const auto ended = _keepRunningHook(paneId, "agent.session.end", "confirmed", winrt::to_string(winrt::hstring{ provider }));
+                        page->_manager.OnPaneAgentSessionChanged(ended);
+                        page->OnPaneAgentSessionChanged(ended);
+                        VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
+                        VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(control).contains("agentStatusId"));
+                        VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(control).second.has_value());
+                        page->_richTabEndedSessionByPaneId.erase(paneId);
+                    }
                     const auto settings = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(control.Settings());
                     settings->UsesManagedAgentCommand(false);
                     VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
