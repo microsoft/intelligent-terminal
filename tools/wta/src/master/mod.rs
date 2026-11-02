@@ -1944,7 +1944,7 @@ struct HistoryRefreshState {
     query: history::HistoryQuery,
     listing_started_at_ms: Option<u64>,
     owner: Option<AgentInstanceId>,
-    cwd_baseline: Option<HashMap<crate::session_registry::SessionIdentity, (u64, Option<String>)>>,
+    cwd_baseline: Option<HashMap<crate::session_registry::SessionIdentity, u64>>,
 }
 
 impl HistoryRefreshState {
@@ -1972,8 +1972,10 @@ impl HistoryRefreshState {
     }
 
     fn retry_due(&self) -> bool {
-        !self.startup_exhausted && self.next_refresh_at
-            .is_none_or(|at| at <= tokio::time::Instant::now())
+        !self.startup_exhausted
+            && self
+                .next_refresh_at
+                .is_none_or(|at| at <= tokio::time::Instant::now())
     }
 }
 
@@ -3394,9 +3396,8 @@ impl HelperHandler {
             None => false,
         };
         if requested_control && wta_meta.startup_intent.is_some() {
-            return Err(acp::Error::invalid_request().data(
-                "history control clients cannot request agent startup",
-            ));
+            return Err(acp::Error::invalid_request()
+                .data("history control clients cannot request agent startup"));
         }
         if wta_meta
             .startup_intent
@@ -3528,7 +3529,9 @@ impl HelperHandler {
                 .startup_registry
                 .retry(&key)
                 .await
-                .map_err(|error| helper_initialize_error(HelperInitializeFailure::AgentStartup, &error))?;
+                .map_err(|error| {
+                    helper_initialize_error(HelperInitializeFailure::AgentStartup, &error)
+                })?;
         }
         let agent = self
             .get_or_initialize_agent(|| {
@@ -5859,7 +5862,8 @@ async fn get_or_spawn_agent(
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
-    let admission_key = agent_admission_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
+    let admission_key =
+        agent_admission_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
     let initialization_key = key.clone();
     let agent = acquire_agent_from_pool_with_admission(state, &key, &admission_key, move |cell| {
         let key = initialization_key.clone();
@@ -6014,19 +6018,20 @@ async fn spawn_one_agent(
     };
     let telemetry_model_source =
         provider_binding.telemetry_model_source(&resolved_agent_id, source);
-    let prepared = match crate::agent_lifecycle::providers::prepare(agent_cmd, agent_id, source).await {
-        Ok(prepared) => prepared,
-        Err(error) => {
-        crate::telemetry::log_agent_cold_start_complete(
-            &resolved_agent_id,
-            source_kind,
-            cold_start_started.elapsed().as_secs_f64() * 1000.0,
-            false,
-            "DependencyInstallFailed",
-        );
-            return Err(error).context(crate::agent_lifecycle::StartupPhase::Preparation);
-        }
-    };
+    let prepared =
+        match crate::agent_lifecycle::providers::prepare(agent_cmd, agent_id, source).await {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                crate::telemetry::log_agent_cold_start_complete(
+                    &resolved_agent_id,
+                    source_kind,
+                    cold_start_started.elapsed().as_secs_f64() * 1000.0,
+                    false,
+                    "DependencyInstallFailed",
+                );
+                return Err(error).context(crate::agent_lifecycle::StartupPhase::Preparation);
+            }
+        };
     let startup_error = |error: anyhow::Error, phase| {
         let error = error.context(phase);
         if prepared.outcome == crate::agent_lifecycle::providers::PreparationOutcome::Ready {
@@ -6052,7 +6057,10 @@ async fn spawn_one_agent(
                 false,
                 "SpawnFailed",
             );
-            return Err(startup_error(error, crate::agent_lifecycle::StartupPhase::Spawn));
+            return Err(startup_error(
+                error,
+                crate::agent_lifecycle::StartupPhase::Spawn,
+            ));
         }
     };
     tracing::info!(
@@ -6246,7 +6254,10 @@ async fn spawn_one_agent(
                 format_startup_stderr(&stderr)
             ));
             let error = crate::agent_lifecycle::StartupDetails::attach(error, &stderr);
-            return Err(startup_error(error, crate::agent_lifecycle::StartupPhase::Initialize));
+            return Err(startup_error(
+                error,
+                crate::agent_lifecycle::StartupPhase::Initialize,
+            ));
         }
         Err(_) => {
             let stderr = stderr_log
@@ -6285,7 +6296,8 @@ async fn spawn_one_agent(
         let state = Arc::clone(state);
         let cell = Arc::clone(cell);
         let key = key.clone();
-        let admission_key = agent_admission_key_with_provider(agent_cmd, agent_id, source, provider_binding);
+        let admission_key =
+            agent_admission_key_with_provider(agent_cmd, agent_id, source, provider_binding);
         tokio::task::spawn_local(async move {
             let status = wait_for_agent_exit(&state, &key, &admission_key, &mut child).await;
             tracing::error!(
@@ -7117,51 +7129,6 @@ async fn host_session_list_raw(
         .await
 }
 
-/// Additional pages are cwd evidence only: never add them to history or
-/// `listed_ever`. A failed page walk discards all of its candidates.
-async fn host_acp_cwd_from_later_pages(
-    agent: &AgentCli,
-    refresh: &mut HistoryRefreshState,
-    mut cursor: String,
-    mut wanted: HashSet<String>,
-) -> (Vec<acp::schema::v1::SessionInfo>, bool) {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-    let mut cursors = HashSet::new();
-    let mut found = Vec::new();
-    for _ in 0..8 {
-        if cursor.is_empty() || !cursors.insert(cursor.clone()) {
-            tracing::warn!(target: "master_history", "host ACP cwd pagination cursor repeated");
-            return (Vec::new(), false);
-        }
-        let Some(response) = refresh
-            .query
-            .list_cwd_page(cursor, deadline, &agent.history_refresh.cancelled)
-            .await
-        else {
-            return (Vec::new(), false);
-        };
-        let next_cursor = response.next_cursor;
-        for session in response.sessions {
-            if wanted.remove(session.session_id.0.as_ref()) {
-                found.push(session);
-            }
-        }
-        let Some(next_cursor) = next_cursor else {
-            return (found, true);
-        };
-        if wanted.is_empty() {
-            return (found, false);
-        }
-        cursor = next_cursor;
-    }
-    tracing::debug!(
-        target: "master_history",
-        remaining = wanted.len(),
-        "host ACP cwd pagination budget exhausted; retaining existing evidence"
-    );
-    (found, false)
-}
-
 /// Legacy fallback for rows without a qualified provider identity.
 /// Newly listed custom history uses the actual custom provider ID instead.
 fn stamped_cli(cli: Option<&crate::agent_sessions::CliSource>) -> crate::agent_sessions::CliSource {
@@ -7313,7 +7280,6 @@ async fn sync_host_history(
     state: &MasterStateInner,
     agent: &AgentCli,
     refresh: &mut HistoryRefreshState,
-    search_later_pages: bool,
 ) -> Result<(bool, usize), HistoryRefreshFailure> {
     let host_acp_cwd = host_acp_cwd_enabled(agent);
     if host_acp_cwd
@@ -7331,7 +7297,7 @@ async fn sync_host_history(
                 .map(|row| {
                     (
                         crate::session_registry::SessionIdentity::from_info(&row),
-                        (row.cwd_revision(), row.pane_session_id),
+                        row.cwd_revision(),
                     )
                 })
                 .collect(),
@@ -7359,7 +7325,7 @@ async fn sync_host_history(
     } else {
         HashMap::new()
     };
-    let mut listing_complete = listing.next_cursor.is_none();
+    let listing_complete = listing.next_cursor.is_none();
     let sessions = listing.sessions;
     if agent
         .history_refresh
@@ -7372,25 +7338,6 @@ async fn sync_host_history(
         .iter()
         .map(|row| row.session_id.to_string())
         .collect();
-    let wanted: HashSet<_> = prior_rows
-        .iter()
-        .filter(|(identity, (_, pane))| {
-            pane.is_some() && !first_page_ids.contains(identity.session_id.0.as_ref())
-        })
-        .map(|(identity, _)| identity.session_id.to_string())
-        .collect();
-    let additional_cwd = if search_later_pages && host_acp_cwd && !wanted.is_empty() {
-        if let Some(cursor) = listing.next_cursor {
-            let (found, complete) =
-                host_acp_cwd_from_later_pages(agent, refresh, cursor, wanted).await;
-            listing_complete = complete;
-            found
-        } else {
-            Vec::new()
-        }
-    } else {
-        Vec::new()
-    };
     let rows = host_history_via_acp(state, agent, &sessions)
         .await
         .ok_or(HistoryRefreshFailure::Other)?;
@@ -7510,7 +7457,7 @@ async fn sync_host_history(
     }
 
     if host_acp_cwd {
-        for session in sessions.iter().chain(&additional_cwd) {
+        for session in &sessions {
             let Some(key) = crate::session_registry::HistoryRowKey::new(
                 &agent.resolved_agent_id,
                 crate::agent_sessions::SessionLocation::Host,
@@ -7523,7 +7470,7 @@ async fn sync_host_history(
                 session_id: session.session_id.clone(),
                 history_key: Some(key),
             };
-            let Some((revision, _)) = prior_rows.get(&identity) else {
+            let Some(revision) = prior_rows.get(&identity) else {
                 continue;
             };
             if state
@@ -7540,17 +7487,8 @@ async fn sync_host_history(
             }
         }
         if listing_complete {
-            let listed_cwd_ids: HashSet<_> = first_page_ids
-                .iter()
-                .cloned()
-                .chain(
-                    additional_cwd
-                        .iter()
-                        .map(|session| session.session_id.to_string()),
-                )
-                .collect();
-            for (identity, (revision, _)) in &prior_rows {
-                if !listed_cwd_ids.contains(identity.session_id.0.as_ref())
+            for (identity, revision) in &prior_rows {
+                if !first_page_ids.contains(identity.session_id.0.as_ref())
                     && state
                         .registry
                         .clear_acp_cwd_identity(identity, *revision)
@@ -7675,16 +7613,7 @@ fn is_stale_host_history_row(
 /// broadcasting when anything changed. Returns the listed count.
 #[cfg(test)]
 async fn seed_host_and_broadcast(state: &MasterStateInner, agent: &AgentCli) -> Option<usize> {
-    refresh_agent_history(state, agent, HistoryRefreshTrigger::Immediate).await
-}
-
-#[derive(Clone, Copy)]
-enum HistoryRefreshTrigger {
-    // Explicit requests still honor query pacing and failure backoff.
-    Immediate,
-    Periodic,
-    #[cfg(test)]
-    Event,
+    refresh_agent_history(state, agent).await
 }
 
 fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &AgentCli) -> bool {
@@ -7696,11 +7625,7 @@ fn row_belongs_to_agent(row: &crate::session_registry::SessionInfo, agent: &Agen
         })
 }
 
-async fn refresh_agent_history(
-    state: &MasterStateInner,
-    agent: &AgentCli,
-    trigger: HistoryRefreshTrigger,
-) -> Option<usize> {
+async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Option<usize> {
     use std::sync::atomic::Ordering;
     if agent.history_refresh.retired.load(Ordering::Acquire)
         || agent
@@ -7728,13 +7653,7 @@ async fn refresh_agent_history(
     {
         return refresh.last_count;
     }
-    let result = sync_host_history(
-        state,
-        agent,
-        &mut refresh,
-        matches!(trigger, HistoryRefreshTrigger::Periodic),
-    )
-    .await;
+    let result = sync_host_history(state, agent, &mut refresh).await;
     let delay = if result.is_ok() {
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
@@ -7897,7 +7816,7 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             if agent.history_refresh.retired.load(Ordering::Acquire) {
                 break;
             }
-            refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await;
+            refresh_agent_history(&state, &agent).await;
             drop(state);
             let next = agent
                 .history_refresh
@@ -7933,16 +7852,7 @@ fn host_history_agent_ids(
 }
 
 async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &[&str]) -> bool {
-    refresh_host_history_agents_for_trigger(state, agent_ids, HistoryRefreshTrigger::Immediate)
-        .await
-}
-
-async fn refresh_host_history_agents_for_trigger(
-    state: &Arc<MasterStateInner>,
-    agent_ids: &[&str],
-    trigger: HistoryRefreshTrigger,
-) -> bool {
-    refresh_host_history_agents_with(state, agent_ids, trigger, |command, agent_id| {
+    refresh_host_history_agents_with(state, agent_ids, |command, agent_id| {
         let state = Arc::clone(state);
         async move {
             get_or_spawn_agent(
@@ -7962,7 +7872,6 @@ async fn refresh_host_history_agents_for_trigger(
 async fn refresh_host_history_agents_with<F, Fut>(
     state: &Arc<MasterStateInner>,
     agent_ids: &[&str],
-    trigger: HistoryRefreshTrigger,
     initialize: F,
 ) -> bool
 where
@@ -8044,7 +7953,7 @@ where
             tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
             return true;
         }
-        if refresh_agent_history(state, &agent, trigger).await.is_none() {
+        if refresh_agent_history(state, &agent).await.is_none() {
             let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
             state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
@@ -8062,7 +7971,11 @@ fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
 
 async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
     use std::sync::atomic::Ordering;
-    let stopped: Vec<_> = state.history_discovery_retries.lock().await.iter()
+    let stopped: Vec<_> = state
+        .history_discovery_retries
+        .lock()
+        .await
+        .iter()
         .filter(|(_, retry)| retry.startup_exhausted)
         .map(|(key, _)| key.clone())
         .collect();

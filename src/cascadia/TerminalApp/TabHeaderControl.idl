@@ -51,5 +51,9 @@ namespace TerminalApp
         TextHighlightColor MetadataHighlightColor { get; set; };
         IVector<HighlightedRun> MetadataHighlightRanges { get; set; };
         Windows.UI.Xaml.Visibility PaneRowsVisibility { get; set; };
+        Boolean IsTitleHighlighted { get; };
+        Windows.UI.Xaml.UIElement LeadingContent;
+        Windows.UI.Xaml.UIElement TrailingContent;
+        Windows.UI.Xaml.Visibility TitleVisibility;
     }
 }

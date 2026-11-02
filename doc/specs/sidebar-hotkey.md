@@ -2,7 +2,7 @@
 
 ## Status
 
-Decision record as of October 20, 2026. Development is authorized following
+Decision record revised October 30, 2026. Development is authorized following
 scenario alignment. This document describes the target behavior, not an
 implementation or acceptance report.
 
@@ -16,12 +16,13 @@ Other behavior in that specification is unchanged unless explicitly agreed here.
 
 Ctrl+Shift+S controls the sidebar rather than opening search.
 
-- When it expands a collapsed sidebar, focus the upper-left sidebar toggle
-  button, identified by its Ctrl+Shift+S hover hint.
-- When the sidebar is already expanded and the shortcut moves focus into it,
-  focus that same toggle button.
-- Neither entry path activates search or focuses its search box.
-- Existing sidebar collapse behavior is not being redesigned by this change.
+- When the sidebar is collapsed, expand it without moving focus or opening search.
+- When the sidebar is expanded, collapse it and close sidebar search.
+- If collapse hides the focused sidebar control, move focus to a visible terminal
+  using the existing fallback policy. Focus already outside the sidebar remains
+  unchanged.
+- The upper-left toggle continues to display the effective Ctrl+Shift+S binding,
+  but the shortcut does not focus that button.
 
 Ctrl+F is an Intelligent Terminal application shortcut for search, not a
 sidebar-focus-only shortcut. It must work when terminal input owns focus.
@@ -84,8 +85,9 @@ preservation baseline rather than a new focus/navigation design.
 
 | Starting state | Action | Required outcome |
 | --- | --- | --- |
-| Sidebar collapsed; terminal input focused | Ctrl+Shift+S | Expand and focus the upper-left sidebar toggle without opening search. |
-| Sidebar expanded; terminal input focused; search closed | Ctrl+Shift+S | Keep expanded and focus the toggle without opening search. |
+| Sidebar collapsed; terminal input focused | Ctrl+Shift+S | Expand without moving focus or opening search. |
+| Sidebar expanded; terminal input focused | Ctrl+Shift+S | Collapse and keep terminal focus. |
+| Sidebar expanded; sidebar control focused | Ctrl+Shift+S | Collapse, close search, and use the visible-terminal focus fallback. |
 | Sidebar collapsed; terminal input focused | Ctrl+F | Expand, open search, and focus its input. |
 | Sidebar expanded; terminal input focused; search closed | Ctrl+F | Open search and focus its input. |
 | Search already has a query | Ctrl+F | Focus search; preserve the query and do not select all. |
@@ -97,7 +99,7 @@ preservation baseline rather than a new focus/navigation design.
 
 | Existing behavior to preserve | Scope |
 | --- | --- |
-| Ctrl+Shift+S inside the expanded sidebar collapses it and best-effort returns to input. | Preserve the existing return-target/fallback policy rather than inventing a new one. |
+| Ctrl+Shift+S directly toggles expanded/collapsed state. | Use the same visibility transition as the pointer toggle. |
 | Ctrl+Shift+S is a consumed no-op in horizontal layout. | No request to change its horizontal behavior. |
 | Terminal content find uses Ctrl+Shift+F. | No request to replace or modify it. |
 | User-defined bindings and explicitly unbound shortcuts use the action map. | Do not add a hard-coded chord interception path. |
@@ -106,11 +108,9 @@ preservation baseline rather than a new focus/navigation design.
 
 ## Preserved Search Lifecycle
 
-When Ctrl+Shift+S enters an expanded sidebar while search is already open, move
-focus to the toggle without closing search or changing its query. This is the
-preservation default: removing automatic search activation does not introduce
-another search-close/reset rule. Subsequent collapse continues to use the
-existing search lifecycle.
+When Ctrl+Shift+S collapses an expanded sidebar, close search and clear its query
+through the existing collapse lifecycle. Expanding the sidebar does not activate
+search or move focus.
 
 ## Displayed-tab navigation
 

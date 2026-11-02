@@ -21,6 +21,8 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    static constexpr double SidebarToggleIconSize = 14.0;
+
     static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
     {
         if (!panel || !child)
@@ -38,6 +40,19 @@ namespace winrt::TerminalApp::implementation
     static WUX::Media::Geometry _geometryFromPathData(const hstring& data)
     {
         return WUX::Markup::XamlBindingHelper::ConvertValue(xaml_typename<WUX::Media::Geometry>(), box_value(data)).as<WUX::Media::Geometry>();
+    }
+
+    static WUX::Controls::Viewbox _titlebarFontIcon(const hstring& glyph, const double size)
+    {
+        WUX::Controls::FontIcon icon;
+        icon.Glyph(glyph);
+        icon.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
+
+        WUX::Controls::Viewbox viewbox;
+        viewbox.Width(size);
+        viewbox.Height(size);
+        viewbox.Child(icon);
+        return viewbox;
     }
 
     TabRowControl::TabRowControl()
@@ -99,7 +114,7 @@ namespace winrt::TerminalApp::implementation
         titlebarGrid.HorizontalAlignment(WUX::HorizontalAlignment::Left);
 
         WUX::Controls::ColumnDefinition toggleColumn;
-        toggleColumn.Width(WUX::GridLengthHelper::FromValueAndType(40, WUX::GridUnitType::Pixel));
+        toggleColumn.Width(unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.ColumnDefinitions().Append(toggleColumn);
         titlebarGrid.ColumnDefinitions().Append(WUX::Controls::ColumnDefinition{});
         WUX::Controls::ColumnDefinition newTabColumn;
@@ -111,7 +126,7 @@ namespace winrt::TerminalApp::implementation
         railToggle.Width(40);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
-        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Center);
         railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
         railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         railToggle.BorderThickness(WUX::Thickness{});
@@ -130,8 +145,8 @@ namespace winrt::TerminalApp::implementation
         railToggleGeometry.Transform(railToggleOffset);
 
         WUX::Controls::PathIcon railToggleIcon;
-        railToggleIcon.Width(14);
-        railToggleIcon.Height(14);
+        railToggleIcon.Width(SidebarToggleIconSize);
+        railToggleIcon.Height(SidebarToggleIconSize);
         railToggleIcon.Data(railToggleGeometry);
         railToggle.Content(railToggleIcon);
         railToggle.Click([weakThis = get_weak()](auto&&, auto&&) {
@@ -185,6 +200,7 @@ namespace winrt::TerminalApp::implementation
 
         WUX::Controls::Grid topChromeContainer;
         topChromeContainer.HorizontalAlignment(WUX::HorizontalAlignment::Right);
+        topChromeContainer.Margin(unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarTrailingActionMargin"))));
         WUX::Controls::Grid::SetColumn(topChromeContainer, 2);
         expandedChrome.Children().Append(topChromeContainer);
 
@@ -192,25 +208,34 @@ namespace winrt::TerminalApp::implementation
         // the horizontal button leaves its automation peer attached to the
         // old subtree and hides the client UIA tree after a layout round trip.
         _verticalNewTabButton = MUX::Controls::SplitButton{};
-        _verticalNewTabButton.Width(71);
-        _verticalNewTabButton.Height(32);
+        const auto actionExtent = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
+        const auto actionSpacing = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing")));
+        const auto glyphSize = unbox_value<double>(Resources().Lookup(box_value(L"SidebarNewTabGlyphSize")));
+        // Scope native template sizing to this button, leaving horizontal chrome unchanged.
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonPrimaryButtonSize"), box_value(actionExtent));
+        _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonSecondaryButtonSize"), box_value(actionExtent));
+        _verticalNewTabButton.Width(2 * actionExtent + actionSpacing);
+        _verticalNewTabButton.Height(unbox_value<double>(Resources().Lookup(box_value(L"SidebarNewTabHeight"))));
         _verticalNewTabButton.Padding(WUX::Thickness{});
         _verticalNewTabButton.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
         _verticalNewTabButton.VerticalAlignment(WUX::VerticalAlignment::Center);
         _verticalNewTabButton.AllowDrop(true);
         _verticalNewTabButton.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         _verticalNewTabButton.BorderThickness(WUX::Thickness{});
-        _verticalNewTabButton.Content(box_value(L"\xE710"));
-        _verticalNewTabButton.FontFamily(WUX::Media::FontFamily{ L"Segoe Fluent Icons, Segoe MDL2 Assets" });
-        _verticalNewTabButton.FontSize(12);
+        const auto newTabGlyph = _titlebarFontIcon(L"\xE710", glyphSize);
+        newTabGlyph.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+        newTabGlyph.VerticalAlignment(WUX::VerticalAlignment::Center);
+        _verticalNewTabButton.Content(newTabGlyph);
+        _verticalNewTabButton.IsTabStop(false);
         WUX::Automation::AutomationProperties::SetAccessibilityView(_verticalNewTabButton, WUX::Automation::Peers::AccessibilityView::Control);
         const auto newTabName = WUX::Automation::AutomationProperties::GetName(NewTabButton());
         const auto newTabHelpText = WUX::Automation::AutomationProperties::GetHelpText(NewTabButton());
+        const auto newTabMenuName = RS_(L"CompactNewTabMenuButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name");
         WUX::Automation::AutomationProperties::SetName(_verticalNewTabButton, newTabName);
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
-        _verticalNewTabButton.Loaded([](const auto& sender, const auto&) {
+        _verticalNewTabButton.Loaded([newTabName, newTabMenuName, glyphSize](const auto& sender, const auto&) {
             const auto button = sender.template as<MUX::Controls::SplitButton>();
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
@@ -222,13 +247,29 @@ namespace winrt::TerminalApp::implementation
                         background.CornerRadius(button.CornerRadius());
                     }
                 }
-                if (const auto secondary = root.FindName(L"SecondaryButton").template try_as<WUX::Controls::Button>())
+                for (const auto name : { L"PrimaryButton", L"SecondaryButton" })
                 {
-                    secondary.Padding(WUX::Thickness{});
-                    secondary.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
-                    if (const auto icon = secondary.Content().template try_as<WUX::FrameworkElement>())
+                    if (const auto splitRegion = root.FindName(name).template try_as<WUX::Controls::Button>())
                     {
-                        icon.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                        splitRegion.IsTabStop(true);
+                        splitRegion.CornerRadius(button.CornerRadius());
+                        splitRegion.FocusVisualMargin(WUX::Thickness{});
+                        WUX::Automation::AutomationProperties::SetName(splitRegion,
+                                                                       std::wstring_view{ name } == L"PrimaryButton" ? newTabName : newTabMenuName);
+                        WUX::Automation::AutomationProperties::SetAccessibilityView(splitRegion, WUX::Automation::Peers::AccessibilityView::Control);
+                        splitRegion.Padding(WUX::Thickness{});
+                        splitRegion.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
+                        splitRegion.VerticalContentAlignment(WUX::VerticalAlignment::Center);
+                        if (std::wstring_view{ name } == L"SecondaryButton")
+                        {
+                            const auto dropdownGlyph = _titlebarFontIcon(L"\xE70D", glyphSize);
+                            splitRegion.Content(dropdownGlyph);
+                        }
+                        if (const auto icon = splitRegion.Content().template try_as<WUX::FrameworkElement>())
+                        {
+                            icon.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                            icon.VerticalAlignment(WUX::VerticalAlignment::Center);
+                        }
                     }
                 }
             }
@@ -301,6 +342,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         titlebarGrid.Width(width);
+        titlebarGrid.as<WUX::Controls::Grid>().ColumnDefinitions().GetAt(0).Width(
+            unbox_value<WUX::GridLength>(Resources().Lookup(box_value(
+                collapsed ? L"SidebarCompactLeadingColumnWidth" : L"SidebarExpandedLeadingColumnWidth"))));
         titlebarGrid.Visibility(visible ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         if (_verticalExpandedChrome)
         {
@@ -315,8 +359,8 @@ namespace winrt::TerminalApp::implementation
             _verticalRailToggleLabel.Text(label);
             _verticalRailToggleShortcut.Text(_sidebarToggleKeyChordText);
             _verticalRailToggleShortcut.Visibility(_sidebarToggleKeyChordText.empty() ?
-                                                      WUX::Visibility::Collapsed :
-                                                      WUX::Visibility::Visible);
+                                                       WUX::Visibility::Collapsed :
+                                                       WUX::Visibility::Visible);
         }
     }
 

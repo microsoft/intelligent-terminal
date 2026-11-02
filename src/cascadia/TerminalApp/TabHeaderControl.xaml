@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
     the MIT License. See LICENSE in the project root for license information.
 -->
@@ -16,20 +16,6 @@
 
     <UserControl.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                     Color="#005FB7" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="AgentCompletionIndicatorBrush"
-                                     Color="#60CDFF" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="HighContrast">
-                    <StaticResource x:Key="AgentCompletionIndicatorBrush"
-                                    ResourceKey="SystemColorWindowTextColorBrush" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/IndeterminateProgressResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
@@ -43,9 +29,16 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
+        <ContentPresenter x:Name="HeaderLeadingContentPresenter"
+                          VerticalAlignment="Center"
+                          HorizontalContentAlignment="Stretch"
+                          Content="{x:Bind LeadingContent, Mode=OneWay}" />
         <StackPanel x:Name="HeaderStackPanel"
+                    Grid.Column="1"
                     Orientation="Horizontal">
             <Grid x:Name="HeaderProgressRingPresenter"
                   Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
@@ -117,7 +110,8 @@
                       Glyph="&#xEC05;"
                       Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
         </StackPanel>
-        <Grid Grid.Column="1"
+        <Grid x:Name="HeaderTitleGrid"
+              Grid.Column="2"
               MinWidth="0"
               HorizontalAlignment="Left"
               VerticalAlignment="Center">
@@ -127,12 +121,18 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <local:HighlightedTextControl x:Name="HeaderTextBlock"
+            <TextBlock x:Name="HeaderTextBlock"
+                       MinWidth="0"
+                       VerticalAlignment="Center"
+                       Text="{x:Bind Title, Mode=OneWay}"
+                       TextTrimming="CharacterEllipsis" />
+            <local:HighlightedTextControl x:Name="HeaderHighlightedTextBlock"
                                           MinWidth="0"
                                           VerticalAlignment="Center"
+                                          x:Load="False"
                                           SearchText="{x:Bind SearchText, Mode=OneWay}"
                                           Text="{x:Bind Title, Mode=OneWay}"
-                                          Visibility="Visible">
+                                          Visibility="{x:Bind IsTitleHighlighted, Mode=OneWay}">
                 <local:HighlightedTextControl.TextBlockStyle>
                     <Style TargetType="TextBlock">
                         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -166,7 +166,7 @@
                 <Ellipse x:Name="HeaderCompletionDot"
                          Width="4"
                          Height="4"
-                         Fill="{ThemeResource AgentCompletionIndicatorBrush}" />
+                         Fill="{ThemeResource SystemFillColorAttentionBrush}" />
             </Grid>
             <Grid Grid.Column="2"
                   VerticalAlignment="Center"
@@ -187,25 +187,27 @@
                       Glyph="&#xE8EE;"
                       Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
         </Grid>
+        <ContentPresenter x:Name="HeaderTrailingContentPresenter"
+                          Grid.Column="3"
+                          VerticalAlignment="Center"
+                          Content="{x:Bind TrailingContent, Mode=OneWay}" />
         <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
                                       Grid.Row="1"
+                                      Grid.Column="1"
                                       Grid.ColumnSpan="2"
                                       Margin="0,1,0,0"
+                                      x:Load="False"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
-                                      ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
-                                      ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                       CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
+                                      Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
-                                      Text="{x:Bind MetadataText, Mode=OneWay}"
-                                      TextOpacity="0.72"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
-                <Style TargetType="TextBlock">
+                <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"
+                       TargetType="TextBlock">
                     <Setter Property="MaxLines" Value="2" />
-                    <Setter Property="FontSize" Value="10" />
-                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 </Style>
             </local:HighlightedTextControl.TextBlockStyle>
         </local:HighlightedTextControl>

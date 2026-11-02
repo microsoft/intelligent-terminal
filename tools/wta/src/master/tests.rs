@@ -1163,7 +1163,10 @@ fn provider_binding_isolated_pool_keys_do_not_expose_configuration() {
         *generation = 1;
     }
     assert_ne!(custom.pool_key(), restarted.pool_key());
-    assert_eq!(custom.admission_binding_key(), restarted.admission_binding_key());
+    assert_eq!(
+        custom.admission_binding_key(),
+        restarted.admission_binding_key()
+    );
     let admission_key = custom.admission_binding_key();
     assert!(!admission_key.contains("secret"));
     assert!(!admission_key.contains("model-a"));
@@ -1206,25 +1209,21 @@ async fn discovery_rejects_failure_from_before_external_retry() {
         Some("copilot"),
         &crate::agent_source::AgentSource::Host,
     );
-    let result = refresh_host_history_agents_with(
-        &state,
-        &["copilot"],
-        HistoryRefreshTrigger::Immediate,
-        |_, _| {
-            let registry = Arc::clone(&state.startup_registry);
-            let key = key.clone();
-            async move {
-                let failure = crate::agent_lifecycle::StartupFailure::from_error(
-                    &anyhow!("old attempt"),
-                    3,
-                    None,
-                    false,
-                );
-                registry.retry(&key).await?;
-                Err::<Arc<AgentCli>, _>(failure.into())
-            }
-        },
-    ).await;
+    let result = refresh_host_history_agents_with(&state, &["copilot"], |_, _| {
+        let registry = Arc::clone(&state.startup_registry);
+        let key = key.clone();
+        async move {
+            let failure = crate::agent_lifecycle::StartupFailure::from_error(
+                &anyhow!("old attempt"),
+                3,
+                None,
+                false,
+            );
+            registry.retry(&key).await?;
+            Err::<Arc<AgentCli>, _>(failure.into())
+        }
+    })
+    .await;
     assert!(!result);
     let retries = state.history_discovery_retries.lock().await;
     assert_eq!(retries[&key].retry_epoch, 1);
@@ -1807,10 +1806,7 @@ async fn history_refresh_pool_admission_retires_empty_cell_reaper_results() {
                 assert!(stale.history_refresh.cancelled.is_cancelled());
                 assert!(!stale.history_refresh.worker_started.load(Ordering::Acquire));
                 start_agent_history_worker(&state, &stale);
-                assert_eq!(
-                    refresh_agent_history(&state, &stale, HistoryRefreshTrigger::Immediate).await,
-                    None
-                );
+                assert_eq!(refresh_agent_history(&state, &stale).await, None);
                 assert_eq!(stale.history_refresh.generation.load(Ordering::Acquire), 0);
                 assert!(state.registry.snapshot().await.is_empty());
 
@@ -14992,12 +14988,7 @@ async fn helper_retry_initialize_completes_while_history_is_pending() {
             let refresh_state = Arc::clone(&state);
             let refresh_agent = Arc::clone(&agent);
             let refresh = tokio::task::spawn_local(async move {
-                refresh_agent_history(
-                    &refresh_state,
-                    &refresh_agent,
-                    HistoryRefreshTrigger::Immediate,
-                )
-                .await
+                refresh_agent_history(&refresh_state, &refresh_agent).await
             });
             let reply = requests.recv().await.expect("history RPC must be pending");
             assert!(agent.history_refresh.gate.try_lock().is_err());
@@ -15427,13 +15418,8 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
                     }
                 };
                 assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot", "claude"],
-                        HistoryRefreshTrigger::Immediate,
-                        &initialize
-                    )
-                    .await
+                    !refresh_host_history_agents_with(&state, &["copilot", "claude"], &initialize)
+                        .await
                 );
                 publish_history_sync_status(&state).await;
                 assert_eq!(
@@ -15456,24 +15442,14 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
                 retry_failed_host_history_discovery(&state).await;
                 assert_eq!(state.history_discovery_state.load(Ordering::Acquire), 0);
                 assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot", "claude"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
+                    !refresh_host_history_agents_with(&state, &["copilot", "claude"], &initialize)
+                        .await
                 );
                 assert_eq!(failed_attempts.load(Ordering::SeqCst), 1);
                 tokio::time::advance(std::time::Duration::from_secs(5)).await;
                 assert!(
-                    refresh_host_history_agents_with(
-                        &state,
-                        &["copilot", "claude"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
+                    refresh_host_history_agents_with(&state, &["copilot", "claude"], &initialize)
+                        .await
                 );
                 publish_history_sync_status(&state).await;
                 assert_eq!(
@@ -15486,13 +15462,8 @@ async fn sidebar_history_startup_retry_recovers_without_respawning_healthy_agent
                 assert_eq!(failed_attempts.load(Ordering::SeqCst), 2);
                 assert_eq!(healthy_spawns.load(Ordering::SeqCst), 0);
                 assert!(
-                    refresh_host_history_agents_with(
-                        &state,
-                        &["copilot", "claude"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
+                    refresh_host_history_agents_with(&state, &["copilot", "claude"], &initialize)
+                        .await
                 );
                 assert_eq!(failed_attempts.load(Ordering::SeqCst), 2);
             }
@@ -15565,13 +15536,7 @@ async fn sidebar_history_stops_scheduling_an_exhausted_startup_target() {
             };
             for _ in 0..3 {
                 assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize,
-                    )
-                    .await
+                    !refresh_host_history_agents_with(&state, &["copilot"], &initialize,).await
                 );
                 tokio::time::advance(std::time::Duration::from_secs(120)).await;
             }
@@ -15579,15 +15544,9 @@ async fn sidebar_history_stops_scheduling_an_exhausted_startup_target() {
                 !state.history_discovery_retries.lock().await[&key].retry_due(),
                 "a saturated startup budget must not remain on the background retry timer"
             );
-            for trigger in [HistoryRefreshTrigger::Periodic, HistoryRefreshTrigger::Immediate] {
+            for _ in 0..2 {
                 assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        trigger,
-                        &initialize,
-                    )
-                    .await
+                    !refresh_host_history_agents_with(&state, &["copilot"], &initialize,).await
                 );
             }
             assert_eq!(calls.load(Ordering::SeqCst), 3);
@@ -15612,40 +15571,16 @@ async fn sidebar_history_startup_retry_stops_after_three_failures_without_implic
                 &crate::agent_source::AgentSource::Host,
             );
             for (index, delay) in [5, 10].into_iter().enumerate() {
-                assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
-                );
+                assert!(!refresh_host_history_agents_with(&state, &["copilot"], &initialize).await);
                 assert_eq!(attempts.load(Ordering::SeqCst), index + 1);
                 let expected = tokio::time::Instant::now() + std::time::Duration::from_secs(delay);
                 assert_eq!(
                     state.history_discovery_retries.lock().await[&key].next_refresh_at,
                     Some(expected)
                 );
-                assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
-                );
+                assert!(!refresh_host_history_agents_with(&state, &["copilot"], &initialize).await);
                 tokio::time::advance(std::time::Duration::from_secs(delay - 1)).await;
-                assert!(
-                    !refresh_host_history_agents_with(
-                        &state,
-                        &["copilot"],
-                        HistoryRefreshTrigger::Periodic,
-                        &initialize
-                    )
-                    .await
-                );
+                assert!(!refresh_host_history_agents_with(&state, &["copilot"], &initialize).await);
                 assert_eq!(attempts.load(Ordering::SeqCst), index + 1);
                 assert_eq!(
                     state.history_discovery_errors.lock().await.get(&key),
@@ -15653,25 +15588,9 @@ async fn sidebar_history_startup_retry_stops_after_three_failures_without_implic
                 );
                 tokio::time::advance(std::time::Duration::from_secs(1)).await;
             }
-            assert!(
-                !refresh_host_history_agents_with(
-                    &state,
-                    &["copilot"],
-                    HistoryRefreshTrigger::Immediate,
-                    &initialize
-                )
-                .await
-            );
+            assert!(!refresh_host_history_agents_with(&state, &["copilot"], &initialize).await);
             tokio::time::advance(std::time::Duration::from_secs(3600)).await;
-            assert!(
-                !refresh_host_history_agents_with(
-                    &state,
-                    &["copilot"],
-                    HistoryRefreshTrigger::Immediate,
-                    &initialize
-                )
-                .await
-            );
+            assert!(!refresh_host_history_agents_with(&state, &["copilot"], &initialize).await);
             assert_eq!(attempts.load(Ordering::SeqCst), 3);
         })
         .await;
@@ -16420,13 +16339,13 @@ async fn history_refresh_coalesces_waiters_and_queries_history_and_titles_once()
                 .await
                 .insert(HelperId(1), notifications);
 
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let first = tokio::select! {
                 request = requests.recv() => request.unwrap(),
                 _ = &mut refresh => panic!("refresh completed before agent replied"),
             };
-            let waiter = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let waiter = refresh_agent_history(&state, &agent);
             tokio::pin!(waiter);
             assert!(futures::poll!(&mut waiter).is_pending());
             first
@@ -16484,7 +16403,7 @@ async fn pooled_copilot_cwd_updates_bound_registry_without_replacing_history() {
                 .await
                 .insert(HelperId(1), tx);
 
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 let mut row = history_row("live-cwd", "Current session");
                 row.cwd = PathBuf::from("C:\\from-acp");
@@ -16499,7 +16418,7 @@ async fn pooled_copilot_cwd_updates_bound_registry_without_replacing_history() {
             assert!(notifications.try_recv().is_ok());
 
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -16527,7 +16446,7 @@ async fn pooled_copilot_cwd_updates_bound_registry_without_replacing_history() {
                 )
                 .await;
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
             };
@@ -16559,7 +16478,7 @@ async fn pooled_claude_cwd_preserves_unlisted_session_and_adopts_new_listing() {
             live.pane_session_id = Some("claude-pane".into());
             state.registry.upsert(live).await;
 
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async { requests.recv().await.unwrap().send(Ok(vec![])).unwrap() };
             assert_eq!(tokio::join!(refresh, reply).0, Some(0));
             assert_eq!(
@@ -16568,7 +16487,7 @@ async fn pooled_claude_cwd_preserves_unlisted_session_and_adopts_new_listing() {
             );
 
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 let mut row = history_row("claude-live", "Saved session");
                 row.cwd = PathBuf::from("C:\\new");
@@ -16584,7 +16503,7 @@ async fn pooled_claude_cwd_preserves_unlisted_session_and_adopts_new_listing() {
             );
 
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -16667,8 +16586,7 @@ async fn pooled_opencode_v2_cwd_adopts_listing_but_v1_keeps_hook() {
                     )
                     .await;
 
-                let refresh =
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &agent);
                 let reply = async {
                     let mut row = history_row("opencode-live", "Current session");
                     row.cwd = PathBuf::from("C:\\from-acp");
@@ -16709,7 +16627,7 @@ async fn pooled_opencode_v2_late_listing_cannot_override_newer_hook_cwd() {
             live.pane_session_id = Some("opencode-pane".into());
             state.registry.upsert(live).await;
 
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let reply = tokio::select! {
                 reply = requests.recv() => reply.unwrap(),
@@ -16729,7 +16647,7 @@ async fn pooled_opencode_v2_late_listing_cannot_override_newer_hook_cwd() {
                 )
                 .await;
 
-            let retry = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let retry = refresh_agent_history(&state, &agent);
             tokio::pin!(retry);
             assert!(futures::poll!(&mut retry).is_pending());
             assert!(
@@ -16748,8 +16666,8 @@ async fn pooled_opencode_v2_late_listing_cannot_override_newer_hook_cwd() {
         .await;
 }
 
-#[tokio::test]
-async fn pooled_opencode_v2_finds_bound_cwd_on_later_page() {
+#[tokio::test(start_paused = true)]
+async fn pooled_opencode_v2_preserves_unlisted_cwd_without_fetching_later_pages() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let state = make_state();
@@ -16775,25 +16693,52 @@ async fn pooled_opencode_v2_finds_bound_cwd_on_later_page() {
                 .unwrap()
                 .cached_init_resp
                 .agent_info = Some(acp::schema::v1::Implementation::new("OpenCode", "2.0.24"));
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
-                Some(1)
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
             assert_eq!(cursors.try_recv().unwrap(), None);
-            assert_eq!(cursors.try_recv().unwrap(), Some("page-2".into()));
+            assert_eq!(
+                cursors.try_recv(),
+                Err(mpsc::error::TryRecvError::Empty),
+                "a missing bound session must not trigger CWD-only pagination"
+            );
             assert_eq!(
                 state.registry.lookup(&sid).await.unwrap().cwd,
-                PathBuf::from("C:\\new")
+                PathBuf::from("C:\\old")
             );
+            assert!(agent
+                .history_refresh
+                .gate
+                .lock()
+                .await
+                .query
+                .process
+                .is_some());
+            for _ in 0..2 {
+                tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+                assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
+                assert_eq!(cursors.try_recv().unwrap(), None);
+                assert_eq!(cursors.try_recv(), Err(mpsc::error::TryRecvError::Empty));
+                assert!(agent
+                    .history_refresh
+                    .gate
+                    .lock()
+                    .await
+                    .query
+                    .process
+                    .is_some());
+                assert_eq!(
+                    state.registry.lookup(&sid).await.unwrap().cwd,
+                    PathBuf::from("C:\\old")
+                );
+            }
         })
         .await;
 }
 
 #[tokio::test]
-async fn completed_paginated_cwd_listing_releases_missing_session() {
+async fn unlisted_cwd_keeps_newer_hook_with_or_without_cursor() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for complete in [true, false] {
+            for has_more in [true, false] {
                 let state = make_state();
                 let sid = SessionId::new("missing-page-two");
                 let mut live = crate::session_registry::SessionInfo::new(
@@ -16809,15 +16754,9 @@ async fn completed_paginated_cwd_listing_releases_missing_session() {
 
                 let mut first =
                     acp::schema::v1::ListSessionsResponse::new(vec![history_row("front", "first")]);
-                first.next_cursor = Some("page-2".into());
-                let mut second = acp::schema::v1::ListSessionsResponse::new(vec![]);
-                if !complete {
-                    second.next_cursor = Some("missing-page".into());
-                }
-                let (agent, mut cursors) = paged_history_agent(
-                    "copilot",
-                    HashMap::from([(None, first), (Some("page-2".into()), second)]),
-                );
+                first.next_cursor = has_more.then(|| "page-2".into());
+                let (agent, mut cursors) =
+                    paged_history_agent("copilot", HashMap::from([(None, first)]));
                 let original = state.registry.lookup(&sid).await.unwrap();
                 assert!(
                     state
@@ -16842,19 +16781,24 @@ async fn completed_paginated_cwd_listing_releases_missing_session() {
                     .await;
                 assert_eq!(
                     state.registry.lookup(&sid).await.unwrap().cwd,
-                    PathBuf::from("C:\\acp")
+                    PathBuf::from("C:\\hook")
                 );
 
-                assert_eq!(
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
-                    Some(1)
-                );
+                assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
                 assert_eq!(cursors.try_recv().unwrap(), None);
-                assert_eq!(cursors.try_recv().unwrap(), Some("page-2".into()));
+                assert_eq!(cursors.try_recv(), Err(mpsc::error::TryRecvError::Empty));
+                assert!(agent
+                    .history_refresh
+                    .gate
+                    .lock()
+                    .await
+                    .query
+                    .process
+                    .is_some());
                 assert_eq!(
                     state.registry.lookup(&sid).await.unwrap().cwd,
-                    PathBuf::from(if complete { "C:\\hook" } else { "C:\\acp" }),
-                    "complete={complete}"
+                    PathBuf::from("C:\\hook"),
+                    "has_more={has_more}"
                 );
             }
         })
@@ -16862,7 +16806,7 @@ async fn completed_paginated_cwd_listing_releases_missing_session() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn later_page_claude_cwd_does_not_extend_first_page_history() {
+async fn claude_cwd_refresh_does_not_fetch_unreturned_history() {
     tokio::task::LocalSet::new()
         .run_until(async {
             let state = make_state();
@@ -16889,16 +16833,12 @@ async fn later_page_claude_cwd_does_not_extend_first_page_history() {
                 "claude",
                 HashMap::from([(None, first), (Some("page-2".to_string()), second)]),
             );
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
-                Some(1)
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
             assert_eq!(cursors.try_recv().unwrap(), None);
-            assert_eq!(cursors.try_recv().unwrap(), Some("page-2".into()));
-            assert!(cursors.try_recv().is_err());
+            assert_eq!(cursors.try_recv(), Err(mpsc::error::TryRecvError::Empty));
             assert_eq!(
                 state.registry.lookup(&sid).await.unwrap().cwd,
-                PathBuf::from("C:\\updated")
+                PathBuf::from("C:\\old")
             );
             let ids: HashSet<_> = state
                 .registry
@@ -16911,70 +16851,13 @@ async fn later_page_claude_cwd_does_not_extend_first_page_history() {
             assert!(ids.contains("bound-page-two"));
             assert!(!ids.contains("page-two-history"));
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                Some(1)
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
             assert_eq!(cursors.try_recv().unwrap(), None);
-            assert!(
-                cursors.try_recv().is_err(),
+            assert_eq!(
+                cursors.try_recv(),
+                Err(mpsc::error::TryRecvError::Empty),
                 "manual refresh keeps its first-page latency budget"
             );
-        })
-        .await;
-}
-
-#[tokio::test]
-async fn repeated_cwd_cursor_discards_partial_page_evidence() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let state = make_state();
-            for id in ["wanted", "still-missing"] {
-                let mut row = crate::session_registry::SessionInfo::new(
-                    SessionId::new(id),
-                    PathBuf::from("C:\\old"),
-                );
-                row.provider_id = Some("copilot".into());
-                row.location = crate::agent_sessions::SessionLocation::Host;
-                row.status = Some(crate::agent_sessions::AgentStatus::Idle);
-                row.pane_session_id = Some(format!("pane-{id}"));
-                state.registry.upsert(row).await;
-            }
-            let mut first = acp::schema::v1::ListSessionsResponse::new(vec![history_row(
-                "front",
-                "first page",
-            )]);
-            first.next_cursor = Some("repeat".into());
-            let mut partial = acp::schema::v1::ListSessionsResponse::new(vec![history_row(
-                "wanted",
-                "second page",
-            )]);
-            partial.sessions[0].cwd = PathBuf::from("C:\\partial");
-            partial.next_cursor = Some("repeat".into());
-            let (agent, mut cursors) = paged_history_agent(
-                "copilot",
-                HashMap::from([(None, first), (Some("repeat".into()), partial)]),
-            );
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic).await,
-                Some(1)
-            );
-            assert_eq!(cursors.try_recv().unwrap(), None);
-            assert_eq!(cursors.try_recv().unwrap(), Some("repeat".into()));
-            assert_eq!(
-                state
-                    .registry
-                    .lookup(&SessionId::new("wanted"))
-                    .await
-                    .unwrap()
-                    .cwd,
-                PathBuf::from("C:\\old")
-            );
-            assert!(state
-                .registry
-                .lookup(&SessionId::new("front"))
-                .await
-                .is_some());
         })
         .await;
 }
@@ -17158,7 +17041,7 @@ async fn history_refresh_retains_one_request_until_late_success_and_preserves_ch
             state
                 .history_status
                 .send_replace(crate::session_registry::HistoryLoadStatus::Ready.into());
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let reply = tokio::select! {
                 reply = requests.recv() => reply.unwrap(),
@@ -17172,8 +17055,8 @@ async fn history_refresh_retains_one_request_until_late_success_and_preserves_ch
                 0,
                 "soft timeout is not a completed failure"
             );
-            let manual = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
-            let event = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Event);
+            let manual = refresh_agent_history(&state, &agent);
+            let event = refresh_agent_history(&state, &agent);
             tokio::pin!(manual, event);
             assert!(futures::poll!(&mut manual).is_pending());
             assert!(futures::poll!(&mut event).is_pending());
@@ -17193,10 +17076,7 @@ async fn history_refresh_retains_one_request_until_late_success_and_preserves_ch
             assert_eq!(tokio::join!(manual, event), (Some(1), Some(1)));
             assert!(!agent.history_refresh.gate.lock().await.query.in_flight());
             assert!(requests.try_recv().is_err());
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                Some(1)
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
             assert!(
                 requests.try_recv().is_err(),
                 "successful completion also imposes five-second pacing"
@@ -17217,7 +17097,7 @@ async fn history_refresh_hard_deadline_is_absolute_and_late_results_are_discarde
                 PathBuf::from("C:\\repo"),
             );
             state.registry.upsert(retained.clone()).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let reply = tokio::select! {
                 reply = requests.recv() => reply.unwrap(),
@@ -17226,19 +17106,13 @@ async fn history_refresh_hard_deadline_is_absolute_and_late_results_are_discarde
             tokio::time::advance(std::time::Duration::from_secs(5)).await;
             assert_eq!(refresh.await, None);
             tokio::time::advance(std::time::Duration::from_secs(294)).await;
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert!(
                 agent.history_refresh.gate.lock().await.query.in_flight(),
                 "still retained at 299 seconds"
             );
             tokio::time::advance(std::time::Duration::from_secs(1)).await;
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             let refresh = agent.history_refresh.gate.lock().await;
             assert!(!refresh.query.in_flight());
             assert!(refresh.query.process.is_none());
@@ -17271,7 +17145,7 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
             let state = make_state();
             let (agent, mut requests) =
                 controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let _held = tokio::select! {
                 reply = requests.recv() => reply.unwrap(),
@@ -17284,10 +17158,7 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
                 gate.query.expire_for_test();
                 gate.query.reject_stop_for_test(true);
             }
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert!(agent
                 .history_refresh
                 .gate
@@ -17296,20 +17167,14 @@ async fn history_refresh_does_not_replace_a_process_with_unconfirmed_exit() {
                 .query
                 .process
                 .is_some());
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert_eq!(
                 agent.history_refresh.gate.lock().await.failures,
                 1,
                 "manual retry respects cleanup backoff"
             );
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert_eq!(agent.history_refresh.gate.lock().await.failures, 2);
             assert!(agent
                 .history_refresh
@@ -17538,7 +17403,7 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
             );
             for attempt in 1..=3 {
                 let mut refresh = Box::pin(refresh_agent_history(
-                    &state, &agent, HistoryRefreshTrigger::Immediate,
+                    &state, &agent,
                 ));
                 let received = async {
                     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
@@ -17575,7 +17440,7 @@ while ($null -ne ($line=[Console]::In.ReadLine())) {{
             tokio::time::advance(std::time::Duration::from_secs(60)).await;
             tokio::time::resume();
             assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
+                refresh_agent_history(&state, &agent).await,
                 None
             );
             assert_eq!(
@@ -17789,11 +17654,7 @@ async fn history_retry_wakes_paused_worker_without_waiting_for_other_agents() {
             start_agent_history_worker(&state, &paused);
             tokio::task::yield_now().await;
 
-            let mut busy_refresh = Box::pin(refresh_agent_history(
-                &state,
-                &busy,
-                HistoryRefreshTrigger::Immediate,
-            ));
+            let mut busy_refresh = Box::pin(refresh_agent_history(&state, &busy));
             let held = tokio::select! {
                 request = busy_requests.recv() => request.unwrap(),
                 result = &mut busy_refresh => panic!("missing busy history request: {result:?}"),
@@ -17928,10 +17789,7 @@ async fn history_refresh_duplicate_old_reaper_does_not_kill_the_replacement_work
                 .query
                 .process
                 .is_some());
-            assert_eq!(
-                refresh_agent_history(&state, &fresh, HistoryRefreshTrigger::Immediate).await,
-                Some(1)
-            );
+            assert_eq!(refresh_agent_history(&state, &fresh).await, Some(1));
             assert!(state.agents.lock().await[&fresh.cmd_key]
                 .get()
                 .is_some_and(|current| Arc::ptr_eq(current, &fresh)));
@@ -17946,7 +17804,7 @@ async fn history_refresh_auth_failure_retires_only_history_and_observes_backoff(
             let state = make_state();
             let (agent, mut requests) =
                 controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -17964,18 +17822,12 @@ async fn history_refresh_auth_failure_retires_only_history_and_observes_backoff(
                 .query
                 .process
                 .is_some());
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert_eq!(agent.history_refresh.gate.lock().await.failures, 1);
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
             // This fixture has no launch target; retiring the stale authenticated
             // instance still happens before the replacement attempt is rejected.
-            assert_eq!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await,
-                None
-            );
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
             assert!(agent
                 .history_refresh
                 .gate
@@ -18022,11 +17874,9 @@ async fn history_refresh_live_copilot_readonly_connection_can_be_recycled() {
                 .ok()
                 .unwrap();
             for _ in 0..2 {
-                let mut count =
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate).await;
+                let mut count = refresh_agent_history(&state, &agent).await;
                 while count.is_none() && agent.history_refresh.gate.lock().await.query.in_flight() {
-                    count = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate)
-                        .await;
+                    count = refresh_agent_history(&state, &agent).await;
                 }
                 assert!(
                     count.is_some(),
@@ -18074,8 +17924,7 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                 ))
                 .await;
             for delay in [5, 10] {
-                let refresh =
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &agent);
                 let reply = async {
                     requests
                         .recv()
@@ -18101,25 +17950,13 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                         - tokio::time::Instant::now(),
                     std::time::Duration::from_secs(delay)
                 );
-                assert!(
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Event)
-                        .await
-                        .is_none()
-                );
-                assert!(
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Periodic)
-                        .await
-                        .is_none()
-                );
+                assert!(refresh_agent_history(&state, &agent).await.is_none());
+                assert!(refresh_agent_history(&state, &agent).await.is_none());
                 assert!(
                     requests.try_recv().is_err(),
                     "background refresh observes failure backoff"
                 );
-                assert!(
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate)
-                        .await
-                        .is_none()
-                );
+                assert!(refresh_agent_history(&state, &agent).await.is_none());
                 assert!(
                     requests.try_recv().is_err(),
                     "manual refresh cannot bypass failure backoff"
@@ -18127,7 +17964,7 @@ async fn history_refresh_failure_backs_off_without_clearing_rows_and_manual_refr
                 assert_eq!(state.registry.snapshot().await.len(), 1);
                 tokio::time::advance(std::time::Duration::from_secs(delay)).await;
             }
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(vec![])).unwrap();
             };
@@ -18149,7 +17986,7 @@ async fn history_refresh_discards_a_retired_connections_late_response() {
             let state = make_state();
             let (agent, mut requests) =
                 controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 let request = requests.recv().await.unwrap();
                 agent
@@ -18162,11 +17999,7 @@ async fn history_refresh_discards_a_retired_connections_late_response() {
             };
             assert!(tokio::join!(refresh, reply).0.is_none());
             assert!(state.registry.snapshot().await.is_empty());
-            assert!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate)
-                    .await
-                    .is_none()
-            );
+            assert!(refresh_agent_history(&state, &agent).await.is_none());
             assert!(requests.try_recv().is_err());
         })
         .await;
@@ -18183,7 +18016,7 @@ async fn history_refresh_retirement_waits_for_post_fetch_registry_publication() 
             add_test_agent_to_pool(&state, &agent).await;
             let cell = state.agents.lock().await[&agent.cmd_key].clone();
             let listed = agent.listed_ever.lock().await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             tokio::pin!(refresh);
             let request = tokio::select! {
                 request = requests.recv() => request.unwrap(),
@@ -18210,11 +18043,7 @@ async fn history_refresh_retirement_waits_for_post_fetch_registry_publication() 
             assert!(agent.history_refresh.retired.load(Ordering::Acquire));
             let before = state.registry.snapshot().await;
             assert_eq!(before.len(), 1);
-            assert!(
-                refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate)
-                    .await
-                    .is_none()
-            );
+            assert!(refresh_agent_history(&state, &agent).await.is_none());
             assert_eq!(state.registry.snapshot().await, before);
             assert!(requests.try_recv().is_err());
         })
@@ -18299,7 +18128,7 @@ async fn history_refresh_discovery_completion_includes_failure_during_its_broadc
                 },
             );
             add_test_agent_to_pool(&state, &agent).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(Vec::new())).unwrap();
             };
@@ -18310,7 +18139,7 @@ async fn history_refresh_discovery_completion_includes_failure_during_its_broadc
             status.changed().await.unwrap();
             assert_eq!(status.borrow().status, HistoryLoadStatus::Ready);
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -18344,7 +18173,7 @@ async fn history_refresh_discovery_preserves_failed_wsl_status_until_recovery() 
                 },
             );
             add_test_agent_to_pool(&state, &agent).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -18367,7 +18196,7 @@ async fn history_refresh_discovery_preserves_failed_wsl_status_until_recovery() 
                 );
             }
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(Vec::new())).unwrap();
             };
@@ -18438,8 +18267,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
             assert_eq!(snapshot.history_status, Some(HistoryLoadStatus::Error));
             assert_eq!(snapshot.history_error_kind, Some(HistoryErrorKind::Timeout));
-            let resume =
-                refresh_agent_history(&state, &timeout_agent, HistoryRefreshTrigger::Immediate);
+            let resume = refresh_agent_history(&state, &timeout_agent);
             tokio::pin!(resume);
             assert!(futures::poll!(&mut resume).is_pending());
             assert!(
@@ -18453,8 +18281,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 HistoryLoadStatus::Ready
             );
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh =
-                refresh_agent_history(&state, &timeout_agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &timeout_agent);
             let reply = async {
                 timeout_requests
                     .recv()
@@ -18470,8 +18297,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 Some(HistoryRefreshFailure::Other),
             );
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh =
-                refresh_agent_history(&state, &timeout_agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &timeout_agent);
             tokio::pin!(refresh);
             let late_reply = tokio::select! {
                 request = timeout_requests.recv() => request.unwrap(),
@@ -18491,8 +18317,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 .lock()
                 .await
                 .insert(HelperId(1), notifications);
-            let refresh =
-                refresh_agent_history(&state, &other_agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &other_agent);
             let reply = async {
                 other_requests
                     .recv()
@@ -18521,8 +18346,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 .await
                 .insert("initialization".into(), HistoryRefreshFailure::Other);
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh =
-                refresh_agent_history(&state, &other_agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &other_agent);
             let reply = async {
                 other_requests
                     .recv()
@@ -18549,8 +18373,7 @@ async fn history_refresh_timeout_kind_distinguishes_mixed_failures_and_recovery(
                 "a successful empty listing suppresses the other agent's timeout"
             );
 
-            let refresh =
-                refresh_agent_history(&state, &timeout_agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &timeout_agent);
             late_reply.send(Ok(Vec::new())).unwrap();
             assert_eq!(refresh.await, Some(0));
             assert!(
@@ -18594,8 +18417,7 @@ async fn history_refresh_reports_errors_only_when_all_agents_fail() {
                 add_test_agent_to_pool(&state, &failed).await;
                 add_test_agent_to_pool(&state, &healthy).await;
 
-                let refresh =
-                    refresh_agent_history(&state, &failed, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &failed);
                 let reply = async {
                     failed_requests
                         .recv()
@@ -18617,8 +18439,7 @@ async fn history_refresh_reports_errors_only_when_all_agents_fail() {
                     .lock()
                     .await
                     .insert(HelperId(1), notifications);
-                let refresh =
-                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &healthy);
                 let reply = async {
                     healthy_requests
                         .recv()
@@ -18644,8 +18465,7 @@ async fn history_refresh_reports_errors_only_when_all_agents_fail() {
                 assert_eq!(snapshot.sessions.len(), rows.len());
 
                 tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-                let refresh =
-                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &healthy);
                 let reply = async {
                     healthy_requests
                         .recv()
@@ -18663,8 +18483,7 @@ async fn history_refresh_reports_errors_only_when_all_agents_fail() {
                 assert_eq!(state.registry.snapshot().await.len(), rows.len());
 
                 tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-                let refresh =
-                    refresh_agent_history(&state, &healthy, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &healthy);
                 let reply = async {
                     healthy_requests
                         .recv()
@@ -18772,7 +18591,7 @@ async fn history_refresh_wsl_reconciles_only_owned_previously_listed_terminal_ro
                     distro: "Ubuntu".into(),
                 },
             );
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -18827,7 +18646,7 @@ async fn history_refresh_wsl_reconciles_only_owned_previously_listed_terminal_ro
             state.registry.upsert(unseen).await;
             let before = state.registry.snapshot().await;
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests
                     .recv()
@@ -18839,7 +18658,7 @@ async fn history_refresh_wsl_reconciles_only_owned_previously_listed_terminal_ro
             assert!(tokio::join!(refresh, reply).0.is_none());
             assert_eq!(state.registry.snapshot().await, before);
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
-            let refresh = refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+            let refresh = refresh_agent_history(&state, &agent);
             let reply = async {
                 requests.recv().await.unwrap().send(Ok(Vec::new())).unwrap();
             };
@@ -18895,8 +18714,7 @@ async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_provid
             ] {
                 let (agent, mut requests) = controlled_history_agent(provider, source);
                 add_test_agent_to_pool(&state, &agent).await;
-                let refresh =
-                    refresh_agent_history(&state, &agent, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, &agent);
                 let reply = async {
                     requests
                         .recv()
@@ -18911,8 +18729,7 @@ async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_provid
             assert_eq!(state.registry.snapshot().await.len(), 5);
             tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
             for (agent, requests, title) in &mut probes {
-                let refresh =
-                    refresh_agent_history(&state, agent, HistoryRefreshTrigger::Immediate);
+                let refresh = refresh_agent_history(&state, agent);
                 let reply = async {
                     requests
                         .recv()
@@ -19193,7 +19010,7 @@ async fn assert_native_list_inference_ingestion(next_cursor: Option<String>, lat
                         Some("second-page".into()),
                     ));
                 assert_eq!(
-                    sync_host_history(&state, &agent, &mut refresh, false)
+                    sync_host_history(&state, &agent, &mut refresh)
                         .await
                         .unwrap()
                         .1,

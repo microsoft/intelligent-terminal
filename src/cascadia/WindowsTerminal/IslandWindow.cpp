@@ -9,6 +9,7 @@
 #include <dwmapi.h>
 #include <TerminalThemeHelpers.h>
 #include <CoreWindow.h>
+#include "../TerminalApp/FreLayoutMetrics.h"
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
@@ -200,6 +201,72 @@ void IslandWindow::SetSnapDimensionCallback(std::function<float(bool, float)> pf
     _pfnSnapDimensionCallback = pfn;
 }
 
+void IslandWindow::SetWorkAreaConstraintCallback(std::function<bool()> pfn) noexcept
+{
+    _pfnWorkAreaConstraintCallback = std::move(pfn);
+}
+
+void IslandWindow::SetResizeLockCallback(std::function<bool()> pfn) noexcept
+{
+    _pfnResizeLockCallback = std::move(pfn);
+}
+
+void IslandWindow::SetMinimumSizeOverride(std::optional<til::size> size) noexcept
+{
+    _minimumSizeOverride = size;
+}
+
+bool IslandWindow::ConstrainDpiChangedWindowRect(RECT& rect) const noexcept
+{
+    if (!_pfnWorkAreaConstraintCallback || !_pfnWorkAreaConstraintCallback())
+    {
+        return false;
+    }
+
+    const auto monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (!GetMonitorInfo(monitor, &monitorInfo))
+    {
+        return false;
+    }
+
+    const winrt::TerminalApp::implementation::FreWindowSize workAreaSize{
+        static_cast<double>(monitorInfo.rcWork.right - monitorInfo.rcWork.left),
+        static_cast<double>(monitorInfo.rcWork.bottom - monitorInfo.rcWork.top),
+    };
+    const auto constrainedSize = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+        {
+            static_cast<double>(rect.right - rect.left),
+            static_cast<double>(rect.bottom - rect.top),
+        },
+        workAreaSize);
+    const auto constrainedWidth = std::max<LONG>(gsl::narrow<LONG>(lrint(constrainedSize.width)), 1);
+    const auto constrainedHeight = std::max<LONG>(gsl::narrow<LONG>(lrint(constrainedSize.height)), 1);
+    const winrt::TerminalApp::implementation::FreWindowSize roundedSize{
+        static_cast<double>(constrainedWidth),
+        static_cast<double>(constrainedHeight),
+    };
+    const auto constrainedPosition = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+        { static_cast<double>(rect.left), static_cast<double>(rect.top) },
+        roundedSize,
+        {
+            static_cast<double>(monitorInfo.rcWork.left),
+            static_cast<double>(monitorInfo.rcWork.top),
+        },
+        workAreaSize);
+
+    rect.left = gsl::narrow<LONG>(constrainedPosition.x);
+    rect.top = gsl::narrow<LONG>(constrainedPosition.y);
+    rect.right = rect.left + constrainedWidth;
+    rect.bottom = rect.top + constrainedHeight;
+    return true;
+}
+
+bool IslandWindow::_IsResizeLocked() const noexcept
+{
+    return _pfnResizeLockCallback && _pfnResizeLockCallback();
+}
+
 // Method Description:
 // - Handles a WM_CREATE message. Calls our create callback, if one's been set.
 // Arguments:
@@ -244,6 +311,12 @@ void IslandWindow::_HandleCreateWindow(const WPARAM, const LPARAM lParam) noexce
 // - <none>
 LRESULT IslandWindow::_OnSizing(const WPARAM wParam, const LPARAM lParam)
 {
+    if (_IsResizeLocked())
+    {
+        ::GetWindowRect(_window.get(), reinterpret_cast<LPRECT>(lParam));
+        return true;
+    }
+
     if (!_pfnSnapDimensionCallback)
     {
         // If we haven't been given the callback that would adjust the dimension,
@@ -298,6 +371,48 @@ LRESULT IslandWindow::_OnSizing(const WPARAM wParam, const LPARAM lParam)
         height = std::max(height, minimumHeight);
         height = _pfnSnapDimensionCallback(false, height);
         clientHeight = lroundf(height * pxPerDip);
+    }
+
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (_pfnWorkAreaConstraintCallback &&
+        _pfnWorkAreaConstraintCallback() &&
+        GetMonitorInfo(hmon, &monitorInfo))
+    {
+        switch (wParam)
+        {
+        case WMSZ_LEFT:
+        case WMSZ_TOPLEFT:
+        case WMSZ_BOTTOMLEFT:
+            clientWidth = std::min<LONG>(
+                clientWidth,
+                std::max<LONG>(0, winRect->right - monitorInfo.rcWork.left - nonClientSize.width));
+            break;
+        case WMSZ_RIGHT:
+        case WMSZ_TOPRIGHT:
+        case WMSZ_BOTTOMRIGHT:
+            clientWidth = std::min<LONG>(
+                clientWidth,
+                std::max<LONG>(0, monitorInfo.rcWork.right - winRect->left - nonClientSize.width));
+            break;
+        }
+
+        switch (wParam)
+        {
+        case WMSZ_TOP:
+        case WMSZ_TOPLEFT:
+        case WMSZ_TOPRIGHT:
+            clientHeight = std::min<LONG>(
+                clientHeight,
+                std::max<LONG>(0, winRect->bottom - monitorInfo.rcWork.top - nonClientSize.height));
+            break;
+        case WMSZ_BOTTOM:
+        case WMSZ_BOTTOMLEFT:
+        case WMSZ_BOTTOMRIGHT:
+            clientHeight = std::min<LONG>(
+                clientHeight,
+                std::max<LONG>(0, monitorInfo.rcWork.bottom - winRect->top - nonClientSize.height));
+            break;
+        }
     }
 
     // Now make the window rectangle match the calculated client width and height,
@@ -472,6 +587,25 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
     auto lpMinMaxInfo = reinterpret_cast<LPMINMAXINFO>(lParam);
     lpMinMaxInfo->ptMinTrackSize.x = lroundf(width * pxPerDip) + nonClientSizeScaled.width;
     lpMinMaxInfo->ptMinTrackSize.y = lroundf(height * pxPerDip) + nonClientSizeScaled.height;
+
+    MONITORINFO monitorInfo{ sizeof(MONITORINFO) };
+    if (GetMonitorInfo(hmon, &monitorInfo))
+    {
+        const auto workWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+        const auto workHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
+        lpMinMaxInfo->ptMinTrackSize.x = std::min(lpMinMaxInfo->ptMinTrackSize.x, workWidth);
+        lpMinMaxInfo->ptMinTrackSize.y = std::min(lpMinMaxInfo->ptMinTrackSize.y, workHeight);
+    }
+
+    if (_minimumSizeOverride)
+    {
+        lpMinMaxInfo->ptMinTrackSize.x = std::min<LONG>(
+            lpMinMaxInfo->ptMinTrackSize.x,
+            _minimumSizeOverride->width);
+        lpMinMaxInfo->ptMinTrackSize.y = std::min<LONG>(
+            lpMinMaxInfo->ptMinTrackSize.y,
+            _minimumSizeOverride->height);
+    }
 }
 
 [[nodiscard]] LRESULT IslandWindow::MessageHandler(UINT const message, WPARAM const wparam, LPARAM const lparam) noexcept
@@ -483,6 +617,27 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
 
     switch (message)
     {
+    case WM_NCHITTEST:
+    {
+        if (_IsResizeLocked())
+        {
+            const auto hitTest = DefWindowProc(_window.get(), message, wparam, lparam);
+            switch (hitTest)
+            {
+            case HTLEFT:
+            case HTRIGHT:
+            case HTTOP:
+            case HTTOPLEFT:
+            case HTTOPRIGHT:
+            case HTBOTTOM:
+            case HTBOTTOMLEFT:
+            case HTBOTTOMRIGHT:
+                return HTBORDER;
+            }
+            return hitTest;
+        }
+        break;
+    }
     case WM_GETMINMAXINFO:
     {
         _OnGetMinMaxInfo(wparam, lparam);
@@ -699,6 +854,10 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
     {
         // the low 4 bits contain additional information (that we don't care about)
         auto highBits = wparam & 0xFFF0;
+        if (highBits == SC_SIZE && _IsResizeLocked())
+        {
+            return 0;
+        }
         if (highBits == SC_RESTORE || highBits == SC_MAXIMIZE)
         {
             MaximizeChanged.raise(highBits == SC_MAXIMIZE);
@@ -1760,7 +1919,7 @@ void IslandWindow::OpenSystemMenu(const std::optional<int> mouseX, const std::op
     };
     setState(SC_RESTORE, isMaximized);
     setState(SC_MOVE, !isMaximized);
-    setState(SC_SIZE, !isMaximized);
+    setState(SC_SIZE, !isMaximized && !_IsResizeLocked());
     setState(SC_MINIMIZE, true);
     setState(SC_MAXIMIZE, !isMaximized);
     setState(SC_CLOSE, true);

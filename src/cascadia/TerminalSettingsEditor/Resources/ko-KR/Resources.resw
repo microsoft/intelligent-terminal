@@ -3110,4 +3110,12 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>다시 시도</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>에이전트 프로필이 자동으로 추가됨</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal은 설치된 에이전트 CLI를 프로필로 자동 추가합니다. 새 탭 메뉴에서 프로필을 열어 시작하세요.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
 </root>

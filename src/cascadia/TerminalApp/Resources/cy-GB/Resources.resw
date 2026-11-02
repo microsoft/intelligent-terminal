@@ -314,6 +314,14 @@
     <value>Mae polisi gweithredu PowerShell yn rhwystro sgriptiau. Canfod gwallau wedi'i ddiffodd.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Paen y plisgyn</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Pwyswch Enter i roi ffocws ar y plisgyn.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Defnydd</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tocynnau</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Ffenestr gyd-destun</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -453,6 +461,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Nid oes sesiynau asiant sy&apos;n cyfateb.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Nid oes unrhyw dabiau agored na sesiynau asiant blaenorol sy&apos;n cyfateb i&apos;ch chwiliad.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Methu llwytho sesiynau asiant.</value>
@@ -648,6 +660,7 @@
   <data name="ExportTabText"><value>Allforio testun</value></data>
   <data name="FindText"><value>Chwilio</value></data>
   <data name="RestartConnectionText"><value>Ailgychwyn y sesiwn</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} cwarel</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Cau</value></data>
   <data name="TabClose"><value>Cau'r tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Symud y tab i ffenestr newydd</value></data>

@@ -429,6 +429,14 @@
     <value>A PowerShell végrehajtási házirendje blokkolja a parancsfájlokat. A hibaészlelés kikapcsolva.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Shell-panel</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Nyomja meg az Enter billentyűt a shell fókuszálásához.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Használat</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokenek</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Kontextusablak</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -538,7 +546,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Legutóbbi ügynökmunkamenetek</value>
+    <value>Ügynökök legutóbbi munkamenetei</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -568,6 +576,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Nincsenek egyező ügynökmunkamenetek.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Nincs a keresésnek megfelelő megnyitott lap vagy korábbi ügynökmunkamenet.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Az ügynökmunkamenetek nem tölthetők be.</value>
@@ -763,6 +775,7 @@
   <data name="ExportTabText"><value>Szöveg exportálása</value></data>
   <data name="FindText"><value>Keresés</value></data>
   <data name="RestartConnectionText"><value>Munkamenet újraindítása</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} ablaktábla</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Bezárás</value></data>
   <data name="TabClose"><value>Lap bezárása</value></data>
   <data name="MoveTabToNewWindowText"><value>Lap áthelyezése új ablakba</value></data>

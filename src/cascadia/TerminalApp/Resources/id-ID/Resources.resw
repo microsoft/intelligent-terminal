@@ -356,6 +356,14 @@
     <value>Kebijakan eksekusi PowerShell memblokir skrip. Deteksi kesalahan dinonaktifkan.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Panel shell</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Tekan Enter untuk memfokuskan shell.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Penggunaan</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Jendela konteks</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -499,6 +507,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Tidak ada sesi agen yang cocok.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Tidak ada tab terbuka atau sesi agen sebelumnya yang cocok dengan pencarian Anda.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Tidak dapat memuat sesi agen.</value>
@@ -694,6 +706,7 @@
   <data name="ExportTabText"><value>Ekspor teks</value></data>
   <data name="FindText"><value>Cari</value></data>
   <data name="RestartConnectionText"><value>Mulai ulang sesi</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} panel</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Tutup</value></data>
   <data name="TabClose"><value>Tutup tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Pindahkan tab ke jendela baru</value></data>

@@ -432,6 +432,14 @@
     <value>PowerShell कार्यान्वयन नीतिले स्क्रिप्टहरू रोक्दैछ।</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>शेल पेन</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>शेलमा फोकस गर्न Enter थिच्नुहोस्।</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>प्रयोग</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>टोकन</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>सन्दर्भ-विन्डो</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -541,7 +549,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>हालका एजेन्ट सत्रहरू</value>
+    <value>एजेन्टहरूका हालका सत्रहरू</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -571,6 +579,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>मिल्ने कुनै एजेन्ट सत्र छैन।</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>तपाईंको खोजसँग मिल्ने कुनै खुला ट्याब वा एजेन्टका अघिल्ला सत्रहरू छैनन्।</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>एजेन्ट सत्रहरू लोड गर्न सकिएन।</value>
@@ -766,6 +778,7 @@
   <data name="ExportTabText"><value>पाठ निर्यात गर्नुहोस्</value></data>
   <data name="FindText"><value>खोज्नुहोस्</value></data>
   <data name="RestartConnectionText"><value>सत्र पुनः सुरु गर्नुहोस्</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} पेन</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>बन्द गर्नुहोस्</value></data>
   <data name="TabClose"><value>ट्याब बन्द गर्नुहोस्</value></data>
   <data name="MoveTabToNewWindowText"><value>ट्याब नयाँ विन्डोमा सार्नुहोस्</value></data>

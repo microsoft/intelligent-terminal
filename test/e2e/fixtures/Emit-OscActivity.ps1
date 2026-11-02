@@ -22,6 +22,13 @@ while ($clock.Elapsed.TotalSeconds -lt $LifetimeSec) {
     foreach ($file in @(Get-ChildItem -LiteralPath $Inbox -Filter '*.request.json' -File | Sort-Object Name)) {
         $request = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
         if ($request.kind -eq 'close') { exit 0 }
+        if ($request.kind -eq 'fail') {
+            # Consume before exiting so the identical replacement command remains alive.
+            Remove-Item -LiteralPath $file.FullName
+            @{ token = $request.token; pane = $env:WT_SESSION; pid = $PID; exit_code = 17 } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Inbox "$($request.token).reply.json")
+            exit 17
+        }
         if ($request.kind -eq 'progress') {
             if ([int]$request.state -notin 0, 1, 2, 3, 4) { throw 'Invalid fixture progress state.' }
             [Console]::Write([char]27 + ']9;4;' + $request.state + ';35' + [char]27 + '\')

@@ -147,7 +147,7 @@ LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
         const auto resizeBorderHeight = _GetResizeHandleHeight();
         const auto isOnResizeBorder = pointer.y < rcParent.top + resizeBorderHeight;
 
-        return isOnResizeBorder ? HTTOP : HTCAPTION;
+        return isOnResizeBorder && !_IsResizeLocked() ? HTTOP : HTCAPTION;
     }
 }
 
@@ -816,6 +816,22 @@ int NonClientIslandWindow::_GetResizeHandleHeight() const noexcept
 
     if (originalRet != HTCLIENT)
     {
+        if (_IsResizeLocked())
+        {
+            switch (originalRet)
+            {
+            case HTBOTTOMRIGHT:
+            case HTRIGHT:
+            case HTTOPRIGHT:
+            case HTTOP:
+            case HTTOPLEFT:
+            case HTLEFT:
+            case HTBOTTOMLEFT:
+            case HTBOTTOM:
+                return HTBORDER;
+            }
+        }
+
         // If we're the quake window, suppress resizing on any side except the
         // bottom. I don't believe that this actually works on the top. That's
         // handled below.
@@ -854,7 +870,7 @@ int NonClientIslandWindow::_GetResizeHandleHeight() const noexcept
     {
         // However, if we're the quake window, then just return HTCAPTION so we
         // don't get a resize handle on the top.
-        return IsQuakeWindow() ? HTCAPTION : HTTOP;
+        return IsQuakeWindow() || _IsResizeLocked() ? HTCAPTION : HTTOP;
     }
 
     return HTCAPTION;

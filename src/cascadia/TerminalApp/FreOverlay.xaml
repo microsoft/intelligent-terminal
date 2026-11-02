@@ -42,8 +42,7 @@
 
             <!--  Matches TerminalSettingsEditor's StandardControlMaxWidth  -->
             <x:Double x:Key="StandardControlMaxWidth">1000</x:Double>
-            <!--  Welcome page has two side-by-side cards (1.5× the standard width)  -->
-            <x:Double x:Key="WelcomeContentMaxWidth">1500</x:Double>
+            <x:Double x:Key="WelcomeContentMaxWidth">1032</x:Double>
 
             <DataTemplate x:Key="FreErrorDetectionOptionTemplate">
                 <TextBlock Text="{Binding}"
@@ -55,10 +54,11 @@
     <!--  Full-screen dark background  -->
     <Grid x:Name="RootGrid" Background="#FF1E1E1E"
           RequestedTheme="Dark"
-          HighContrastAdjustment="Auto">
+          HighContrastAdjustment="Auto"
+          SizeChanged="_OnRootGridSizeChanged">
         <Grid.RowDefinitions>
-            <!--  Title bar space  -->
-            <RowDefinition Height="32" />
+            <!--  The native window already owns the 40-DIP title bar.  -->
+            <RowDefinition Height="0" />
             <!--  Content  -->
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -68,7 +68,8 @@
         <!--  Shared 3-zone layout: Top (title) / Content / Bottom (button)
               Both pages are stacked in the same Grid so they share identical
               row proportions. Only one page is Visible at a time.  -->
-        <Grid Grid.Row="1" Margin="40,8,40,16">
+        <Grid x:Name="FreContentRoot"
+              Grid.Row="1">
             <Grid.RowDefinitions>
                 <!--  Top zone: title + subtitle  -->
                 <RowDefinition Height="Auto" />
@@ -84,104 +85,118 @@
             <Grid x:Name="WelcomePage" Grid.Row="0" Grid.RowSpan="3" Visibility="Visible">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="48" />
+                    <RowDefinition Height="77" />
                 </Grid.RowDefinitions>
 
-                <!--  Content: Title + Cards grouped together, centered vertically  -->
-                <StackPanel Grid.Row="0"
-                            VerticalAlignment="Center"
-                            MaxWidth="{StaticResource WelcomeContentMaxWidth}"
-                            HorizontalAlignment="Center">
-
-                    <!--  Title + Subtitle  -->
-                    <StackPanel Spacing="8" Margin="0,8,0,16" HorizontalAlignment="Center">
-                        <TextBlock x:Uid="FreOverlay_WelcomeTitle"
-                                   FontFamily="Segoe UI Variable Display, Segoe UI"
-                                   FontSize="20" FontWeight="SemiBold"
-                                   Foreground="White" TextAlignment="Center"
-                                   LineHeight="28" />
-                        <TextBlock x:Name="WelcomeSubtitle"
-                                   FontFamily="Segoe UI Variable Small, Segoe UI"
-                                   FontSize="13" Foreground="#B3FFFFFF"
-                                   TextAlignment="Center" TextWrapping="Wrap"
-                                   LineHeight="18" MaxWidth="480"
-                                   Margin="0,4,0,0">
-                            <Run x:Name="WelcomeSubtitlePrefix" Text="" />
-                            <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal"
-                                       Foreground="#FF99EBFF">
-                                <Run x:Name="WelcomeSubtitleLink" Text="" />
-                            </Hyperlink>
-                        </TextBlock>
-                    </StackPanel>
-
-                    <!--  Feature Cards  -->
-                    <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!--  Sidebar / session management  -->
-                    <Border Grid.Column="0" Background="#FF2D2D2D" CornerRadius="7">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
-                                    Margin="6,6,6,0">
-                                <Image x:Name="SidebarImage"
-                                       Source="{ThemeResource FreSidebarImage}"
-                                       Stretch="Uniform" />
-                            </Border>
-                            <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Name="SidebarCardTitle"
-                                           x:Uid="FreOverlay_Card2Title"
-                                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                                           FontSize="13" FontWeight="SemiBold"
-                                           Foreground="White" LineHeight="18" />
-                                <TextBlock x:Uid="FreOverlay_Card2Description"
+                <ScrollViewer x:Name="WelcomeContentScroller"
+                              Grid.Row="0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <Border Padding="0,47,0,0">
+                        <StackPanel HorizontalAlignment="Stretch">
+                            <!--  Title + Subtitle  -->
+                            <StackPanel MinHeight="113"
+                                        MaxWidth="586"
+                                        Margin="0,0,0,24"
+                                        HorizontalAlignment="Center"
+                                        Spacing="24">
+                                <TextBlock x:Name="WelcomeTitle"
+                                           x:Uid="FreOverlay_WelcomeTitle"
+                                           FontFamily="Segoe UI Variable Display, Segoe UI"
+                                           FontSize="28" FontWeight="SemiBold"
+                                           Foreground="White" TextAlignment="Center"
+                                           LineHeight="36" TextWrapping="Wrap" />
+                                <TextBlock x:Name="WelcomeSubtitle"
                                            FontFamily="Segoe UI Variable Small, Segoe UI"
-                                           FontSize="12" Foreground="#8AFFFFFF"
-                                           TextWrapping="Wrap" LineHeight="16" />
+                                           FontSize="16" Foreground="#B3FFFFFF"
+                                           TextAlignment="Center" TextWrapping="Wrap"
+                                           LineHeight="22" MaxWidth="586">
+                                    <Run x:Name="WelcomeSubtitlePrefix" Text="" />
+                                    <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal"
+                                               Foreground="#FF99EBFF">
+                                        <Run x:Name="WelcomeSubtitleLink" Text="" />
+                                    </Hyperlink>
+                                </TextBlock>
                             </StackPanel>
-                        </Grid>
-                    </Border>
 
-                    <!--  Autofix / error detection  -->
-                    <Border Grid.Column="2" Background="#FF2D2D2D" CornerRadius="7">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Background="#FF0C0C0C" CornerRadius="7,7,0,0"
-                                    Margin="6,6,6,0">
-                                <Image x:Name="AutofixImage"
-                                       Source="{ThemeResource FreErrorDetectionImage}"
-                                       Stretch="Uniform" />
-                            </Border>
-                            <StackPanel Grid.Row="1" Margin="16,14,16,16" Spacing="6">
-                                <TextBlock x:Name="AutofixCardTitle"
-                                           x:Uid="FreOverlay_Card1Title"
-                                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                                           FontSize="13" FontWeight="SemiBold"
-                                           Foreground="White" LineHeight="18" />
-                                <TextBlock x:Uid="FreOverlay_Card1Description"
-                                           FontFamily="Segoe UI Variable Small, Segoe UI"
-                                           FontSize="12" Foreground="#8AFFFFFF"
-                                           TextWrapping="Wrap" LineHeight="16" />
-                            </StackPanel>
-                        </Grid>
+                            <!--  Feature Cards  -->
+                            <Grid x:Name="WelcomeCardsGrid"
+                                  MaxWidth="{StaticResource WelcomeContentMaxWidth}"
+                                  HorizontalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!--  Sidebar / session management  -->
+                                <Border x:Name="SidebarCard" Grid.Column="0"
+                                        Padding="20,24"
+                                        Background="#FF2D2D2D" CornerRadius="7">
+                                    <StackPanel Spacing="10">
+                                        <Border x:Name="SidebarImageFrame"
+                                                Height="261.5625" MaxWidth="465"
+                                                HorizontalAlignment="Stretch"
+                                                Background="#FF0C0C0C" CornerRadius="7,7,0,0">
+                                            <Image x:Name="SidebarImage"
+                                                   Source="{ThemeResource FreSidebarImage}"
+                                                   Stretch="Uniform" />
+                                        </Border>
+                                        <StackPanel Spacing="10">
+                                            <TextBlock x:Name="SidebarCardTitle"
+                                                       x:Uid="FreOverlay_Card2Title"
+                                                       FontFamily="Segoe UI Variable Text, Segoe UI"
+                                                       FontSize="20" FontWeight="SemiBold"
+                                                       Foreground="White" LineHeight="28"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock x:Name="SidebarCardDescription"
+                                                       x:Uid="FreOverlay_Card2Description"
+                                                       FontFamily="Segoe UI Variable Small, Segoe UI"
+                                                       FontSize="14" Foreground="#8AFFFFFF"
+                                                       TextWrapping="Wrap" LineHeight="20" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!--  Autofix / error detection  -->
+                                <Border x:Name="AutofixCard" Grid.Column="2"
+                                        Padding="20,24"
+                                        Background="#FF2D2D2D" CornerRadius="7">
+                                    <StackPanel Spacing="10">
+                                        <Border x:Name="AutofixImageFrame"
+                                                Height="261.5625" MaxWidth="465"
+                                                HorizontalAlignment="Stretch"
+                                                Background="#FF0C0C0C" CornerRadius="7,7,0,0">
+                                            <Image x:Name="AutofixImage"
+                                                   Source="{ThemeResource FreErrorDetectionImage}"
+                                                   Stretch="Uniform" />
+                                        </Border>
+                                        <StackPanel Spacing="10">
+                                            <TextBlock x:Name="AutofixCardTitle"
+                                                       x:Uid="FreOverlay_Card1Title"
+                                                       FontFamily="Segoe UI Variable Text, Segoe UI"
+                                                       FontSize="20" FontWeight="SemiBold"
+                                                       Foreground="White" LineHeight="28"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock x:Name="AutofixCardDescription"
+                                                       x:Uid="FreOverlay_Card1Description"
+                                                       FontFamily="Segoe UI Variable Small, Segoe UI"
+                                                       FontSize="14" Foreground="#8AFFFFFF"
+                                                       TextWrapping="Wrap" LineHeight="20" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
                     </Border>
-                    </Grid>
-                </StackPanel>
+                </ScrollViewer>
 
                 <!--  Bottom: Next Button  -->
-                <Grid Grid.Row="1">
-                    <Button x:Uid="FreOverlay_NextButton"
-                            x:Name="NextButton"
+                <Grid x:Name="WelcomeFooter" Grid.Row="1"
+                      Height="80" Padding="24"
+                      VerticalAlignment="Bottom">
+                    <Button x:Name="NextButton"
+                            x:Uid="FreOverlay_NextButton"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             Width="120" Height="32"
                             Style="{ThemeResource AccentButtonStyle}"
@@ -192,7 +207,8 @@
             <!--  ================================================================  -->
             <!--  PAGE 2: Settings                                                 -->
             <!--  ================================================================  -->
-            <Grid x:Name="SettingsPage" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed">
+            <Grid x:Name="SettingsPage" Grid.Row="0" Grid.RowSpan="3"
+                  Margin="40,8,40,16" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />

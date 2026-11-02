@@ -72,6 +72,8 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         hstring _commandline{};
         hstring _startingDirectory{};
         hstring _startingTitle{};
+        HRESULT _startupError{ S_OK };
+        hstring _startupErrorMessage{};
         bool _initialVisibility{ true };
         Windows::Foundation::Collections::ValueSet _environment{ nullptr };
         hstring _clientName{}; // The name of the process hosted by this ConPTY connection (as of launch).

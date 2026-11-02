@@ -315,6 +315,14 @@
     <value>D'PowerShell-Ausféierungspolitik blockéiert Scripten. D'Feelerkennung ass ausgeschalt.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Shell-Panell</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Dréckt op Enter, fir de Fokus op d&apos;Shell ze setzen.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Benotzung</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>Token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Kontextfënster</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -454,6 +462,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Keng passend Agent-Sessiounen.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Keng oppen Tabs oder fréier Agent-Sessioune passen op Är Sich.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>D’Agent-Sessioune konnten net geluede ginn.</value>
@@ -649,6 +661,7 @@
   <data name="ExportTabText"><value>Text exportéieren</value></data>
   <data name="FindText"><value>Sichen</value></data>
   <data name="RestartConnectionText"><value>Sessioun nei starten</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} Beräicher</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Zoumaachen</value></data>
   <data name="TabClose"><value>Tab zoumaachen</value></data>
   <data name="MoveTabToNewWindowText"><value>Tab an eng nei Fënster réckelen</value></data>

@@ -3074,4 +3074,12 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <value>再試行</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
   </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>エージェントのプロファイルを自動追加</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal は、インストール済みのエージェント CLI をプロファイルとして自動的に追加します。新しいタブのメニューからプロファイルを開いて使い始めましょう。</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
 </root>

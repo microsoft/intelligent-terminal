@@ -53,6 +53,10 @@ namespace SettingsModelUnitTests
         TEST_METHOD(FeatureRolloutBucketsAreFeatureScoped);
         TEST_METHOD(SidebarRolloutNameRequiresValidEnrollment);
         TEST_METHOD(SidebarMalformedRolloutStateSkipsMigration);
+        TEST_METHOD(AgentProfilesIntroductionDeferralAndDuplicateWindows);
+        TEST_METHOD(AgentProfilesIntroductionStaleStatePreservesSharedDismissal);
+        TEST_METHOD(AgentProfilesIntroductionFailedPreflightRemainsEligible);
+        TEST_METHOD(AgentProfilesIntroductionFailedDismissalRetriesOnFlush);
 
     private:
         static std::filesystem::path _tempRoot()
@@ -303,6 +307,89 @@ namespace SettingsModelUnitTests
             VERIFY_IS_FALSE(state->SidebarIntroductionShown());
             VERIFY_ARE_EQUAL(TabLayout::Vertical, settings->GlobalSettings().TabLayout());
         }
+    }
+
+    void ApplicationStateTests::AgentProfilesIntroductionDeferralAndDuplicateWindows()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto first = winrt::make_self<implementation::ApplicationState>(root);
+        auto second = winrt::make_self<implementation::ApplicationState>(root);
+        const auto deferred = first->TryBeginAgentProfilesIntroduction();
+        VERIFY_IS_TRUE(deferred != 0);
+        VERIFY_IS_FALSE(first->AgentProfilesIntroductionShown());
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, first->TryBeginAgentProfilesIntroduction());
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginAgentProfilesIntroduction());
+        first->EndAgentProfilesIntroduction(deferred + 1, true);
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginAgentProfilesIntroduction());
+        const auto sidebar = second->TryBeginSidebarIntroduction();
+        VERIFY_IS_TRUE(sidebar != 0);
+        second->EndSidebarIntroduction(sidebar, true);
+        first->EndAgentProfilesIntroduction(deferred, false);
+        VERIFY_IS_FALSE(first->AgentProfilesIntroductionShown());
+        const auto dismissed = second->TryBeginAgentProfilesIntroduction();
+        VERIFY_IS_TRUE(dismissed != 0);
+        second->EndAgentProfilesIntroduction(dismissed, true);
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, first->TryBeginAgentProfilesIntroduction());
+        auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_TRUE(restarted->AgentProfilesIntroductionShown());
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, restarted->TryBeginAgentProfilesIntroduction());
+    }
+
+    void ApplicationStateTests::AgentProfilesIntroductionStaleStatePreservesSharedDismissal()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto stale = winrt::make_self<implementation::ApplicationState>(root);
+        auto first = winrt::make_self<implementation::ApplicationState>(root);
+        const auto claim = first->TryBeginAgentProfilesIntroduction();
+        VERIFY_IS_TRUE(claim != 0);
+        first->EndAgentProfilesIntroduction(claim, true);
+        VERIFY_IS_TRUE(first->ToJson(implementation::FileSource::Shared)["agentProfilesIntroductionShown"].asBool());
+        VERIFY_IS_FALSE(first->ToJson(implementation::FileSource::Local).isMember("agentProfilesIntroductionShown"));
+        stale->AgentWelcomeShown(true);
+        stale->Flush();
+        auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_TRUE(restarted->AgentProfilesIntroductionShown());
+        VERIFY_IS_FALSE(restarted->SidebarIntroductionShown());
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, stale->TryBeginAgentProfilesIntroduction());
+    }
+
+    void ApplicationStateTests::AgentProfilesIntroductionFailedPreflightRemainsEligible()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto state = winrt::make_self<implementation::ApplicationState>(root);
+        std::filesystem::create_directory(root / L"state.json");
+        VERIFY_THROWS(state->TryBeginAgentProfilesIntroduction(), std::exception);
+        VERIFY_IS_FALSE(state->AgentProfilesIntroductionShown());
+        std::filesystem::remove(root / L"state.json");
+        const auto claim = state->TryBeginAgentProfilesIntroduction();
+        VERIFY_IS_TRUE(claim != 0);
+        state->EndAgentProfilesIntroduction(claim, false);
+        VERIFY_IS_FALSE(state->AgentProfilesIntroductionShown());
+    }
+
+    void ApplicationStateTests::AgentProfilesIntroductionFailedDismissalRetriesOnFlush()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto first = winrt::make_self<implementation::ApplicationState>(root);
+        auto second = winrt::make_self<implementation::ApplicationState>(root);
+        const auto claim = first->TryBeginAgentProfilesIntroduction();
+        VERIFY_IS_TRUE(claim != 0);
+        auto denyStateWrite = _denyReplacement(root / L"state.json");
+        VERIFY_THROWS(first->EndAgentProfilesIntroduction(claim, true), std::exception);
+        first->Flush();
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginAgentProfilesIntroduction());
+        VERIFY_THROWS(first->EndAgentProfilesIntroduction(claim, false), std::exception);
+        denyStateWrite.reset();
+        first->Flush();
+        VERIFY_IS_TRUE(_readFixture(root / L"state.json")["agentProfilesIntroductionShown"].asBool());
+        VERIFY_ARE_EQUAL(uint64_t{ 0 }, second->TryBeginAgentProfilesIntroduction());
+        auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_TRUE(restarted->AgentProfilesIntroductionShown());
+        first->EndAgentProfilesIntroduction(claim, false);
     }
 
     void ApplicationStateTests::SidebarIntroductionDeferralAndDuplicateWindows()

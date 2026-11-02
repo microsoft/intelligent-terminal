@@ -1231,36 +1231,4 @@ impl HistoryQuery {
             return Ok(Ok(response));
         }
     }
-
-    pub async fn list_cwd_page(
-        &mut self,
-        cursor: String,
-        deadline: Instant,
-        cancelled: &tokio_util::sync::CancellationToken,
-    ) -> Option<acp::schema::v1::ListSessionsResponse> {
-        let request = acp::schema::v1::ListSessionsRequest::new().cursor(cursor);
-        let result = match self.process.as_ref().map(HistoryProcess::connection) {
-            Some(Ok(connection)) => {
-                tokio::select! {
-                    biased;
-                    _ = cancelled.cancelled() => Err(anyhow!("history cwd page cancelled")),
-                    response = tokio::time::timeout_at(deadline, connection.list_sessions(request)) => {
-                        response.context("history cwd page timed out").and_then(|response| response.map_err(anyhow::Error::from))
-                    }
-                }
-            }
-            Some(Err(error)) => Err(error),
-            None => Err(anyhow!("history cwd process missing")),
-        };
-        match result {
-            Ok(response) => Some(response),
-            Err(error) => {
-                tracing::warn!(target: "master_history", %error, "dedicated history cwd pagination incomplete");
-                if let Err(stop_error) = self.stop().await {
-                    tracing::error!(target: "master_history", %stop_error, "incomplete history query remains quarantined");
-                }
-                None
-            }
-        }
-    }
 }

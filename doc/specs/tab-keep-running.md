@@ -30,7 +30,7 @@ also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
-**Recent agent sessions** also shows the RepeatAll indicator for a session
+**Agent recent sessions** also shows the RepeatAll indicator for a session
 whose pane belongs to a Keep running tab, including tabs in another window or
 retained in the background. The indicator follows the tab's runtime choice
 without resetting the session list or changing its restore/switch-window action.

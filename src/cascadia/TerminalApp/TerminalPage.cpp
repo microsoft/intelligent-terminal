@@ -49,6 +49,7 @@
 #include "AppLogic.h"
 #include "DebugTapConnection.h"
 #include "FreOverlay.h"
+#include "FreLayoutMetrics.h"
 #include "../inc/AgentPaneRestore.h"
 #include "../inc/WindowPersistence.h"
 #include "MarkdownPaneContent.h"
@@ -561,6 +562,50 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        _sidebarPaneFocusStop = WUX::Controls::Button{};
+        _sidebarPaneFocusStop.IsTabStop(false);
+        _sidebarPaneFocusStop.IsHitTestVisible(false);
+        _sidebarPaneFocusStop.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
+        _sidebarPaneFocusStop.VerticalAlignment(WUX::VerticalAlignment::Stretch);
+        _sidebarPaneFocusStop.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _sidebarPaneFocusStop.BorderThickness(WUX::Thickness{});
+        _sidebarPaneFocusStop.FocusVisualMargin(WUX::Thickness{});
+        Automation::AutomationProperties::SetAutomationId(_sidebarPaneFocusStop, L"SidebarShellPaneFocusStop");
+        Automation::AutomationProperties::SetName(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopName"));
+        Automation::AutomationProperties::SetHelpText(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopHelpText"));
+        _sidebarPaneFocusStop.LostFocus([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_sidebarPaneFocusStop.IsTabStop(false);
+            }
+        });
+        _sidebarPaneFocusStop.Click([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto shell = page->_sidebarPaneFocusShell.get())
+                {
+                    page->_TryFocusSidebarInput(shell);
+                }
+            }
+        });
+        _sidebarPaneFocusStop.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        AgentToggleButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        DiagnosticsButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabRow.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
             [weakThis{ get_weak() }](const TerminalApp::TabStripHistoryItem& item) {
                 const auto page = weakThis.get();
@@ -622,6 +667,18 @@ namespace winrt::TerminalApp::implementation
         });
 
         _UpdateTabLayoutHost();
+        _highContrastChangedRevoker = Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrastChanged(auto_revoke, [weakThis{ get_weak() }, dispatcher{ Dispatcher() }](auto&&, auto&&) {
+            try
+            {
+                dispatcher.RunAsync(Windows::UI::Core::CoreDispatcherPriority::Normal, [weakThis]() {
+                    if (const auto self = weakThis.get())
+                    {
+                        self->_updateThemeColors();
+                    }
+                });
+            }
+            CATCH_LOG();
+        });
         _updateThemeColors();
 
         // Initialize the state of the CloseButtonOverlayMode property of
@@ -778,10 +835,6 @@ namespace winrt::TerminalApp::implementation
                 const auto wasAgentScopeEffective = page->_IsAgentScopeEffective();
                 page->_tabSearchActive = sender.SearchActive();
                 page->_tabSearchQuery = sender.SearchQuery();
-                if (wasSearchActive != page->_tabSearchActive)
-                {
-                    page->_sidebarHotkeyReturnControl = {};
-                }
                 page->_ApplyTabListProjection(nullptr, wasAgentScopeEffective != page->_IsAgentScopeEffective());
                 page->_UpdateRecentAgentSessionsVisibility();
                 page->_suppressTabFocusRequests = false;
@@ -1319,6 +1372,28 @@ namespace winrt::TerminalApp::implementation
         return !ApplicationState::SharedInstance().AgentFreCompleted();
     }
 
+    void TerminalPage::_SetFreChromeVisible(const bool visible)
+    {
+        _freChromeVisible = visible;
+        const auto visibility = visible ? Visibility::Visible : Visibility::Collapsed;
+        _tabRow.Visibility(visibility);
+
+        const auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
+        if (const auto verticalTitlebar = tabRowImpl->VerticalTitleBarContent())
+        {
+            verticalTitlebar.Visibility(visibility);
+        }
+
+        if (!visible)
+        {
+            _tabStrip.Visibility(Visibility::Collapsed);
+        }
+        else
+        {
+            _UpdateTabView();
+        }
+    }
+
     void TerminalPage::_ShowFreOverlay()
     {
         if (auto overlay = FindName(L"FreOverlayElement").try_as<winrt::TerminalApp::FreOverlay>())
@@ -1355,9 +1430,9 @@ namespace winrt::TerminalApp::implementation
                                       }
                                   });
 
-            // Hide the tab bar during FRE — the full-screen wizard replaces
-            // the entire window content. Restored in _OnFreCompleted.
-            TabRow().Visibility(Visibility::Collapsed);
+            // Hide tab creation and sidebar chrome while the wizard owns the
+            // window. Native caption buttons remain available.
+            _SetFreChromeVisible(false);
         }
     }
 
@@ -1375,9 +1450,6 @@ namespace winrt::TerminalApp::implementation
             overlay.Visibility(Visibility::Collapsed);
         }
 
-        // Restore the tab bar
-        TabRow().Visibility(Visibility::Visible);
-
         // Apply the FRE choice before deferred startup creates the first tab.
         const auto layoutApplied = _ApplyTabLayout(_settings.GlobalSettings().TabLayout());
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
@@ -1387,6 +1459,7 @@ namespace winrt::TerminalApp::implementation
 
         // Persist: never show FRE again
         ApplicationState::SharedInstance().AgentFreCompleted(true);
+        _SetFreChromeVisible(true);
 
         // Flush settings to disk (FreOverlay already wrote to GlobalSettings
         // via _OnSaveButtonClick; if the user closed without saving, defaults
@@ -6542,7 +6615,6 @@ namespace winrt::TerminalApp::implementation
         if (succeeded && !targetVertical)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
 
         _changingTabLayout = false;
@@ -6641,6 +6713,50 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    static void _AppendSplitSidebarControls(const DependencyObject& element,
+                                            const DependencyObject& row,
+                                            std::vector<WUX::Controls::Control>& controls)
+    {
+        if (const auto named = element.try_as<FrameworkElement>())
+        {
+            if (const auto name = named.Name();
+                name == L"TabGroupToggleButton" || name == L"PaneActivateButton")
+            {
+                if (const auto control = named.try_as<WUX::Controls::Control>();
+                    control && control.IsTabStop() && _IsVisibleControlInSubtree(control, row))
+                {
+                    controls.push_back(control);
+                }
+            }
+        }
+        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+        {
+            _AppendSplitSidebarControls(Media::VisualTreeHelper::GetChild(element, index), row, controls);
+        }
+    }
+
+    static WUX::Controls::ListViewItem _FocusedSidebarRow(const DependencyObject& focused,
+                                                           const WUX::Controls::ListView& list)
+    {
+        for (auto element = focused; element && element != list; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto row = element.try_as<WUX::Controls::ListViewItem>())
+            {
+                return row;
+            }
+        }
+        return nullptr;
+    }
+
+    bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
+    {
+        const auto titlebar = _tabRow ?
+                                  winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent() :
+                                  nullptr;
+        return _IsVisibleControlInSubtree(control, _tabStrip) ||
+               _IsVisibleControlInSubtree(control, titlebar);
+    }
+
     WUX::Controls::Control TerminalPage::_SidebarFocusedControl() const
     {
         if (_tabRow)
@@ -6654,6 +6770,11 @@ namespace winrt::TerminalApp::implementation
         if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            const auto page = const_cast<TerminalPage*>(this);
+            if (focused == _sidebarPaneFocusStop || focused == page->AgentToggleButton() || focused == page->DiagnosticsButton())
+            {
+                return focused.try_as<WUX::Controls::Control>();
+            }
             for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
             {
                 if (element == _tabStrip)
@@ -6663,6 +6784,269 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
+    }
+
+    bool TerminalPage::_FocusSidebarShellPaneStop()
+    {
+        if (const auto pane = _SourceTerminalPaneForTab(_GetFocusedTabImpl(), true))
+        {
+            const auto shell = pane->GetTerminalControl();
+            if (shell && _IsVisibleControlInSubtree(shell, _tabContent))
+            {
+                const auto root = pane->GetRootElement();
+                if (const auto parent = _sidebarPaneFocusStop.Parent().try_as<WUX::Controls::Grid>(); parent != root)
+                {
+                    if (parent)
+                    {
+                        uint32_t index;
+                        if (parent.Children().IndexOf(_sidebarPaneFocusStop, index))
+                        {
+                            parent.Children().RemoveAt(index);
+                        }
+                    }
+                    root.Children().Append(_sidebarPaneFocusStop);
+                    root.UpdateLayout();
+                }
+                _sidebarPaneFocusShell = winrt::make_weak(shell);
+                _sidebarPaneFocusStop.IsTabStop(true);
+                if (_sidebarPaneFocusStop.Focus(FocusState::Keyboard))
+                {
+                    return true;
+                }
+                _sidebarPaneFocusStop.IsTabStop(false);
+            }
+        }
+        return false;
+    }
+
+    void TerminalPage::_SidebarF6FocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::F6)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::LeftWindows), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::RightWindows), down))
+        {
+            return;
+        }
+
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        if (const auto actionMap = _settings.ActionMap())
+        {
+            const KeyChord chord{ false, false, shift, false, VK_F6, gsl::narrow_cast<int32_t>(e.KeyStatus().ScanCode) };
+            if (actionMap.GetActionByKeyChord(chord) || actionMap.IsKeyChordExplicitlyUnbound(chord))
+            {
+                return;
+            }
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto agentToggle = AgentToggleButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto list = tabStrip->ItemsList();
+        bool inList = false;
+        for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (element == list)
+            {
+                inList = true;
+                break;
+            }
+        }
+
+        if (shift)
+        {
+            if (focused == _sidebarPaneFocusStop)
+            {
+                e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+            }
+            else if (focused == agentToggle)
+            {
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else if (focused == DiagnosticsButton())
+            {
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else if (focused == toggle)
+            {
+                e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                          _FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else
+            {
+                e.Handled(toggle.Focus(FocusState::Keyboard));
+            }
+        }
+        else if (focused == _sidebarPaneFocusStop)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == agentToggle)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == DiagnosticsButton())
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (inList)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) || toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == toggle || _IsVisibleSidebarControl(focused.try_as<WUX::Controls::Control>()))
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || _FocusSidebarShellPaneStop());
+        }
+        else
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+        }
+    }
+
+    void TerminalPage::_SidebarTabFocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || _isVerticalRailCollapsed ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down))
+        {
+            return;
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto last = WUX::Input::FocusManager::FindLastFocusableElement(_tabStrip).try_as<WUX::Controls::Control>();
+        if (!toggle)
+        {
+            return;
+        }
+
+        const auto agentToggle = AgentToggleButton();
+        const auto diagnostics = DiagnosticsButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
+        const auto diagnosticsVisible = _IsVisibleControlInSubtree(diagnostics, BottomBarRoot());
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        const auto list = winrt::get_self<implementation::TabStrip>(_tabStrip)->ItemsList();
+        const auto focusLastSidebarStop = [&]() {
+            if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop())
+            {
+                return false;
+            }
+            const auto row = _FocusedSidebarRow(WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot()).try_as<DependencyObject>(), list);
+            if (row)
+            {
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                if (!controls.empty())
+                {
+                    return controls.back().Focus(FocusState::Keyboard) || row.Focus(FocusState::Keyboard);
+                }
+            }
+            return true;
+        };
+        if (shift && toggle.FocusState() != FocusState::Unfocused)
+        {
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      focusLastSidebarStop());
+        }
+        else if (shift && focused == diagnostics)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      focusLastSidebarStop());
+        }
+        else if (shift && focused == agentToggle)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() || focusLastSidebarStop());
+        }
+        else if (shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled(focusLastSidebarStop());
+        }
+        else if (!shift && focused == agentToggle)
+        {
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == diagnostics)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else
+        {
+            const auto row = _FocusedSidebarRow(focused.try_as<DependencyObject>(), list);
+            if (row)
+            {
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                const auto current = std::find(controls.begin(), controls.end(), focused.try_as<WUX::Controls::Control>());
+                if (shift && current != controls.end())
+                {
+                    e.Handled(current == controls.begin() ?
+                                  row.Focus(FocusState::Keyboard) :
+                                  (current - 1)->Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && !controls.empty() && focused == row)
+                {
+                    e.Handled(controls.front().Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && current != controls.end() && current + 1 != controls.end())
+                {
+                    e.Handled((*(current + 1)).Focus(FocusState::Keyboard));
+                    return;
+                }
+            }
+            if (!shift)
+            {
+                for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+                {
+                    if (element == list || element == last)
+                    {
+                        e.Handled(_FocusSidebarShellPaneStop() ||
+                                  (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                                  (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                                  toggle.Focus(FocusState::Keyboard));
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     bool TerminalPage::_TryFocusSidebarInput(const TermControl& control)
@@ -6751,7 +7135,6 @@ namespace winrt::TerminalApp::implementation
         if (!visible)
         {
             _ClearTabSearch();
-            _sidebarHotkeyReturnControl = {};
         }
         _isVerticalRailVisible = visible;
 
@@ -6839,51 +7222,9 @@ namespace winrt::TerminalApp::implementation
             }
             _SetVerticalRailColumnWidth(0);
         }
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
-        }
-    }
-
-    void TerminalPage::_ToggleSidebarHotkey()
-    {
-        if (!_isVerticalLayout || !_isVerticalRailVisible)
-        {
-            return;
-        }
-
-        if (!_isVerticalRailCollapsed && _SidebarFocusedControl())
-        {
-            const auto source = std::exchange(_sidebarHotkeyReturnControl, {});
-            if (!_TryFocusSidebarInput(source.get()) &&
-                !_TryFocusSidebarInput(_GetActiveControl()))
-            {
-                _FocusSidebarTerminalFallback();
-            }
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-            return;
-        }
-
-        winrt::weak_ref<TermControl> returnControl;
-        if (const auto source = _GetActiveControl();
-            source && _IsVisibleControlInSubtree(source, _tabContent))
-        {
-            returnControl = winrt::make_weak(source);
-        }
-        _sidebarHotkeyReturnControl = {};
-
-        if (_isVerticalRailCollapsed)
-        {
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-        }
-        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
-        if (toggle && toggle.Focus(FocusState::Programmatic))
-        {
-            _sidebarHotkeyReturnControl = std::move(returnControl);
-        }
-        else
-        {
-            LOG_HR(E_FAIL);
         }
     }
 
@@ -6898,13 +7239,12 @@ namespace winrt::TerminalApp::implementation
         const auto sidebarFocus = collapsing ? _SidebarFocusedControl() : nullptr;
         if (collapsing)
         {
-            _sidebarHotkeyReturnControl = {};
             _ClearTabSearch();
         }
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
-        if (sidebarFocus && !_IsVisibleControlInSubtree(sidebarFocus, _tabStrip))
+        if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
         }
@@ -7881,7 +8221,6 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ClearTabSearch()
     {
-        _sidebarHotkeyReturnControl = {};
         if (!_tabSearchActive && _tabSearchQuery.empty())
         {
             return;
@@ -9460,7 +9799,6 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
-        winrt::hstring managedAgentSessionId;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9485,17 +9823,36 @@ namespace winrt::TerminalApp::implementation
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
             auto environment = settingsInternal->EnvironmentVariables();
+            HRESULT startupError = S_OK;
+            winrt::hstring startupErrorMessage;
             if (settingsInternal->UsesManagedAgentCommand())
             {
-                ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
-                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
-                    profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
-                if (::Microsoft::Terminal::AgentProfiles::CanPinNewSession(profile.AgentProfileId(), profile.AgentProfileArguments()))
+                try
                 {
-                    managedAgentSessionId = ::Microsoft::Console::Utils::GuidToPlainString(Utils::CreateGuid());
+                    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                    ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
+                        profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
+                    settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
                 }
-                settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(
-                    profile, true, ::Microsoft::Terminal::AgentProfiles::NativePath(), managedAgentSessionId) });
+                catch (const wil::ResultException& e)
+                {
+                    startupError = e.GetErrorCode();
+                    if (const auto message = e.GetFailureInfo().pszMessage)
+                    {
+                        startupErrorMessage = message;
+                    }
+                }
+                catch (const winrt::hresult_error& e)
+                {
+                    startupError = e.code();
+                    startupErrorMessage = e.message();
+                }
+                catch (...)
+                {
+                    startupError = wil::ResultFromCaughtException();
+                    startupErrorMessage = winrt::hresult_error{ startupError }.message();
+                }
+                LOG_IF_FAILED(startupError);
             }
 
             // Update the path to be relative to whatever our CWD is.
@@ -9531,6 +9888,13 @@ namespace winrt::TerminalApp::implementation
                                                                             winrt::guid(),
                                                                             profile.Guid());
 
+            if (FAILED(startupError))
+            {
+                // Defer the failure until Start so the pane can display it without launching a process.
+                valueSet.Insert(L"startupError", Windows::Foundation::PropertyValue::CreateInt32(startupError));
+                valueSet.Insert(L"startupErrorMessage", Windows::Foundation::PropertyValue::CreateString(startupErrorMessage));
+            }
+
             if (inheritCursor)
             {
                 valueSet.Insert(L"inheritCursor", Windows::Foundation::PropertyValue::CreateBoolean(true));
@@ -9552,25 +9916,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
-
-        if (!managedAgentSessionId.empty())
-        {
-            const auto agent = profile.AgentProfileId();
-            const auto backend = winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ agent }) };
-            const auto cwd = connection.as<TerminalConnection::ConptyConnection>().StartingDirectory();
-            _explicitNativeAgentSessions.insert(connection.SessionId());
-            _paneAgentSessions.insert_or_assign(
-                connection.SessionId(),
-                _PaneAgentSession{
-                    managedAgentSessionId,
-                    agent,
-                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(agent, managedAgentSessionId) },
-                    backend,
-                    cwd });
-            _pendingRestoredSessionBindings.insert_or_assign(
-                connection.SessionId(),
-                _PendingRestoredSessionBinding{ managedAgentSessionId, agent, cwd, backend });
-        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -10999,8 +11344,8 @@ namespace winrt::TerminalApp::implementation
             true,
             tabIds,
             "restart_agent_stack",
-            std::move(requestId),
-            [weakThis = get_weak(), tabIds](const std::string_view operationId) {
+            requestId,
+            [weakThis = get_weak(), tabIds, requestId](const std::string_view operationId) {
                 if (const auto strongThis = weakThis.get())
                 {
                     auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
@@ -11014,6 +11359,7 @@ namespace winrt::TerminalApp::implementation
                         {
                             Json::Value params{ Json::objectValue };
                             params["operation_id"] = std::string{ operationId };
+                            params["request_id"] = requestId;
                             strongThis->_RaiseProtocolEvent("agent_master_restarted", params);
                         }
                     }
@@ -13142,12 +13488,13 @@ namespace winrt::TerminalApp::implementation
                 if (const auto root = tab->GetRootPane())
                 {
                     root->WalkTree([&](const auto& pane) {
-                        if (const auto control = pane->GetTerminalControl())
+                        if (const auto control = pane->GetTerminalControl();
+                            control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
                         {
                             if (const auto info = _RichTabAgentInfoForControl(control); info && !info->launchMetadata && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.ContentId() == control.ContentId());
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned && focusedControl.ContentId() == control.ContentId());
                             }
                         }
                         return false;
@@ -13160,7 +13507,9 @@ namespace winrt::TerminalApp::implementation
 
     bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control)
     {
-        const auto info = control ? _RichTabAgentInfoForControl(control) : std::nullopt;
+        const auto info = control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned ?
+                              _RichTabAgentInfoForControl(control) :
+                              std::nullopt;
         return info && info->paneSessionId &&
                winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
                    *info->paneSessionId, info->sessionId, info->providerId);
@@ -13187,9 +13536,10 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_ReadFocusedPaneAgentActivity(Tab& tab)
     {
-        if (tab.IsFocused())
+        if (_GetTabIndex(tab) && tab.Content() && tab.IsFocused())
         {
-            if (const auto control = tab.GetActiveTerminalControl())
+            if (const auto control = tab.GetActiveTerminalControl();
+                control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
             {
                 winrt::get_self<ContentManager>(_manager)->MarkAgentCompletionRead(control.ContentId());
             }
@@ -13818,6 +14168,66 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    void TerminalPage::_OnTerminalBackgroundBrushChanged(const TermControl& control)
+    {
+        bool hiddenAgent = false;
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                if (const auto pane = tabImpl->FindAgentPane(); pane && pane->IsHidden())
+                {
+                    if (const auto agentControl = pane->GetTerminalControl();
+                        agentControl && agentControl == control)
+                    {
+                        hiddenAgent = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Keep the upstream synchronous path for normal and visible controls.
+        if (!hiddenAgent)
+        {
+            _updateThemeColors();
+            return;
+        }
+
+        if (_hiddenAgentThemeRefreshQueued || _windowPanesShutdown || _windowCloseAccepted)
+        {
+            return;
+        }
+
+        _hiddenAgentThemeRefreshQueued = true;
+        try
+        {
+            Dispatcher().RunAsync(CoreDispatcherPriority::Normal, [weakThis = get_weak()]() {
+                if (const auto page = weakThis.get())
+                {
+                    page->_hiddenAgentThemeRefreshQueued = false;
+                    if (!page->_windowPanesShutdown && !page->_windowCloseAccepted)
+                    {
+                        try
+                        {
+                            page->_updateThemeColors();
+                        }
+                        CATCH_LOG()
+                    }
+                }
+            });
+        }
+        catch (...)
+        {
+            _hiddenAgentThemeRefreshQueued = false;
+            LOG_CAUGHT_EXCEPTION();
+            if (!_windowPanesShutdown && !_windowCloseAccepted)
+            {
+                _updateThemeColors();
+            }
+        }
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         const auto publication = _receivingContentTransfer ? _receivingContentTransfer->publication : nullptr;
@@ -13834,12 +14244,12 @@ namespace winrt::TerminalApp::implementation
 
         term.ConnectionStateChanged({ get_weak(), &TerminalPage::_ConnectionStateChangedHandler });
 
-        term.PropertyChanged([weakThis = get_weak()](auto& /*sender*/, auto& e) {
+        term.PropertyChanged([weakThis = get_weak()](auto& sender, auto& e) {
             if (auto page{ weakThis.get() })
             {
                 if (e.PropertyName() == L"BackgroundBrush")
                 {
-                    page->_updateThemeColors();
+                    page->_OnTerminalBackgroundBrushChanged(sender.template as<TermControl>());
                 }
             }
         });
@@ -14359,9 +14769,8 @@ namespace winrt::TerminalApp::implementation
                         if (auto content = tab->Content())
                         {
                             page->_tabContent.Children().Append(std::move(content));
+                            tab->Focus(FocusState::Programmatic);
                         }
-
-                        tab->Focus(FocusState::Programmatic);
                     }
                 }
             }
@@ -15848,6 +16257,15 @@ namespace winrt::TerminalApp::implementation
             {
                 _SelectTab(*index);
             }
+            try
+            {
+                if (sourceTab->IsFocused())
+                {
+                    source._ReadFocusedPaneAgentActivity(*sourceTab);
+                }
+                source._RefreshTabUnreadActivity(*sourceTab);
+            }
+            CATCH_LOG()
             _agentPaneLog("content transfer rolled back source_tab=" + winrt::to_string(sourceTab->StableId()) +
                           " action_index=" + std::to_string(transfer.actionIndex));
             return false;
@@ -15992,6 +16410,16 @@ namespace winrt::TerminalApp::implementation
             }
             CATCH_LOG()
         }
+        try
+        {
+            // Focus events during preparation cannot mark borrowed content read.
+            if (destinationTab->IsFocused())
+            {
+                _ReadFocusedPaneAgentActivity(*destinationTab);
+            }
+            _RefreshTabUnreadActivity(*destinationTab);
+        }
+        CATCH_LOG()
         return true;
     }
 
@@ -16322,6 +16750,11 @@ namespace winrt::TerminalApp::implementation
     // - See Pane::CalcSnappedDimension
     float TerminalPage::CalcSnappedDimension(const bool widthOrHeight, const float dimension) const
     {
+        if (_IsFreRequired())
+        {
+            return static_cast<float>(ClampFreMinimumWindowDimension(widthOrHeight, dimension));
+        }
+
         if (_settings && _settings.GlobalSettings().SnapToGridOnResize())
         {
             if (const auto tabImpl{ _GetFocusedTabImpl() })
@@ -17350,9 +17783,9 @@ namespace winrt::TerminalApp::implementation
         const auto profileAgentId = profile.AgentProfileId();
         const auto profileProvider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
             std::wstring_view{ profileAgentId });
-        const auto nativeAgentProvider = !profileProvider.empty() ?
-                                             winrt::hstring{ profileProvider } :
-                                             newTerminalArgs ? newTerminalArgs.NativeAgentProviderId() : winrt::hstring{};
+        const auto nativeAgentProvider = newTerminalArgs && !newTerminalArgs.NativeAgentProviderId().empty() ?
+                                             newTerminalArgs.NativeAgentProviderId() :
+                                             winrt::hstring{ profileProvider };
         const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
 
         // Two kinds of pane replay their own history and must not also be
@@ -17548,13 +17981,27 @@ namespace winrt::TerminalApp::implementation
         std::optional<_PaneAgentSession> resumeBinding;
         std::string resumeLocation;
         const auto oldPaneId = _FindSessionIdForControl(termControl);
+        const auto managedAgentLaunch = winrt::get_self<Settings::TerminalSettings>(termControl.Settings())->UsesManagedAgentCommand();
+        auto freshManagedLaunch = managedAgentLaunch;
+        if (const auto profile = paneContent.GetProfile(); freshManagedLaunch && profile)
+        {
+            try
+            {
+                freshManagedLaunch = std::ranges::none_of(
+                    ::Microsoft::Terminal::AgentProfiles::ParseArguments(profile.AgentProfileArguments()), [](const auto& argument) {
+                        const auto flag = std::wstring_view{ argument }.substr(0, argument.find(L'='));
+                        return flag == L"--resume" || flag == L"--continue" || flag == L"--session" || flag == L"--conversation";
+                    });
+            }
+            CATCH_LOG()
+        }
         if (nativeFallback)
         {
             const auto oldConnection = termControl.Connection().try_as<TerminalConnection::ConptyConnection>();
             const auto newConnection = connection.try_as<TerminalConnection::ConptyConnection>();
             if (const auto paneId = _TryParsePaneSessionId(oldPaneId))
             {
-                if (oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
+                if (!freshManagedLaunch && oldConnection && newConnection && oldConnection.Commandline() == newConnection.Commandline())
                 {
                     _PreserveNativeAgentIdentity(termControl);
                     const auto identity = manager->NativeAgentObservationForContent(termControl.ContentId());
@@ -17591,16 +18038,15 @@ namespace winrt::TerminalApp::implementation
         else
         {
             _PublishNativeAgentObservation(termControl, "removed");
-            if (_pendingRestoredSessionBindings.contains(connection.SessionId()))
+            if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
+                oldPaneSessionId && *oldPaneSessionId != connection.SessionId() &&
+                (managedAgentLaunch || _paneAgentSessions.contains(*oldPaneSessionId) ||
+                 _pendingRestoredSessionBindings.contains(connection.SessionId())))
             {
-                if (const auto oldPaneSessionId = _TryParsePaneSessionId(oldPaneId);
-                    oldPaneSessionId && *oldPaneSessionId != connection.SessionId())
-                {
-                    // Replacement retires the old lifetime even if a failure was already reported.
-                    _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
-                    _panesWithEmittedTerminalEndState.emplace(oldPaneId);
-                    _ForgetPaneAgentIdentity(*oldPaneSessionId);
-                }
+                // Replacement retires the old lifetime even if a failure was already reported.
+                _RaiseConnectionStateEvent(oldPaneId, "closed", _FindTabIdForControl(termControl));
+                _panesWithEmittedTerminalEndState.emplace(oldPaneId);
+                _ForgetPaneAgentIdentity(*oldPaneSessionId);
             }
         }
         manager->RestartNativeAgentConnectionTracking(termControl.ContentId());
@@ -18281,6 +18727,14 @@ namespace winrt::TerminalApp::implementation
         ChangeMaximizeRequested.raise(*this, nullptr);
     }
 
+    bool TerminalPage::_CanShowAgentProfilesIntroduction()
+    {
+        return _visible && _activated && !_windowPanesShutdown &&
+               !(CommandPaletteElement() && CommandPaletteElement().Visibility() == Visibility::Visible) &&
+               !(SuggestionsElement() && SuggestionsElement().Visibility() == Visibility::Visible) &&
+               !(FreOverlayElement() && FreOverlayElement().Visibility() == Visibility::Visible);
+    }
+
     TerminalApp::IPaneContent TerminalPage::_makeSettingsContent()
     {
         if (auto app{ winrt::Windows::UI::Xaml::Application::Current().try_as<winrt::TerminalApp::App>() })
@@ -18297,6 +18751,14 @@ namespace winrt::TerminalApp::implementation
         auto sui = settingsContent->SettingsUI();
         sui.FlowDirection(_isRightToLeft ? FlowDirection::RightToLeft : FlowDirection::LeftToRight);
         _settingsMainPage = sui;
+
+        sui.SetAgentProfilesIntroductionPresentationGate([weak = get_weak()]() {
+            if (const auto page = weak.get())
+            {
+                return page->_CanShowAgentProfilesIntroduction();
+            }
+            return false;
+        });
 
         sui.InitShellIntegrationRequested({ get_weak(), &TerminalPage::_OnSettingsInitShellIntegration });
 
@@ -18882,6 +19344,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_updateThemeColors()
     {
+        _updateThemeColors(Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast());
+    }
+
+    void TerminalPage::_updateThemeColors(const bool highContrast)
+    {
         if (_settings == nullptr)
         {
             return;
@@ -18908,9 +19375,11 @@ namespace winrt::TerminalApp::implementation
 
         const auto res = Application::Current().Resources();
 
-        // Use our helper to lookup the theme-aware version of the resource.
+        // High contrast must bypass explicit Light/Dark and custom tab-row backgrounds.
         const auto tabViewBackgroundKey = winrt::box_value(L"TabViewBackground");
-        const auto backgroundSolidBrush = ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
+        const auto backgroundSolidBrush = highContrast ?
+                                              res.Lookup(box_value(L"SystemColorButtonFaceColorBrush")).as<Media::SolidColorBrush>() :
+                                              ThemeLookup(res, requestedTheme, tabViewBackgroundKey).as<Media::SolidColorBrush>();
 
         til::color bgColor = backgroundSolidBrush.Color();
 
@@ -18931,7 +19400,11 @@ namespace winrt::TerminalApp::implementation
                                                             theme.TabRow().UnfocusedBackground()) :
                                               ThemeColor{ nullptr } };
 
-        if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
+        if (highContrast)
+        {
+            TitlebarBrush(backgroundSolidBrush);
+        }
+        else if (_settings.GlobalSettings().UseAcrylicInTabRow() && (_activated || _settings.GlobalSettings().EnableUnfocusedAcrylic()))
         {
             if (tabRowBg)
             {

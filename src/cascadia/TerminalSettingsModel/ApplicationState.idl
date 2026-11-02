@@ -59,5 +59,9 @@ namespace Microsoft.Terminal.Settings.Model
         String SidebarRolloutName { get; };
         String SidebarRolloutAssignment { get; };
         Guid FeatureRolloutId { get; };
+
+        Boolean AgentProfilesIntroductionShown;
+        UInt64 TryBeginAgentProfilesIntroduction();
+        void EndAgentProfilesIntroduction(UInt64 claim, Boolean dismissed);
     }
 }

@@ -4384,9 +4384,11 @@ fn apply_event_qualified_at_ms(
             let revision = advance_cwd_revision(state);
             let entry = state.sessions.get_mut(&identity).expect("checked above");
             entry.cwd_evidence.hook = Some(cwd.clone());
-            entry.cwd_evidence.hook_after_acp = entry.cwd_evidence.acp.is_some();
+            entry.cwd_evidence.acp = None;
+            entry.cwd_evidence.acp_agent = None;
+            entry.cwd_evidence.hook_after_acp = false;
             entry.cwd_evidence.revision = revision;
-            if entry.cwd_evidence.acp.is_some() || entry.cwd == cwd {
+            if entry.cwd == cwd {
                 return false;
             }
             entry.cwd = cwd;
@@ -4861,14 +4863,14 @@ mod tests {
                     pane_session_id: "owner".into(),
                     cwd: PathBuf::from("/other"),
                 },
-                20_000,
+                15_000,
             );
             let before = state.sessions.values().next().unwrap().clone();
             let wire = serde_json::to_value(&before).unwrap();
             let decoded: SessionInfo = serde_json::from_value(wire).unwrap();
             let helper = crate::app::session_info_to_agent_session(&decoded);
             let round_trip = agent_session_to_session_info(&helper);
-            assert_eq!(round_trip.attention_cooldown_until_ms, Some(40_000));
+            assert_eq!(round_trip.attention_cooldown_until_ms, Some(20_000));
             assert_eq!(round_trip.attention_timestamp_ms, attention_timestamp);
             assert!(!apply_event_at_ms(
                 &mut state,
@@ -4876,7 +4878,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                39_999,
+                19_999,
             ));
             assert_eq!(state.sessions.values().next().unwrap(), &before);
             apply_event_at_ms(
@@ -4886,7 +4888,7 @@ mod tests {
                     pane_session_id: "owner".into(),
                     cwd: PathBuf::from("/at-expiry"),
                 },
-                40_000,
+                20_000,
             );
             assert_eq!(
                 state.sessions.values().next().unwrap().status,
@@ -4898,7 +4900,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                40_000,
+                20_000,
             ));
             let recovered = state.sessions.values().next().unwrap();
             assert_eq!(recovered.status, Some(AgentStatus::Working));
@@ -4928,7 +4930,7 @@ mod tests {
                 .next()
                 .unwrap()
                 .attention_cooldown_until_ms,
-            Some(70_000)
+            Some(50_000)
         );
         assert!(!apply_event_at_ms(
             &mut state,
@@ -10580,7 +10582,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn acp_cwd_wins_over_hook_and_rejects_in_flight_old_listing() {
+    async fn newer_hook_cwd_replaces_acp_and_rejects_in_flight_old_listing() {
         use crate::agent_sessions::{CliSource, SessionEvent};
 
         let reg = InMemoryRegistry::new();
@@ -10606,9 +10608,8 @@ mod tests {
             .await
         );
         let acp_row = reg.lookup(&sid).await.unwrap();
-        let activity_at = acp_row.last_activity_at_ms;
         assert!(
-            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            reg.apply_event(SessionEvent::WorkingDirectoryChanged {
                 key: sid.to_string(),
                 pane_session_id: "pane-cwd".into(),
                 cwd: PathBuf::from("C:\\new-hook"),
@@ -10616,7 +10617,8 @@ mod tests {
             .await
         );
         let after_hook = reg.lookup(&sid).await.unwrap();
-        assert_eq!(after_hook.cwd, PathBuf::from("C:\\acp"));
+        assert_eq!(after_hook.cwd, PathBuf::from("C:\\new-hook"));
+        let activity_at = after_hook.last_activity_at_ms;
         assert_eq!(
             after_hook.cwd_evidence.hook,
             Some(PathBuf::from("C:\\new-hook"))
@@ -10889,7 +10891,7 @@ mod tests {
         })
         .await;
         assert!(
-            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision(),)
+            !reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision(),)
                 .await
         );
         assert_eq!(
@@ -10905,7 +10907,7 @@ mod tests {
         )
         .await;
         assert!(
-            !reg.apply_event(SessionEvent::WorkingDirectoryChanged {
+            reg.apply_event(SessionEvent::WorkingDirectoryChanged {
                 key: sid.to_string(),
                 pane_session_id: "pane".into(),
                 cwd: PathBuf::from("C:\\fresh-hook"),
@@ -10913,7 +10915,7 @@ mod tests {
             .await
         );
         assert!(
-            reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
+            !reg.clear_acp_cwd_identity(&identity, reg.lookup(&sid).await.unwrap().cwd_revision())
                 .await
         );
         assert_eq!(
@@ -10936,7 +10938,7 @@ mod tests {
         .await;
         let before_confirmation = reg.lookup(&sid).await.unwrap();
         assert!(
-            !reg.adopt_acp_cwd_identity(
+            reg.adopt_acp_cwd_identity(
                 &identity,
                 before_confirmation.cwd_revision(),
                 agent,
@@ -12019,7 +12021,10 @@ mod tests {
                 .clone(),
         );
         let parsed = extract_wta_meta(&mut meta);
-        assert!(meta.is_none(), "private retry intent must not reach the agent");
+        assert!(
+            meta.is_none(),
+            "private retry intent must not reach the agent"
+        );
         inject_wta_meta(&mut meta, &parsed);
         assert_eq!(
             meta.as_ref().unwrap()["wta"]["startup_intent"],

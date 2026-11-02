@@ -162,6 +162,25 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void HighlightedTextControl::SetTextAndColor(
+        const winrt::hstring& text,
+        const TerminalApp::TextHighlightColor color,
+        const IVector<TerminalApp::HighlightedRun>& ranges)
+    {
+        if (Text() == text && ColorHighlight() == color && ColorHighlightRanges() == ranges)
+        {
+            return;
+        }
+        {
+            _updatingTextAndColor = true;
+            const auto reset = wil::scope_exit([this]() { _updatingTextAndColor = false; });
+            Text(text);
+            ColorHighlightRanges(ranges);
+            ColorHighlight(color);
+        }
+        _updateTextAndStyle();
+    }
+
     void HighlightedTextControl::OnApplyTemplate()
     {
         if (_textBlock)
@@ -215,6 +234,10 @@ namespace winrt::TerminalApp::implementation
 
     void HighlightedTextControl::_updateTextAndStyle()
     {
+        if (_updatingTextAndColor)
+        {
+            return;
+        }
         const auto textBlock = GetTemplateChild(L"TextView").try_as<winrt::Windows::UI::Xaml::Controls::TextBlock>();
         if (!textBlock)
         {
@@ -314,7 +337,7 @@ namespace winrt::TerminalApp::implementation
 
     void HighlightedTextControl::_updateColorHighlights()
     {
-        if (!_textBlock)
+        if (_updatingTextAndColor || !_textBlock)
         {
             return;
         }
@@ -324,7 +347,12 @@ namespace winrt::TerminalApp::implementation
         if (TextOpacity() != 1.0 && _foreground && !text.empty())
         {
             // Keep inherited/custom foreground intact; only neutral glyphs are muted.
-            Media::SolidColorBrush brush{ _foreground.Color() };
+            Media::SolidColorBrush brush;
+            Data::Binding colorBinding;
+            colorBinding.Source(_textBlock);
+            colorBinding.Path(PropertyPath{ L"Foreground.Color" });
+            colorBinding.Mode(Data::BindingMode::OneWay);
+            Data::BindingOperations::SetBinding(brush, Media::SolidColorBrush::ColorProperty(), colorBinding);
             brush.Opacity(_foreground.Opacity() * TextOpacity());
             Documents::TextHighlighter neutral;
             neutral.Foreground(brush);

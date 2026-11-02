@@ -356,6 +356,14 @@
     <value>Hinaharangan ng execution policy ng PowerShell ang mga script. Na-off ang error detection.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Pane ng shell</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Pindutin ang Enter para ituon ang pokus sa shell.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Paggamit</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>mga token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Window ng konteksto</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -499,6 +507,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>Walang tumutugmang session ng agent.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>Walang bukas na tab o nakaraang session ng agent na tumutugma sa iyong paghahanap.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>Hindi ma-load ang mga session ng agent.</value>
@@ -694,6 +706,7 @@
   <data name="ExportTabText"><value>I-export ang teksto</value></data>
   <data name="FindText"><value>Hanapin</value></data>
   <data name="RestartConnectionText"><value>I-restart ang session</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} pane</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Isara</value></data>
   <data name="TabClose"><value>Isara ang tab</value></data>
   <data name="MoveTabToNewWindowText"><value>Ilipat ang tab sa bagong window</value></data>
