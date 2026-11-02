@@ -1,6 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Real native profile -> Windows argv -> ConPTY -> installed native CLI.
-# --version exits without a prompt or session; no unrestricted model work is submitted.
+# Version and parser-error cases submit no model work.
 
 Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgentProfileArguments') {
     BeforeAll {
@@ -101,11 +101,15 @@ Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgen
     }
 
     It 'Native agent CLI owns invalid argument errors' {
-        $unknown = "--intelligent-terminal-unknown-option-$script:runId"
-        $pane = Start-NativeArgumentProfile -Arguments "$unknown --version"
+        $unknown = "--it-native-$script:runId-%USERPROFILE%-quoted value"
+        # One quoted argv value also exercises literal percent through ConPTY.
+        # Do not append --version: Claude Code exits successfully for version
+        # before reporting unknown options, unlike Copilot.
+        $pane = Start-NativeArgumentProfile -Arguments ('"{0}"' -f $unknown)
         Wait-Until -TimeoutSec 30 -Because 'the native CLI reports the unknown argument and exits' -Condition {
             $capture = Get-WtCapture -App $script:app -SessionId $pane.session_id
-            $capture.Contains($unknown) -and $capture -match '\[process exited with code (?!0\b)\d+'
+            ($capture -replace '\r?\n', '').Contains($unknown) -and
+                $capture -match '\[process exited with code (?!0\b)\d+'
         } | Out-Null
         $text = Get-WtCapture -App $script:app -SessionId $pane.session_id
         $text | Should -Not -Match '0x80070057|Unsupported or conflicting native agent argument'
