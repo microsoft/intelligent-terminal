@@ -1998,8 +1998,8 @@ namespace winrt::TerminalApp::implementation
 
     ListViewItem TabStrip::_sidebarEntryTarget()
     {
-        const auto selected = ItemsList().SelectedItem();
-        if (selected && selected.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(selected))
+        const auto selected = DisplayItemForTab(SelectedItem());
+        if (selected && _isSidebarFocusableItem(selected))
         {
             return _realizeSidebarItem(selected);
         }

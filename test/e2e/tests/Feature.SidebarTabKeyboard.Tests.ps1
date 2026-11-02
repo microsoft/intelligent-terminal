@@ -66,13 +66,14 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             $list = Get-SidebarElement -AutomationId 'ItemsList'
             if (-not $list -or $list.Current.IsOffscreen) { throw 'The ordinary Sidebar tabs list is not visible.' }
             $condition = [Windows.Automation.PropertyCondition]::new(
-                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
             $historyHeader = [Windows.Automation.PropertyCondition]::new(
                 [Windows.Automation.AutomationElement]::AutomationIdProperty, 'HistoryHeaderButton')
             $found = $list.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
             @(
                 for ($i = 0; $i -lt $found.Count; $i++) {
                     $row = $found[$i]
+                    if ($row.Current.AutomationId -eq 'HistoryHeaderButton') { break }
                     $bounds = $row.Current.BoundingRectangle
                     if (-not $row.Current.IsOffscreen -and $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
                         -not $row.FindFirst([Windows.Automation.TreeScope]::Descendants, $historyHeader)) {
@@ -413,7 +414,7 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
                 Where-Object tab_id -eq $group.tab_id).title
             function Get-GroupRow {
                 $condition = [Windows.Automation.PropertyCondition]::new(
-                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+                    [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
                 $rows = (Get-SidebarElement ItemsList).FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
                 @($rows | Where-Object { Test-TabRowTitle -Row $_ -Title $groupTitle }) |
                     Select-Object -First 1
@@ -1187,6 +1188,17 @@ Describe 'Feature: Sidebar tab keyboard navigation' -Tag @('Feature', 'SidebarTa
             (Test-Until -TimeoutSec 6 -Condition {
                 @(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).Count -eq $baseline + 1
             }) | Should -BeTrue -Because 'Enter on the plus creates one default tab'
+            $created = Get-ActivePane -App $script:app
+            $created.tab_id | Should -Not -Be ([string]$script:tabB.tab_id)
+            (Test-Until -TimeoutSec 6 -Condition {
+                $focused = [Windows.Automation.AutomationElement]::FocusedElement
+                $focused -and $focused.Current.ProcessId -eq $script:app.Pid -and
+                    $focused.Current.ClassName -eq 'TermControl' -and
+                    [string](Get-ActivePane -App $script:app).tab_id -eq [string]$created.tab_id
+            }) | Should -BeTrue -Because 'the new tab must own terminal input before F6'
+            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
+            Assert-FocusedTabRow -Index $baseline -SelectedTabId ([string]$created.tab_id) `
+                -Because 'F6 from a newly created tab focuses that tab, not the first row'
         }
         finally {
             $created = Get-ActivePane -App $script:app
