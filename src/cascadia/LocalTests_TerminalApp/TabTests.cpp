@@ -595,6 +595,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentViewFiltersSplitPaneChildren);
         TEST_METHOD(VerticalTabSearchMatchesCommittedTitle);
         TEST_METHOD(VerticalTabTooltipsExposeStableShortcuts);
+        TEST_METHOD(SidebarTooltipTemplatesOwnVisualsDuringMetadataUpdates);
         TEST_METHOD(SidebarHintsFollowEffectiveTargets);
         TEST_METHOD(VerticalTabSearchTracksActivePaneMetadata);
         TEST_METHOD(VerticalTabAgentStatusIgnoresAssistantFocus);
@@ -9336,7 +9337,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(TextAlignment::Left, content.TextAlignment());
                 const auto titleRun = inlines.GetAt(0).as<Documents::Run>();
                 const auto keyChordRun = inlines.GetAt(inlines.Size() - 1).as<Documents::Run>();
-                VERIFY_ARE_EQUAL(winrt::hstring{ L"ctrl+alt+3" }, keyChordRun.Text());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\nctrl+alt+3" }, keyChordRun.Text());
                 VERIFY_ARE_EQUAL(winrt::Windows::UI::Text::FontStyle::Italic, keyChordRun.FontStyle());
                 VERIFY_IS_NULL(titleRun.Foreground());
                 VERIFY_IS_NULL(keyChordRun.Foreground());
@@ -9425,9 +9426,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ splitAutomationTooltip }, Automation::AutomationProperties::GetHelpText(thirdContainer));
             VERIFY_ARE_EQUAL(winrt::hstring{ splitAutomationTooltip }, thirdDisplay.ToolTipText());
             const auto splitContent = ToolTipService::GetToolTip(thirdHeader).as<ToolTip>().Content().as<TextBlock>();
-            const auto paneCountRun = splitContent.Inlines().GetAt(1).as<Documents::Run>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"    2 panes" }, paneCountRun.Text());
-            VERIFY_IS_NULL(paneCountRun.Foreground());
+            const auto bodyRun = splitContent.Inlines().GetAt(0).as<Documents::Run>();
+            VERIFY_IS_TRUE(std::wstring_view{ bodyRun.Text() }.ends_with(L"    2 panes"));
+            VERIFY_IS_NULL(bodyRun.Foreground());
             verifyVerticalTooltipKeyChordStyle();
 
             VERIFY_IS_TRUE(splitPane->Id().has_value());
@@ -9456,9 +9457,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ thirdDisplay.ToolTipText() }.find(presentation.tooltip));
             const auto metadataContent = ToolTipService::GetToolTip(thirdHeader).as<ToolTip>().Content().as<TextBlock>();
             const auto metadataInlines = metadataContent.Inlines();
-            const auto metadataRun = metadataInlines.GetAt(metadataInlines.Size() - 3).as<Documents::Run>();
+            const auto metadataRun = metadataInlines.GetAt(0).as<Documents::Run>();
             const auto metadataKeyChordRun = metadataInlines.GetAt(metadataInlines.Size() - 1).as<Documents::Run>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ presentation.tooltip }, metadataRun.Text());
+            VERIFY_IS_TRUE(std::wstring_view{ metadataRun.Text() }.ends_with(presentation.tooltip));
             VERIFY_IS_NULL(metadataRun.Foreground());
             VERIFY_IS_NULL(metadataKeyChordRun.Foreground());
 
@@ -9518,6 +9519,116 @@ namespace TerminalAppLocalTests
             const auto tenthDisplay = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(tenth->TabViewItem());
             VERIFY_ARE_EQUAL(Automation::AutomationProperties::GetHelpText(tenth->TabViewItem()), tenthDisplay.ToolTipText());
             VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ tenthDisplay.ToolTipText() }.find(L"ctrl+alt+9"));
+        });
+    }
+
+    void TabTests::SidebarTooltipTemplatesOwnVisualsDuringMetadataUpdates()
+    {
+        Grid host{ nullptr };
+        UIElement previousContent{ nullptr };
+        ListView duplicateList{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            ColumnDefinition pageColumn;
+            pageColumn.Width({ 1, GridUnitType::Star });
+            host.ColumnDefinitions().Append(pageColumn);
+            ColumnDefinition duplicateColumn;
+            duplicateColumn.Width({ 360, GridUnitType::Pixel });
+            host.ColumnDefinitions().Append(duplicateColumn);
+            previousContent = Window::Current().Content();
+        });
+        const auto page = _commonSetup(nullptr, host, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() {
+            TestOnUIThread([&]() {
+                if (duplicateList)
+                {
+                    duplicateList.Items().Clear();
+                }
+                host.Children().Clear();
+                Window::Current().Content(previousContent);
+            });
+        });
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+        winrt::TerminalApp::TabStripDisplayItem display{ nullptr };
+        TestOnUIThread([&]() {
+            tab = page->_GetFocusedTabImpl();
+            tab->SetTabText(L"Tooltip owner");
+            const auto map = page->_settings.ActionMap();
+            map.RegisterKeyBinding(KeyChordSerialization::FromString(L"ctrl+alt+1"),
+                                   { ShortcutAction::SwitchToTab, SwitchToTabArgs{ 0u } });
+            page->_ApplyTabListProjection();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            display = strip->DisplayItemForTab(tab->TabViewItem());
+            duplicateList = ListView{};
+            duplicateList.ItemTemplateSelector(strip->ItemsList().ItemTemplateSelector());
+            // Native reordering can realize another template before the old one releases its bindings.
+            duplicateList.Items().Append(display);
+            Grid::SetColumn(duplicateList, 1);
+            host.Children().Append(duplicateList);
+            host.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            const auto first = page->_tabStrip.ContainerFromIndex(0).try_as<ListViewItem>();
+            const auto second = duplicateList.ContainerFromIndex(0).try_as<ListViewItem>();
+            return first && second && first.ContentTemplateRoot() && second.ContentTemplateRoot();
+        });
+        TestOnUIThread([&]() {
+            const auto first = page->_tabStrip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto second = duplicateList.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
+            const auto firstTip = ToolTipService::GetToolTip(first).as<ToolTip>();
+            const auto secondTip = ToolTipService::GetToolTip(second).as<ToolTip>();
+            const auto firstContent = firstTip.Content().as<TextBlock>();
+            const auto secondContent = secondTip.Content().as<TextBlock>();
+            VERIFY_IS_FALSE(firstTip == secondTip);
+            VERIFY_IS_FALSE(firstContent == secondContent);
+            VERIFY_IS_TRUE(first.XamlRoot() == second.XamlRoot());
+            second.FlowDirection(FlowDirection::RightToLeft);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->OnSidebarRowGotFocus(second, RoutedEventArgs{});
+            const auto verify = [&](std::wstring_view metadata, std::wstring_view shortcut) {
+                host.UpdateLayout();
+                VERIFY_IS_TRUE(firstTip.Content() == firstContent);
+                VERIFY_IS_TRUE(secondTip.Content() == secondContent);
+                for (const auto& content : { firstContent, secondContent })
+                {
+                    const auto body = content.Inlines().GetAt(0).as<Documents::Run>();
+                    const auto key = content.Inlines().GetAt(content.Inlines().Size() - 1).as<Documents::Run>();
+                    VERIFY_ARE_NOT_EQUAL(std::wstring::npos, std::wstring{ body.Text() }.find(L"Tooltip owner"));
+                    VERIFY_IS_TRUE(std::wstring_view{ body.Text() }.ends_with(metadata));
+                    VERIFY_ARE_EQUAL(winrt::hstring{ shortcut }, key.Text());
+                    VERIFY_ARE_EQUAL(winrt::Windows::UI::Text::FontStyle::Italic, key.FontStyle());
+                    VERIFY_ARE_EQUAL(TextWrapping::Wrap, content.TextWrapping());
+                }
+                VERIFY_ARE_EQUAL(first.FlowDirection(), firstContent.FlowDirection());
+                VERIFY_ARE_EQUAL(second.FlowDirection(), secondContent.FlowDirection());
+                VERIFY_ARE_EQUAL(firstContent.Inlines().GetAt(0).as<Documents::Run>().Text(),
+                                 secondContent.Inlines().GetAt(0).as<Documents::Run>().Text());
+                VERIFY_ARE_EQUAL(display.ToolTipText(), Automation::AutomationProperties::GetName(firstTip));
+                VERIFY_ARE_EQUAL(display.ToolTipText(), Automation::AutomationProperties::GetName(secondTip));
+            };
+            verify(L"Tooltip owner", L"\nctrl+alt+1");
+            for (const auto text : { L"Branch: main", L"Branch: main, Changes: 2" })
+            {
+                ::Microsoft::Terminal::RichTab::Provider::Presentation metadata;
+                metadata.text = L"main";
+                metadata.tooltip = text;
+                metadata.accessibilityText = text;
+                tab->SetRichTabPresentation(metadata);
+                verify(text, L"\nctrl+alt+1");
+            }
+            page->_SetTabPinned(tab, true);
+            verify(L"Branch: main, Changes: 2", L"\nctrl+alt+1");
+            tab->SetRichTabPresentation(std::nullopt);
+            VERIFY_ARE_EQUAL(std::wstring::npos, std::wstring{ display.ToolTipBody() }.find(L"Branch:"));
+            page->_settings.ActionMap().DeleteKeyBinding(KeyChordSerialization::FromString(L"ctrl+alt+1"));
+            page->_ApplyTabListProjection();
+            verify(tab->ToolTipBody(), L"");
+            duplicateList.Items().Clear();
+            tab->SetTabText(L"Remaining tooltip owner");
+            page->UpdateLayout();
+            VERIFY_ARE_NOT_EQUAL(std::wstring::npos,
+                                 std::wstring{ firstContent.Inlines().GetAt(0).as<Documents::Run>().Text() }.find(L"Remaining tooltip owner"));
         });
     }
 

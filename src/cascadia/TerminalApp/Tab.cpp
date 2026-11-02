@@ -320,39 +320,36 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ text };
     }
 
+    winrt::hstring Tab::ToolTipBody()
+    {
+        std::wstring text{ _CreateToolTipTitle() };
+        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
+        {
+            text.append(L"    ");
+            text.append(paneCount);
+        }
+        if (_isPinned)
+        {
+            text.append(L"\n");
+            text.append(RS_(L"PinnedTabName"));
+        }
+        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        {
+            text.append(L"\n");
+            text.append(_richTabTooltipText);
+        }
+        return winrt::hstring{ text };
+    }
+
     WUX::Controls::TextBlock Tab::ToolTipContentForKeyChord(const winrt::hstring& keyChord)
     {
         auto textBlock = WUX::Controls::TextBlock{};
         textBlock.TextWrapping(WUX::TextWrapping::Wrap);
         textBlock.TextAlignment(_isVerticalTabLayout ? WUX::TextAlignment::Left : WUX::TextAlignment::Center);
 
-        auto titleRun = WUX::Documents::Run();
-        titleRun.Text(_CreateToolTipTitle());
-        textBlock.Inlines().Append(titleRun);
-
-        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
-        {
-            auto paneCountRun = WUX::Documents::Run();
-            paneCountRun.Text(til::hstring_format(FMT_COMPILE(L"    {}"), paneCount));
-            textBlock.Inlines().Append(paneCountRun);
-        }
-
-        if (_isPinned)
-        {
-            auto pinRun = WUX::Documents::Run();
-            pinRun.Text(RS_(L"PinnedTabName"));
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(pinRun);
-        }
-
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
-        {
-            auto metadataRun = WUX::Documents::Run();
-            metadataRun.Text(_richTabTooltipText);
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(metadataRun);
-        }
-
+        auto bodyRun = WUX::Documents::Run();
+        bodyRun.Text(ToolTipBody());
+        textBlock.Inlines().Append(bodyRun);
         if (!keyChord.empty())
         {
             auto keyChordRun = WUX::Documents::Run();

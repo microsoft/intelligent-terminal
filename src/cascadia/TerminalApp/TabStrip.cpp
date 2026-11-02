@@ -401,7 +401,7 @@ namespace winrt::TerminalApp::implementation
         if (!verticalPresentation)
         {
             _sidebarHints.reset();
-            _sidebarToolTipContent = nullptr;
+            _sidebarToolTipBody = {};
         }
         _publishHints(verticalPresentation);
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
@@ -430,18 +430,11 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints,
-                                              IInspectable const& toolTipContent,
+                                              hstring const& toolTipBody,
                                               bool verticalPresentation)
     {
-        if (const auto previous = _sidebarToolTipContent.try_as<FrameworkElement>())
-        {
-            if (const auto replacement = toolTipContent.try_as<FrameworkElement>())
-            {
-                replacement.FlowDirection(previous.FlowDirection());
-            }
-        }
         _sidebarHints = verticalPresentation ? std::move(hints) : std::nullopt;
-        _sidebarToolTipContent = verticalPresentation ? toolTipContent : nullptr;
+        _sidebarToolTipBody = verticalPresentation ? toolTipBody : hstring{};
         _publishHints(verticalPresentation);
     }
 
@@ -451,7 +444,10 @@ namespace winrt::TerminalApp::implementation
                                                                WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         ToolTipText(verticalPresentation && _sidebarHints ? _sidebarHints->second :
                                                             WUX::Automation::AutomationProperties::GetHelpText(_tab));
-        ToolTipContent(verticalPresentation && _sidebarHints ? _sidebarToolTipContent : nullptr);
+        ToolTipBody(verticalPresentation && _sidebarHints ? _sidebarToolTipBody : hstring{});
+        ToolTipShortcutLine(verticalPresentation && _sidebarHints && !_sidebarHints->first.empty() ?
+                                hstring{ L"\n" } + _sidebarHints->first :
+                                hstring{});
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
