@@ -277,6 +277,10 @@ namespace winrt::TerminalApp::implementation
         topChromeContainer.Children().Append(_verticalNewTabButton);
 
         titlebarGrid.Children().Append(expandedChrome);
+        WUX::Controls::Border titlebarDivider;
+        titlebarDivider.Style(Resources().Lookup(box_value(L"VerticalTitlebarDividerStyle")).as<WUX::Style>());
+        WUX::Controls::Grid::SetColumnSpan(titlebarDivider, 3);
+        titlebarGrid.Children().Append(titlebarDivider);
         _verticalLeadingChrome = leadingChrome;
         _verticalNewTabHost = topChromeContainer;
         _verticalExpandedChrome = expandedChrome;
