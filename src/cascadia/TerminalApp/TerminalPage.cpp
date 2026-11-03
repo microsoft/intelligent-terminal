@@ -13411,14 +13411,10 @@ namespace winrt::TerminalApp::implementation
             return std::nullopt;
         }
         const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
-        const auto provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
-        if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
-            _richTabEndedSessionByPaneId.contains(*paneId))
-        {
-            return std::nullopt;
-        }
-        if (const auto active = _activeCliAgentPanes.find(*paneId);
-            active != _activeCliAgentPanes.end() && !active->second.sessionId.empty())
+        const auto manager = winrt::get_self<ContentManager>(_manager);
+        const auto provider = manager->NativeAgentProviderId(control.ContentId());
+        if (!paneId || provider.empty() || _richTabEndedSessionByPaneId.contains(*paneId) ||
+            manager->HasReportedAgentStatus(control.ContentId()))
         {
             return std::nullopt;
         }
@@ -13652,7 +13648,7 @@ namespace winrt::TerminalApp::implementation
                         if (const auto control = pane->GetTerminalControl();
                             control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
                         {
-                            if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
+                            if (const auto info = _RichTabAgentInfoForControl(control); info && !info->launchMetadata && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
                                     control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned && focusedControl.ContentId() == control.ContentId());
