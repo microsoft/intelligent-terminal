@@ -25,10 +25,10 @@ namespace TerminalAppUnitTests
 
     void FreLayoutMetricsTests::DefaultWelcomeLayoutMatchesFigma()
     {
-        constexpr auto layout = winrt::TerminalApp::implementation::ResolveFreWelcomeLayout(1130.0, 679.0);
-        static_assert(layout.contentHeight == 679.0);
-        static_assert(layout.scrollViewportBottom == 602.0);
-        static_assert(layout.footerTop == 599.0);
+        constexpr auto layout = winrt::TerminalApp::implementation::ResolveFreWelcomeLayout(1130.0, 695.0);
+        static_assert(layout.contentHeight == 695.0);
+        static_assert(layout.scrollViewportBottom == 618.0);
+        static_assert(layout.footerTop == 615.0);
 
         VERIFY_ARE_EQUAL(1032.0, layout.cardsWidth);
         VERIFY_ARE_EQUAL(510.0, layout.cardWidth);
@@ -37,17 +37,17 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(120.0, layout.buttonWidth);
         VERIFY_ARE_EQUAL(32.0, layout.buttonHeight);
         VERIFY_ARE_EQUAL(40.0, layout.titlebarHeight);
-        VERIFY_ARE_EQUAL(679.0, layout.contentHeight);
+        VERIFY_ARE_EQUAL(695.0, layout.contentHeight);
         VERIFY_ARE_EQUAL(47.0, layout.headerTop);
         VERIFY_ARE_EQUAL(87.0, layout.headerWindowTop);
         VERIFY_ARE_EQUAL(113.0, layout.headerHeight);
         VERIFY_ARE_EQUAL(24.0, layout.headerToCardsSpacing);
         VERIFY_ARE_EQUAL(184.0, layout.cardsTop);
         VERIFY_ARE_EQUAL(224.0, layout.cardsWindowTop);
-        VERIFY_ARE_EQUAL(602.0, layout.scrollViewportBottom);
-        VERIFY_ARE_EQUAL(642.0, layout.scrollWindowBottom);
-        VERIFY_ARE_EQUAL(599.0, layout.footerTop);
-        VERIFY_ARE_EQUAL(639.0, layout.footerWindowTop);
+        VERIFY_ARE_EQUAL(618.0, layout.scrollViewportBottom);
+        VERIFY_ARE_EQUAL(658.0, layout.scrollWindowBottom);
+        VERIFY_ARE_EQUAL(615.0, layout.footerTop);
+        VERIFY_ARE_EQUAL(655.0, layout.footerWindowTop);
         VERIFY_ARE_EQUAL(3.0, layout.footerOverlap);
     }
 
@@ -96,10 +96,10 @@ namespace TerminalAppUnitTests
         const auto hostedTitlebarSize = winrt::TerminalApp::implementation::ResolveFreDefaultWindowSize(1.0, true);
 
         VERIFY_ARE_EQUAL(1130.0, defaultSize.width);
-        VERIFY_ARE_EQUAL(679.0, defaultSize.height);
+        VERIFY_ARE_EQUAL(695.0, defaultSize.height);
         VERIFY_ARE_EQUAL(1695.0, scaledSize.width);
-        VERIFY_ARE_EQUAL(1018.5, scaledSize.height);
-        VERIFY_ARE_EQUAL(719.0, hostedTitlebarSize.height);
+        VERIFY_ARE_EQUAL(1042.5, scaledSize.height);
+        VERIFY_ARE_EQUAL(735.0, hostedTitlebarSize.height);
 
         VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(true, false, false, false, false, true));
         VERIFY_IS_FALSE(winrt::TerminalApp::implementation::ShouldUseFreDefaultWindowSize(false, false, false, false, false, true));
@@ -163,12 +163,12 @@ namespace TerminalAppUnitTests
 
     void FreLayoutMetricsTests::FreCardCornerRadiusScalesWithLaunchWindow()
     {
-        VERIFY_ARE_EQUAL(7.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(1130.0, 679.0));
+        VERIFY_ARE_EQUAL(7.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(1130.0, 695.0));
         VERIFY_ARE_EQUAL(7.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(1400.0, 800.0));
         VERIFY_ARE_EQUAL(0.0, winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(0.0, 0.0));
 
         const auto constrainedRadius = winrt::TerminalApp::implementation::ResolveFreCardCornerRadius(990.0, 590.0);
-        VERIFY_IS_TRUE(std::abs(constrainedRadius - 6.13) < 0.01);
+        VERIFY_IS_TRUE(std::abs(constrainedRadius - 6.0) < 0.01);
     }
 
     void FreLayoutMetricsTests::WelcomeLayoutSwitchesToScrollingBelowWideBreakpoint()
