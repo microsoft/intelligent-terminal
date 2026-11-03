@@ -783,6 +783,7 @@ impl HistoryProcess {
             &target.source,
             target.provider.spawn_selection(),
         )
+        .await
         .context(crate::agent_lifecycle::StartupPhase::Spawn)?;
         let stderr = AgentStderrLog::new(format!("history-{}", target.agent_id));
         if let Some(pipe) = spawned.child.stderr.take() {

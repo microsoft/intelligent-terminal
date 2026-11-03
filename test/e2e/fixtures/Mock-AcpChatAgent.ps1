@@ -4,6 +4,8 @@ param(
     [string]$HistoryPath,
     [string]$HistoryControlPath,
     [string]$StartupControlPath,
+    [string]$RuntimeReceiptPath,
+    [string]$ExpectedRuntimeRoot,
     [switch]$SupportsImages
 )
 
@@ -50,6 +52,25 @@ function Complete-HistoryRequest {
 
 if ($StartupControlPath) {
     Write-FixtureLog -Message "start|$([DateTimeOffset]::UtcNow.ToString('o'))"
+}
+
+if ($RuntimeReceiptPath) {
+    $extractionName = '_MEI-fixture-' + [guid]::NewGuid().ToString('N')
+    $extraction = Join-Path $env:TEMP $extractionName
+    New-Item -ItemType Directory -Path $extraction | Out-Null
+    [IO.File]::WriteAllText((Join-Path $extraction 'payload.dll'), 'owned fixture')
+    $instance = (Get-Item -LiteralPath $env:TEMP).Name
+    $expectedPayload = if ($ExpectedRuntimeRoot) {
+        Join-Path $ExpectedRuntimeRoot "$instance\$extractionName\payload.dll"
+    }
+    @{
+        temp = $env:TEMP
+        tmp = $env:TMP
+        instance = $instance
+        extraction = $extraction
+        inExpectedRoot = [bool]($expectedPayload -and [IO.File]::Exists($expectedPayload))
+        pid = $PID
+    } | ConvertTo-Json | Set-Content -LiteralPath $RuntimeReceiptPath -Encoding utf8
 }
 
 $pendingPrompt = $null

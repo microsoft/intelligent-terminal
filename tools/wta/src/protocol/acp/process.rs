@@ -6,16 +6,19 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows_sys::Win32::Foundation::{
+    GetLastError, ERROR_ALREADY_EXISTS, ERROR_FILE_NOT_FOUND, INVALID_HANDLE_VALUE,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
 };
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
-    JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
-    TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    JobObjectExtendedLimitInformation, OpenJobObjectW, QueryInformationJobObject,
+    SetInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
+use windows_sys::Win32::System::SystemServices::JOB_OBJECT_QUERY;
 use windows_sys::Win32::System::Threading::{
     OpenThread, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
 };
@@ -35,19 +38,39 @@ pub(crate) fn configure_child_error_reporting() {
 
 pub(crate) struct ProcessJob(OwnedHandle);
 
+pub(crate) trait ProcessResources: Send + Sync {
+    fn job_name(&self) -> &str;
+    fn configure(&self, command: &mut tokio::process::Command);
+    /// Called after complete job exit, or a failed spawn that never resumed the child.
+    fn cleanup(&mut self) -> Result<()>;
+}
+
 impl ProcessJob {
     pub(crate) fn spawn(
         command: &mut tokio::process::Command,
     ) -> Result<(tokio::process::Child, Self)> {
+        Self::spawn_named(command, None)
+    }
+
+    pub(crate) fn spawn_named(
+        command: &mut tokio::process::Command,
+        name: Option<&str>,
+    ) -> Result<(tokio::process::Child, Self)> {
+        let name = name.map(|name| name.encode_utf16().chain(Some(0)).collect::<Vec<_>>());
         // SAFETY: every returned handle is immediately owned. The child is
         // suspended until assigned, so even cmd/npx descendants inherit this
         // job before any agent code can execute.
         let job = unsafe {
-            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            let handle = CreateJobObjectW(
+                std::ptr::null(),
+                name.as_ref().map_or(std::ptr::null(), |name| name.as_ptr()),
+            );
             if handle.is_null() {
                 return Err(std::io::Error::last_os_error()).context("create ACP process job");
             }
+            let already_exists = GetLastError() == ERROR_ALREADY_EXISTS;
             let handle = OwnedHandle::from_raw_handle(handle);
+            anyhow::ensure!(!already_exists, "ACP process job name is already owned");
             let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
             limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             if SetInformationJobObject(
@@ -84,41 +107,78 @@ impl ProcessJob {
     }
 
     pub(crate) async fn terminate(&self) -> Result<()> {
+        self.request_termination()?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !self.is_empty()? {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Ok(())
+        })
+        .await
+        .context("ACP descendants did not exit within 5 seconds")?
+    }
+
+    fn request_termination(&self) -> Result<()> {
         // SAFETY: this handle refers only to this launcher's private job,
         // never the master, helper, or another provider instance.
         if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } == 0 {
             return Err(std::io::Error::last_os_error()).context("terminate ACP process job");
         }
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
-                let queried = unsafe {
-                    // SAFETY: accounting has the exact size/type required by
-                    // JobObjectBasicAccountingInformation.
-                    QueryInformationJobObject(
-                        self.0.as_raw_handle(),
-                        JobObjectBasicAccountingInformation,
-                        std::ptr::addr_of_mut!(accounting).cast(),
-                        std::mem::size_of_val(&accounting) as u32,
-                        std::ptr::null_mut(),
-                    )
-                };
-                if queried == 0 {
-                    return Err(std::io::Error::last_os_error()).context("query ACP job exit");
-                }
-                if accounting.ActiveProcesses == 0 {
-                    return Ok(());
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-        })
-        .await
-        .context("ACP descendants did not exit within 5 seconds")?
+        Ok(())
+    }
+
+    fn terminate_blocking(&self) -> Result<()> {
+        self.request_termination()?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !self.is_empty()? {
+            anyhow::ensure!(
+                std::time::Instant::now() < deadline,
+                "ACP descendants did not exit within 5 seconds"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        Ok(())
+    }
+
+    fn is_empty(&self) -> Result<bool> {
+        let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        // SAFETY: the owned job is live and the buffer has the required type and size.
+        let queried = unsafe {
+            QueryInformationJobObject(
+                self.0.as_raw_handle(),
+                JobObjectBasicAccountingInformation,
+                std::ptr::addr_of_mut!(accounting).cast(),
+                std::mem::size_of_val(&accounting) as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        if queried == 0 {
+            return Err(std::io::Error::last_os_error()).context("query ACP job exit");
+        }
+        Ok(accounting.ActiveProcesses == 0)
+    }
+
+    /// A lost name is not an exit fence: kill-on-close can still be completing.
+    /// Only a live handle with zero active processes confirms complete job exit.
+    pub(crate) fn named_exit_confirmed(name: &str) -> Result<bool> {
+        let name: Vec<_> = name.encode_utf16().chain(Some(0)).collect();
+        // SAFETY: name is terminated and the returned handle is immediately owned.
+        let handle = unsafe { OpenJobObjectW(JOB_OBJECT_QUERY, 0, name.as_ptr()) };
+        if handle.is_null() {
+            let error = std::io::Error::last_os_error();
+            return if error.raw_os_error() == Some(ERROR_FILE_NOT_FOUND as i32) {
+                Ok(false)
+            } else {
+                Err(error).context("open ACP recovery job")
+            };
+        }
+        Self(unsafe { OwnedHandle::from_raw_handle(handle) }).is_empty()
     }
 }
 
 pub(crate) struct AgentProcess {
-    job: ProcessJob,
+    job: Option<ProcessJob>,
+    resources: Option<Box<dyn ProcessResources>>,
     child: tokio::process::Child,
     pub stdin: Option<tokio::process::ChildStdin>,
     pub stderr: Option<tokio::process::ChildStderr>,
@@ -134,13 +194,37 @@ impl AgentProcess {
         command: &mut tokio::process::Command,
         wsl_bootstrap: Option<(String, String)>,
     ) -> Result<Self> {
-        let (mut child, job) = ProcessJob::spawn(command)?;
+        Self::spawn_with_resources(command, wsl_bootstrap, None)
+    }
+
+    pub(crate) fn spawn_with_resources(
+        command: &mut tokio::process::Command,
+        wsl_bootstrap: Option<(String, String)>,
+        resources: Option<Box<dyn ProcessResources>>,
+    ) -> Result<Self> {
+        let spawned = match &resources {
+            Some(resources) => {
+                resources.configure(command);
+                ProcessJob::spawn_named(command, Some(resources.job_name()))
+            }
+            None => ProcessJob::spawn(command),
+        };
+        let (mut child, job) = match spawned {
+            Ok(spawned) => spawned,
+            Err(error) => {
+                if let Some(resources) = resources {
+                    cleanup_on_drop(None, resources);
+                }
+                return Err(error);
+            }
+        };
         Ok(Self {
             stdin: child.stdin.take(),
             stderr: child.stderr.take(),
             stdout: child.stdout.take().map(BufReader::new),
             child,
-            job,
+            job: Some(job),
+            resources,
             wsl_bootstrap,
             wsl_group: None,
             receipt: Vec::new(),
@@ -197,11 +281,29 @@ impl AgentProcess {
             if let Some(group) = &self.wsl_group {
                 group.terminate().await?;
             }
-            self.job.terminate().await?;
+            self.job
+                .as_ref()
+                .context("ACP process job missing")?
+                .terminate()
+                .await?;
             tokio::time::timeout(Duration::from_secs(5), self.child.wait())
                 .await
                 .context("ACP launcher exit timed out")?
                 .context("wait for ACP launcher")?;
+            if let Some(mut resources) = self.resources.take() {
+                let (resources, cleanup) = tokio::task::spawn_blocking(move || {
+                    let cleanup = resources.cleanup();
+                    (resources, cleanup)
+                })
+                .await
+                .context("ACP runtime cleanup task failed")?;
+                if cleanup.is_err() {
+                    self.resources = Some(resources);
+                }
+                cleanup
+                    .context(crate::agent_lifecycle::RuntimeCleanupPending)
+                    .context("reclaim ACP process resources")?;
+            }
             Ok(())
         }
         .await;
@@ -231,6 +333,33 @@ impl AgentProcess {
 
     pub(crate) fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
         self.child.try_wait()
+    }
+}
+
+impl Drop for AgentProcess {
+    fn drop(&mut self) {
+        if let Some(resources) = self.resources.take() {
+            cleanup_on_drop(self.job.take(), resources);
+        }
+    }
+}
+
+fn cleanup_on_drop(job: Option<ProcessJob>, mut resources: Box<dyn ProcessResources>) {
+    let mut cleanup = move || {
+        let result = job
+            .as_ref()
+            .map_or(Ok(()), ProcessJob::terminate_blocking)
+            .and_then(|()| resources.cleanup());
+        if let Err(error) = result {
+            tracing::warn!(target: "acp_process", error = %format!("{error:#}"),
+                "ACP resource cleanup deferred to recovery");
+        }
+    };
+    match tokio::runtime::Handle::try_current() {
+        Ok(runtime) => {
+            runtime.spawn_blocking(cleanup);
+        }
+        Err(_) => cleanup(),
     }
 }
 
@@ -425,6 +554,7 @@ mod tests {
             },
             crate::protocol::acp::spawn::SharedProviderSelection::Disabled,
         )
+        .await
         .unwrap();
         let _incoming = spawned.child.take_stdout().await.unwrap();
         let mut input = spawned.child.stdin.take().unwrap();
@@ -460,7 +590,7 @@ mod tests {
             .await
             .with_context(|| format!("fixture did not fill the owned forwarding pipe: {last_state}"))??;
 
-            spawned.child.job.terminate().await?;
+            spawned.child.job.as_ref().unwrap().terminate().await?;
             tokio::time::timeout(Duration::from_secs(5), async {
                 loop {
                     let script = format!(
@@ -509,11 +639,19 @@ mod tests {
                 },
                 crate::protocol::acp::spawn::SharedProviderSelection::Disabled,
             )
+            .await
             .unwrap();
             let mut incoming = spawned.child.take_stdout().await.unwrap();
             let group = spawned.child.wsl_group.as_ref().unwrap();
             if host_exit {
-                spawned.child.job.terminate().await.unwrap();
+                spawned
+                    .child
+                    .job
+                    .as_ref()
+                    .unwrap()
+                    .terminate()
+                    .await
+                    .unwrap();
                 let gone = tokio::time::timeout(Duration::from_secs(5), async {
                     loop {
                         let script = format!("groups=$(ps -eo pgid=) || exit 2; ! printf '%s\\n' \"$groups\" | grep -Eq '^[[:space:]]*{}[[:space:]]*$'", group.pid);

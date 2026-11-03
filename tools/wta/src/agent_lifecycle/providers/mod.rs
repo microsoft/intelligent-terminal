@@ -9,6 +9,7 @@ use anyhow::Result;
 use futures::future::BoxFuture;
 
 use crate::agent_source::AgentSource;
+use crate::protocol::acp::process::ProcessResources;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DependencyKind {
@@ -57,6 +58,15 @@ pub(crate) trait ProviderLifecycleAdapter: Sync {
     }
     fn host_bootstrap_available(&self, _launch_ready: bool) -> bool {
         false
+    }
+    fn runtime_resources(
+        &self,
+        _source: &AgentSource,
+    ) -> Result<Option<Box<dyn ProcessResources>>> {
+        Ok(None)
+    }
+    fn recover_runtime_resources(&self) -> Result<()> {
+        Ok(())
     }
     fn prepare<'a>(
         &'a self,
@@ -127,6 +137,32 @@ pub(crate) async fn prepare(
     match lookup(id) {
         Some(provider) => provider.prepare(command, source).await,
         None => Ok(PreparationOutcome::NotRequired.into()),
+    }
+}
+
+pub(crate) async fn prepare_runtime_resources(
+    command: &str,
+    agent_id: Option<&str>,
+    source: &AgentSource,
+) -> Result<Option<Box<dyn ProcessResources>>> {
+    use anyhow::Context;
+
+    let id = agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(command));
+    let Some(provider) = lookup(id) else {
+        return Ok(None);
+    };
+    let source = source.clone();
+    tokio::task::spawn_blocking(move || provider.runtime_resources(&source))
+        .await
+        .context("prepare ACP process resources task failed")?
+}
+
+pub(crate) fn recover_runtime_resources() {
+    for provider in PROVIDERS {
+        if let Err(error) = provider.recover_runtime_resources() {
+            tracing::warn!(target: "acp_process", agent = provider.family_id(), error = %format!("{error:#}"),
+                "provider runtime recovery incomplete");
+        }
     }
 }
 

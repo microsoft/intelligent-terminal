@@ -107,6 +107,7 @@ authenticated ACP agents. Available suites (results depend on the selected packa
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
+| `Feature.AntigravityRuntime.Tests.ps1` | Package-private Antigravity TEMP/TMP, repeated successful/failed verification cleanup, and custom-command preservation. Requires explicit Dev/private Dev PFN and exact `ITE2E_EXPECTED_WTA_SHA256`; can use an isolated WTA-only package with a unique alias. No Terminal window, settings changes, provider installation, authentication or inference | 2 |
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.HookShutdown.Tests.ps1` | Fixed-CLSID native/cached hook delivery, passive WTA publisher/listener shutdown suppression, and ordinary headless COM compatibility; no windows, agents, or configuration edits | 4 |
 | `Feature.TelemetryFunnels.Tests.ps1` | Opt-in real ETW: daily activity, correlated prompt/completion, detection/offer/Run, foreground palette visits, startup/provider configuration and policy state, including content-free blocked-policy shell-failure counting without Autofix and the separate connection-failure control. AppCreated schema includes rejected enrollment (empty rollout name / NotEnrolled, typed UnicodeString) without changing the user's chosen layout. Run results remain unknown, not execution success | 19 required + 2 optional hot-policy diagnostics (requires `ITE2E_TELEMETRY=1` and explicit policy approval) |

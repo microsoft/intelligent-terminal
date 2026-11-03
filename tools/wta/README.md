@@ -471,6 +471,24 @@ the target's budget, but retry does not override unconfirmed cleanup within the
 same process. Logs retain safely filtered diagnostic details.
 See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
 
+Native Windows Antigravity ACP processes receive their own `TEMP` and `TMP`
+under the current package's `LocalCache\acp\<instance>` (unpackaged development
+uses `IntelligentTerminal\acp` under LocalAppData). Short Windows paths are used
+when needed to leave room for the bundled extraction; an unsupported path fails
+explicitly rather than falling back to shared Temp.
+
+The directory belongs to the complete ACP process job, not a pane or session.
+Verification, history, failed startup and normal process retirement reclaim it
+only after all contained processes exit. Cancellation also schedules cleanup.
+After a crash or forced application exit, a subsequent master startup or native
+Antigravity launch checks owned leftovers using exclusive leases, recorded
+retirement, queryable job liveness and directory identity. A missing job name
+alone cannot prove completed process exit. Unconfirmed exits, locked files or
+unsafe paths retain ownership records and emit `antigravity_runtime` diagnostics.
+These records do not persist startup failure budgets. Existing shared `_MEI*`
+folders, custom commands, other providers, WSL and installation caches are not
+automatically cleaned or redirected.
+
 Dedicated history connections retain their own single-flight, adaptive wait,
 hard timeout, backoff and confirmed-cleanup recovery without consuming the chat
 startup budget. Automatic recovery pauses after three consecutive failed query

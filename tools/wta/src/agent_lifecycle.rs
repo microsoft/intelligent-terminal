@@ -352,6 +352,17 @@ impl std::fmt::Display for StartupCleanupUnconfirmed {
 
 impl std::error::Error for StartupCleanupUnconfirmed {}
 
+#[derive(Debug)]
+pub(crate) struct RuntimeCleanupPending;
+
+impl std::fmt::Display for RuntimeCleanupPending {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ACP process exited; temporary-file cleanup is pending")
+    }
+}
+
+impl std::error::Error for RuntimeCleanupPending {}
+
 #[derive(Default)]
 struct StartupState {
     attempts: usize,
@@ -485,7 +496,7 @@ impl StartupLease {
         );
         failure.retry_epoch = self.retry_epoch();
         let error = error.context(failure.clone());
-        if failure.phase == StartupPhase::Cleanup {
+        if failure.phase == StartupPhase::Cleanup && !error.is::<RuntimeCleanupPending>() {
             self.state.cleanup_failed = true;
         }
         if !self.startup_verified || self.state.cleanup_failed {
