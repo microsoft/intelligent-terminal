@@ -2758,7 +2758,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned)
     {
-        if (!tab || !_GetTabIndex(*tab) || !tab->CanKeepRunning() || _IsTabListPositionOperationBlocked())
+        if (!tab || !_GetTabIndex(*tab) || !tab->CanKeepRunning() || (pinned && !_isVerticalLayout) || _IsTabListPositionOperationBlocked())
         {
             return;
         }
@@ -2797,7 +2797,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned)
     {
-        if (!tab || tab->IsPinned() == pinned || !tab->CanKeepRunning())
+        if (!tab || tab->IsPinned() == pinned || !tab->CanKeepRunning() || (pinned && !_isVerticalLayout))
         {
             return;
         }
@@ -2819,6 +2819,27 @@ namespace winrt::TerminalApp::implementation
             winrt::get_self<implementation::TabStrip>(_tabStrip)->SetTabPinned(tab->TabViewItem(), pinned);
         }
         _ApplyTabListProjection(nullptr, false);
+    }
+
+    void TerminalPage::_UnpinAllTabs()
+    {
+        bool changed = false;
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (tabImpl->IsPinned())
+            {
+                tabImpl->IsPinned(false);
+                tabStrip->SetTabPinned(tabImpl->TabViewItem(), false);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            _UpdateTabIndices();
+        }
     }
 
     // Method Description:

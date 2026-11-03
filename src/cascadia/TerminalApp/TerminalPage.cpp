@@ -6633,6 +6633,7 @@ namespace winrt::TerminalApp::implementation
 
         if (succeeded && !targetVertical)
         {
+            _UnpinAllTabs();
             _ClearTabSearch();
         }
 

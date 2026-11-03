@@ -2193,6 +2193,7 @@ namespace winrt::TerminalApp::implementation
             _RecalculateAndApplyTabColor();
         }
         _UpdateKeepRunningMenuItem();
+        _UpdatePinMenuItem();
         _UpdateRichTabPresentation();
 
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
@@ -2505,7 +2506,7 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::_UpdatePinMenuItem()
     {
-        const auto available = CanKeepRunning();
+        const auto available = _isVerticalTabLayout && CanKeepRunning();
         _pinMenuItem.Visibility(available ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         _pinMenuItem.IsEnabled(available && !_tabListPositionOperationsRestricted);
         const auto label = IsPinned() ? RS_(L"UnpinTabText") : RS_(L"PinTabText");
