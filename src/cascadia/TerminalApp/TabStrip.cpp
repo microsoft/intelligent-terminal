@@ -1552,12 +1552,15 @@ namespace winrt::TerminalApp::implementation
             const auto customHover = !_highContrast || searchFocused;
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
+            const auto hoverMargin = _isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 5, 3, 5, 3 };
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
+                hoverBackground.Margin(hoverMargin);
                 hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
+                colorHover.Margin(hoverMargin);
                 colorHover.Background(hoverBrush);
                 colorHover.Opacity(!_highContrast && !selected && pointerOver && hoverBrush ? 1.0 : 0.0);
             }
@@ -3475,10 +3478,8 @@ namespace winrt::TerminalApp::implementation
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} :
                                                  unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarToolbarPadding"))));
-        TabsToolbar().ColumnSpacing(_isRailCollapsed ? 0.0 :
-                                                       unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing"))));
         const auto actionColumn = _isRailCollapsed ? WUX::GridLengthHelper::FromValueAndType(0, WUX::GridUnitType::Pixel) :
-                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarActionCellWidth")));
+                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarToolbarActionCellWidth")));
         TabsToolbar().ColumnDefinitions().GetAt(1).Width(actionColumn);
         TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
