@@ -488,6 +488,9 @@ reclaim the old instance without guessing from a missing process or job name.
 Restart leaves this resource wait and filesystem work off the UI thread.
 If writing retirement evidence fails, the surviving parent retains the job and
 retries in the background instead of losing its confirmed-exit evidence.
+Policy-driven stops queue this work without waiting on the UI thread. Final
+shutdown drains tracked retirement tasks with a bounded wait; an expired deadline
+is logged and on-disk ownership records remain intact.
 Other providers do not request this resource policy, keep their inherited
 temporary environment, and retain the existing no-opt-in lifecycle behavior.
 

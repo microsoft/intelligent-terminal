@@ -7,6 +7,7 @@
 
 #include <type_traits>
 #include <utility>
+#include <future>
 
 using namespace WEX::Logging;
 using namespace WEX::TestExecution;
@@ -164,6 +165,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartWaitFailureTerminatesThenReapsRetiredProcess);
         TEST_METHOD(RestartFailsWhenForcedProcessReapTimesOut);
         TEST_METHOD(RestartDoesNotWaitForManagedShutdown);
+        TEST_METHOD(ManagedPolicyStopDoesNotWait);
+        TEST_METHOD(ShutdownDrainsQueuedRetirement);
         TEST_METHOD(StaleWaitCallbackCannotClaimReplacementWithReusedPid);
         TEST_METHOD(RetiredWaitCallbackCannotClaimAfterCleanup);
         TEST_METHOD(CurrentUnexpectedExitWithRetainedRefsRespawnsOnce);
@@ -184,6 +187,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartSuppressionClearsBeforeReopen);
         TEST_METHOD(RepeatedRestartRequestsAreCoalescedOnCompletion);
 
+        static void _VerifyManagedStopLatency(bool policyStop);
+
         static SharedWtaLease _AcquireLease(SharedWta& owner)
         {
             // Exercise the production accounting without spawning a master
@@ -195,6 +200,16 @@ namespace TerminalAppUnitTests
     };
 
     void SharedWtaTests::RestartDoesNotWaitForManagedShutdown()
+    {
+        _VerifyManagedStopLatency(false);
+    }
+
+    void SharedWtaTests::ManagedPolicyStopDoesNotWait()
+    {
+        _VerifyManagedStopLatency(true);
+    }
+
+    void SharedWtaTests::_VerifyManagedStopLatency(const bool policyStop)
     {
         SharedWta owner;
         owner._job = owner._resourceScope.CreateJob();
@@ -242,7 +257,16 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(ResumeThread(thread.get()) != static_cast<DWORD>(-1));
 
         const auto started = GetTickCount64();
-        VERIFY_IS_FALSE(owner._RestartLocked((local / L"missing-wta.exe").wstring(), {}, {}));
+        if (policyStop)
+        {
+            owner.SetEnabled(false);
+            VERIFY_IS_FALSE(owner._serviceEnabled);
+            VERIFY_IS_FALSE(owner._process.is_valid());
+        }
+        else
+        {
+            VERIFY_IS_FALSE(owner._RestartLocked((local / L"missing-wta.exe").wstring(), {}, {}));
+        }
         VERIFY_IS_TRUE(GetTickCount64() - started < 2000);
         const auto receipt = root / (L".retired-" + id);
         const auto deadline = GetTickCount64() + 5000;
@@ -250,6 +274,53 @@ namespace TerminalAppUnitTests
         {
             Sleep(10);
         }
+        VERIFY_IS_TRUE(std::filesystem::is_regular_file(receipt));
+    }
+
+    void SharedWtaTests::ShutdownDrainsQueuedRetirement()
+    {
+        SharedWta owner;
+        owner._job = owner._resourceScope.CreateJob();
+        VERIFY_IS_NOT_NULL(owner._job.get());
+        const auto seed = owner._resourceScope.Environment(nullptr);
+        const auto offset = seed.find(L"WTA_PROCESS_RESOURCE_SCOPE=");
+        VERIFY_IS_TRUE(offset != std::wstring::npos);
+        const auto id = seed.substr(offset + 27, 32);
+        const auto local = std::filesystem::temp_directory_path() / (L"WtaShutdownRetry-" + id);
+        const auto root = IntelligentTerminal::AcpRuntimeRoot(local);
+        const auto receipt = root / (L".retired-" + id);
+        std::filesystem::create_directories(receipt);
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(local, error);
+            LOG_HR_IF(E_FAIL, static_cast<bool>(error));
+        });
+        auto environment = L"LOCALAPPDATA=" + local.wstring();
+        environment.append(2, L'\0');
+        owner._resourceScope.Environment(environment.c_str());
+        owner._resourceScope.Attached();
+        wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, (L"Local\\wta-resources-used-" + id).c_str()) };
+        VERIFY_IS_TRUE(SetEvent(requested.get()));
+        owner._CleanupLocked();
+
+        std::promise<void> started;
+        auto stopping = std::async(std::launch::async, [&]() {
+            started.set_value();
+            owner.Shutdown();
+        });
+        const auto releaseBlocker = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove(receipt, error);
+            if (stopping.valid())
+            {
+                stopping.wait();
+            }
+        });
+        started.get_future().wait();
+        VERIFY_IS_TRUE(stopping.wait_for(std::chrono::milliseconds{ 200 }) == std::future_status::timeout);
+        VERIFY_IS_TRUE(std::filesystem::remove(receipt));
+        VERIFY_IS_TRUE(stopping.wait_for(std::chrono::seconds{ 10 }) == std::future_status::ready);
+        stopping.get();
         VERIFY_IS_TRUE(std::filesystem::is_regular_file(receipt));
     }
 

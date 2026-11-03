@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 #include <wil/resource.h>
-#include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
 
 #include "IntelligentTerminalPaths.h"
 
@@ -270,9 +270,9 @@ namespace Microsoft::Terminal::WtaProcess
         bool _retirementPending{ false };
     };
 
-    inline winrt::fire_and_forget QueueProcessResourceRetirement(ProcessResourceScope scope,
-                                                                 wil::unique_handle job,
-                                                                 std::function<void()> reclaimed)
+    inline winrt::Windows::Foundation::IAsyncAction QueueProcessResourceRetirement(ProcessResourceScope scope,
+                                                                                   wil::unique_handle job,
+                                                                                   std::function<void()> reclaimed)
     {
         ++winrt::get_module_lock();
         const auto releaseModule = wil::scope_exit([]() noexcept {
@@ -293,6 +293,7 @@ namespace Microsoft::Terminal::WtaProcess
         catch (...)
         {
             LOG_CAUGHT_EXCEPTION();
+            throw;
         }
     }
 
