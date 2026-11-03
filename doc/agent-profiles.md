@@ -65,8 +65,8 @@ changes it. Permission choices use provider-specific native modes.
 The native CLI validates its option values and combinations.
 
 The profile editor exposes model and additional startup arguments, but does not
-include a permission-mode selector. Configure approvals through the native CLI;
-Use `agentProfile.permissionMode` in JSON to pass a structured permission option.
+include a permission-mode selector. Configure approvals through the CLI or set
+`agentProfile.permissionMode` in JSON.
 For Antigravity, `accept-edits` and `plan` map to `agy --mode`; an empty value
 preserves the CLI's configured default.
 The agent profile's Advanced page exposes only close-on-exit behavior and

@@ -8756,20 +8756,20 @@ namespace TerminalAppLocalTests
         const auto splitInitialized = std::make_shared<::details::Event>();
         VERIFY_IS_TRUE(tabInitialized->IsValid());
         VERIFY_IS_TRUE(splitInitialized->IsValid());
+        namespace fs = std::filesystem;
+        const auto directory = fs::path{ winrt::Windows::Storage::ApplicationData::Current().TemporaryFolder().Path().c_str() } /
+                               (L"NativeAgentStartup-" + std::wstring{ Utils::GuidToString(Utils::CreateGuid()) });
+        fs::create_directory(directory);
+        const auto executable = directory / L"copilot.exe";
+        const auto oldPath = wil::TryGetEnvironmentVariableW<std::wstring>(L"PATH");
+        const auto cleanup = wil::scope_exit([&]() {
+            LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"PATH", oldPath.empty() ? nullptr : oldPath.c_str()));
+            fs::remove(executable);
+            fs::remove(directory);
+        });
         TestOnUIThread([&]() {
-            namespace fs = std::filesystem;
             using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
             using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
-            const auto directory = fs::path{ winrt::Windows::Storage::ApplicationData::Current().TemporaryFolder().Path().c_str() } /
-                                   (L"NativeAgentStartup-" + std::wstring{ Utils::GuidToString(Utils::CreateGuid()) });
-            fs::create_directory(directory);
-            const auto executable = directory / L"copilot.exe";
-            const auto oldPath = wil::TryGetEnvironmentVariableW<std::wstring>(L"PATH");
-            const auto cleanup = wil::scope_exit([&]() {
-                LOG_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"PATH", oldPath.empty() ? nullptr : oldPath.c_str()));
-                fs::remove(executable);
-                fs::remove(directory);
-            });
             std::ofstream{ executable }.put('\n');
             // Discovery must succeed even on machines without Copilot; the fake executable must never run.
             VERIFY_IS_TRUE(SetEnvironmentVariableW(L"PATH", directory.c_str()));
