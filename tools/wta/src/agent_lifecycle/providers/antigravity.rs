@@ -37,7 +37,7 @@ impl ProviderLifecycleAdapter for AntigravityProvider {
         }
     }
 
-    fn recover_runtime_resources(&self) -> Result<()> {
+    fn recover_runtime_resources(&self) -> Result<crate::protocol::acp::process::ResourceRecovery> {
         runtime::recover()
     }
 

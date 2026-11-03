@@ -192,6 +192,18 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             wsl_distro,
             retry_startup,
         } => probes::run_verify_acp(&agent, &agent_id, wsl_distro.as_deref(), retry_startup).await,
+        Command::RecoverProcessResources => {
+            let report = tokio::task::spawn_blocking(
+                crate::agent_lifecycle::providers::recover_runtime_resources,
+            )
+            .await?;
+            println!("{}", serde_json::to_string(&report)?);
+            anyhow::ensure!(
+                report.failed == 0,
+                "some managed process resources could not be reclaimed"
+            );
+            Ok(())
+        }
         Command::ProbeModels {
             agent,
             agent_id,

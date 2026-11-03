@@ -20,7 +20,10 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
 
-use crate::protocol::acp::process::{ProcessJob, ProcessResources};
+use crate::protocol::acp::process::{
+    request_resource_scope, valid_resource_scope, ProcessJob, ProcessResources, ResourceRecovery,
+    RESOURCE_SCOPE_ENV, RESOURCE_SCOPE_RECEIPT_PREFIX,
+};
 
 const SCHEMA: u32 = 1;
 const INSTANCE_LENGTH: usize = 12;
@@ -46,6 +49,8 @@ struct Ownership {
     scope: String,
     instance: String,
     directory: DirectoryIdentity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_scope: Option<String>,
 }
 
 impl Ownership {
@@ -75,12 +80,25 @@ pub(super) struct Runtime {
 
 impl Runtime {
     pub(super) fn prepare() -> Result<Self> {
+        let parent_scope = match std::env::var(RESOURCE_SCOPE_ENV) {
+            Ok(scope) => {
+                request_resource_scope(&scope)?;
+                Some(scope)
+            }
+            Err(std::env::VarError::NotPresent) => None,
+            Err(error) => return Err(error).context("read process resource scope"),
+        };
         let root = crate::runtime_paths::acp_runtime_root()?;
         recover_in(&root)?;
-        Self::create(&root)
+        Self::create_with_scope(&root, parent_scope)
     }
 
+    #[cfg(test)]
     fn create(path: &Path) -> Result<Self> {
+        Self::create_with_scope(path, None)
+    }
+
+    fn create_with_scope(path: &Path, parent_scope: Option<String>) -> Result<Self> {
         let root = open_root(path, true)?.context("ACP runtime root is unavailable")?;
         for _ in 0..8 {
             let instance = uuid::Uuid::new_v4().simple().to_string()[..INSTANCE_LENGTH].to_string();
@@ -106,6 +124,7 @@ impl Runtime {
                 scope: root.scope.clone(),
                 instance,
                 directory: directory_identity(&directory)?,
+                parent_scope: parent_scope.clone(),
             };
             serde_json::to_writer(&mut record, &owner).context("write ACP runtime ownership")?;
             record.write_all(b"\n")?;
@@ -142,14 +161,7 @@ impl Runtime {
 
     fn record_retirement(&mut self) -> Result<()> {
         if !self.retired {
-            // An interrupted tail stays unconfirmed without losing ownership JSON.
-            self.record.seek(SeekFrom::Start(self.retirement_offset))?;
-            self.record.write_all(RETIRED)?;
-            self.record
-                .set_len(self.retirement_offset + RETIRED.len() as u64)?;
-            self.record
-                .sync_all()
-                .context("commit ACP runtime retirement")?;
+            write_retirement(&mut self.record, self.retirement_offset)?;
             self.retired = true;
         }
         Ok(())
@@ -163,6 +175,9 @@ impl ProcessResources for Runtime {
 
     fn configure(&self, command: &mut tokio::process::Command) {
         command.env("TEMP", &self.temp).env("TMP", &self.temp);
+        if let Some(scope) = &self.owner.parent_scope {
+            command.env(RESOURCE_SCOPE_ENV, scope);
+        }
     }
 
     fn cleanup(&mut self) -> Result<()> {
@@ -193,13 +208,14 @@ impl Drop for Runtime {
     }
 }
 
-pub(super) fn recover() -> Result<()> {
+pub(super) fn recover() -> Result<ResourceRecovery> {
     recover_in(&crate::runtime_paths::acp_runtime_root()?)
 }
 
-fn recover_in(path: &Path) -> Result<()> {
+fn recover_in(path: &Path) -> Result<ResourceRecovery> {
+    let mut report = ResourceRecovery::default();
     let Some(root) = open_root(path, false)? else {
-        return Ok(());
+        return Ok(report);
     };
     for entry in fs::read_dir(&root.path).context("enumerate ACP runtime ownership")? {
         let entry = entry.context("read ACP runtime ownership entry")?;
@@ -210,23 +226,110 @@ fn recover_in(path: &Path) -> Result<()> {
         if !valid_instance(instance) {
             continue;
         }
-        let result = (|| -> Result<()> {
-            let record = match record_options().open(entry.path()) {
+        let result = (|| -> Result<Option<bool>> {
+            let mut record = match record_options().open(entry.path()) {
                 Ok(record) => record,
-                Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) => {
+                    return Ok(Some(false))
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(error) => return Err(error).context("acquire ACP runtime recovery lease"),
             };
-            let (owner, retired) = read_ownership(&record, &root, instance)?;
-            if !reclaim(&root, &record, &owner, None, retired)? {
+            let (owner, retired, retirement_offset) = read_ownership(&record, &root, instance)?;
+            let confirmed = retired
+                || has_parent_retirement(&root, owner.parent_scope.as_deref())?
+                || ProcessJob::named_exit_confirmed(&owner.job_name())?;
+            if !confirmed {
                 tracing::warn!(target: "antigravity_runtime", instance,
                     "runtime recovery deferred without complete process-exit evidence");
+                return Ok(Some(false));
             }
-            Ok(())
+            if !retired {
+                write_retirement(&mut record, retirement_offset)?;
+            }
+            reclaim(&root, &record, &owner, None, true).map(Some)
         })();
-        if let Err(error) = result {
-            tracing::warn!(target: "antigravity_runtime", instance, error = %format!("{error:#}"),
-                "runtime recovery incomplete; ownership retained");
+        match result {
+            Ok(Some(true)) => report.reclaimed += 1,
+            Ok(Some(false)) => report.deferred += 1,
+            Ok(None) => {}
+            Err(error) => {
+                report.failed += 1;
+                tracing::warn!(target: "antigravity_runtime", instance, error = %format!("{error:#}"),
+                    "runtime recovery incomplete; ownership retained");
+            }
+        }
+    }
+    prune_unused_receipts(&root)?;
+    Ok(report)
+}
+
+fn write_retirement(record: &mut File, offset: u64) -> Result<()> {
+    ensure!(offset > 0, "invalid ACP retirement record boundary");
+    // Preserve the ownership line even if the append is interrupted.
+    record.seek(SeekFrom::Start(offset - 1))?;
+    record.write_all(b"\n")?;
+    record.write_all(RETIRED)?;
+    record.set_len(offset + RETIRED.len() as u64)?;
+    record.sync_all().context("commit ACP runtime retirement")
+}
+
+fn has_parent_retirement(root: &Root, scope: Option<&str>) -> Result<bool> {
+    let Some(scope) = scope else { return Ok(false) };
+    ensure!(
+        valid_resource_scope(scope),
+        "invalid ACP runtime parent scope"
+    );
+    let path = root
+        .path
+        .join(format!("{RESOURCE_SCOPE_RECEIPT_PREFIX}{scope}"));
+    let file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).context("read parent runtime retirement"),
+    };
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file()
+            && metadata.len() == 0
+            && metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0,
+        "invalid parent runtime retirement receipt"
+    );
+    Ok(true)
+}
+
+fn prune_unused_receipts(root: &Root) -> Result<()> {
+    let mut receipts = Vec::new();
+    for entry in fs::read_dir(&root.path)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(scope) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(RESOURCE_SCOPE_RECEIPT_PREFIX))
+        else {
+            return Ok(());
+        };
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if !valid_resource_scope(scope)
+            || !metadata.is_file()
+            || metadata.len() != 0
+            || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        {
+            return Ok(());
+        }
+        receipts.push(entry.path());
+    }
+    // No runtime directory or record remains. An ended scope cannot create
+    // new references; unfamiliar entries keep all receipts conservatively.
+    for path in receipts {
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("remove unused runtime retirement receipt"),
         }
     }
     Ok(())
@@ -250,7 +353,7 @@ fn record_options() -> OpenOptions {
     options
 }
 
-fn read_ownership(record: &File, root: &Root, instance: &str) -> Result<(Ownership, bool)> {
+fn read_ownership(record: &File, root: &Root, instance: &str) -> Result<(Ownership, bool, u64)> {
     let metadata = record.metadata().context("inspect ACP runtime ownership")?;
     ensure!(
         metadata.is_file()
@@ -264,9 +367,9 @@ fn read_ownership(record: &File, root: &Root, instance: &str) -> Result<(Ownersh
         bytes.len() as u64 <= MAX_RECORD_BYTES,
         "ACP runtime ownership is oversized"
     );
-    let (json, retired) = match bytes.iter().position(|byte| *byte == b'\n') {
-        Some(end) => (&bytes[..end], &bytes[end + 1..] == RETIRED),
-        None => (bytes.as_slice(), false),
+    let (json, retired, retirement_offset) = match bytes.iter().position(|byte| *byte == b'\n') {
+        Some(end) => (&bytes[..end], &bytes[end + 1..] == RETIRED, end + 1),
+        None => (bytes.as_slice(), false, bytes.len() + 1),
     };
     let owner: Ownership = serde_json::from_slice(json).context("parse ACP runtime ownership")?;
     ensure!(
@@ -274,10 +377,14 @@ fn read_ownership(record: &File, root: &Root, instance: &str) -> Result<(Ownersh
             && owner.provider == crate::agent_registry::ANTIGRAVITY_AGENT_ID
             && owner.source == "host"
             && owner.scope == root.scope
-            && owner.instance == instance,
+            && owner.instance == instance
+            && owner
+                .parent_scope
+                .as_deref()
+                .is_none_or(valid_resource_scope),
         "ACP runtime ownership does not match this provider, source and cache"
     );
-    Ok((owner, retired))
+    Ok((owner, retired, retirement_offset as u64))
 }
 
 fn open_root(path: &Path, create: bool) -> Result<Option<Root>> {
@@ -515,6 +622,53 @@ mod tests {
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
+    }
+
+    #[test]
+    fn antigravity_runtime_cleanup_parent_receipt_reclaims_only_its_retired_scope() {
+        let scratch = Scratch::new();
+        let old_scope = uuid::Uuid::new_v4().simple().to_string();
+        let old = Runtime::create_with_scope(&scratch.0, Some(old_scope.clone())).unwrap();
+        let old_file = payload(&old);
+        drop(old);
+        let mut active =
+            Runtime::create_with_scope(&scratch.0, Some(uuid::Uuid::new_v4().simple().to_string()))
+                .unwrap();
+        let active_file = payload(&active);
+        let receipt = scratch
+            .0
+            .join(format!("{RESOURCE_SCOPE_RECEIPT_PREFIX}{old_scope}"));
+        fs::write(&receipt, []).unwrap();
+        let report = recover_in(&scratch.0).unwrap();
+        assert_eq!(report.reclaimed, 1);
+        assert!(!old_file.exists());
+        assert!(active_file.exists());
+        assert!(
+            receipt.exists(),
+            "active runtime records prevent premature receipt pruning"
+        );
+        active.cleanup().unwrap();
+        drop(active);
+        recover_in(&scratch.0).unwrap();
+        assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn antigravity_runtime_cleanup_rejects_malformed_parent_retirement() {
+        let scratch = Scratch::new();
+        let scope = uuid::Uuid::new_v4().simple().to_string();
+        let runtime = Runtime::create_with_scope(&scratch.0, Some(scope.clone())).unwrap();
+        let file = payload(&runtime);
+        drop(runtime);
+        let receipt = scratch
+            .0
+            .join(format!("{RESOURCE_SCOPE_RECEIPT_PREFIX}{scope}"));
+        fs::write(&receipt, "not a retirement receipt").unwrap();
+        assert_eq!(recover_in(&scratch.0).unwrap().failed, 1);
+        assert!(file.exists());
+        fs::write(&receipt, []).unwrap();
+        assert_eq!(recover_in(&scratch.0).unwrap().reclaimed, 1);
+        assert!(!file.exists());
     }
 
     #[test]

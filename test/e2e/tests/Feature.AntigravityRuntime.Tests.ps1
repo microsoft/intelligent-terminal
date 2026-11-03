@@ -50,6 +50,79 @@ Describe 'Feature Antigravity runtime cleanup' -Tag 'Feature', 'AntigravityRunti
                 Requests = Get-Content -LiteralPath $log -Raw
             }
         }
+
+        function script:Initialize-CaptureParent {
+            if ($script:captureParent) { return }
+            $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+            $native = Join-Path $script:evidence ('native-parent-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+            New-Item -ItemType Directory -Path $native | Out-Null
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+            $vs = Invoke-Native -FilePath $vswhere -Arguments @(
+                '-latest', '-prerelease', '-products', '*', '-requires',
+                'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath') -TimeoutSec 10
+            if ($vs.ExitCode -ne 0 -or -not $vs.StdOut.Trim()) { throw 'Native capture fixture needs the installed MSVC toolchain.' }
+            $vcvars = Join-Path $vs.StdOut.Trim() 'VC\Auxiliary\Build\vcvars64.bat'
+            $targets = Get-Content -LiteralPath (Join-Path $root 'src\common.nugetversions.targets') -Raw
+            $wilPackages = @([regex]::Matches($targets, 'Microsoft\.Windows\.ImplementationLibrary\.[0-9.]+') |
+                ForEach-Object Value | Sort-Object -Unique)
+            if ($wilPackages.Count -ne 1) { throw 'The source must select one WIL package version.' }
+            $wil = Join-Path $root "packages\$($wilPackages[0])\include"
+            if (-not (Test-Path -LiteralPath (Join-Path $wil 'wil\resource.h'))) {
+                throw 'Restore the source WIL dependency before compiling the native capture fixture.'
+            }
+            $source = Join-Path $root 'test\e2e\fixtures\WtaCaptureParent.cpp'
+            $output = Join-Path $native 'WtaCaptureParent.exe'
+            $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++20 /MT /I`"$wil`" `"$source`" /Fe:`"$output`" /Fo:`"$native\parent.obj`" /link /INCREMENTAL:NO ole32.lib runtimeobject.lib advapi32.lib"
+            $installer = Split-Path -Parent $vswhere
+            $buildScript = "`$env:PATH='$($installer.Replace("'", "''"));'+`$env:PATH; & `$env:ComSpec /d /c '$($build.Replace("'", "''"))'; exit `$LASTEXITCODE"
+            $buildEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($buildScript))
+            $result = Invoke-Native -FilePath (Get-Process -Id $PID).Path -Arguments @(
+                '-NoProfile', '-EncodedCommand', $buildEncoded
+            ) -WorkingDirectory $native -TimeoutSec 90
+            if ($result.ExitCode -ne 0 -or $result.TimedOut) { throw "Native capture fixture did not compile: $($result.StdOut) $($result.StdErr)" }
+            $script:captureWta = Join-Path $native 'wta.exe'
+            Copy-Item -LiteralPath $script:binary -Destination $script:captureWta
+            (Get-FileHash -LiteralPath $script:captureWta).Hash | Should -Be $env:ITE2E_EXPECTED_WTA_SHA256
+            $script:captureParent = $output
+        }
+
+        function script:Invoke-CapturedRuntimeFixture {
+            param([string]$Mode, [string]$AgentId = 'antigravity')
+            Initialize-CaptureParent
+            $runId = 'it-capture-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+            $run = Join-Path ([IO.Path]::GetTempPath()) $runId
+            $local = Join-Path $run 'local'
+            $temp = Join-Path $run 'temp'
+            New-Item -ItemType Directory -Path $local, $temp | Out-Null
+            $control = Join-Path $run 'startup.json'
+            @{ mode = 'hold' } | ConvertTo-Json | Set-Content -LiteralPath $control -Encoding utf8
+            $receipt = Join-Path $run 'runtime.json'
+            $log = Join-Path $run 'requests.log'
+            $runtimeRoot = Join-Path $local 'IntelligentTerminal\acp'
+            $invocation = "& '$($script:fixture.Replace("'", "''"))' -LogPath '$($log.Replace("'", "''"))' -StartupControlPath '$($control.Replace("'", "''"))' -RuntimeReceiptPath '$($receipt.Replace("'", "''"))' -ExpectedRuntimeRoot '$($runtimeRoot.Replace("'", "''"))'"
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
+            $command = "verify-acp --agent-id $AgentId --agent `"pwsh.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand $encoded`""
+            $ready = if ($Mode -eq 'cancel') { "$receipt.ready" } else { '-' }
+            $timeout = if ($Mode -eq 'cancel') { '20000' } else { '10000' }
+            $result = Invoke-Native -FilePath $script:captureParent -Arguments @(
+                $script:captureWta, $command, $timeout, $ready
+            ) -Environment @{ LOCALAPPDATA = $local; APPDATA = $local; TEMP = $temp; TMP = $temp } -TimeoutSec 45
+            $result | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $run 'parent-result.json') -Encoding utf8
+            $result.ExitCode | Should -Be 0
+            $result.TimedOut | Should -BeFalse
+            $runtime = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+            $child = Get-Process -Id $runtime.pid -ErrorAction SilentlyContinue
+            if ($child -and $child.StartTime.ToUniversalTime().Ticks -eq $runtime.processStartTicks) {
+                $child.WaitForExit(5000) | Should -BeTrue -Because 'the exact fixture child must exit before fixture cleanup'
+            }
+            Copy-Item -LiteralPath $run -Destination (Join-Path $script:evidence $runId) -Recurse
+            [pscustomobject]@{
+                Result = $result.StdOut | ConvertFrom-Json
+                Receipt = $runtime
+                Root = $runtimeRoot
+                Run = $run
+            }
+        }
     }
 
     It 'Antigravity ACP verification reclaims its dedicated temporary files' {
@@ -91,6 +164,37 @@ Describe 'Feature Antigravity runtime cleanup' -Tag 'Feature', 'AntigravityRunti
         }
         finally {
             Remove-Item -LiteralPath $customTemp -Recurse -Force
+        }
+    }
+
+    It 'Antigravity captured startup cancellation and timeout reclaim owned files' {
+        foreach ($mode in @('cancel', 'timeout')) {
+            $run = Invoke-CapturedRuntimeFixture -Mode $mode
+            try {
+                $run.Result.completed | Should -BeFalse
+                $run.Result.cancelled | Should -Be ($mode -eq 'cancel')
+                $run.Result.timedOut | Should -Be ($mode -eq 'timeout')
+                $run.Receipt.inExpectedRoot | Should -BeTrue
+                Test-Path -LiteralPath $run.Receipt.extraction | Should -BeFalse -Because 'a surviving native parent must retire the captured runtime before returning'
+                Test-Path -LiteralPath (Join-Path $run.Root "$($run.Receipt.instance).jsonl") | Should -BeFalse
+            }
+            finally {
+                Remove-Item -LiteralPath $run.Run -Recurse -Force
+            }
+        }
+    }
+
+    It 'Captured custom startup retains its original cancellation and temporary environment' {
+        $run = Invoke-CapturedRuntimeFixture -Mode 'cancel' -AgentId 'custom:antigravity'
+        try {
+            $run.Result.cancelled | Should -BeTrue
+            $run.Result.timedOut | Should -BeFalse
+            $run.Result.completed | Should -BeFalse
+            $run.Receipt.inExpectedRoot | Should -BeFalse
+            Test-Path -LiteralPath (Join-Path $run.Receipt.extraction 'payload.dll') | Should -BeTrue
+        }
+        finally {
+            Remove-Item -LiteralPath $run.Run -Recurse -Force
         }
     }
 }

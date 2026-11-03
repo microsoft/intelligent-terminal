@@ -784,7 +784,14 @@ namespace winrt::TerminalApp::implementation
                 LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "WTA service cleanup did not complete before shutdown deadline");
             }
         }
-        _CleanupLocked();
+        bool retiredResources = false;
+        _CleanupLocked(&retiredResources);
+        if (retiredResources && !_cachedWtaPath.empty())
+        {
+            const auto cleanup = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(
+                _cachedWtaPath, L"recover-process-resources", 3000, nullptr, false, nullptr, true);
+            LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
+        }
     }
     catch (...)
     {
@@ -923,6 +930,7 @@ namespace winrt::TerminalApp::implementation
         // the old master for the stable, process-wide pipe name. Holding _mtx
         // throughout also preserves cross-window restart deduplication.
         const auto retiredPid = _pid;
+        _resourceScope.RequestShutdown(_shutdownEvent.get(), _process.get(), WtaMasterShutdownTimeoutMs);
         auto retiredProcess = _CleanupLocked();
         if (retiredProcess &&
             !details::EnsureProcessExitedBeforeRestart(
@@ -1055,6 +1063,14 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        ::Microsoft::Terminal::WtaProcess::ProcessResourceScope resourceScope;
+        auto job = resourceScope.CreateJob();
+        if (!job)
+        {
+            return false;
+        }
+        environmentBlock = resourceScope.Environment(environmentBlock->empty() ? nullptr : environmentBlock->data());
+
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(
                 /* lpApplicationName    */ nullptr,
@@ -1081,27 +1097,12 @@ namespace winrt::TerminalApp::implementation
         // drops and the OS terminates wta + every descendant it
         // spawned. Any failure here MUST TerminateProcess to avoid
         // leaking a suspended-then-uncontained wta.
-        wil::unique_handle job{ CreateJobObjectW(nullptr, nullptr) };
-        if (!job)
-        {
-            TerminateProcess(process.get(), 1);
-            return false;
-        }
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        if (!SetInformationJobObject(job.get(),
-                                     JobObjectExtendedLimitInformation,
-                                     &limits,
-                                     sizeof(limits)))
-        {
-            TerminateProcess(process.get(), 1);
-            return false;
-        }
         if (!AssignProcessToJobObject(job.get(), process.get()))
         {
             TerminateProcess(process.get(), 1);
             return false;
         }
+        resourceScope.Attached();
 
         // Crash detection: register a thread-pool wait that fires
         // when wta exits for any reason. The callback flips state
@@ -1142,6 +1143,7 @@ namespace winrt::TerminalApp::implementation
         _process = std::move(process);
         _job = std::move(job);
         _shutdownEvent = std::move(shutdownEvent);
+        _resourceScope = std::move(resourceScope);
         _serviceRequested = true;
         _pid = pid;
         _masterGeneration = receiverGeneration;
@@ -1166,8 +1168,13 @@ namespace winrt::TerminalApp::implementation
         return true;
     }
 
-    wil::unique_handle SharedWta::_CleanupLocked()
+    wil::unique_handle SharedWta::_CleanupLocked(bool* retiredResources)
     {
+        const auto resourcesRetired = _resourceScope.Retire(_job.get());
+        if (retiredResources)
+        {
+            *retiredResources = resourcesRetired;
+        }
         // Order matters: drop the job FIRST so KILL_ON_JOB_CLOSE
         // terminates wta + descendants while we still hold a process
         // handle that lets restart observe termination and pipe release.
@@ -1177,6 +1184,7 @@ namespace winrt::TerminalApp::implementation
         auto process = std::move(_process);
         _job.reset();
         _shutdownEvent.reset();
+        _resourceScope = {};
         if (_waitHandle)
         {
             // Invalidate before the non-blocking unregister. A queued
@@ -1235,8 +1243,10 @@ namespace winrt::TerminalApp::implementation
         // diagnosable; deliberate teardowns never reach here (they reset
         // _process first, so the validity check above bails).
         _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(*observedPid) + " (crash/OOM/external kill — observed by wait callback)");
+        const auto retiredResources = _resourceScope.Retire(_job.get());
         _job.reset();
         _shutdownEvent.reset();
+        _resourceScope = {};
         _process.reset();
         if (_waitHandle)
         {
@@ -1248,6 +1258,7 @@ namespace winrt::TerminalApp::implementation
         _pid = 0;
         _masterGeneration = 0;
 
+        bool restarted = false;
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,
                 _serviceRequested,
@@ -1263,6 +1274,29 @@ namespace winrt::TerminalApp::implementation
                     "failed to respawn wta-master after unexpected exit pid=" +
                     std::to_string(*observedPid) + "; retained helpers may remain disconnected");
             }
+            else
+            {
+                restarted = true;
+            }
+        }
+        if (retiredResources && !restarted && !_shuttingDown && !_cachedWtaPath.empty())
+        {
+            _RecoverManagedResources(_cachedWtaPath);
+        }
+    }
+
+    winrt::fire_and_forget SharedWta::_RecoverManagedResources(std::wstring wtaPath)
+    {
+        try
+        {
+            co_await winrt::resume_background();
+            const auto cleanup = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(
+                wtaPath, L"recover-process-resources", 3000, nullptr, false, nullptr, true);
+            LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
         }
     }
 }

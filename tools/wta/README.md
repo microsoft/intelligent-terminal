@@ -480,11 +480,20 @@ explicitly rather than falling back to shared Temp.
 The directory belongs to the complete ACP process job, not a pane or session.
 Verification, history, failed startup and normal process retirement reclaim it
 only after all contained processes exit. Cancellation also schedules cleanup.
-After a crash or forced application exit, a subsequent master startup or native
-Antigravity launch checks owned leftovers using exclusive leases, recorded
-retirement, queryable job liveness and directory identity. A missing job name
-alone cannot prove completed process exit. Unconfirmed exits, locked files or
-unsafe paths retain ownership records and emit `antigravity_runtime` diagnostics.
+Antigravity alone opts into the native parent's optional resource scope before
+extraction starts. Controlled restart, settings replacement, captured-process
+cancellation and WTA exit can then retain a parent-owned job until its complete
+process group has exited. The parent records that retirement so a new WTA can
+reclaim the old instance without guessing from a missing process or job name.
+Other providers do not request this resource policy, keep their inherited
+temporary environment, and retain the existing no-opt-in lifecycle behavior.
+
+Subsequent recovery checks exclusive leases, recorded retirement, parent scope
+receipts, queryable job liveness and directory identity. Unconfirmed exits,
+locked files or unsafe paths retain ownership records and emit
+`antigravity_runtime` diagnostics. Losing the entire Terminal/WTA management
+chain before retirement was recorded remains deferred; Windows-reboot-based
+recovery is separate follow-up work, not part of this behavior.
 These records do not persist startup failure budgets. Existing shared `_MEI*`
 folders, custom commands, other providers, WSL and installation caches are not
 automatically cleaned or redirected.

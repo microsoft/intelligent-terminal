@@ -7,21 +7,88 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use windows_sys::Win32::Foundation::{
-    GetLastError, ERROR_ALREADY_EXISTS, ERROR_FILE_NOT_FOUND, INVALID_HANDLE_VALUE,
+    GetLastError, ERROR_ALREADY_EXISTS, ERROR_FILE_NOT_FOUND, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
-    JobObjectExtendedLimitInformation, OpenJobObjectW, QueryInformationJobObject,
-    SetInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+    JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation, OpenJobObjectW,
+    QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::SystemServices::JOB_OBJECT_QUERY;
 use windows_sys::Win32::System::Threading::{
-    OpenThread, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
+    GetCurrentProcess, OpenEventW, OpenThread, ResumeThread, SetEvent, WaitForSingleObject,
+    CREATE_NO_WINDOW, CREATE_SUSPENDED, EVENT_MODIFY_STATE, SYNCHRONIZATION_SYNCHRONIZE,
+    THREAD_SUSPEND_RESUME,
 };
+
+pub(crate) const RESOURCE_SCOPE_ENV: &str = "WTA_PROCESS_RESOURCE_SCOPE";
+pub(crate) const RESOURCE_SCOPE_RECEIPT_PREFIX: &str = ".retired-";
+
+#[derive(Default, serde::Serialize)]
+pub(crate) struct ResourceRecovery {
+    pub reclaimed: usize,
+    pub deferred: usize,
+    pub failed: usize,
+}
+
+pub(crate) fn valid_resource_scope(scope: &str) -> bool {
+    scope.len() == 32
+        && scope
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub(crate) fn request_resource_scope(scope: &str) -> Result<()> {
+    anyhow::ensure!(
+        valid_resource_scope(scope),
+        "managed process resource scope is unavailable"
+    );
+    let name = |kind| {
+        format!("Local\\wta-resources-{kind}-{scope}")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect::<Vec<_>>()
+    };
+    let used = name("used");
+    let ready = name("ready");
+    let job = name("job");
+    // SAFETY: names are terminated and each returned handle is immediately owned.
+    let open_event = |access, name: &[u16]| -> Result<OwnedHandle> {
+        let handle = unsafe { OpenEventW(access, 0, name.as_ptr()) };
+        if handle.is_null() {
+            return Err(std::io::Error::last_os_error()).context("open managed resource handoff");
+        }
+        Ok(unsafe { OwnedHandle::from_raw_handle(handle) })
+    };
+    let used = open_event(EVENT_MODIFY_STATE, &used)?;
+    let ready = open_event(SYNCHRONIZATION_SYNCHRONIZE, &ready)?;
+    if unsafe { SetEvent(used.as_raw_handle()) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("request managed process resources");
+    }
+    anyhow::ensure!(
+        unsafe { WaitForSingleObject(ready.as_raw_handle(), 5000) } == WAIT_OBJECT_0,
+        "native parent did not establish managed resource containment"
+    );
+    let handle = unsafe { OpenJobObjectW(JOB_OBJECT_QUERY, 0, job.as_ptr()) };
+    if handle.is_null() {
+        return Err(std::io::Error::last_os_error()).context("open managed resource owner job");
+    }
+    let job = unsafe { OwnedHandle::from_raw_handle(handle) };
+    let mut member = 0;
+    if unsafe { IsProcessInJob(GetCurrentProcess(), job.as_raw_handle(), &mut member) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("check managed resource membership");
+    }
+    anyhow::ensure!(
+        member != 0,
+        "resource scope does not contain this WTA process"
+    );
+    Ok(())
+}
 
 pub(crate) fn configure_child_error_reporting() {
     #[link(name = "kernel32")]
@@ -489,6 +556,34 @@ impl WslProcessGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_resource_scope_rejects_a_process_outside_the_parent_job() {
+        use windows_sys::Win32::System::Threading::CreateEventW;
+        let scope = uuid::Uuid::new_v4().simple().to_string();
+        let name = |kind| {
+            format!("Local\\wta-resources-{kind}-{scope}")
+                .encode_utf16()
+                .chain(Some(0))
+                .collect::<Vec<_>>()
+        };
+        // SAFETY: these are fresh named objects, owned for this test only.
+        let used = unsafe { CreateEventW(std::ptr::null(), 1, 0, name("used").as_ptr()) };
+        let ready = unsafe { CreateEventW(std::ptr::null(), 1, 1, name("ready").as_ptr()) };
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), name("job").as_ptr()) };
+        assert!(!used.is_null() && !ready.is_null() && !job.is_null());
+        let (_used, _ready, _job) = unsafe {
+            (
+                OwnedHandle::from_raw_handle(used),
+                OwnedHandle::from_raw_handle(ready),
+                OwnedHandle::from_raw_handle(job),
+            )
+        };
+        assert!(request_resource_scope(&scope)
+            .unwrap_err()
+            .to_string()
+            .contains("does not contain"));
+    }
 
     #[test]
     fn wsl_ownership_receipt_and_cleanup_reject_unrelated_processes() {

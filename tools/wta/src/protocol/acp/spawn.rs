@@ -368,6 +368,7 @@ async fn spawn_host_agent_process(
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
+    cmd.env_remove(super::process::RESOURCE_SCOPE_ENV);
     configure_child_environment(
         &mut cmd,
         agent_cmd,

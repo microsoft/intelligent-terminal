@@ -38,6 +38,7 @@
 
 #include <wil/resource.h>
 #include <winrt/Windows.Foundation.h>
+#include "../inc/WtaProcessResources.h"
 
 namespace TerminalAppUnitTests
 {
@@ -404,7 +405,8 @@ namespace winrt::TerminalApp::implementation
         bool _RestartLocked(const std::wstring_view wtaPath,
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
-        wil::unique_handle _CleanupLocked();
+        wil::unique_handle _CleanupLocked(bool* retiredResources = nullptr);
+        static winrt::fire_and_forget _RecoverManagedResources(std::wstring wtaPath);
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
         // a free function. The `context` PVOID carries a monotonically
@@ -418,6 +420,7 @@ namespace winrt::TerminalApp::implementation
         wil::unique_handle _process;
         wil::unique_handle _job;
         wil::unique_handle _shutdownEvent;
+        ::Microsoft::Terminal::WtaProcess::ProcessResourceScope _resourceScope;
         HANDLE _waitHandle{ nullptr };
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;

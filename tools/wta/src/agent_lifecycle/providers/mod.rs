@@ -9,7 +9,7 @@ use anyhow::Result;
 use futures::future::BoxFuture;
 
 use crate::agent_source::AgentSource;
-use crate::protocol::acp::process::ProcessResources;
+use crate::protocol::acp::process::{ProcessResources, ResourceRecovery};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DependencyKind {
@@ -65,8 +65,8 @@ pub(crate) trait ProviderLifecycleAdapter: Sync {
     ) -> Result<Option<Box<dyn ProcessResources>>> {
         Ok(None)
     }
-    fn recover_runtime_resources(&self) -> Result<()> {
-        Ok(())
+    fn recover_runtime_resources(&self) -> Result<ResourceRecovery> {
+        Ok(ResourceRecovery::default())
     }
     fn prepare<'a>(
         &'a self,
@@ -157,13 +157,23 @@ pub(crate) async fn prepare_runtime_resources(
         .context("prepare ACP process resources task failed")?
 }
 
-pub(crate) fn recover_runtime_resources() {
+pub(crate) fn recover_runtime_resources() -> ResourceRecovery {
+    let mut result = ResourceRecovery::default();
     for provider in PROVIDERS {
-        if let Err(error) = provider.recover_runtime_resources() {
-            tracing::warn!(target: "acp_process", agent = provider.family_id(), error = %format!("{error:#}"),
-                "provider runtime recovery incomplete");
+        match provider.recover_runtime_resources() {
+            Ok(report) => {
+                result.reclaimed += report.reclaimed;
+                result.deferred += report.deferred;
+                result.failed += report.failed;
+            }
+            Err(error) => {
+                result.failed += 1;
+                tracing::warn!(target: "acp_process", agent = provider.family_id(), error = %format!("{error:#}"),
+                    "provider runtime recovery incomplete");
+            }
         }
     }
+    result
 }
 
 #[cfg(test)]
