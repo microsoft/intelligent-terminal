@@ -149,7 +149,7 @@ numeric tab shortcuts and Escape keep their existing behavior.
 | Default shortcut | Behavior in Sidebar layout |
 | --- | --- |
 | Ctrl+Shift+G | Toggle Agents only without changing the Recent preference or search query. |
-| Ctrl+Shift+/ | Toggle Agent recent sessions without changing the Agents-only preference or search query. |
+| Ctrl+Shift+/ | Toggle Recent agent sessions without changing the Agents-only preference or search query. |
 
 Both shortcuts work while Sidebar Display options is expanded, including when
 the other filter item owns keyboard focus. Each press changes its preference
