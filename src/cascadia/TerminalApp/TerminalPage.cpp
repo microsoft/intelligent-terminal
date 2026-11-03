@@ -14255,6 +14255,30 @@ namespace winrt::TerminalApp::implementation
                     presented = true;
                 }
                 _ApplyTabListProjection(*tab);
+                if (!presented && _isVerticalLayout && _tabStrip && !_DeferSidebarUpdates() &&
+                    !_rearranging && !_mutatingTabCollections)
+                {
+                    const auto display = winrt::get_self<implementation::TabStrip>(_tabStrip)->DisplayItemForTab(tab->TabViewItem());
+                    if (display && display.ChildrenVisibility() == Visibility::Visible)
+                    {
+                        const auto expected = update.presentation ? winrt::hstring{ update.presentation->text } : winrt::hstring{};
+                        for (const auto& pane : tab->GetVisiblePaneSnapshot())
+                        {
+                            if (pane.SessionId != target || !_IsPaneRowProjectionEligible(pane))
+                            {
+                                continue;
+                            }
+                            for (const auto& item : display.PaneItems())
+                            {
+                                if (item.ContentId() == pane.ContentId && item.MetadataText() == expected)
+                                {
+                                    presented = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, presented ? ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Applied : ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);

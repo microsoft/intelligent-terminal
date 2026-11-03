@@ -1290,6 +1290,9 @@ nonzero shell or agent directory token. For a CWD report, filter by
 recorded shell/agent source, the `provider-result` request and token, and the
 `ui-result` token and disposition. Check `recordSequence`, `droppedRecords`,
 and `cwdTokenLimitReached` before interpreting a missing or zero token.
+An applied UI result may refer to either the active tab header or a visible
+expanded Sidebar pane row; an unmatched result does not imply a hidden pane
+failed to retain its presentation state.
 The stream does not record request or response bodies, stdout or stderr, raw
 paths, session IDs, repository or branch names, metadata values, exception
 text, or parser messages. Records include attempted sequence and cumulative
