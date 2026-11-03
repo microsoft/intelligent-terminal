@@ -14259,7 +14259,8 @@ namespace winrt::TerminalApp::implementation
                     !_rearranging && !_mutatingTabCollections)
                 {
                     const auto display = winrt::get_self<implementation::TabStrip>(_tabStrip)->DisplayItemForTab(tab->TabViewItem());
-                    if (display && display.ChildrenVisibility() == Visibility::Visible)
+                    if (display && _IsTabVisibleInProjection(tab, display) &&
+                        display.ChildrenVisibility() == Visibility::Visible)
                     {
                         const auto expected = update.presentation ? winrt::hstring{ update.presentation->text } : winrt::hstring{};
                         for (const auto& pane : tab->GetVisiblePaneSnapshot())
@@ -14637,7 +14638,9 @@ namespace winrt::TerminalApp::implementation
                                     const bool isConEmuCwd = seqStr.starts_with("osc:9;9;");
                                     const bool isUriCwd = seqStr.starts_with("osc:7;");
                                     const bool isCwdOsc = isConEmuCwd || isUriCwd;
-                                    auto* const cwdBroker = isCwdOsc ? &::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance() : nullptr;
+                                    auto* const cwdBroker = isCwdOsc && Feature_RichTabProviders::IsEnabled() ?
+                                                                &::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance() :
+                                                                nullptr;
                                     const bool traceCwd = cwdBroker && cwdBroker->DiagnosticsEnabled();
                                     std::optional<std::filesystem::path> reportedCwd;
                                     auto oscOutcome = ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched;

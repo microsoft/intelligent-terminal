@@ -180,6 +180,33 @@ Describe 'Feature: sidebar metadata belongs to its window' -Tag @('Feature', 'Si
                     $_.session -eq $osc[0].session -and $_.recordSequence -gt $osc[0].recordSequence -and
                     $_.outcome -eq 'applied' -and $_.cwd -eq $osc[0].cwd }).Count -ge 1
             } | Out-Null
+
+            Invoke-UiElement -App $script:app -Selector SearchTabsButton | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value ('hidden-' + [guid]::NewGuid().ToString('N')) | Out-Null
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $listCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'ItemsList')
+            $rowCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
+            Wait-Until -TimeoutSec 10 -Because 'search to hide the parent tab and its pane rows' -Condition {
+                $list = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $listCondition)
+                -not $list -or $list.Current.IsOffscreen -or
+                @($list.FindAll([Windows.Automation.TreeScope]::Descendants, $rowCondition) |
+                    Where-Object { -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
+                        $_.Current.AutomationId -ne 'HistoryHeaderButton' }).Count -eq 0
+            } | Out-Null
+            $lastSequence = @(& $records | Measure-Object -Property recordSequence -Maximum)[0].Maximum
+            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                'Set-Location ..; Write-Host -NoNewline ([char]27 + '']7;'' + [Uri]::new((Get-Location).Path).AbsoluteUri + [char]7)' | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'a filtered-out pane row to remain unmatched' -Condition {
+                $rows = & $records
+                $osc = @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'osc-received' -and
+                    $_.recordSequence -gt $lastSequence -and $_.cwd -ne 0 } | Select-Object -Last 1)
+                $osc.Count -eq 1 -and
+                @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'ui-result' -and
+                    $_.session -eq $osc[0].session -and $_.recordSequence -gt $osc[0].recordSequence -and
+                    $_.outcome -eq 'unmatched' -and $_.cwd -eq $osc[0].cwd }).Count -ge 1
+            } | Out-Null
         }
         finally {
             try {
