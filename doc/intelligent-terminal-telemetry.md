@@ -1281,7 +1281,11 @@ do not reveal a path or prove that the shell reported its actual location.
 identify newly observed paths. An `osc-received` match compares the reported
 path to Core's state after the output write; it does not prove that an
 individual OSC changed Core when multiple sequences arrived in one write.
-For a CWD report, filter by `processEpoch` and `session`, then compare the
+Both OSC 9;9 paths and OSC 7 file URIs (decoded as Core decodes them) are
+observed. For `osc-received` and `provider-result`, a zero `cwd` token means
+no directory was parsed or returned, even when the current source has a
+nonzero shell or agent directory token. For a CWD report, filter by
+`processEpoch` and `session`, then compare the
 `osc-received` token with the following `context-observed` shell token, the
 recorded shell/agent source, the `provider-result` request and token, and the
 `ui-result` token and disposition. Check `recordSequence`, `droppedRecords`,

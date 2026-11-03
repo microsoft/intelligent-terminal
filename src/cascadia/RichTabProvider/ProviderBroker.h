@@ -109,6 +109,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         uint64_t ProcessEpoch() const noexcept;
         bool GitAvailable() const noexcept;
+        bool DiagnosticsEnabled() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,

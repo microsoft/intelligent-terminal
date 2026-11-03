@@ -864,7 +864,8 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 record.cwdToken = _CwdTokenLocked(*observedPath);
             }
-            else
+            else if (stage == CwdDiagnosticStage::ContextObserved ||
+                     stage == CwdDiagnosticStage::AgentSelected)
             {
                 record.cwdToken = record.cwdSource == CwdDiagnosticSource::Agent ? record.agentCwdToken :
                                   record.cwdSource == CwdDiagnosticSource::Shell ? record.shellCwdToken :
@@ -903,6 +904,11 @@ namespace Microsoft::Terminal::RichTab::Provider
         catch (...)
         {
         }
+    }
+
+    bool ProviderBroker::DiagnosticsEnabled() const noexcept
+    {
+        return _diagnosticLog && _diagnosticLog->Enabled();
     }
 
     void ProviderBroker::_InvalidateGitStatusWorkingDirectoryLocked(SessionState& session)

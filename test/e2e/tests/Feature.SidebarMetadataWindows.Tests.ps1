@@ -120,4 +120,37 @@ Describe 'Feature: sidebar metadata belongs to its window' -Tag @('Feature', 'Si
             Send-WtWindowKey -App $window -Vk 0x1B -RequireForeground | Out-Null
         }
     }
+
+    It 'records an OSC 7 directory report in the CWD diagnostic log' {
+        Stop-Terminal -App $script:app
+        $script:app = $null
+        $profile = '{' + [guid]::NewGuid() + '}'
+        $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+            sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+        } -Settings @{
+            language = 'en-US'; defaultProfile = $profile; startupActions = ''
+            profiles = @{ list = @(@{
+                guid = $profile; name = 'OSC 7 diagnostic shell'
+                commandline = 'pwsh -NoLogo -NoProfile'; startingDirectory = $script:repository
+            }) }
+        }
+        $pane = Wait-Until -TimeoutSec 15 -Because 'the PowerShell pane to start' -Condition {
+            @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId | Where-Object { $_.session_id }) |
+                Select-Object -First 1
+        }
+        $logDir = Get-ItLogDir -App $script:app
+        $logPattern = "rich-tab-provider-*-$($script:app.Pid)-*.jsonl"
+        $received = {
+            @(Get-ChildItem $logDir -Filter $logPattern -ErrorAction SilentlyContinue |
+                Get-Content -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match '"event":"cwd","stage":"osc-received"' -and
+                    $_ -match '"outcome":"matched"' -and $_ -notmatch '"cwd":0,' }).Count
+        }
+        $before = & $received
+        Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+            'Write-Host -NoNewline ([char]27 + '']7;'' + [Uri]::new((Get-Location).Path).AbsoluteUri + [char]7)' | Out-Null
+        Wait-Until -TimeoutSec 20 -Because 'OSC 7 to be logged as a matched directory report' -Condition {
+            (& $received) -gt $before
+        } | Out-Null
+    }
 }
