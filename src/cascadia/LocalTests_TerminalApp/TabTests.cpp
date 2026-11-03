@@ -777,7 +777,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PinnedTabSidebarRejectsCrossGroupDrag);
         TEST_METHOD(PinnedTabRequestDuringDragIsDeferred);
         TEST_METHOD(PinnedTabCollapsedRailHasIndicator);
-        TEST_METHOD(PinnedTabLayoutRoundTripKeepsOrder);
+        TEST_METHOD(PinnedTabsUnpinWhenSwitchingHorizontal);
         TEST_METHOD(PinnedTabTransferPreservesState);
         TEST_METHOD(PinnedPaneTransferDoesNotPinNewTab);
         TEST_METHOD(KeepRunningMenuIsFirstAndVerticalOnly);
@@ -2065,8 +2065,10 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto tab = page->_GetFocusedTabImpl();
             const auto item = tab->_keepRunningMenuItem;
+            const auto pinItem = tab->_pinMenuItem;
             const auto menu = tab->TabViewItem().ContextFlyout().as<MenuFlyout>();
             VERIFY_IS_TRUE(menu.Items().GetAt(0) == item);
+            VERIFY_IS_TRUE(menu.Items().GetAt(1) == pinItem);
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn on headless mode" }, item.Text());
             const auto icon = item.Icon().as<FontIcon>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8EE" }, icon.Glyph());
@@ -2080,6 +2082,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tooltip, winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetHelpText(item));
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
             VERIFY_IS_TRUE(item.IsEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Visible, pinItem.Visibility());
+            VERIFY_IS_TRUE(pinItem.IsEnabled());
             VERIFY_IS_FALSE(tab->TabStatus().IsKeepRunning());
 
             const winrt::guid id{ tab->StableId() };
@@ -2096,10 +2100,14 @@ namespace TerminalAppLocalTests
             tab->SetVerticalTabLayout(false);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, item.Visibility());
             VERIFY_IS_FALSE(item.IsEnabled());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, pinItem.Visibility());
+            VERIFY_IS_FALSE(pinItem.IsEnabled());
             VERIFY_IS_TRUE(page->IsTabKeepRunning(id));
             VERIFY_IS_TRUE(tab->TabStatus().IsKeepRunning());
             tab->SetVerticalTabLayout(true);
             VERIFY_ARE_EQUAL(Visibility::Visible, item.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, pinItem.Visibility());
+            VERIFY_IS_TRUE(pinItem.IsEnabled());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Turn off headless mode" }, item.Text());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE711" }, icon.Glyph());
             page->SetTabKeepRunning(id, false);
@@ -2272,7 +2280,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::PinnedTabLayoutRoundTripKeepsOrder()
+    void TabTests::PinnedTabsUnpinWhenSwitchingHorizontal()
     {
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
@@ -2287,14 +2295,11 @@ namespace TerminalAppLocalTests
             page->_SetTabPinned(second, true);
             page->_selectedTabItem(first->TabViewItem());
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            const auto verifySelection = [&]() {
+            const auto verifyOrderAndSelection = [&]() {
                 VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == first);
                 VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(0)) == first);
                 VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(1)) == second);
                 VERIFY_IS_TRUE(page->_GetTabImpl(page->_tabs.GetAt(2)) == third);
-                VERIFY_IS_TRUE(first->IsPinned());
-                VERIFY_IS_TRUE(second->IsPinned());
-                VERIFY_IS_FALSE(third->IsPinned());
                 if (page->_isVerticalLayout)
                 {
                     VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == first->TabViewItem());
@@ -2318,11 +2323,23 @@ namespace TerminalAppLocalTests
                 }
             };
             page->UpdateLayout();
-            verifySelection();
+            verifyOrderAndSelection();
+            VERIFY_IS_TRUE(first->IsPinned());
+            VERIFY_IS_TRUE(second->IsPinned());
+            VERIFY_IS_FALSE(third->IsPinned());
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             page->UpdateLayout();
-            verifySelection();
+            verifyOrderAndSelection();
+            VERIFY_ARE_EQUAL(0u, page->_PinnedTabCount());
+            VERIFY_IS_FALSE(first->IsPinned());
+            VERIFY_IS_FALSE(second->IsPinned());
+            VERIFY_IS_FALSE(third->IsPinned());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, first->_pinMenuItem.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, second->_pinMenuItem.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, third->_pinMenuItem.Visibility());
+            page->_RequestPinTab(first, true);
+            VERIFY_IS_FALSE(first->IsPinned());
             VERIFY_IS_TRUE(page->_tabView.TabItems().GetAt(0) == first->TabViewItem());
             page->_tabView.SelectedItem(first->TabViewItem().as<FrameworkElement>());
             VERIFY_IS_TRUE(page->_selectedTabItem().as<winrt::MUX::Controls::TabViewItem>() == first->TabViewItem());
@@ -2330,7 +2347,14 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Vertical));
             page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
             page->UpdateLayout();
-            verifySelection();
+            verifyOrderAndSelection();
+            VERIFY_ARE_EQUAL(0u, page->_PinnedTabCount());
+            VERIFY_IS_FALSE(first->IsPinned());
+            VERIFY_IS_FALSE(second->IsPinned());
+            VERIFY_IS_FALSE(third->IsPinned());
+            VERIFY_ARE_EQUAL(Visibility::Visible, first->_pinMenuItem.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, second->_pinMenuItem.Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, third->_pinMenuItem.Visibility());
         });
     }
 
@@ -23648,7 +23672,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabs.GetAt(0) == *first);
             VERIFY_IS_TRUE(page->_tabs.GetAt(1) == *middle);
             VERIFY_IS_TRUE(page->_tabs.GetAt(2) == *last);
-            VERIFY_IS_TRUE(first->IsPinned());
+            VERIFY_IS_FALSE(first->IsPinned());
+            VERIFY_ARE_EQUAL(0u, page->_PinnedTabCount());
             VERIFY_IS_TRUE(last->GetRootPane() == root);
             VERIFY_IS_TRUE(last->GetActivePane() == active);
             const auto after = last->GetVisiblePaneSnapshot();
