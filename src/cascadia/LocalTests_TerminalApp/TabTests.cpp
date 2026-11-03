@@ -515,6 +515,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentProfileLaunchCwdIsPaneMetadata);
         TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
         TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
+        TEST_METHOD(ManagedProfileLaunchMetadataReceiptSurvivesWindowTransfer);
         TEST_METHOD(ManagedProfileRestartRetiresOldPaneAfterFailure);
         TEST_METHOD(ManagedProfileFreshRestartDoesNotReuseIdentity);
         TEST_METHOD(VerticalTabStripBindsBackground);
@@ -8246,6 +8247,12 @@ namespace TerminalAppLocalTests
                         page->_CompleteAgentSnapshot(
                             request, capture, response, Page::_BuildAgentStatusSnapshot(rows, page->_richTabAgentStatusByPaneId), true);
                     };
+                    auto unboundIdle = confirmed;
+                    unboundIdle.sessionId.clear();
+                    unboundIdle.status = "Idle";
+                    complete({ unboundIdle });
+                    VERIFY_IS_TRUE(manager->HasReportedAgentStatus(control.ContentId()));
+                    VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(paneId, "", confirmed.providerId));
                     complete({});
                     VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
                     VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(control).contains("agentStatusId"));
@@ -8356,6 +8363,136 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(paneId, "", "copilot"));
                 VERIFY_ARE_EQUAL(!initialIdle, manager->HasReportedAgentStatus(control.ContentId()));
                 metadata.Close();
+            });
+        }
+    }
+
+    void TabTests::ManagedProfileLaunchMetadataReceiptSurvivesWindowTransfer()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        for (const auto status : { "Idle", "Working" })
+        {
+            auto source = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            winrt::com_ptr<Page> destination;
+            winrt::com_ptr<winrt::TerminalApp::implementation::Tab> tab;
+            winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+            const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+            const winrt::guid paneId{ Utils::CreateGuid() };
+            winrt::guid profileId{};
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            const auto initialized = std::make_shared<::details::Event>();
+            VERIFY_IS_TRUE(initialized->IsValid());
+            const auto cleanup = wil::scope_exit([&]() {
+                RunOnUIThread([&]() {
+                    if (destination)
+                    {
+                        destination->ShutdownPanes();
+                    }
+                    source->ShutdownPanes();
+                    control = nullptr;
+                    tab = nullptr;
+                    destination = nullptr;
+                    source = nullptr;
+                });
+            });
+            TestOnUIThread([&]() {
+                source->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+                source->_SyncNativeAgentStatusMode();
+                source->_agentSnapshotRefreshInFlight = true;
+                source->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+                const auto profile = source->_settings.ActiveProfiles().GetAt(0);
+                profile.AgentProfileId(L"copilot");
+                profile.StartingDirectory(winrt::hstring{ directory });
+                profileId = profile.Guid();
+                NewTerminalArgs args;
+                args.Profile(Utils::GuidToString(profile.Guid()));
+                const auto pane = source->_MakePane(args, nullptr, *connection);
+                control = pane->GetTerminalControl();
+                control.Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
+                tab = source->_GetTabImpl(source->_CreateNewTabFromPane(pane));
+                VERIFY_IS_NOT_NULL(tab);
+                tab->SuppressAgentPrewarm();
+                destination = _createStartupRestorePeer(source);
+                destination->_SyncNativeAgentStatusMode();
+                destination->_agentSnapshotRefreshInFlight = true;
+                winrt::get_self<winrt::TerminalApp::implementation::WindowProperties>(source->_WindowProperties)->WindowId(1);
+                winrt::get_self<winrt::TerminalApp::implementation::WindowProperties>(destination->_WindowProperties)->WindowId(2);
+                source->UpdateLayout();
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
+            TestOnUIThread([&]() {
+                _applyNativeRegistrySnapshot(source, control, status);
+                const auto manager = winrt::get_self<Manager>(source->_manager);
+                source->_nativeAgentStatusSnapshotReceiverGeneration = manager->NativeAgentObservationForContent(control.ContentId())->receiverGeneration;
+                const auto initialIdle = std::string_view{ status } == "Idle";
+                source->_richTabAgentStatusByPaneId.at(paneId).cwd = initialIdle ? winrt::to_string(winrt::hstring{ directory }) : "C:\\confirmed";
+                source->_richTabAgentCwdAvailable = true;
+                tab->Focus(FocusState::Unfocused);
+                source->_UpdateAgentCompletions();
+                const auto contentId = control.ContentId();
+                const auto core = source->_manager.TryLookupCore(contentId);
+                VERIFY_ARE_EQUAL(!initialIdle, manager->HasReportedAgentStatus(contentId));
+
+                winrt::TerminalApp::RequestMoveContentArgs request{ nullptr };
+                const auto token = source->RequestMoveContent([&](auto&&, const winrt::TerminalApp::RequestMoveContentArgs& value) { request = value; });
+                const auto revoke = wil::scope_exit([&]() { source->RequestMoveContent(token); });
+                VERIFY_IS_TRUE(source->_MoveTab(tab, MoveTabArgs{ L"2", MoveTabDirection::None }));
+                VERIFY_IS_NOT_NULL(request);
+                VERIFY_ARE_NOT_EQUAL(uint64_t{ 0 }, request.TransferId());
+                VERIFY_IS_TRUE(destination->AttachContent(ActionAndArgs::Deserialize(request.Content()), 0, request.TransferId()));
+                const auto movedPane = destination->_GetFocusedTabImpl()->GetRootPane()->FindPaneBySessionId(paneId);
+                VERIFY_IS_NOT_NULL(movedPane);
+                const auto moved = movedPane->GetTerminalControl();
+                VERIFY_ARE_EQUAL(contentId, moved.ContentId());
+                VERIFY_IS_TRUE(destination->_manager.TryLookupCore(contentId) == core);
+                VERIFY_IS_TRUE(moved.Connection() == *connection);
+                VERIFY_IS_TRUE(control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Closed);
+                VERIFY_IS_TRUE(moved.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+
+                // Keep the mock transport for transfer, then supply ConPTY launch metadata for fallback lookup.
+                const auto metadata = Conpty{};
+                metadata.Initialize(Conpty::CreateSettings(L"cmd.exe", winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, profileId));
+                moved.Connection(metadata);
+                const auto restoreConnection = wil::scope_exit([&]() { moved.Connection(*connection); });
+                VERIFY_IS_TRUE(winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(moved.Settings())->UsesManagedAgentCommand());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, winrt::get_self<Manager>(destination->_manager)->NativeAgentProviderId(contentId));
+                const auto verify = [&]() {
+                    VERIFY_ARE_EQUAL(!initialIdle, winrt::get_self<Manager>(destination->_manager)->HasReportedAgentStatus(contentId));
+                    const auto info = destination->_RichTabAgentInfoForControl(moved);
+                    if (initialIdle)
+                    {
+                        VERIFY_IS_TRUE(info.has_value());
+                        VERIFY_IS_TRUE(info->launchMetadata);
+                        VERIFY_ARE_EQUAL(std::string{ "Idle" }, destination->_BuildRichTabFirstPartyFields(moved).at("agentStatusId"));
+                        VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ directory }), destination->_RichTabAgentCwdForControl(moved).second.value());
+                    }
+                    else
+                    {
+                        VERIFY_IS_FALSE(info.has_value());
+                        VERIFY_IS_FALSE(destination->_BuildRichTabFirstPartyFields(moved).contains("agentStatusId"));
+                        VERIFY_IS_FALSE(destination->_RichTabAgentCwdForControl(moved).second.has_value());
+                    }
+                };
+                VERIFY_IS_FALSE(destination->_agentSnapshotLoaded);
+                verify();
+                const auto receiver = winrt::TerminalApp::implementation::SharedWta::Instance().MasterGeneration();
+                Json::Value response;
+                response["sessions"] = Json::arrayValue;
+                response["pane_statuses"] = Json::arrayValue;
+                response["native_observation_receiver_generation"] = Json::UInt64{ receiver };
+                response["native_observation_listener_ready"] = false;
+                ::Microsoft::Terminal::WtaProcess::CaptureResult capture;
+                capture.completed = true;
+                capture.exitCode = 0;
+                const Page::_AgentSnapshotRequest snapshotRequest{
+                    ++destination->_agentSnapshotRequestGeneration, receiver, std::nullopt, {}
+                };
+                destination->_agentSnapshotRefreshPending = false;
+                destination->_CompleteAgentSnapshot(snapshotRequest, capture, response, {}, true);
+                verify();
             });
         }
     }
