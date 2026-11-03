@@ -1302,7 +1302,12 @@ namespace winrt::TerminalApp::implementation
         try
         {
             const auto cleanup = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(
-                wtaPath, L"recover-process-resources", 3000, nullptr, false, nullptr, true);
+                wtaPath, L"recover-process-resources", ::Microsoft::Terminal::WtaProcess::ResourceRecoveryTimeoutMs, nullptr, false, nullptr, true);
+            if (!cleanup.completed || cleanup.exitCode != 0)
+            {
+                _agentPaneLog("WTA resource recovery incomplete: timedOut=" +
+                              std::to_string(cleanup.timedOut) + " exitCode=" + std::to_string(cleanup.exitCode));
+            }
             LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
         }
         catch (...)

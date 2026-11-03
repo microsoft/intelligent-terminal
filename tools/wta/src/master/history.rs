@@ -688,6 +688,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_housekeeping_does_not_block_history_retirement() {
+        use crate::protocol::acp::process::{PreparedProcessResources, ProcessResources};
+
+        struct DeferredFiles(String);
+        impl ProcessResources for DeferredFiles {
+            fn job_name(&self) -> &str {
+                &self.0
+            }
+            fn configure(&self, _: &mut tokio::process::Command) {}
+            fn cleanup(&mut self) -> Result<()> {
+                Err(anyhow!("fixture runtime files remain locked"))
+            }
+        }
+
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let (mut query, _) = controlled_query();
+                let mut command = tokio::process::Command::new("cmd.exe");
+                command.args(["/d", "/c", "exit", "0"]);
+                let resources = PreparedProcessResources::new(Box::new(DeferredFiles(format!(
+                    "Local\\wta-history-cleanup-{}",
+                    uuid::Uuid::new_v4()
+                ))));
+                query.process.as_mut().unwrap().child = Some(
+                    AgentProcess::spawn_with_resources(&mut command, None, Some(resources))
+                        .unwrap(),
+                );
+                query
+                    .stop()
+                    .await
+                    .expect("confirmed process exit must permit history replacement");
+                assert!(query.process.is_none());
+                assert!(!query.recycling);
+            })
+            .await;
+    }
+
+    #[tokio::test]
     async fn history_startup_failures_pause_without_using_chat_admission() {
         let target = fixture_target();
         let cancelled = tokio_util::sync::CancellationToken::new();
@@ -870,7 +908,13 @@ impl HistoryProcess {
                 return Err(anyhow!("fixture cannot confirm process exit"));
             }
             if let Some(child) = &mut self.child {
-                child.terminate().await?;
+                match child.terminate().await {
+                    Err(error) if error.is::<crate::agent_lifecycle::RuntimeCleanupPending>() => {
+                        tracing::warn!(target: "master_history", error = %format!("{error:#}"),
+                            "history process exited; runtime files await reclamation");
+                    }
+                    result => result?,
+                }
             }
             if let Some(conn) = &self.conn {
                 conn.shutdown();

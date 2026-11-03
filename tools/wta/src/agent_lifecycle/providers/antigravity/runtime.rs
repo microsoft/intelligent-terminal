@@ -260,7 +260,11 @@ fn recover_in(path: &Path) -> Result<ResourceRecovery> {
             }
         }
     }
-    prune_unused_receipts(&root)?;
+    if let Err(error) = prune_unused_receipts(&root) {
+        report.deferred += 1;
+        tracing::warn!(target: "antigravity_runtime", error = %format!("{error:#}"),
+            "unused retirement receipt pruning deferred");
+    }
     Ok(report)
 }
 
@@ -656,6 +660,33 @@ mod tests {
         prune_enumerated_receipts(entries)
             .expect("concurrent receipt removal must not reject the next launch");
         assert!(!remaining.exists());
+    }
+
+    #[test]
+    fn resource_housekeeping_keeps_locked_receipts_retryable() {
+        let scratch = Scratch::new();
+        let receipt = scratch.0.join(format!(
+            "{RESOURCE_SCOPE_RECEIPT_PREFIX}{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::write(&receipt, []).unwrap();
+        let held = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&receipt)
+            .unwrap();
+        let report = recover_in(&scratch.0)
+            .expect("optional receipt pruning must not block a safe new launch");
+        assert_eq!(report.deferred, 1);
+        assert_eq!(report.failed, 0);
+        assert!(receipt.exists());
+        let mut next = Runtime::create(&scratch.0).unwrap();
+        assert!(payload(&next).exists());
+        next.cleanup().unwrap();
+        drop(next);
+        drop(held);
+        recover_in(&scratch.0).unwrap();
+        assert!(!receipt.exists());
     }
 
     #[test]

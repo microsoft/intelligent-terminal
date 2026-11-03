@@ -8,7 +8,7 @@
 // TerminalSettingsEditor (AIAgentsViewModel) can use them without
 // duplicating logic.
 //
-// Pure Win32 + STL, no WinRT dependency.
+// Uses C++/WinRT for optional asynchronous resource retirement.
 
 #pragma once
 
@@ -85,6 +85,9 @@ namespace Microsoft::Terminal::WtaProcess
         bool cancelled{ false };
         bool timedOut{ false };
     };
+
+    // Large runtime trees can outlast the master shutdown grace period.
+    inline constexpr DWORD ResourceRecoveryTimeoutMs = 30000;
 
     // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
     // exit code. Synchronous — call from a background thread.
@@ -223,7 +226,7 @@ namespace Microsoft::Terminal::WtaProcess
                 if (resources.RetirementPending())
                 {
                     RetireProcessResourcesWithRetry(resources, resourceJob, [wtaPath, environment = resourceEnvironment]() mutable {
-                        const auto cleanup = RunWtaCapture(wtaPath, L"recover-process-resources", 3000, environment.data(), false, nullptr, true);
+                        const auto cleanup = RunWtaCapture(wtaPath, L"recover-process-resources", ResourceRecoveryTimeoutMs, environment.data(), false, nullptr, true);
                         LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
                     });
                 }
