@@ -120,4 +120,103 @@ Describe 'Feature: sidebar metadata belongs to its window' -Tag @('Feature', 'Si
             Send-WtWindowKey -App $window -Vk 0x1B -RequireForeground | Out-Null
         }
     }
+
+    It 'records an OSC 7 directory report in the CWD diagnostic log' {
+        if ($script:app) { Stop-Terminal -App $script:app }
+        $script:app = $null
+        $directory = Join-Path $PSScriptRoot ('..\artifacts\osc7-directory-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $directory 'child') -Force | Out-Null
+        $profile = '{' + [guid]::NewGuid() + '}'
+        try {
+            $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
+                sidebarLayoutMigrationCompleted = $true; sidebarIntroductionShown = $true
+            } -Settings @{
+                language = 'en-US'; tabLayout = 'vertical'; defaultProfile = $profile; startupActions = ''
+                actions = @(@{
+                    command = @{ action = 'splitPane'; splitMode = 'duplicate'; split = 'right' }
+                    keys = 'ctrl+shift+f12'
+                })
+                profiles = @{ list = @(@{
+                    guid = $profile; name = 'OSC 7 diagnostic shell'
+                    commandline = 'pwsh -NoLogo -NoProfile'; startingDirectory = $directory
+                }) }
+            }
+            $pane = Wait-Until -TimeoutSec 15 -Because 'the PowerShell pane to start' -Condition {
+                @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId | Where-Object { $_.session_id }) |
+                    Select-Object -First 1
+            }
+            $logDir = Get-ItLogDir -App $script:app
+            $logPattern = "rich-tab-provider-*-$($script:app.Pid)-*.jsonl"
+            $records = {
+                @(Get-ChildItem $logDir -Filter $logPattern -ErrorAction SilentlyContinue |
+                    Get-Content -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_ | ConvertFrom-Json -ErrorAction SilentlyContinue })
+            }
+            $before = @(& $records | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'osc-received' -and
+                $_.outcome -eq 'matched' -and $_.cwd -ne 0 }).Count
+            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                'Write-Host -NoNewline ([char]27 + '']7;'' + [Uri]::new((Get-Location).Path).AbsoluteUri + [char]7)' | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'OSC 7 to be logged as a matched directory report' -Condition {
+                @(& $records | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'osc-received' -and
+                    $_.outcome -eq 'matched' -and $_.cwd -ne 0 }).Count -gt $before
+            } | Out-Null
+
+            Send-WtWindowKey -App $script:app -Vk 0x7B -Ctrl -Shift -RequireForeground | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'a second active shell pane' -Condition {
+                @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId |
+                    Where-Object { $_.session_id -and $_.session_id -ne $pane.session_id }).Count -ge 1 -and
+                (Get-ActivePane -App $script:app).session_id -ne $pane.session_id
+            } | Out-Null
+            $lastSequence = @(& $records | Measure-Object -Property recordSequence -Maximum)[0].Maximum
+            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                'Set-Location (Join-Path (Get-Location).Path ''child''); Write-Host -NoNewline ([char]27 + '']7;'' + [Uri]::new((Get-Location).Path).AbsoluteUri + [char]7)' | Out-Null
+            (Get-ActivePane -App $script:app).session_id | Should -Not -Be $pane.session_id
+            Wait-Until -TimeoutSec 20 -Because 'the background pane row to apply its changed directory' -Condition {
+                $rows = & $records
+                $osc = @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'osc-received' -and
+                    $_.recordSequence -gt $lastSequence -and $_.cwd -ne 0 } | Select-Object -Last 1)
+                $osc.Count -eq 1 -and
+                @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'ui-result' -and
+                    $_.session -eq $osc[0].session -and $_.recordSequence -gt $osc[0].recordSequence -and
+                    $_.outcome -eq 'applied' -and $_.cwd -eq $osc[0].cwd }).Count -ge 1
+            } | Out-Null
+
+            Invoke-UiElement -App $script:app -Selector SearchTabsButton | Out-Null
+            Set-UiValue -App $script:app -Selector SearchTextBox -Value ('hidden-' + [guid]::NewGuid().ToString('N')) | Out-Null
+            $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+            $listCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::AutomationIdProperty, 'ItemsList')
+            $rowCondition = [Windows.Automation.PropertyCondition]::new(
+                [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
+            Wait-Until -TimeoutSec 10 -Because 'search to hide the parent tab and its pane rows' -Condition {
+                $list = $root.FindFirst([Windows.Automation.TreeScope]::Descendants, $listCondition)
+                -not $list -or $list.Current.IsOffscreen -or
+                @($list.FindAll([Windows.Automation.TreeScope]::Descendants, $rowCondition) |
+                    Where-Object { -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and
+                        $_.Current.AutomationId -ne 'HistoryHeaderButton' }).Count -eq 0
+            } | Out-Null
+            $lastSequence = @(& $records | Measure-Object -Property recordSequence -Maximum)[0].Maximum
+            Invoke-RunCommand -App $script:app -SessionId $pane.session_id -Command `
+                'Set-Location ..; Write-Host -NoNewline ([char]27 + '']7;'' + [Uri]::new((Get-Location).Path).AbsoluteUri + [char]7)' | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'a filtered-out pane row to remain unmatched' -Condition {
+                $rows = & $records
+                $osc = @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'osc-received' -and
+                    $_.recordSequence -gt $lastSequence -and $_.cwd -ne 0 } | Select-Object -Last 1)
+                $osc.Count -eq 1 -and
+                @($rows | Where-Object { $_.event -eq 'cwd' -and $_.stage -eq 'ui-result' -and
+                    $_.session -eq $osc[0].session -and $_.recordSequence -gt $osc[0].recordSequence -and
+                    $_.outcome -eq 'unmatched' -and $_.cwd -eq $osc[0].cwd }).Count -ge 1
+            } | Out-Null
+        }
+        finally {
+            try {
+                if ($script:app) { Stop-Terminal -App $script:app; $script:app = $null }
+            }
+            finally {
+                if (Test-Path -LiteralPath $directory) {
+                    Remove-Item -LiteralPath $directory -Recurse -Force
+                }
+            }
+        }
+    }
 }

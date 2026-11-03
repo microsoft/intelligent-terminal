@@ -114,6 +114,63 @@ namespace Microsoft::Terminal::RichTab::Provider
             return value ? "true" : "false";
         }
 
+        const char* _CwdStage(const CwdDiagnosticStage value) noexcept
+        {
+            switch (value)
+            {
+            case CwdDiagnosticStage::OscReceived:
+                return "osc-received";
+            case CwdDiagnosticStage::ContextObserved:
+                return "context-observed";
+            case CwdDiagnosticStage::AgentSelected:
+                return "agent-selected";
+            case CwdDiagnosticStage::ProviderResult:
+                return "provider-result";
+            case CwdDiagnosticStage::UiResult:
+                return "ui-result";
+            default:
+                return "unknown";
+            }
+        }
+
+        const char* _CwdSource(const CwdDiagnosticSource value) noexcept
+        {
+            switch (value)
+            {
+            case CwdDiagnosticSource::Shell:
+                return "shell";
+            case CwdDiagnosticSource::Agent:
+                return "agent";
+            case CwdDiagnosticSource::None:
+            default:
+                return "none";
+            }
+        }
+
+        const char* _CwdOutcome(const CwdDiagnosticOutcome value) noexcept
+        {
+            switch (value)
+            {
+            case CwdDiagnosticOutcome::Changed:
+                return "changed";
+            case CwdDiagnosticOutcome::Unchanged:
+                return "unchanged";
+            case CwdDiagnosticOutcome::Accepted:
+                return "accepted";
+            case CwdDiagnosticOutcome::Matched:
+                return "matched";
+            case CwdDiagnosticOutcome::Stale:
+                return "stale";
+            case CwdDiagnosticOutcome::Unmatched:
+                return "unmatched";
+            case CwdDiagnosticOutcome::Applied:
+                return "applied";
+            case CwdDiagnosticOutcome::Observed:
+            default:
+                return "observed";
+            }
+        }
+
         std::string _FieldArray(const uint8_t fields)
         {
             std::string result{ "[" };
@@ -363,6 +420,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         {
             return;
         }
+        const auto sequence = _nextRecordSequence.fetch_add(1, std::memory_order_relaxed);
         if (_dropOnContention)
         {
             if (!TryAcquireSRWLockExclusive(&_queueLock))
@@ -384,6 +442,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         }
 
         _queue[_queueTail] = record;
+        _queue[_queueTail].recordSequence = sequence;
         _queueTail = (_queueTail + 1) % QueueCapacity;
         ++_queueSize;
         ReleaseSRWLockExclusive(&_queueLock);
@@ -506,47 +565,85 @@ namespace Microsoft::Terminal::RichTab::Provider
                 return false;
             }
             std::array<char, 1024> line{};
-            const int count = record.event == ProviderDiagnosticEvent::Catalog ?
-                                  _snprintf_s(
-                                      line.data(),
-                                      line.size(),
-                                      _TRUNCATE,
-                                      "{\"schema\":1,\"event\":\"catalog\",\"timestamp\":\"%s\",\"pid\":%lu,\"processEpoch\":%llu,\"provider\":\"git-status\",\"catalogOrigin\":%s,\"providerVersion\":%s,\"outcome\":\"%s\"}\n",
-                                      timestamp.c_str(),
-                                      record.processId,
-                                      record.processEpoch,
-                                      _Boolean(record.catalogOrigin),
-                                      version.c_str(),
-                                      _CatalogOutcome(record.catalogOutcome)) :
-                                  _snprintf_s(
-                                      line.data(),
-                                      line.size(),
-                                      _TRUNCATE,
-                                      "{\"schema\":1,\"event\":\"invocation\",\"timestamp\":\"%s\",\"pid\":%lu,\"processEpoch\":%llu,\"request\":%llu,\"provider\":\"git-status\",\"catalogOrigin\":%s,\"providerVersion\":%s,\"activation\":\"%s\",\"generation\":%llu,\"contextRevision\":%llu,\"selectedFields\":%s,\"returnedFields\":%s,\"runnerAttempted\":%s,\"processStarted\":%s,\"runnerStatus\":\"%s\",\"durationUs\":%llu,\"exitCodeValid\":%s,\"exitCode\":%lu,\"win32ErrorValid\":%s,\"win32Error\":%lu,\"outputLimitObserved\":%s,\"stdoutExceeded\":%s,\"stderrExceeded\":%s,\"parse\":\"%s\",\"brokerDisposition\":\"%s\"}\n",
-                                      timestamp.c_str(),
-                                      record.processId,
-                                      record.processEpoch,
-                                      record.hostRequestId,
-                                      _Boolean(record.catalogOrigin),
-                                      version.c_str(),
-                                      _ActivationReason(record.activationReason),
-                                      record.generation,
-                                      record.contextRevision,
-                                      selectedFields.c_str(),
-                                      returnedFields.c_str(),
-                                      _Boolean(record.runnerAttempted),
-                                      _Boolean(record.processStarted),
-                                      _RunnerStatus(record.runnerStatus),
-                                      record.durationMicroseconds,
-                                      _Boolean(record.exitCodeValid),
-                                      record.exitCode,
-                                      _Boolean(record.win32ErrorValid),
-                                      record.win32Error,
-                                      _Boolean(record.outputLimitObserved),
-                                      _Boolean(record.standardOutputExceeded),
-                                      _Boolean(record.standardErrorExceeded),
-                                      _ParseOutcome(record.parseOutcome),
-                                      _BrokerDisposition(record.brokerDisposition));
+            int count = -1;
+            if (record.event == ProviderDiagnosticEvent::Catalog)
+            {
+                count = _snprintf_s(
+                    line.data(),
+                    line.size(),
+                    _TRUNCATE,
+                    "{\"schema\":1,\"event\":\"catalog\",\"timestamp\":\"%s\",\"pid\":%lu,\"processEpoch\":%llu,\"provider\":\"git-status\",\"catalogOrigin\":%s,\"providerVersion\":%s,\"outcome\":\"%s\",\"recordSequence\":%llu,\"droppedRecords\":%llu}\n",
+                    timestamp.c_str(),
+                    record.processId,
+                    record.processEpoch,
+                    _Boolean(record.catalogOrigin),
+                    version.c_str(),
+                    _CatalogOutcome(record.catalogOutcome),
+                    record.recordSequence,
+                    DroppedRecords());
+            }
+            else if (record.event == ProviderDiagnosticEvent::Cwd)
+            {
+                count = _snprintf_s(
+                    line.data(),
+                    line.size(),
+                    _TRUNCATE,
+                    "{\"schema\":1,\"event\":\"cwd\",\"stage\":\"%s\",\"timestamp\":\"%s\",\"pid\":%lu,\"processEpoch\":%llu,\"session\":%llu,\"attachment\":%llu,\"cwd\":%llu,\"shellCwd\":%llu,\"agentCwd\":%llu,\"request\":%llu,\"contextRevision\":%llu,\"updateSequence\":%llu,\"source\":\"%s\",\"outcome\":\"%s\",\"authoritative\":%s,\"agentActive\":%s,\"cwdTokenLimitReached\":%s,\"recordSequence\":%llu,\"droppedRecords\":%llu}\n",
+                    _CwdStage(record.cwdStage),
+                    timestamp.c_str(),
+                    record.processId,
+                    record.processEpoch,
+                    record.sessionToken,
+                    record.attachmentId,
+                    record.cwdToken,
+                    record.shellCwdToken,
+                    record.agentCwdToken,
+                    record.hostRequestId,
+                    record.contextRevision,
+                    record.updateSequence,
+                    _CwdSource(record.cwdSource),
+                    _CwdOutcome(record.cwdOutcome),
+                    _Boolean(record.workingDirectoryAuthoritative),
+                    _Boolean(record.agentActive),
+                    _Boolean(record.cwdTokenLimitReached),
+                    record.recordSequence,
+                    DroppedRecords());
+            }
+            else
+            {
+                count = _snprintf_s(
+                    line.data(),
+                    line.size(),
+                    _TRUNCATE,
+                    "{\"schema\":1,\"event\":\"invocation\",\"timestamp\":\"%s\",\"pid\":%lu,\"processEpoch\":%llu,\"request\":%llu,\"session\":%llu,\"provider\":\"git-status\",\"catalogOrigin\":%s,\"providerVersion\":%s,\"activation\":\"%s\",\"generation\":%llu,\"contextRevision\":%llu,\"selectedFields\":%s,\"returnedFields\":%s,\"runnerAttempted\":%s,\"processStarted\":%s,\"runnerStatus\":\"%s\",\"durationUs\":%llu,\"exitCodeValid\":%s,\"exitCode\":%lu,\"win32ErrorValid\":%s,\"win32Error\":%lu,\"outputLimitObserved\":%s,\"stdoutExceeded\":%s,\"stderrExceeded\":%s,\"parse\":\"%s\",\"brokerDisposition\":\"%s\",\"recordSequence\":%llu,\"droppedRecords\":%llu}\n",
+                    timestamp.c_str(),
+                    record.processId,
+                    record.processEpoch,
+                    record.hostRequestId,
+                    record.sessionToken,
+                    _Boolean(record.catalogOrigin),
+                    version.c_str(),
+                    _ActivationReason(record.activationReason),
+                    record.generation,
+                    record.contextRevision,
+                    selectedFields.c_str(),
+                    returnedFields.c_str(),
+                    _Boolean(record.runnerAttempted),
+                    _Boolean(record.processStarted),
+                    _RunnerStatus(record.runnerStatus),
+                    record.durationMicroseconds,
+                    _Boolean(record.exitCodeValid),
+                    record.exitCode,
+                    _Boolean(record.win32ErrorValid),
+                    record.win32Error,
+                    _Boolean(record.outputLimitObserved),
+                    _Boolean(record.standardOutputExceeded),
+                    _Boolean(record.standardErrorExceeded),
+                    _ParseOutcome(record.parseOutcome),
+                    _BrokerDisposition(record.brokerDisposition),
+                    record.recordSequence,
+                    DroppedRecords());
+            }
             if (count <= 0)
             {
                 return false;

@@ -45,6 +45,35 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         Catalog,
         Invocation,
+        Cwd,
+    };
+
+    enum class CwdDiagnosticStage : uint8_t
+    {
+        OscReceived,
+        ContextObserved,
+        AgentSelected,
+        ProviderResult,
+        UiResult,
+    };
+
+    enum class CwdDiagnosticSource : uint8_t
+    {
+        None,
+        Shell,
+        Agent,
+    };
+
+    enum class CwdDiagnosticOutcome : uint8_t
+    {
+        Observed,
+        Changed,
+        Unchanged,
+        Accepted,
+        Matched,
+        Stale,
+        Unmatched,
+        Applied,
     };
 
     enum ProviderFieldMask : uint8_t
@@ -71,10 +100,17 @@ namespace Microsoft::Terminal::RichTab::Provider
     {
         ProviderDiagnosticEvent event{ ProviderDiagnosticEvent::Invocation };
         uint64_t timestamp{ 0 };
+        uint64_t recordSequence{ 0 };
         uint64_t processEpoch{ 0 };
         uint64_t hostRequestId{ 0 };
+        uint64_t sessionToken{ 0 };
+        uint64_t attachmentId{ 0 };
+        uint64_t cwdToken{ 0 };
+        uint64_t shellCwdToken{ 0 };
+        uint64_t agentCwdToken{ 0 };
         uint64_t generation{ 0 };
         uint64_t contextRevision{ 0 };
+        uint64_t updateSequence{ 0 };
         uint64_t durationMicroseconds{ 0 };
         uint32_t processId{ 0 };
         ProviderCatalogOutcome catalogOutcome{ ProviderCatalogOutcome::Unknown };
@@ -83,6 +119,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         CommandResult::Status runnerStatus{ CommandResult::Status::LaunchFailed };
         ProviderParseOutcome parseOutcome{ ProviderParseOutcome::NotAttempted };
         ProviderBrokerDisposition brokerDisposition{ ProviderBrokerDisposition::NotApplicable };
+        CwdDiagnosticStage cwdStage{ CwdDiagnosticStage::OscReceived };
+        CwdDiagnosticSource cwdSource{ CwdDiagnosticSource::None };
+        CwdDiagnosticOutcome cwdOutcome{ CwdDiagnosticOutcome::Observed };
         uint32_t exitCode{ 0 };
         uint32_t win32Error{ 0 };
         uint8_t selectedFields{ ProviderFieldNone };
@@ -95,6 +134,9 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool outputLimitObserved{ false };
         bool standardOutputExceeded{ false };
         bool standardErrorExceeded{ false };
+        bool workingDirectoryAuthoritative{ false };
+        bool agentActive{ false };
+        bool cwdTokenLimitReached{ false };
     };
     static_assert(std::is_nothrow_copy_assignable_v<ProviderDiagnosticRecord>);
 
@@ -150,6 +192,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         bool _stopping{ false };
         std::atomic<bool> _enabled{ false };
         std::atomic<uint64_t> _droppedRecords{ 0 };
+        std::atomic<uint64_t> _nextRecordSequence{ 1 };
         HANDLE _thread{ nullptr };
         HANDLE _file{ INVALID_HANDLE_VALUE };
         uint64_t _bytesWritten{ 0 };
