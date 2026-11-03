@@ -122,8 +122,7 @@ namespace Microsoft::Terminal::AgentProfiles
         auto values = ParseArguments(arguments);
         if (!permissionMode.empty())
         {
-            // Preserve the legacy profile field's CLI mapping; the native CLI owns
-            // valid values and combinations with the user's additional arguments.
+            // Map the structured permission option to the provider's CLI syntax.
             if (id == L"copilot" || id == L"opencode")
             {
                 values.insert(values.begin(), L"--" + std::wstring{ permissionMode });

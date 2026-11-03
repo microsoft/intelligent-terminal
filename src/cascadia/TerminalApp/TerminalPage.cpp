@@ -19513,8 +19513,7 @@ namespace winrt::TerminalApp::implementation
             const auto provider = newTerminalArgs.NativeAgentProviderId();
             const auto id = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ provider });
             THROW_HR_IF(E_INVALIDARG, id.empty());
-            // Native profile availability is filtered during generation. Keep the
-            // existing provider check for other native-session restore paths.
+            // Non-profile native sessions require a provider policy check.
             if (!Registry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }))
             {
                 Policy::Reload();

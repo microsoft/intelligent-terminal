@@ -524,7 +524,7 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentProfileArgumentValidation()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        // These are Windows process/batch transport constraints, not CLI option policy.
+        // Windows process and batch transport require these constraints.
         const auto nul = std::wstring{ L"value" } + L'\0' + L"suffix";
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", nul, {}, {}), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, nul, {}), wil::ResultException);
@@ -566,8 +566,7 @@ namespace SettingsModelUnitTests
                  std::tuple{ L"opencode", std::vector<std::wstring>{ L"C:\\Native Tools\\opencode.exe", L"--model", L"chosen-model", L"--future-mode" } },
                  std::tuple{ L"antigravity", std::vector<std::wstring>{ L"C:\\Native Tools\\agy.exe", L"--model", L"chosen-model", L"--mode", L"future-mode" } } })
         {
-            // Legacy structured fields remain first; duplicate/unknown CLI options are
-            // forwarded in order, not interpreted using agent-pane approval rules.
+            // Structured options precede additional arguments in argv.
             const auto args = ParseFullCommandLine(Agents::BuildCommand(prefix[0], id, L"chosen-model", L"future-mode", arguments));
             VERIFY_ARE_EQUAL(prefix.size() + expected.size(), args.size());
             for (size_t i = 0; i < prefix.size(); ++i)
