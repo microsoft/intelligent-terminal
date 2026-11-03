@@ -1552,12 +1552,15 @@ namespace winrt::TerminalApp::implementation
             const auto customHover = !_highContrast || searchFocused;
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
+            const auto hoverMargin = _isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 5, 3, 5, 3 };
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
+                hoverBackground.Margin(hoverMargin);
                 hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
+                colorHover.Margin(hoverMargin);
                 colorHover.Background(hoverBrush);
                 colorHover.Opacity(!_highContrast && !selected && pointerOver && hoverBrush ? 1.0 : 0.0);
             }

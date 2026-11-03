@@ -19480,10 +19480,21 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(32.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
             VERIFY_ARE_EQUAL(14.0f, centerX(iconPresenter));
+            for (const auto name : { L"TabHoverBackground", L"TabColorHoverBackground" })
+            {
+                const auto hover = headerRoot.FindName(name).as<Border>();
+                const auto bounds = hover.TransformToVisual(selectionBackground).TransformBounds({ 0, 0, static_cast<float>(hover.ActualWidth()), static_cast<float>(hover.ActualHeight()) });
+                VERIFY_ARE_EQUAL(0.0f, bounds.X);
+                VERIFY_ARE_EQUAL(0.0f, bounds.Y);
+                VERIFY_ARE_EQUAL(static_cast<float>(selectionBackground.ActualWidth()), bounds.Width);
+                VERIFY_ARE_EQUAL(static_cast<float>(selectionBackground.ActualHeight()), bounds.Height);
+            }
 
             strip.IsRailCollapsed(false);
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
+            verifyHoverInset(headerRoot, L"TabHoverBackground");
+            verifyHoverInset(headerRoot, L"TabColorHoverBackground");
             VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
             VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
             strip.IsRailCollapsed(true);
