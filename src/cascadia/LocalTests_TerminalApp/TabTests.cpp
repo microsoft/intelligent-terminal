@@ -30114,7 +30114,6 @@ namespace TerminalAppLocalTests
                         target.StartingDirectory(winrt::hstring{ test.configuredDirectory });
                         const auto sourceControl = tab->GetActiveTerminalControl();
                         const auto sourceSettingsDirectory = sourceControl.Settings().StartingDirectory();
-                        const auto sourcePane = tab->GetActivePane();
                         auto shutdown = wil::scope_exit([&]() { tab->GetRootPane()->Shutdown(); });
                         VERIFY_IS_FALSE(sourceControl.WorkingDirectoryReportedByShell());
                         if (!test.reportedDirectory.empty())
@@ -30164,7 +30163,9 @@ namespace TerminalAppLocalTests
                         VERIFY_ARE_EQUAL(winrt::hstring{ test.configuredDirectory }, target.StartingDirectory());
                         VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe /d /k" }, target.Commandline());
                         VERIFY_ARE_EQUAL(sourceSettingsDirectory, sourceControl.Settings().StartingDirectory());
-                        VERIFY_IS_TRUE(tab->GetRootPane()->_HasChild(sourcePane));
+                        const auto preservedSource = tab->GetRootPane()->FindPaneByContentId(gsl::narrow<uint32_t>(sourceControl.ContentId()));
+                        VERIFY_IS_NOT_NULL(preservedSource);
+                        VERIFY_IS_TRUE(preservedSource->GetTerminalControl() == sourceControl);
                     });
                 }
             }

@@ -53,6 +53,7 @@ Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgen
             $profileId = '{b22d61a8-5509-4694-82fc-263214f54fb3}'
             $script:app = Start-Terminal -Package $env:ITE2E_PACKAGE -PassFre $true -Settings @{
                 defaultProfile = $profileId
+                language = 'en-US'
                 firstWindowPreference = 'defaultProfile'; startupActions = ''
                 windowingBehavior = 'useNew'; tabLayout = 'horizontal'
                 agentSessionManagementEnabled = $false
