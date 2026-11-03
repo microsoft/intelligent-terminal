@@ -3012,16 +3012,12 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Ｕｓｅ Windows ｃｏｍｍａｎｄ-ｌｉｎｅ ｑｕｏｔｉｎｇ ｆｏｒ ｖａｌｕｅｓ ｃｏｎｔａｉｎｉｎｇ ｓｐａｃｅｓ. Ａｒｇｕｍｅｎｔｓ ｔｈａｔ ｃｏｎｆｌｉｃｔ ｗｉｔｈ ｍａｎａｇｅｄ ｓｅｔｔｉｎｇｓ ｏｒ ｐｏｌｉｃｙ ａｒｅ ｒｅｊｅｃｔｅｄ. Ｓｈｅｌｌ ｃｏｍｍａｎｄｓ ａｒｅ ｎｏｔ ｓｕｐｐｏｒｔｅｄ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <value>Ｕｓｅ Windows ｃｏｍｍａｎｄ-ｌｉｎｅ ｑｕｏｔｉｎｇ ｆｏｒ ｖａｌｕｅｓ ｃｏｎｔａｉｎｉｎｇ ｓｐａｃｅｓ. Ａｒｇｕｍｅｎｔｓ ａｒｅ ｐａｓｓｅｄ ｔｏ ｔｈｅ ａｇｅｎｔ, ｗｈｉｃｈ ｖａｌｉｄａｔｅｓ ｉｔｓ ｏｐｔｉｏｎｓ. Ｓｈｅｌｌ ｃｏｍｍａｎｄｓ ａｒｅ ｎｏｔ ｓｕｐｐｏｒｔｅｄ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Ｕｓｅ ｐｒｏｆｉｌｅ ｓｐｌｉｔ ｐｒｅｆｅｒｅｎｃｅ !!! !!!</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Ｙｏｕｒ ｏｒｇａｎｉｚａｔｉｏｎ ｂｌｏｃｋｓ ｍａｎａｇｅｄ ｎａｔｉｖｅ ａｇｅｎｔ ｌａｕｎｃｈｅｓ. Ｔｈｅ ａｇｅｎｔ ｍｕｓｔ ｂｅ ａｌｌｏｗｅｄ, ａｎｄ ｐｏｌｉｃｙ ｍｕｓｔ ｐｅｒｍｉｔ ａｕｔｏｍａｔｉｃ ａｐｐｒｏｖａｌ ｂｅｃａｕｓｅ ｎａｔｉｖｅ ａｇｅｎｔｓ ｃｏｎｔｒｏｌ ｔｈｅｉｒ ｏｗｎ ａｐｐｒｏｖａｌ ｓｅｔｔｉｎｇｓ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>[Ŧôğğļë ƀëţŵëëñ ţĥë ñëŵ šîđëƀáŕ ôŕ çļáššîç ĥôŕîžôñţáļ ţáƀš vîëŵ !!! !!! !!!]</value>

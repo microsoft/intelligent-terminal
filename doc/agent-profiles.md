@@ -59,18 +59,18 @@ Agent identity does not depend on the profile's display name. User overrides
 are layered on the generated settings and are retained if a CLI disappears.
 Copy a profile to create multiple project configurations for the same agent.
 
-An empty model or permission mode means no launcher override: the CLI keeps
-its own configured default. Permission choices use provider-specific native
+An empty model or permission mode adds no corresponding managed option. The CLI
+keeps its configured default unless an explicitly provided additional argument
+changes it. Permission choices use provider-specific native
 modes, not a cross-provider promise of read-only access. Approval policies and
 agent sandbox options do not grant or revoke Windows filesystem permissions.
-Unsupported modes and conflicting arguments produce startup errors.
+The native CLI validates its option values and combinations.
 
 The profile editor exposes model and additional startup arguments, but does not
 include a permission-mode selector. Configure approvals through the native CLI;
 existing `agentProfile.permissionMode` JSON values remain supported.
 For Antigravity, `accept-edits` and `plan` map to `agy --mode`; an empty value
-preserves the CLI's configured default. The managed launcher does not accept
-`--dangerously-skip-permissions` as an additional argument.
+preserves the CLI's configured default.
 The agent profile's Advanced page exposes only close-on-exit behavior and
 environment-variable refresh. It omits the separate ACP agent-pane and
 command-palette delegation selectors and the other terminal fine-tuning
@@ -84,21 +84,29 @@ and existing JSON settings are unchanged.
 
 Additional arguments use Windows command-line quoting, for example an argument
 containing a space must be quoted. They are arguments, not PowerShell or command
-prompt script text. Supported extras are conservatively allowlisted per provider;
-see the [native argument contract](../tools/wta/README.md) for the supported arguments.
-Terminal applies the same provider-specific flags and argument allowlist before
-starting a managed profile.
-Managed commands reject `%` environment references to preserve the validated
-arguments. Batch shims additionally reject embedded quotes, `!`, `^`, and line
-breaks; use a custom command line when shell expansion is required.
-Organization policy remains applicable to managed launches.
+prompt script text. For every supported native provider, Terminal forwards these
+arguments without a provider-specific flag allowlist. Consult the native CLI's
+help for supported flags and policy. Structured model and legacy permission-mode
+options precede additional arguments; the CLI decides whether duplicate options
+override earlier values or report an error. Terminal does not impose the ACP
+agent pane's approval configuration on native profiles.
+
+Terminal applies its usual `%NAME%` environment expansion to the assembled
+command line, including native agent profiles. The command preview precedes this
+expansion at launch, just as for ordinary profiles. Embedded NUL characters cannot
+be transported by Windows process command lines.
+Batch shims still reject `%`, `!`,
+`^`, embedded quotes, and line breaks because they pass through `cmd.exe`;
+these are shell-transport constraints, not restrictions on the agent's flags.
 Do not put credentials in command-line arguments.
 
-`AllowedAgents` is checked again when launching. If `AllowAutomaticApproval` is
-disabled, all managed native launches are blocked, including those using the
-CLI's default mode. Native CLIs can change approvals through their own
-configuration and interactive controls, so a startup-only launcher cannot
-guarantee the policy throughout the session. Settings displays this restriction.
+The product's `AllowedAgents` policy filters which native profiles are generated
+and offered. Native profile customization and launch do not reapply that filter;
+manually configured native metadata is not an additional policy boundary.
+`AllowAutomaticApproval` governs the separate agent pane, not native profile
+arguments. A native CLI owns its own approval configuration and policy errors;
+its options do not grant or revoke Windows filesystem permissions.
+This profile contract does not change `wta launch-agent` or ACP launch behavior.
 
 The command-line field is directly editable, just like a shell profile. Saving
 an explicit `commandline` runs that command unchanged by the agent command

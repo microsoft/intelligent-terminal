@@ -563,7 +563,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         const auto hasAgentProfiles = std::ranges::any_of(_profileVMs, [](const auto& profile) {
             return profile.Source() == ::Microsoft::Terminal::AgentProfiles::Source &&
-                   profile.IsManagedAgentProfile() && !profile.Orphaned() && !profile.Hidden() && !profile.IsAgentProfilePolicyBlocked();
+                   profile.IsManagedAgentProfile() && !profile.Orphaned() && !profile.Hidden();
         });
         if (!hasAgentProfiles)
         {

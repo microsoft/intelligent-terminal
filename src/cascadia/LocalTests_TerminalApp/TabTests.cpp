@@ -840,6 +840,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BackgroundSplitPreservesAssistantSource);
         TEST_METHOD(SplitDirectoryUsesConnectionLaunchMetadata);
         TEST_METHOD(SplitDirectoryDropdownOnlyInheritsForSplit);
+        TEST_METHOD(ProfileSelectedSplitActionPreservesCwdPrecedence);
         TEST_METHOD(MovePaneRejectsActiveAgent);
         TEST_METHOD(MovePanePreservesNormalPaneMoves);
         TEST_METHOD(AgentPaneFocusRespectsTabBoundary);
@@ -8463,7 +8464,8 @@ namespace TerminalAppLocalTests
             const CascadiaSettings settings{
                 LR"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
                      "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
-                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.arguments":"--yolo",
+                                  "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"invalid\u0000model",
+                                  "agentProfile.arguments":"--native-user-argument",
                                   "closeOnExit":"always"}]})",
                 LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Copilot",
                                   "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"copilot"}]})"
@@ -8486,8 +8488,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(State::Failed, connection.State());
             VERIFY_IS_FALSE(connection.as<Conpty>().ProcessStarted());
             VERIFY_IS_TRUE(output.find(L"0x80070057") != std::wstring::npos);
-            VERIFY_IS_TRUE(output.find(L"Unsupported or conflicting native agent argument") != std::wstring::npos);
-            VERIFY_IS_TRUE(output.find(L"--yolo") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"Native agent command contains an embedded NUL.") != std::wstring::npos);
+            VERIFY_IS_TRUE(output.find(L"--model") != std::wstring::npos);
 
             tabsBefore = page->_tabs.Size();
             page->_OpenNewTerminalViaDropdown(NewTerminalArgs{}, false, false, false, false);
@@ -8513,12 +8515,15 @@ namespace TerminalAppLocalTests
             using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
             VERIFY_ARE_EQUAL(State::Failed, tab->GetActiveTerminalControl().Connection().State());
             const auto profile = page->_settings.ActiveProfiles().GetAt(0);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"--yolo" }, profile.AgentProfileArguments());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"--native-user-argument" }, profile.AgentProfileArguments());
 
+            profile.AgentProfileModel(L"");
             profile.AgentProfileArguments(L"--version");
+            const auto validCommand = Microsoft::Terminal::AgentProfiles::Command(profile, true);
             const auto validSettings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
             const auto valid = page->_CreateConnectionFromSettings(profile, *validSettings.DefaultSettings(), false);
             VERIFY_ARE_EQUAL(State::NotConnected, valid.State());
+            VERIFY_ARE_EQUAL(winrt::hstring{ validCommand }, valid.as<Conpty>().Commandline());
             VERIFY_IS_TRUE(std::wstring_view{ valid.as<Conpty>().Commandline() }.find(L"--version") != std::wstring_view::npos);
             valid.Close();
             // Drain normal-priority handlers first; disabled animations keep pane closes synchronous.
@@ -30061,6 +30066,109 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(tabsBefore + 1, page->_tabs.Size());
             VERIFY_ARE_EQUAL(target.StartingDirectory(), page->_GetFocusedTabImpl()->GetActiveTerminalControl().Settings().StartingDirectory());
         });
+    }
+
+    void TabTests::ProfileSelectedSplitActionPreservesCwdPrecedence()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        const auto windows = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+        const auto reported = windows + L"\\System32";
+        const auto driveRelative = windows.substr(0, 2);
+        const auto driveRoot = driveRelative + L"\\";
+        struct Case
+        {
+            const wchar_t* name;
+            std::wstring reportedDirectory;
+            std::wstring launchDirectory;
+            std::wstring configuredDirectory;
+            std::wstring explicitDirectory;
+            std::wstring expectedDirectory;
+        };
+        for (const auto& test : {
+                 Case{ L"Reported shell cwd", reported, {}, driveRoot, {}, reported },
+                 Case{ L"Reported drive root", driveRoot, {}, windows, {}, driveRoot },
+                 Case{ L"Unreported cwd uses connection launch directory", {}, windows, driveRoot, {}, windows },
+                 Case{ L"No trusted cwd uses target root", {}, {}, driveRoot, {}, driveRoot },
+                 Case{ L"Reported drive-relative cwd is not absolute", driveRelative, {}, driveRoot, {}, driveRoot },
+                 Case{ L"No trusted cwd preserves drive-relative target", {}, {}, driveRelative, {}, driveRelative },
+                 Case{ L"Explicit drive-relative directory wins", reported, {}, driveRoot, driveRelative, driveRelative } })
+        {
+            for (const auto agentTarget : { false, true })
+            {
+                for (const auto mode : { SplitType::Manual, SplitType::Profile })
+                {
+                    Log::Comment(test.name);
+                    const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+                    auto page = _commonSetup(*connection);
+                    TestOnUIThread([&]() {
+                        const auto tab = page->_GetFocusedTabImpl();
+                        tab->SuppressAgentPrewarm();
+                        const auto source = tab->GetFocusedProfile();
+                        const auto target = page->_settings.ActiveProfiles().GetAt(1);
+                        source.Commandline(L"cmd.exe /d /k");
+                        source.StartingDirectory(winrt::hstring{ reported });
+                        // Metadata exercises the native-profile handoff, not the strict CLI builder.
+                        target.AgentProfileId(agentTarget ? L"copilot" : L"");
+                        target.Commandline(L"cmd.exe /d /k");
+                        target.StartingDirectory(winrt::hstring{ test.configuredDirectory });
+                        const auto sourceControl = tab->GetActiveTerminalControl();
+                        const auto sourceSettingsDirectory = sourceControl.Settings().StartingDirectory();
+                        const auto sourcePane = tab->GetActivePane();
+                        auto shutdown = wil::scope_exit([&]() { tab->GetRootPane()->Shutdown(); });
+                        VERIFY_IS_FALSE(sourceControl.WorkingDirectoryReportedByShell());
+                        if (!test.reportedDirectory.empty())
+                        {
+                            // Inject an observed shell report; this does not assert that CMD emits OSC.
+                            const auto output = L"\x1b]9;9;\"" + test.reportedDirectory + L"\"\x1b\\";
+                            connection->TerminalOutput.raise(winrt::array_view<const char16_t>{
+                                reinterpret_cast<const char16_t*>(output.data()),
+                                reinterpret_cast<const char16_t*>(output.data() + output.size()) });
+                            VERIFY_IS_TRUE(sourceControl.WorkingDirectoryReportedByShell());
+                            VERIFY_ARE_EQUAL(winrt::hstring{ test.reportedDirectory }, sourceControl.WorkingDirectory());
+                        }
+                        if (!test.launchDirectory.empty())
+                        {
+                            // Initialize metadata without starting another shell process.
+                            const auto launch = Conpty{};
+                            launch.Initialize(Conpty::CreateSettings(L"cmd.exe /d /k",
+                                                                   winrt::hstring{ test.launchDirectory },
+                                                                   L"", false, L"", nullptr, 30, 120, {}, source.Guid()));
+                            sourceControl.Connection(launch);
+                            VERIFY_ARE_EQUAL(winrt::hstring{ test.launchDirectory }, launch.StartingDirectory());
+                        }
+                        VERIFY_ARE_EQUAL(!test.reportedDirectory.empty(), sourceControl.WorkingDirectoryReportedByShell());
+                        NewTerminalArgs contentArgs;
+                        const auto profileArgument = Utils::GuidToString(target.Guid());
+                        contentArgs.Profile(profileArgument);
+                        contentArgs.StartingDirectory(winrt::hstring{ test.explicitDirectory });
+                        ActionEventArgs action{ SplitPaneArgs{ mode, SplitDirection::Right, .5f, contentArgs } };
+                        page->_HandleSplitPane(nullptr, action);
+                        VERIFY_IS_TRUE(action.Handled());
+                        VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                        VERIFY_ARE_EQUAL(target.Guid(), tab->GetFocusedProfile().Guid());
+                        const auto created = tab->GetActiveTerminalControl();
+                        VERIFY_ARE_EQUAL(winrt::hstring{ test.expectedDirectory }, created.Settings().StartingDirectory());
+                        if (test.expectedDirectory != driveRelative)
+                        {
+                            VERIFY_ARE_EQUAL(winrt::hstring{ test.expectedDirectory }, created.Connection().as<Conpty>().StartingDirectory());
+                        }
+                        const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                        VERIFY_ARE_EQUAL(winrt::hstring{ agentTarget ? L"copilot" : L"" }, manager->NativeAgentProviderId(created.ContentId()));
+                        VERIFY_ARE_EQUAL(profileArgument, contentArgs.Profile());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ test.explicitDirectory }, contentArgs.StartingDirectory());
+                        VERIFY_IS_TRUE(contentArgs.Commandline().empty());
+                        VERIFY_IS_TRUE(contentArgs.NativeAgentProviderId().empty());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ reported }, source.StartingDirectory());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe /d /k" }, source.Commandline());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ test.configuredDirectory }, target.StartingDirectory());
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe /d /k" }, target.Commandline());
+                        VERIFY_ARE_EQUAL(sourceSettingsDirectory, sourceControl.Settings().StartingDirectory());
+                        VERIFY_IS_TRUE(tab->GetRootPane()->_HasChild(sourcePane));
+                    });
+                }
+            }
+        }
     }
 
     void TabTests::ProfileAwareSplitPreservesExplicitTargets()
