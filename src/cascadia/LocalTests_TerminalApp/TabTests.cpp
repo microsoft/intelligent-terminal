@@ -477,6 +477,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(FreHidesAndRestoresTabChrome);
         TEST_METHOD(FreTabModeSelectionDoesNotMutateSettings);
+        TEST_METHOD(FreSetupProgressIndicatorMatchesChecklistScale);
         TEST_METHOD(FreIllustrationsFollowThemeWithoutChangingChrome);
         TEST_METHOD(FreWelcomeDefaultLayoutMatchesDesign);
         TEST_METHOD(FreWelcomeMinimumLayoutScrollsWithStickyFooter);
@@ -7345,6 +7346,22 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasShowTokenUsageAndCost());
                 VERIFY_ARE_EQUAL(configured != TabLayout::Horizontal, globals.ShowTokenUsageAndCost());
             }
+        });
+    }
+
+    void TabTests::FreSetupProgressIndicatorMatchesChecklistScale()
+    {
+        TestOnUIThread([]() {
+            winrt::TerminalApp::FreOverlay fre;
+            CascadiaSettings settings{ LR"({"profiles":[{"name":"cmd","commandline":"cmd.exe"}]})", {} };
+            fre.Initialize(settings);
+
+            const auto ring = fre.FindName(L"SavingProgressRing").as<winrt::MUX::Controls::ProgressRing>();
+            const auto row = fre.FindName(L"SetupProgressRow").as<Grid>();
+
+            VERIFY_ARE_EQUAL(20.0, ring.Width());
+            VERIFY_ARE_EQUAL(20.0, ring.Height());
+            VERIFY_ARE_EQUAL(48.0, row.MinHeight());
         });
     }
 
