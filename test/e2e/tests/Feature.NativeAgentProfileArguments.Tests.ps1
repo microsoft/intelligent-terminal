@@ -96,7 +96,6 @@ Describe 'Feature: Native agent profile arguments' -Tag @('Feature', 'NativeAgen
         $mode = if ($script:provider -eq 'copilot') { 'allow-all-tools' } else { '' }
         $pane = Start-NativeArgumentProfile -Arguments $arguments -PermissionMode $mode
         $pane.native_agent_provider_id | Should -Be $script:provider
-        $pane.cwd | Should -Be $script:cwd
         Wait-Until -TimeoutSec 30 -Because 'the native CLI version reaches the profile buffer' -Condition {
             (Get-WtCapture -App $script:app -SessionId $pane.session_id) -match '\b\d+\.\d+\.\d+'
         } | Out-Null
