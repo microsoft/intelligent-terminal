@@ -3,8 +3,8 @@ extern crate rust_i18n;
 
 mod action_links;
 mod agent_check;
-mod agent_lifecycle;
 mod agent_hooks_installer;
+mod agent_lifecycle;
 mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;

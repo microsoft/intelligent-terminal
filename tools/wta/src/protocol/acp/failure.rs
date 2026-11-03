@@ -45,7 +45,9 @@ pub enum AgentFailure {
     Startup(crate::agent_lifecycle::StartupFailure),
     /// The agent needs sign-in (`ErrorCode::AuthRequired` / -32000, or the
     /// transitional non-compliant-auth shim). Routes to the sign-in screen.
-    AuthRequired { message: String },
+    AuthRequired {
+        message: String,
+    },
 
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` failed or timed out at startup.
@@ -57,12 +59,17 @@ pub enum AgentFailure {
     /// A referenced resource is gone (`ErrorCode::ResourceNotFound` / -32002):
     /// e.g. `session/load` of an expired session. The session survives; the
     /// user can start fresh.
-    ResourceGone { message: String },
+    ResourceGone {
+        message: String,
+    },
 
     /// An agent-returned protocol error that does *not* kill the session
     /// (`InvalidParams` / `InvalidRequest` / `MethodNotFound` / `ParseError` /
     /// `InternalError` / any other code). The turn ends; the session stays.
-    Protocol { code: i32, message: String },
+    Protocol {
+        code: i32,
+        message: String,
+    },
 
     /// User-initiated cancel surfaced as an error (`RequestCancelled` /
     /// -32800). Not a failure — the turn just ends, nothing is shown.
@@ -75,7 +82,9 @@ impl AgentFailure {
             .data
             .as_ref()
             .and_then(|data| data.get("startup"))
-            .and_then(|data| serde_json::from_value::<crate::agent_lifecycle::StartupFailure>(data.clone()).ok())
+            .and_then(|data| {
+                serde_json::from_value::<crate::agent_lifecycle::StartupFailure>(data.clone()).ok()
+            })
             .filter(|failure| {
                 failure.max_attempts == crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS
                     && failure.attempts <= failure.max_attempts

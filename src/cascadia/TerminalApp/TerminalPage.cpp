@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <icu.h>
+#include <Shlwapi.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 
 #include <json/json.h>
@@ -562,6 +563,69 @@ namespace winrt::TerminalApp::implementation
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _tabStrip = this->VerticalTabStrip();
+        GettingFocus([weakThis{ get_weak() }](auto&&, const WUX::Input::GettingFocusEventArgs& args) {
+            if (const auto page = weakThis.get())
+            {
+                page->_sidebarKeyboardEntry.Preparing(
+                    page->_IsSidebarElement(args.OldFocusedElement()),
+                    page->_IsSidebarElement(args.NewFocusedElement()),
+                    args.InputDevice() == WUX::Input::FocusInputDeviceKind::Keyboard || page->_sidebarKeyboardAction);
+            }
+        });
+        GotFocus([weakThis{ get_weak() }](auto&&, const WUX::RoutedEventArgs& args) {
+            if (const auto page = weakThis.get(); page && page->_sidebarKeyboardEntry.Focused(page->_IsSidebarElement(args.OriginalSource())))
+            {
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarKeyboardEntered",
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
+        });
+        _sidebarPaneFocusStop = WUX::Controls::Button{};
+        _sidebarPaneFocusStop.IsTabStop(false);
+        _sidebarPaneFocusStop.IsHitTestVisible(false);
+        _sidebarPaneFocusStop.HorizontalAlignment(WUX::HorizontalAlignment::Stretch);
+        _sidebarPaneFocusStop.VerticalAlignment(WUX::VerticalAlignment::Stretch);
+        _sidebarPaneFocusStop.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _sidebarPaneFocusStop.BorderThickness(WUX::Thickness{});
+        _sidebarPaneFocusStop.FocusVisualMargin(WUX::Thickness{});
+        Automation::AutomationProperties::SetAutomationId(_sidebarPaneFocusStop, L"SidebarShellPaneFocusStop");
+        Automation::AutomationProperties::SetName(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopName"));
+        Automation::AutomationProperties::SetHelpText(_sidebarPaneFocusStop, RS_(L"ShellPaneFocusStopHelpText"));
+        _sidebarPaneFocusStop.LostFocus([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_sidebarPaneFocusStop.IsTabStop(false);
+            }
+        });
+        _sidebarPaneFocusStop.Click([weakThis{ get_weak() }](const auto&, const auto&) {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto shell = page->_sidebarPaneFocusShell.get())
+                {
+                    page->_TryFocusSidebarInput(shell);
+                }
+            }
+        });
+        _sidebarPaneFocusStop.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        AgentToggleButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        DiagnosticsButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabRow.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton().PreviewKeyDown(
+            { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
+        _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
             [weakThis{ get_weak() }](const TerminalApp::TabStripHistoryItem& item) {
                 const auto page = weakThis.get();
@@ -6669,6 +6733,41 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    static void _AppendSplitSidebarControls(const DependencyObject& element,
+                                            const DependencyObject& row,
+                                            std::vector<WUX::Controls::Control>& controls)
+    {
+        if (const auto named = element.try_as<FrameworkElement>())
+        {
+            if (const auto name = named.Name();
+                name == L"TabGroupToggleButton" || name == L"PaneActivateButton")
+            {
+                if (const auto control = named.try_as<WUX::Controls::Control>();
+                    control && control.IsTabStop() && _IsVisibleControlInSubtree(control, row))
+                {
+                    controls.push_back(control);
+                }
+            }
+        }
+        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+        {
+            _AppendSplitSidebarControls(Media::VisualTreeHelper::GetChild(element, index), row, controls);
+        }
+    }
+
+    static WUX::Controls::ListViewItem _FocusedSidebarRow(const DependencyObject& focused,
+                                                           const WUX::Controls::ListView& list)
+    {
+        for (auto element = focused; element && element != list; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto row = element.try_as<WUX::Controls::ListViewItem>())
+            {
+                return row;
+            }
+        }
+        return nullptr;
+    }
+
     bool TerminalPage::_IsVisibleSidebarControl(const WUX::Controls::Control& control) const
     {
         const auto titlebar = _tabRow ?
@@ -6691,6 +6790,11 @@ namespace winrt::TerminalApp::implementation
         if (const auto root = _tabStrip ? _tabStrip.XamlRoot() : nullptr)
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
+            const auto page = const_cast<TerminalPage*>(this);
+            if (focused == _sidebarPaneFocusStop || focused == page->AgentToggleButton() || focused == page->DiagnosticsButton())
+            {
+                return focused.try_as<WUX::Controls::Control>();
+            }
             for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
             {
                 if (element == _tabStrip)
@@ -6700,6 +6804,269 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
+    }
+
+    bool TerminalPage::_FocusSidebarShellPaneStop()
+    {
+        if (const auto pane = _SourceTerminalPaneForTab(_GetFocusedTabImpl(), true))
+        {
+            const auto shell = pane->GetTerminalControl();
+            if (shell && _IsVisibleControlInSubtree(shell, _tabContent))
+            {
+                const auto root = pane->GetRootElement();
+                if (const auto parent = _sidebarPaneFocusStop.Parent().try_as<WUX::Controls::Grid>(); parent != root)
+                {
+                    if (parent)
+                    {
+                        uint32_t index;
+                        if (parent.Children().IndexOf(_sidebarPaneFocusStop, index))
+                        {
+                            parent.Children().RemoveAt(index);
+                        }
+                    }
+                    root.Children().Append(_sidebarPaneFocusStop);
+                    root.UpdateLayout();
+                }
+                _sidebarPaneFocusShell = winrt::make_weak(shell);
+                _sidebarPaneFocusStop.IsTabStop(true);
+                if (_sidebarPaneFocusStop.Focus(FocusState::Keyboard))
+                {
+                    return true;
+                }
+                _sidebarPaneFocusStop.IsTabStop(false);
+            }
+        }
+        return false;
+    }
+
+    void TerminalPage::_SidebarF6FocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::F6)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::LeftWindows), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::RightWindows), down))
+        {
+            return;
+        }
+
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        if (const auto actionMap = _settings.ActionMap())
+        {
+            const KeyChord chord{ false, false, shift, false, VK_F6, gsl::narrow_cast<int32_t>(e.KeyStatus().ScanCode) };
+            if (actionMap.GetActionByKeyChord(chord) || actionMap.IsKeyChordExplicitlyUnbound(chord))
+            {
+                return;
+            }
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto agentToggle = AgentToggleButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto tabStrip = winrt::get_self<implementation::TabStrip>(_tabStrip);
+        const auto list = tabStrip->ItemsList();
+        bool inList = false;
+        for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+        {
+            if (element == list)
+            {
+                inList = true;
+                break;
+            }
+        }
+
+        if (shift)
+        {
+            if (focused == _sidebarPaneFocusStop)
+            {
+                e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+            }
+            else if (focused == agentToggle)
+            {
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else if (focused == DiagnosticsButton())
+            {
+                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else if (focused == toggle)
+            {
+                e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                          _FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
+            }
+            else
+            {
+                e.Handled(toggle.Focus(FocusState::Keyboard));
+            }
+        }
+        else if (focused == _sidebarPaneFocusStop)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == agentToggle)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == DiagnosticsButton())
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else if (inList)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) || toggle.Focus(FocusState::Keyboard));
+        }
+        else if (focused == toggle || _IsVisibleSidebarControl(focused.try_as<WUX::Controls::Control>()))
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || _FocusSidebarShellPaneStop());
+        }
+        else
+        {
+            e.Handled(tabStrip->FocusActiveSidebarTab() || toggle.Focus(FocusState::Keyboard));
+        }
+    }
+
+    void TerminalPage::_SidebarTabFocusKeyDown(const IInspectable&, const WUX::Input::KeyRoutedEventArgs& e)
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible || _isVerticalRailCollapsed ||
+            e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
+        {
+            return;
+        }
+
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window)
+        {
+            return;
+        }
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down))
+        {
+            return;
+        }
+
+        const auto toggle = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalRailToggleButton();
+        const auto last = WUX::Input::FocusManager::FindLastFocusableElement(_tabStrip).try_as<WUX::Controls::Control>();
+        if (!toggle)
+        {
+            return;
+        }
+
+        const auto agentToggle = AgentToggleButton();
+        const auto diagnostics = DiagnosticsButton();
+        const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
+        const auto diagnosticsVisible = _IsVisibleControlInSubtree(diagnostics, BottomBarRoot());
+        const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
+        const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
+        const auto list = winrt::get_self<implementation::TabStrip>(_tabStrip)->ItemsList();
+        const auto focusLastSidebarStop = [&]() {
+            if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusLastSidebarStop())
+            {
+                return false;
+            }
+            const auto row = _FocusedSidebarRow(WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot()).try_as<DependencyObject>(), list);
+            if (row)
+            {
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                if (!controls.empty())
+                {
+                    return controls.back().Focus(FocusState::Keyboard) || row.Focus(FocusState::Keyboard);
+                }
+            }
+            return true;
+        };
+        if (shift && toggle.FocusState() != FocusState::Unfocused)
+        {
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      focusLastSidebarStop());
+        }
+        else if (shift && focused == diagnostics)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      _FocusSidebarShellPaneStop() ||
+                      focusLastSidebarStop());
+        }
+        else if (shift && focused == agentToggle)
+        {
+            e.Handled(_FocusSidebarShellPaneStop() || focusLastSidebarStop());
+        }
+        else if (shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled(focusLastSidebarStop());
+        }
+        else if (!shift && focused == agentToggle)
+        {
+            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == _sidebarPaneFocusStop)
+        {
+            e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                      (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                      toggle.Focus(FocusState::Keyboard));
+        }
+        else if (!shift && focused == diagnostics)
+        {
+            e.Handled(toggle.Focus(FocusState::Keyboard));
+        }
+        else
+        {
+            const auto row = _FocusedSidebarRow(focused.try_as<DependencyObject>(), list);
+            if (row)
+            {
+                std::vector<WUX::Controls::Control> controls;
+                _AppendSplitSidebarControls(row, row, controls);
+                const auto current = std::find(controls.begin(), controls.end(), focused.try_as<WUX::Controls::Control>());
+                if (shift && current != controls.end())
+                {
+                    e.Handled(current == controls.begin() ?
+                                  row.Focus(FocusState::Keyboard) :
+                                  (current - 1)->Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && !controls.empty() && focused == row)
+                {
+                    e.Handled(controls.front().Focus(FocusState::Keyboard));
+                    return;
+                }
+                if (!shift && current != controls.end() && current + 1 != controls.end())
+                {
+                    e.Handled((*(current + 1)).Focus(FocusState::Keyboard));
+                    return;
+                }
+            }
+            if (!shift)
+            {
+                for (auto element = focused.try_as<DependencyObject>(); element; element = Media::VisualTreeHelper::GetParent(element))
+                {
+                    if (element == list || element == last)
+                    {
+                        e.Handled(_FocusSidebarShellPaneStop() ||
+                                  (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
+                                  (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
+                                  toggle.Focus(FocusState::Keyboard));
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     bool TerminalPage::_TryFocusSidebarInput(const TermControl& control)
@@ -6910,6 +7277,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto previousApplying = std::exchange(_applyingSidebarFilters, true);
+        const auto restoreApplying = wil::scope_exit([&]() noexcept { _applyingSidebarFilters = previousApplying; });
         const auto globals = _settings.GlobalSettings();
         const auto filters = _tabStrip.SidebarFilters();
         filters.ShowAgentsOnly(globals.SidebarShowAgentsOnly());
@@ -6948,6 +7317,19 @@ namespace winrt::TerminalApp::implementation
 
         if (_settings.WriteSettingsToDisk())
         {
+            if (!_applyingSidebarFilters && _isVerticalLayout && _isVerticalRailVisible)
+            {
+                const auto oldAgents = agentsOnlyChanged ? previous : globals.SidebarShowAgentsOnly();
+                const auto oldRecent = agentsOnlyChanged ? globals.SidebarShowRecentAgentSessions() : previous;
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "SidebarViewSwitched",
+                    TraceLoggingString(::TerminalApp::SidebarTelemetry::View(oldAgents, oldRecent), "from_view"),
+                    TraceLoggingString(::TerminalApp::SidebarTelemetry::View(filters.ShowAgentsOnly(), filters.ShowRecentAgentSessions()), "to_view"),
+                    TraceLoggingString(_sidebarViewMethod, "method"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
             return;
         }
 
@@ -7746,13 +8128,24 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto pending = _historyUnresolvedActivations.find(args); pending != _historyUnresolvedActivations.end())
         {
-            return { std::move(args), pending->second, true };
+            const auto age = _historyActivationAges.find(pending->second);
+            return { std::move(args), pending->second, true, age == _historyActivationAges.end() ? -1 : age->second };
         }
         winrt::guid activationGuid{};
         THROW_IF_FAILED(CoCreateGuid(reinterpret_cast<GUID*>(&activationGuid)));
         const auto activationId = winrt::to_hstring(activationGuid);
         _historyUnresolvedActivations.emplace(args, activationId);
-        return { std::move(args), activationId, false };
+        const auto nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                     std::chrono::system_clock::now().time_since_epoch())
+                                                     .count());
+        const auto ageDays = ::TerminalApp::SidebarTelemetry::AgeDays(
+            winrt::get_self<TabStripHistoryItem>(item)->LastActivityAtMs(), nowMs);
+        if (_historyActivationAges.size() >= 512)
+        {
+            _historyActivationAges.clear();
+        }
+        _historyActivationAges.emplace(activationId, ageDays);
+        return { std::move(args), activationId, false, ageDays };
     }
 
     TerminalPage::_SidebarHistoryActivationResult TerminalPage::_ParseSidebarHistoryActivation(const std::string& output, const winrt::hstring& activationId)
@@ -7764,6 +8157,7 @@ namespace winrt::TerminalApp::implementation
         if (!Json::parseFromStream(builder, json, &response, &errors) || !response.isObject() ||
             !response["activation_id"].isString() || response["activation_id"].asString() != winrt::to_string(activationId) ||
             !response["accepted"].isBool() || !response["action"].isString() ||
+            (response.isMember("launched") && !response["launched"].isBool()) ||
             (response.isMember("state") && !response["state"].isString()) ||
             (!response["detail"].isNull() && !response["detail"].isString()))
         {
@@ -7775,7 +8169,10 @@ namespace winrt::TerminalApp::implementation
         const auto state = response.get("state", "complete").asString();
         if (state == "complete")
         {
-            return { State::Complete, response["accepted"].asBool(), winrt::to_hstring(response.get("detail", "").asString()) };
+            const auto accepted = response["accepted"].asBool();
+            const auto action = response["action"].asString();
+            const auto launched = response.get("launched", accepted && action == "resume_cli").asBool();
+            return { State::Complete, accepted, winrt::to_hstring(response.get("detail", "").asString()), action, launched };
         }
         if (state == "pending" && !response["accepted"].asBool())
         {
@@ -7797,8 +8194,28 @@ namespace winrt::TerminalApp::implementation
             if (pending != _historyUnresolvedActivations.end() && pending->second == request.id)
             {
                 _historyUnresolvedActivations.erase(pending);
+                if (result.launched && result.action == "resume_cli")
+                {
+                    _LogSidebarSessionResumed(request.ageDays, "cli", "launched");
+                }
+                if (!result.accepted || result.action != "resume_agent_pane")
+                {
+                    _historyActivationAges.erase(request.id);
+                }
             }
         }
+    }
+
+    void TerminalPage::_LogSidebarSessionResumed(const int64_t ageDays, const char* route, const char* outcome) const
+    {
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "SidebarSessionResumed",
+            TraceLoggingInt64(ageDays, "age_days"),
+            TraceLoggingString(route, "Route"),
+            TraceLoggingString(outcome, "Outcome"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     safe_void_coroutine TerminalPage::_ActivateSidebarHistoryItem(TerminalApp::TabStripHistoryItem item)
@@ -9382,7 +9799,11 @@ namespace winrt::TerminalApp::implementation
             const auto contentArgs = split ?
                                          _PrepareSplitDirectory(_GetFocusedTabImpl(), newTerminalArgs, false) :
                                          newTerminalArgs.as<INewContentArgs>();
+            const auto previousSource = std::exchange(_sidebarLaunchSource,
+                                                      _isVerticalLayout && _isVerticalRailVisible && _startupActionReplayDepth == 0 ? (split ? "split" : "plus") : "other");
+            auto restoreSource = wil::scope_exit([&]() noexcept { _sidebarLaunchSource = previousSource; });
             const auto newPane = _MakePane(contentArgs);
+            restoreSource.reset();
             // If the newTerminalArgs caused us to open an elevated window
             // instead of creating a pane, it may have returned nullptr. Just do
             // nothing then.
@@ -9452,6 +9873,7 @@ namespace winrt::TerminalApp::implementation
         }();
 
         TerminalConnection::ITerminalConnection connection{ nullptr };
+        bool managedAgent = false;
 
         auto connectionType = profile.ConnectionType();
         Windows::Foundation::Collections::ValueSet valueSet;
@@ -9475,6 +9897,7 @@ namespace winrt::TerminalApp::implementation
         else
         {
             auto settingsInternal{ winrt::get_self<Settings::TerminalSettings>(settings) };
+            managedAgent = settingsInternal->UsesManagedAgentCommand();
             auto environment = settingsInternal->EnvironmentVariables();
             HRESULT startupError = S_OK;
             winrt::hstring startupErrorMessage;
@@ -9566,6 +9989,26 @@ namespace winrt::TerminalApp::implementation
         }
 
         connection.Initialize(valueSet);
+        const auto agentId = managedAgent ? AgentSessionTelemetry::AgentId(winrt::to_string(profile.AgentProfileId())) : "none";
+        const auto defaultProfile = profile.Guid() == _settings.GlobalSettings().DefaultProfile();
+        if (managedAgent && std::string_view{ _sidebarLaunchSource } != "other")
+        {
+            const auto source = _sidebarLaunchSource;
+            auto sent = std::make_shared<std::atomic<bool>>(false);
+            connection.StateChanged([source, agentId, defaultProfile, sent](const auto& sender, auto&&) {
+                if (sender.State() == TerminalConnection::ConnectionState::Connected && !sent->exchange(true))
+                {
+                    TraceLoggingWrite(
+                        g_hTerminalAppProvider,
+                        "SidebarAgentStarted",
+                        TraceLoggingString(source, "source"),
+                        TraceLoggingString(agentId, "profile"),
+                        TraceLoggingBool(defaultProfile, "IsDefaultProfile"),
+                        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                }
+            });
+        }
 
         TraceLoggingWrite(
             g_hTerminalAppProvider,
@@ -9574,6 +10017,10 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingGuid(connectionType, "ConnectionTypeGuid", "The type of the connection"),
             TraceLoggingGuid(profile.Guid(), "ProfileGuid", "The profile's GUID"),
             TraceLoggingGuid(connection.SessionId(), "SessionGuid", "The WT_SESSION's GUID"),
+            TraceLoggingString(_sidebarLaunchSource, "LaunchSource"),
+            TraceLoggingString(managedAgent ? "agent" : "shell", "ProfileKind"),
+            TraceLoggingString(agentId, "AgentId"),
+            TraceLoggingBool(defaultProfile, "IsDefaultProfile"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
@@ -10364,6 +10811,9 @@ namespace winrt::TerminalApp::implementation
                     "AgentSessionStarted",
                     TraceLoggingDescription("Effective settings snapshot after successful ACP session creation or load"),
                     TraceLoggingString(start->startId.c_str(), "StartId"),
+                    TraceLoggingString(start->telemetrySessionId.c_str(), "TelemetrySessionId"),
+                    TraceLoggingBool(targetTab->KeepRunning(), "KeepRunningEnabled"),
+                    TraceLoggingWideString(targetTab->KeepRunningTelemetryId().c_str(), "KeepId"),
                     TraceLoggingString(start->kind, "StartKind"),
                     TraceLoggingString(start->agentId, "AgentId"),
                     TraceLoggingString(start->source, "AgentSource"),
@@ -10388,6 +10838,23 @@ namespace winrt::TerminalApp::implementation
                     TraceLoggingValue(distribution, "Distribution"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+                if (const auto pane = targetTab->FindAgentPaneContent(); pane && agentSessionId)
+                {
+                    winrt::get_self<AgentPaneContent>(pane)->SetTelemetrySessionId(*agentSessionId, winrt::to_hstring(start->telemetrySessionId));
+                }
+                if (const auto pending = _pendingSidebarResumeTelemetry.find(targetTab->StableId());
+                    pending != _pendingSidebarResumeTelemetry.end() && agentSessionId)
+                {
+                    if (std::string_view{ start->kind } == "Load" && winrt::to_string(*agentSessionId) == pending->second.first)
+                    {
+                        _LogSidebarSessionResumed(pending->second.second, "agentPane", "loaded");
+                        _pendingSidebarResumeTelemetry.erase(pending);
+                    }
+                    else if (std::string_view{ start->kind } == "New")
+                    {
+                        _pendingSidebarResumeTelemetry.erase(pending);
+                    }
+                }
             }
         }
 
@@ -10403,6 +10870,12 @@ namespace winrt::TerminalApp::implementation
                 // agent, so a session left behind by `/agent` is never paired
                 // with the agent that replaced it.
                 impl->SetAgentSessionOwner(_GetAgentPaneIdentity(targetTab.get()));
+            }
+            if (params.isMember("telemetry_session_id"))
+            {
+                impl->SetTelemetrySessionId(
+                    impl->AgentSessionId(),
+                    winrt::to_hstring(AgentSessionTelemetry::ParseTelemetrySessionId(params["telemetry_session_id"])));
             }
             if (yoloControlOwner.has_value())
             {
@@ -11274,6 +11747,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto newStableId = newTab->StableId();
+        if (params["sidebar_activation_id"].isString())
+        {
+            const auto activationId = winrt::to_hstring(params["sidebar_activation_id"].asString());
+            if (const auto age = _historyActivationAges.find(activationId); age != _historyActivationAges.end())
+            {
+                _pendingSidebarResumeTelemetry.insert_or_assign(newStableId, std::pair{ sessionIdStr, age->second });
+                _historyActivationAges.erase(age);
+            }
+        }
         if (newStableId.empty())
         {
             _agentPaneLog("OnResumeInNewAgentTabRequested: new tab has empty StableId");
@@ -11993,6 +12475,22 @@ namespace winrt::TerminalApp::implementation
         _DispatchKeyEvent(e, KeyDispatchScope::SidebarNavigation);
     }
 
+    bool TerminalPage::_IsSidebarElement(const IInspectable& element) const
+    {
+        if (!_isVerticalLayout || !_isVerticalRailVisible)
+        {
+            return false;
+        }
+        for (auto current = element.try_as<DependencyObject>(); current; current = Media::VisualTreeHelper::GetParent(current))
+        {
+            if (current == _tabStrip || current == _tabRow)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void TerminalPage::_DispatchKeyEvent(const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e, const KeyDispatchScope scope)
     {
         const auto keyStatus = e.KeyStatus();
@@ -12062,7 +12560,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto handled = (action.Action() == ShortcutAction::ToggleSidebar ||
-                              action.Action() == ShortcutAction::SwitchToTab) ?
+                              action.Action() == ShortcutAction::SwitchToTab ||
+                              action.Action() == ShortcutAction::OpenAgentSessions ||
+                              action.Action() == ShortcutAction::TabSearch || sidebarFilter) ?
                                  _actionDispatch->DoAction(chord, action) :
                                  _actionDispatch->DoAction(action);
         if (!handled)
@@ -12097,17 +12597,22 @@ namespace winrt::TerminalApp::implementation
             if (const auto actionMap = _settings.ActionMap())
             {
                 const KeyChord chord{
-                        modifiers.IsCtrlPressed(),
-                        modifiers.IsAltPressed(),
-                        modifiers.IsShiftPressed(),
-                        modifiers.IsWinPressed(),
-                        gsl::narrow_cast<int32_t>(vkey),
-                        scanCode,
-                    };
+                    modifiers.IsCtrlPressed(),
+                    modifiers.IsAltPressed(),
+                    modifiers.IsShiftPressed(),
+                    modifiers.IsWinPressed(),
+                    gsl::narrow_cast<int32_t>(vkey),
+                    scanCode,
+                };
                 if (const auto cmd = actionMap.GetActionByKeyChord(chord))
                 {
                     const auto action = cmd.ActionAndArgs();
-                    return action.Action() == ShortcutAction::ToggleSidebar ?
+                    return (action.Action() == ShortcutAction::ToggleSidebar ||
+                            action.Action() == ShortcutAction::SwitchToTab ||
+                            action.Action() == ShortcutAction::ToggleSidebarAgentsOnly ||
+                            action.Action() == ShortcutAction::ToggleSidebarRecentAgentSessions ||
+                            action.Action() == ShortcutAction::OpenAgentSessions ||
+                            action.Action() == ShortcutAction::TabSearch) ?
                                _actionDispatch->DoAction(chord, action) :
                                _actionDispatch->DoAction(action);
                 }
@@ -12904,14 +13409,10 @@ namespace winrt::TerminalApp::implementation
             return std::nullopt;
         }
         const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
-        const auto provider = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
-        if (!paneId || provider.empty() || _richTabAgentStatusByPaneId.contains(*paneId) ||
-            _richTabEndedSessionByPaneId.contains(*paneId))
-        {
-            return std::nullopt;
-        }
-        if (const auto active = _activeCliAgentPanes.find(*paneId);
-            active != _activeCliAgentPanes.end() && !active->second.sessionId.empty())
+        const auto manager = winrt::get_self<ContentManager>(_manager);
+        const auto provider = manager->NativeAgentProviderId(control.ContentId());
+        if (!paneId || provider.empty() || _richTabEndedSessionByPaneId.contains(*paneId) ||
+            manager->HasReportedAgentStatus(control.ContentId()))
         {
             return std::nullopt;
         }
@@ -13145,7 +13646,7 @@ namespace winrt::TerminalApp::implementation
                         if (const auto control = pane->GetTerminalControl();
                             control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
                         {
-                            if (const auto info = _RichTabAgentInfoForControl(control); info && info->paneSessionId)
+                            if (const auto info = _RichTabAgentInfoForControl(control); info && !info->launchMetadata && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
                                     control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned && focusedControl.ContentId() == control.ContentId());
@@ -13693,15 +14194,23 @@ namespace winrt::TerminalApp::implementation
         const uint64_t reservation,
         const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update)
     {
+        auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+        ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachmentId{ 0 };
+        bool matchesAttachment = false;
         {
             std::lock_guard lock{ _richTabAttachmentsMutex };
             const auto attachment = _richTabAttachments.find(controlKey);
-            if (attachment == _richTabAttachments.end() ||
-                attachment->second.reservation != reservation ||
-                attachment->second.sessionId != update.sessionId)
+            if (attachment != _richTabAttachments.end())
             {
-                return;
+                attachmentId = attachment->second.id;
+                matchesAttachment = attachment->second.reservation == reservation &&
+                                    attachment->second.sessionId == update.sessionId;
             }
+        }
+        if (!matchesAttachment)
+        {
+            broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
+            return;
         }
 
         auto& state = _richTabPresentations[update.sessionId];
@@ -13709,6 +14218,7 @@ namespace winrt::TerminalApp::implementation
             (state.sessionIncarnation == update.sessionIncarnation &&
              state.updateSequence >= update.updateSequence))
         {
+            broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Stale, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
             return;
         }
         state = RichTabPresentationState{
@@ -13718,6 +14228,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         const auto target = winrt::guid{ winrt::to_hstring(update.sessionId) };
+        bool presented = false;
         for (const auto& projectedTab : _tabs)
         {
             if (const auto tab = _GetTabImpl(projectedTab))
@@ -13734,10 +14245,37 @@ namespace winrt::TerminalApp::implementation
                 if (presentedPane && presentedPane->GetSessionId() == target)
                 {
                     tab->SetRichTabPresentation(update.presentation);
+                    presented = true;
                 }
                 _ApplyTabListProjection(*tab);
+                if (!presented && _isVerticalLayout && _tabStrip && !_DeferSidebarUpdates() &&
+                    !_rearranging && !_mutatingTabCollections)
+                {
+                    const auto display = winrt::get_self<implementation::TabStrip>(_tabStrip)->DisplayItemForTab(tab->TabViewItem());
+                    if (display && _IsTabVisibleInProjection(tab, display) &&
+                        display.ChildrenVisibility() == Visibility::Visible)
+                    {
+                        const auto expected = update.presentation ? winrt::hstring{ update.presentation->text } : winrt::hstring{};
+                        for (const auto& pane : tab->GetVisiblePaneSnapshot())
+                        {
+                            if (pane.SessionId != target || !_IsPaneRowProjectionEligible(pane))
+                            {
+                                continue;
+                            }
+                            for (const auto& item : display.PaneItems())
+                            {
+                                if (item.ContentId() == pane.ContentId && item.MetadataText() == expected)
+                                {
+                                    presented = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+        broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, presented ? ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Applied : ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
     }
 
     static std::optional<winrt::guid> _TryParsePaneSessionId(const std::string_view value) noexcept
@@ -14090,7 +14628,111 @@ namespace winrt::TerminalApp::implementation
                                     {
                                         page->_ReconcileShellPromptAgentExit(richTabControl);
                                     }
+                                    const bool isConEmuCwd = seqStr.starts_with("osc:9;9;");
+                                    const bool isUriCwd = seqStr.starts_with("osc:7;");
+                                    const bool isCwdOsc = isConEmuCwd || isUriCwd;
+                                    auto* const cwdBroker = isCwdOsc && Feature_RichTabProviders::IsEnabled() ?
+                                                                &::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance() :
+                                                                nullptr;
+                                    const bool traceCwd = cwdBroker && cwdBroker->DiagnosticsEnabled();
+                                    std::optional<std::filesystem::path> reportedCwd;
+                                    auto oscOutcome = ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched;
+                                    ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachment{ 0 };
+                                    if (traceCwd)
+                                    {
+                                        try
+                                        {
+                                            const auto prefixLength = isUriCwd ? std::wstring_view{ L"osc:7;" }.size() : std::wstring_view{ L"osc:9;9;" }.size();
+                                            auto raw = std::wstring_view{ seq.c_str(), seq.size() }.substr(prefixLength);
+                                            if (isConEmuCwd && raw.size() >= 3 && raw.front() == L'"' && raw.back() == L'"')
+                                            {
+                                                raw = raw.substr(1, raw.size() - 2);
+                                            }
+                                            if (raw.size() <= 32768)
+                                            {
+                                                std::wstring decoded;
+                                                if (isUriCwd)
+                                                {
+                                                    decoded.assign(raw);
+                                                    auto length = static_cast<DWORD>(decoded.size());
+                                                    if (SUCCEEDED(PathCreateFromUrlW(decoded.data(), decoded.data(), &length, 0)))
+                                                    {
+                                                        decoded.resize(length);
+                                                        if (til::is_legal_path(decoded))
+                                                        {
+                                                            reportedCwd = std::filesystem::path{ decoded };
+                                                        }
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    reportedCwd = std::filesystem::path{ raw };
+                                                }
+                                                if (reportedCwd)
+                                                {
+                                                    const auto coreCwd = richTabControl.WorkingDirectory();
+                                                    if (reportedCwd->native() == std::wstring_view{ coreCwd.c_str(), coreCwd.size() })
+                                                    {
+                                                        oscOutcome = ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Matched;
+                                                    }
+                                                }
+                                            }
+                                            const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(richTabControl));
+                                            {
+                                                std::lock_guard lock{ page->_richTabAttachmentsMutex };
+                                                if (const auto found = page->_richTabAttachments.find(key);
+                                                    found != page->_richTabAttachments.end())
+                                                {
+                                                    attachment = found->second.id;
+                                                }
+                                            }
+                                            if (attachment != 0)
+                                            {
+                                                cwdBroker->TraceCwd(
+                                                    page->_FindSessionIdForControl(richTabControl),
+                                                    attachment,
+                                                    ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::OscReceived,
+                                                    oscOutcome,
+                                                    reportedCwd);
+                                            }
+                                        }
+                                        catch (...)
+                                        {
+                                        }
+                                    }
                                     page->_AttachOrUpdateRichTabControl(richTabControl);
+                                    if (traceCwd)
+                                    {
+                                        if (attachment == 0)
+                                        {
+                                            const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(richTabControl));
+                                            {
+                                                std::lock_guard lock{ page->_richTabAttachmentsMutex };
+                                                if (const auto found = page->_richTabAttachments.find(key);
+                                                    found != page->_richTabAttachments.end())
+                                                {
+                                                    attachment = found->second.id;
+                                                }
+                                            }
+                                            if (attachment != 0)
+                                            {
+                                                cwdBroker->TraceCwd(
+                                                    page->_FindSessionIdForControl(richTabControl),
+                                                    attachment,
+                                                    ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::OscReceived,
+                                                    oscOutcome,
+                                                    reportedCwd);
+                                            }
+                                        }
+                                        if (attachment != 0)
+                                        {
+                                            cwdBroker->TraceCwd(
+                                                page->_FindSessionIdForControl(richTabControl),
+                                                attachment,
+                                                ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::ContextObserved,
+                                                ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Observed);
+                                        }
+                                    }
                                     if (seqStr.starts_with("osc:133;D"))
                                     {
                                         page->_NotifyRichTabControl(
@@ -14182,6 +14824,20 @@ namespace winrt::TerminalApp::implementation
                             // pane's last resumable agent-session binding.
                             if (autoFixPolicyLocked)
                             {
+                                // Keep raw OSC and diagnostics blocked; only send the content-free failure count.
+                                if (!tabIdStr.empty() &&
+                                    ::TerminalApp::AgentPolicyTelemetry::ShouldRecordBlockedCommandFailure(
+                                        page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled(),
+                                        ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked,
+                                        seqStr))
+                                {
+                                    Json::Value params;
+                                    params["pane_id"] = paneIdStr;
+                                    params["tab_id"] = tabIdStr;
+                                    params["autofix_policy_state"] = "disabled";
+                                    params["autofix_enabled"] = false;
+                                    page->_RaiseProtocolEvent("shell_command_failed", params);
+                                }
                                 return;
                             }
 

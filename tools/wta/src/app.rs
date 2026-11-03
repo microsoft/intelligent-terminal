@@ -2009,8 +2009,8 @@ impl App {
             return;
         }
         self.pending_acp_start = false;
-        let retry_startup = self.pending_startup_retry.take()
-            == Some(self.agent_binding_generation);
+        let retry_startup =
+            self.pending_startup_retry.take() == Some(self.agent_binding_generation);
         let post_login_auth = self.needs_post_login_authenticate;
         self.needs_post_login_authenticate = false;
         let requested_auth = self
@@ -5677,6 +5677,7 @@ impl App {
             AppEvent::AgentReconnectReady(_) => "agent_reconnect_ready",
             AppEvent::AgentClientFailed => "agent_client_failed",
             AppEvent::SessionAttached { .. } => "session_attached",
+            AppEvent::SessionTelemetryBound { .. } => "session_telemetry_bound",
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",

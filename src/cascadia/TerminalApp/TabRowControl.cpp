@@ -226,14 +226,16 @@ namespace winrt::TerminalApp::implementation
         newTabGlyph.HorizontalAlignment(WUX::HorizontalAlignment::Center);
         newTabGlyph.VerticalAlignment(WUX::VerticalAlignment::Center);
         _verticalNewTabButton.Content(newTabGlyph);
+        _verticalNewTabButton.IsTabStop(false);
         WUX::Automation::AutomationProperties::SetAccessibilityView(_verticalNewTabButton, WUX::Automation::Peers::AccessibilityView::Control);
         const auto newTabName = WUX::Automation::AutomationProperties::GetName(NewTabButton());
         const auto newTabHelpText = WUX::Automation::AutomationProperties::GetHelpText(NewTabButton());
+        const auto newTabMenuName = RS_(L"CompactNewTabMenuButton/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name");
         WUX::Automation::AutomationProperties::SetName(_verticalNewTabButton, newTabName);
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
-        _verticalNewTabButton.Loaded([glyphSize](const auto& sender, const auto&) {
+        _verticalNewTabButton.Loaded([newTabName, newTabMenuName, glyphSize](const auto& sender, const auto&) {
             const auto button = sender.template as<MUX::Controls::SplitButton>();
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
@@ -249,6 +251,12 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto splitRegion = root.FindName(name).template try_as<WUX::Controls::Button>())
                     {
+                        splitRegion.IsTabStop(true);
+                        splitRegion.CornerRadius(button.CornerRadius());
+                        splitRegion.FocusVisualMargin(WUX::Thickness{});
+                        WUX::Automation::AutomationProperties::SetName(splitRegion,
+                                                                       std::wstring_view{ name } == L"PrimaryButton" ? newTabName : newTabMenuName);
+                        WUX::Automation::AutomationProperties::SetAccessibilityView(splitRegion, WUX::Automation::Peers::AccessibilityView::Control);
                         splitRegion.Padding(WUX::Thickness{});
                         splitRegion.HorizontalContentAlignment(WUX::HorizontalAlignment::Center);
                         splitRegion.VerticalContentAlignment(WUX::VerticalAlignment::Center);
@@ -269,6 +277,10 @@ namespace winrt::TerminalApp::implementation
         topChromeContainer.Children().Append(_verticalNewTabButton);
 
         titlebarGrid.Children().Append(expandedChrome);
+        WUX::Controls::Border titlebarDivider;
+        titlebarDivider.Style(Resources().Lookup(box_value(L"VerticalTitlebarDividerStyle")).as<WUX::Style>());
+        WUX::Controls::Grid::SetColumnSpan(titlebarDivider, 3);
+        titlebarGrid.Children().Append(titlebarDivider);
         _verticalLeadingChrome = leadingChrome;
         _verticalNewTabHost = topChromeContainer;
         _verticalExpandedChrome = expandedChrome;

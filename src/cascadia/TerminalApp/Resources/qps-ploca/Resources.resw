@@ -271,7 +271,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>[!!_Ａｇｅｎｔ ｒｅｃｅｎｔ ｓｅｓｓｉｏｎｓ_!!]</value>
+    <value>[!!_Ｒｅｃｅｎｔ ａｇｅｎｔ ｓｅｓｓｉｏｎｓ_!!]</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -1503,6 +1503,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>PowerShell execution policy is blocking scripts. Error detection turned off.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
+  </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>[!!_Ｓｈｅｌｌ ｐａｎｅ_!!]</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>[!!_Ｐｒｅｓｓ Ｅｎｔｅｒ ｔｏ ｆｏｃｕｓ ｔｈｅ ｓｈｅｌｌ._!!]</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Usage</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

@@ -36,7 +36,7 @@ using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 
-static constexpr double SearchPanelExpandedHeight = 40.0;
+static constexpr double SearchPanelExpandedHeight = 48.0;
 static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
 // Keep the pane dismiss implementation intact so it can be restored when split-pane chrome exposes the same affordance.
 static constexpr bool PaneDismissActionsEnabled = false;
@@ -49,7 +49,65 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed);
+    // TreeView 2.8 writes native node moves back through IBindableVector, not IVector<IInspectable>.
+    struct SidebarViewportItems :
+        implements<SidebarViewportItems,
+                   IObservableVector<IInspectable>,
+                   IVector<IInspectable>,
+                   IVectorView<IInspectable>,
+                   IIterable<IInspectable>,
+                   WUX::Interop::IBindableVector,
+                   WUX::Interop::IBindableVectorView,
+                   WUX::Interop::IBindableIterable>,
+        observable_vector_base<SidebarViewportItems, IInspectable>
+    {
+        using Base = observable_vector_base<SidebarViewportItems, IInspectable>;
+
+        auto& get_container() noexcept { return _items; }
+        const auto& get_container() const noexcept { return _items; }
+        // The two interface families need different ABI pointers for views and iterators.
+        struct ViewInterfaces
+        {
+            IVectorView<IInspectable> Value;
+            operator IVectorView<IInspectable>() const { return Value; }
+            operator WUX::Interop::IBindableVectorView() const { return Value.as<WUX::Interop::IBindableVectorView>(); }
+        };
+
+        ViewInterfaces GetView() const noexcept { return { Base::GetView() }; }
+
+        struct Iterator : implements<Iterator, IIterator<IInspectable>, WUX::Interop::IBindableIterator>
+        {
+            explicit Iterator(IIterator<IInspectable> iterator) :
+                _iterator(std::move(iterator))
+            {
+            }
+
+            IInspectable Current() const { return _iterator.Current(); }
+            bool HasCurrent() const { return _iterator.HasCurrent(); }
+            bool MoveNext() { return _iterator.MoveNext(); }
+            uint32_t GetMany(array_view<IInspectable> values) { return _iterator.GetMany(values); }
+
+        private:
+            IIterator<IInspectable> _iterator;
+        };
+
+        struct IteratorInterfaces
+        {
+            IIterator<IInspectable> Value;
+            operator IIterator<IInspectable>() const { return Value; }
+            operator WUX::Interop::IBindableIterator() const { return Value.as<WUX::Interop::IBindableIterator>(); }
+        };
+
+        IteratorInterfaces First()
+        {
+            return { make<Iterator>(Base::First()) };
+        }
+
+    private:
+        std::vector<IInspectable> _items;
+    };
+
+    static void _updateSidebarActionLayout(const FrameworkElement& row);
     void SidebarFiltersViewModel::ShowAgentsOnly(const bool value)
     {
         if (_showAgentsOnly != value)
@@ -401,7 +459,7 @@ namespace winrt::TerminalApp::implementation
         if (!verticalPresentation)
         {
             _sidebarHints.reset();
-            _sidebarToolTipContent = nullptr;
+            _sidebarToolTipBody = {};
         }
         _publishHints(verticalPresentation);
         HeaderVisibility(railCollapsed ? Visibility::Collapsed : Visibility::Visible);
@@ -430,18 +488,11 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TabStripDisplayItem::SetSidebarHints(std::optional<std::pair<hstring, hstring>> hints,
-                                              IInspectable const& toolTipContent,
+                                              hstring const& toolTipBody,
                                               bool verticalPresentation)
     {
-        if (const auto previous = _sidebarToolTipContent.try_as<FrameworkElement>())
-        {
-            if (const auto replacement = toolTipContent.try_as<FrameworkElement>())
-            {
-                replacement.FlowDirection(previous.FlowDirection());
-            }
-        }
         _sidebarHints = verticalPresentation ? std::move(hints) : std::nullopt;
-        _sidebarToolTipContent = verticalPresentation ? toolTipContent : nullptr;
+        _sidebarToolTipBody = verticalPresentation ? toolTipBody : hstring{};
         _publishHints(verticalPresentation);
     }
 
@@ -451,7 +502,10 @@ namespace winrt::TerminalApp::implementation
                                                                WUX::Automation::AutomationProperties::GetAcceleratorKey(_tab));
         ToolTipText(verticalPresentation && _sidebarHints ? _sidebarHints->second :
                                                             WUX::Automation::AutomationProperties::GetHelpText(_tab));
-        ToolTipContent(verticalPresentation && _sidebarHints ? _sidebarToolTipContent : nullptr);
+        ToolTipBody(verticalPresentation && _sidebarHints ? _sidebarToolTipBody : hstring{});
+        ToolTipShortcutLine(verticalPresentation && _sidebarHints && !_sidebarHints->first.empty() ?
+                                hstring{ L"\n" } + _sidebarHints->first :
+                                hstring{});
     }
 
     void TabStripDisplayItem::SyncIcon(hstring const& iconPath)
@@ -734,7 +788,7 @@ namespace winrt::TerminalApp::implementation
         _tabItems = single_threaded_observable_vector<IInspectable>();
         _displayItems = single_threaded_observable_vector<TerminalApp::TabStripDisplayItem>();
         _historyItems = single_threaded_observable_vector<TerminalApp::TabStripHistoryItem>();
-        _viewportItems = single_threaded_observable_vector<IInspectable>();
+        _viewportItems = make<SidebarViewportItems>();
 
         InitializeComponent();
         SidebarTree().ApplyTemplate();
@@ -777,6 +831,8 @@ namespace winrt::TerminalApp::implementation
         selector->HeaderTemplate = Resources().Lookup(box_value(L"HistoryHeaderTemplate")).as<DataTemplate>();
         ItemsList().ItemTemplate(nullptr);
         ItemsList().ItemTemplateSelector(*selector);
+        SearchTextBox().PreviewKeyDown({ get_weak(), &TabStrip::_onSidebarEntryKeyDown });
+        FilterTabsButton().PreviewKeyDown({ get_weak(), &TabStrip::_onSidebarEntryKeyDown });
         SidebarTree().ItemsSource(_viewportItems);
         // ListView consumes Enter even when its focused row is already selected.
         ItemsList().AddHandler(WUX::UIElement::KeyDownEvent(),
@@ -1496,12 +1552,15 @@ namespace winrt::TerminalApp::implementation
             const auto customHover = !_highContrast || searchFocused;
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
+            const auto hoverMargin = _isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 5, 3, 5, 3 };
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
+                hoverBackground.Margin(hoverMargin);
                 hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
+                colorHover.Margin(hoverMargin);
                 colorHover.Background(hoverBrush);
                 colorHover.Opacity(!_highContrast && !selected && pointerOver && hoverBrush ? 1.0 : 0.0);
             }
@@ -1803,7 +1862,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root, _isRailCollapsed);
+            _updateSidebarActionLayout(root);
             _updateSidebarRowToolTipPlacement(root);
             if (const auto display = root.DataContext().try_as<TerminalApp::TabStripDisplayItem>())
             {
@@ -1829,7 +1888,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    static void _updateSidebarActionLayout(const FrameworkElement& row, bool railCollapsed)
+    static void _updateSidebarActionLayout(const FrameworkElement& row)
     {
         ListViewItem container{ nullptr };
         for (DependencyObject current = row; current && !container; current = WUX::Media::VisualTreeHelper::GetParent(current))
@@ -1851,33 +1910,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto slot = row.FindName(name).try_as<FrameworkElement>())
             {
                 FrameworkElement title{ nullptr };
-                if (const auto header = row.FindName(L"TabHeaderPresenter").try_as<TerminalApp::TabHeaderControl>())
-                {
-                    const auto titleName = header.InRename()           ? L"HeaderRenamerTextBox" :
-                                           header.IsTitleHighlighted() ? L"HeaderHighlightedTextBlock" :
-                                                                         L"HeaderTextBlock";
-                    title = header.FindName(titleName).try_as<FrameworkElement>();
-                    if (const auto leading = row.FindName(L"TabLeadingContent").try_as<FrameworkElement>())
-                    {
-                        const auto alignment = railCollapsed ? VerticalAlignment::Center : VerticalAlignment::Top;
-                        if (leading.VerticalAlignment() != alignment)
-                        {
-                            leading.VerticalAlignment(alignment);
-                        }
-                        auto leadingMargin = leading.Margin();
-                        leadingMargin.Top = 0;
-                        if (!railCollapsed && title && title.ActualHeight() > 0 && leading.ActualHeight() > 0)
-                        {
-                            const auto position = title.TransformToVisual(row).TransformPoint({ 0, 0 });
-                            leadingMargin.Top = position.Y + title.ActualHeight() / 2.0 - leading.ActualHeight() / 2.0;
-                        }
-                        if (leading.Margin() != leadingMargin)
-                        {
-                            leading.Margin(leadingMargin);
-                        }
-                    }
-                }
-                else
+                if (name == std::wstring_view{ L"PaneCloseButtonSlot" })
                 {
                     title = row.FindName(L"PaneTitleText").try_as<FrameworkElement>();
                 }
@@ -1924,9 +1957,8 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            const auto row = root.Name() == L"TabLeadingContent" ? root.Parent().as<FrameworkElement>() : root;
-            _updateSidebarActionLayout(row, _isRailCollapsed);
-            _updateSidebarRowToolTipPlacement(row);
+            _updateSidebarActionLayout(root);
+            _updateSidebarRowToolTipPlacement(root);
         }
     }
 
@@ -1965,6 +1997,130 @@ namespace winrt::TerminalApp::implementation
     void TabStrip::OnSidebarRowGotFocus(IInspectable const& sender, RoutedEventArgs const&)
     {
         _updateSidebarRowToolTipPlacement(sender.as<FrameworkElement>());
+    }
+
+    bool TabStrip::_isSidebarFocusableItem(IInspectable const& item) const
+    {
+        if (!item || item == _historySectionItem)
+        {
+            return false;
+        }
+        if (const auto display = item.try_as<TerminalApp::TabStripDisplayItem>())
+        {
+            const auto tab = display.Tab();
+            if (const auto desired = _tabItemVisibility.find(winrt::get_abi(tab));
+                desired != _tabItemVisibility.end() && desired->second.Item.get() == tab)
+            {
+                return desired->second.Visible;
+            }
+            return true;
+        }
+        return static_cast<bool>(item.try_as<TerminalApp::TabStripHistoryItem>());
+    }
+
+    ListViewItem TabStrip::_realizeSidebarItem(IInspectable const& item)
+    {
+        ItemsList().ScrollIntoView(item);
+        ItemsList().UpdateLayout();
+        const auto row = ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+        return row && row.Visibility() == Visibility::Visible && row.IsEnabled() && row.IsTabStop() ? row : nullptr;
+    }
+
+    ListViewItem TabStrip::_sidebarEntryTarget()
+    {
+        const auto selected = DisplayItemForTab(SelectedItem());
+        if (selected && _isSidebarFocusableItem(selected))
+        {
+            return _realizeSidebarItem(selected);
+        }
+        for (const auto& item : ItemsList().Items())
+        {
+            if (item.try_as<TerminalApp::TabStripDisplayItem>() && _isSidebarFocusableItem(item))
+            {
+                return _realizeSidebarItem(item);
+            }
+        }
+        return nullptr;
+    }
+
+    bool TabStrip::FocusActiveSidebarTab()
+    {
+        if (Visibility() == Visibility::Visible && ItemsList().Visibility() == Visibility::Visible)
+        {
+            if (const auto target = _sidebarEntryTarget())
+            {
+                return target.Focus(FocusState::Keyboard);
+            }
+        }
+        return false;
+    }
+
+    void TabStrip::_onSidebarEntryKeyDown(IInspectable const& sender, WUX::Input::KeyRoutedEventArgs const& e)
+    {
+        if (e.Handled() || e.OriginalKey() != Windows::System::VirtualKey::Tab)
+        {
+            return;
+        }
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        constexpr auto down = Windows::UI::Core::CoreVirtualKeyStates::Down;
+        if (!window || WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Control), down) ||
+            WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Menu), down))
+        {
+            return;
+        }
+        if (ItemsList().Visibility() == Visibility::Visible &&
+            (SearchPanel().Visibility() != Visibility::Visible || sender == SearchTextBox()))
+        {
+            if (const auto target = _sidebarEntryTarget())
+            {
+                e.Handled(target.Focus(FocusState::Keyboard));
+            }
+        }
+    }
+
+    bool TabStrip::FocusLastSidebarStop()
+    {
+        for (uint32_t index = ItemsList().Items().Size(); index > 0; --index)
+        {
+            const auto item = ItemsList().Items().GetAt(index - 1);
+            if (_isSidebarFocusableItem(item))
+            {
+                if (const auto row = _realizeSidebarItem(item))
+                {
+                    return row.Focus(FocusState::Keyboard);
+                }
+            }
+        }
+        if (const auto last = WUX::Input::FocusManager::FindLastFocusableElement(ContentGrid()).try_as<Control>())
+        {
+            return last.Focus(FocusState::Keyboard);
+        }
+        return false;
+    }
+
+    void TabStrip::OnSidebarListGettingFocus(IInspectable const&, WUX::Input::GettingFocusEventArgs const& e)
+    {
+        if (e.FocusState() != FocusState::Keyboard)
+        {
+            return;
+        }
+
+        auto source = e.OldFocusedElement().try_as<DependencyObject>();
+        while (source && source != SearchTextBox() && source != FilterTabsButton())
+        {
+            source = WUX::Media::VisualTreeHelper::GetParent(source);
+        }
+        if (!source)
+        {
+            return;
+        }
+
+        const auto target = _sidebarEntryTarget();
+        if (target && e.NewFocusedElement() != target)
+        {
+            e.Handled(e.TrySetNewFocusedElement(target));
+        }
     }
 
     void TabStrip::OnSidebarListFocusChanged(IInspectable const&, RoutedEventArgs const&)
@@ -2060,7 +2216,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (const auto root = sender.try_as<FrameworkElement>())
         {
-            _updateSidebarActionLayout(root, _isRailCollapsed);
+            _updateSidebarActionLayout(root);
             if (const auto pane = root.DataContext().try_as<TerminalApp::TabStripPaneItem>())
             {
                 winrt::get_self<TabStripPaneItem>(pane)->SetPointerOver(false, _isRailCollapsed);
@@ -3176,12 +3332,31 @@ namespace winrt::TerminalApp::implementation
         const auto history = e.InRecycleQueue() ? nullptr : e.Item().try_as<TerminalApp::TabStripHistoryItem>();
         const auto header = !e.InRecycleQueue() && e.Item() == _historySectionItem;
         const auto status = !e.InRecycleQueue() && e.Item() == _historyStatusItem;
-        container.Style(header || history || status ?
-                            Resources().Lookup(box_value(status ? L"SidebarHistoryStatusContainerStyle" :
-                                                         header ? L"SidebarHistoryHeaderContainerStyle" :
-                                                                  L"SidebarHistoryContainerStyle"))
-                                .as<WUX::Style>() :
-                            ItemsList().ItemContainerStyle());
+        if (e.Phase() > 0)
+        {
+            if (history || header)
+            {
+                container.ApplyTemplate();
+                _flattenHistoryContainer(container, header);
+            }
+            return;
+        }
+
+        if (history || header)
+        {
+            e.RegisterUpdateCallback({ get_weak(), &TabStrip::OnContainerContentChanging });
+        }
+
+        // Restyling recycled containers recreates native indentation without reloading their cached rows.
+        if (!e.InRecycleQueue())
+        {
+            container.Style(header || history || status ?
+                                Resources().Lookup(box_value(status ? L"SidebarHistoryStatusContainerStyle" :
+                                                             header ? L"SidebarHistoryHeaderContainerStyle" :
+                                                                      L"SidebarHistoryContainerStyle"))
+                                    .as<WUX::Style>() :
+                                ItemsList().ItemContainerStyle());
+        }
         container.AllowDrop(false);
         const auto treeItem = container.as<MUX::Controls::TreeViewItem>();
         treeItem.HasUnrealizedChildren(header);
@@ -3301,12 +3476,12 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
+        ItemsList().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 0, 8, 0, 0 });
+        TabsSectionDivider().Margin(_isRailCollapsed ? WUX::Thickness{ 8, 0, 8, 0 } : WUX::Thickness{});
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} :
                                                  unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarToolbarPadding"))));
-        TabsToolbar().ColumnSpacing(_isRailCollapsed ? 0.0 :
-                                                       unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing"))));
         const auto actionColumn = _isRailCollapsed ? WUX::GridLengthHelper::FromValueAndType(0, WUX::GridUnitType::Pixel) :
-                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarActionCellWidth")));
+                                                     unbox_value<WUX::GridLength>(Resources().Lookup(box_value(L"SidebarToolbarActionCellWidth")));
         TabsToolbar().ColumnDefinitions().GetAt(1).Width(actionColumn);
         TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
@@ -4778,22 +4953,20 @@ namespace winrt::TerminalApp::implementation
                 destinationIndex.has_value() &&
                 *destinationIndex != sourceIndex)
             {
-                _syncingNativeReorder = true;
-                auto endSync = wil::scope_exit([&]() noexcept {
-                    _syncingNativeReorder = false;
-                });
-                const auto item = _tabItems.GetAt(sourceIndex);
-                _tabItems.RemoveAt(sourceIndex);
-                _tabItems.InsertAt(*destinationIndex, item);
-                const auto display = _displayItems.GetAt(sourceIndex);
-                _displayItems.RemoveAt(sourceIndex);
-                _displayItems.InsertAt(*destinationIndex, display);
+                MoveTabItem(sourceIndex, *destinationIndex);
             }
-            _syncViewportItems();
+            else
+            {
+                _syncViewportItems();
+            }
         }
         else if (_dragCollectionChanged)
         {
             _syncDisplayItems();
+        }
+        else
+        {
+            _syncViewportItems();
         }
 
         TabDragCompleted.raise(*this, nullptr);

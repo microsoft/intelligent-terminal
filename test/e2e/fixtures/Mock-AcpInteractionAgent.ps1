@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$LogPath,
     [string]$ResolverFixturePath,
-    [string]$TelemetryFixturePath
+    [string]$TelemetryFixturePath,
+    [string]$SidebarHistoryFixturePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -208,15 +209,20 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     switch ($request.method) {
         'initialize' {
             Write-FixtureLog -Message 'initialize'
+            $capabilities = @{
+                mcpCapabilities = @{ http = $true; sse = $false }
+                sessionCapabilities = @{ close = @{} }
+            }
+            if ($SidebarHistoryFixturePath) {
+                $capabilities.loadSession = $true
+                $capabilities.sessionCapabilities.list = @{}
+            }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
                 result = @{
                     protocolVersion = 1
-                    agentCapabilities = @{
-                        mcpCapabilities = @{ http = $true; sse = $false }
-                        sessionCapabilities = @{ close = @{} }
-                    }
+                    agentCapabilities = $capabilities
                     agentInfo = @{
                         name = 'Interaction Fixture'
                         version = '1.0.0'
@@ -245,6 +251,33 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     configOptions = @(Get-SessionConfigOptions)
                 }
             }
+        }
+        'session/list' {
+            if (-not $SidebarHistoryFixturePath) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32601; message = 'Method not found' } }
+                break
+            }
+            $history = Get-Content -LiteralPath $SidebarHistoryFixturePath -Raw | ConvertFrom-Json
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ sessions = @($history.sessions) } }
+        }
+        'session/load' {
+            $history = Get-Content -LiteralPath $SidebarHistoryFixturePath -Raw | ConvertFrom-Json
+            $sessionId = [string]$request.params.sessionId
+            $saved = @($history.sessions | Where-Object sessionId -eq $sessionId)
+            Write-FixtureLog -Message "sidebar-load-requested|$sessionId"
+            if ($saved.Count -ne 1 -or $saved[0].fail) {
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32002; message = 'Controlled load failure' } }
+                break
+            }
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            while (-not (Test-Path -LiteralPath $history.releasePath)) {
+                if ([DateTime]::UtcNow -gt $deadline) { throw 'Sidebar load gate was not released' }
+                Start-Sleep -Milliseconds 100
+            }
+            $sessionMcpServers[$sessionId] = @($request.params.mcpServers) | Select-Object -First 1
+            Send-TextUpdate -SessionId $sessionId -Text 'SIDEBAR_RESUME_LOADED'
+            Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; result = @{ configOptions = @(Get-SessionConfigOptions) } }
+            Write-FixtureLog -Message "sidebar-load-completed|$sessionId"
         }
         'session/close' {
             Write-FixtureLog -Message "session/close|$($request.params.sessionId)"

@@ -1136,7 +1136,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         })
         Set-CombinedView $true
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
-        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Agent recent sessions'
+        (Get-CombinedElement HistoryHeader).Current.Name | Should -Be 'Recent agent sessions'
         Set-CombinedView $false
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence 'startup-header.png') | Out-Null
@@ -1492,7 +1492,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedQuery $script:scopeQuery
             $capture = @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id })
             foreach ($entry in @(
-                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Agent recent sessions'; Key = 0xBF; KeyText = '/' },
+                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Recent agent sessions'; Key = 0xBF; KeyText = '/' },
                 @{ Id = 'AgentsOnlyFilterMenuItem'; Name = 'Agents only'; Key = 0x47; KeyText = 'G' }
             )) {
                 Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
@@ -3099,7 +3099,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         $scroll = Get-CombinedScroll ItemsList
         $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 100)
         $header = Get-CombinedElement HistoryHeaderButton
-        $header.Current.Name | Should -Be 'Agent recent sessions'
+        $header.Current.Name | Should -Be 'Recent agent sessions'
         $pattern = $header.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
         $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
         $sessions = @((Get-CombinedSnapshot).sessions.session_id | Sort-Object)
@@ -3247,7 +3247,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
         It 'Mixed Sidebar keyboard crosses the Recent Sessions boundary without activation' {
-            Set-CombinedQuery $script:marker
+            Set-CombinedFilters -AgentsOnly $false -Recent $true
+            Set-CombinedQuery ''
             $active = Get-ActivePane -App $script:app
             $heading = Get-CombinedElement HistoryHeaderButton
             $heading.SetFocus()
@@ -3263,28 +3264,43 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
             $recent = [Windows.Automation.AutomationElement]::FocusedElement
             $recent.Current.ProcessId | Should -Be $script:app.Pid
-            (Get-CombinedRowText $recent) | Should -Match ([regex]::Escape("$script:marker-history-"))
+            @((Get-CombinedRows Recent) | Where-Object {
+                [Windows.Automation.Automation]::Compare($_, $recent)
+            }).Count | Should -Be 1
             (Get-CombinedElement ItemsList).Current.BoundingRectangle.Contains($recent.Current.BoundingRectangle) | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x26 -RequireForeground | Out-Null
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $heading) | Should -BeTrue
-            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $lastLive.SetFocus()
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $lastLive) | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $paneStop = Get-CombinedElement SidebarShellPaneFocusStop
             [Windows.Automation.Automation]::Compare(
-                [Windows.Automation.AutomationElement]::FocusedElement, $heading) | Should -BeTrue
-            $receipts = @()
-            foreach ($key in @(0x20, 0x0D)) {
-                Send-WtWindowKey -App $script:app -Vk $key -RequireForeground | Out-Null
-                $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Collapsed)
-                Send-WtWindowKey -App $script:app -Vk $key -RequireForeground | Out-Null
-                $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
-                $receipts += @{ key = $key; active = (Get-ActivePane -App $script:app).session_id
-                    heading_runtime_id = @($heading.GetRuntimeId()) }
-            }
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
+                Should -BeTrue -Because 'Tab from the live row outlines its shell pane'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $agentToggle = Get-CombinedElement AgentToggleButton
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+                Should -BeTrue -Because 'Tab from the shell outline visits the agent icon'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+            $toggle.Current.ProcessId | Should -Be $script:app.Pid
+            $toggle.Current.Name | Should -Be 'Collapse sidebar' -Because 'Tab from the agent icon wraps to the rail toggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $lastRecent = [Windows.Automation.AutomationElement]::FocusedElement
+            $lastRecent.Current.ProcessId | Should -Be $script:app.Pid
+            @((Get-CombinedRows Recent) | Where-Object {
+                [Windows.Automation.Automation]::Compare($_, $lastRecent)
+            }).Count | Should -Be 1
             (Get-ActivePane -App $script:app).session_id | Should -Be $active.session_id
-            $receipts | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $script:evidence 'boundary-keyboard.json')
         }
 
         It 'Sidebar header search and options show their actual action tooltips' {

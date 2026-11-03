@@ -597,7 +597,8 @@ pub async fn install_in_source(
                 Err(error) => AgentInstallOutcome::Failed(
                     t!(
                         "agent.install.acp_failed",
-                        agent = agent_registry::lookup_profile_by_id(provider.family_id()).display_name,
+                        agent =
+                            agent_registry::lookup_profile_by_id(provider.family_id()).display_name,
                         error = error.to_string()
                     )
                     .into_owned(),

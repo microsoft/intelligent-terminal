@@ -225,6 +225,8 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(int32_t, LeadingContentColumnSpan, PropertyChanged.raise, 1);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::IInspectable, ToolTipContent, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipBody, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, ToolTipShortcutLine, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AcceleratorKey, PropertyChanged.raise);
 
     public:
@@ -234,7 +236,7 @@ namespace winrt::TerminalApp::implementation
         void SetKeyboardFocused(bool focused, bool railCollapsed);
         bool IsPointerOver() const noexcept { return _pointerOver; }
         void SetSidebarHints(std::optional<std::pair<winrt::hstring, winrt::hstring>> hints,
-                             winrt::Windows::Foundation::IInspectable const& toolTipContent,
+                             winrt::hstring const& toolTipBody,
                              bool verticalPresentation);
         void SyncIcon(winrt::hstring const& iconPath);
         void SyncIcon(winrt::hstring const& iconPath, winrt::Microsoft::UI::Xaml::Controls::IconSource const& source);
@@ -253,7 +255,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::UI::Xaml::Controls::IconSource _iconSource{ nullptr };
         bool _headerProgressProjectedToPaneRows{ false };
         std::optional<std::pair<winrt::hstring, winrt::hstring>> _sidebarHints;
-        winrt::Windows::Foundation::IInspectable _sidebarToolTipContent{ nullptr };
+        winrt::hstring _sidebarToolTipBody;
         void _publishHints(bool verticalPresentation);
         void _setIconSource(winrt::Windows::Foundation::IInspectable const& value, std::optional<winrt::hstring> iconPath);
     };
@@ -382,6 +384,8 @@ namespace winrt::TerminalApp::implementation
         void SearchQuery(winrt::hstring const& value);
         void SearchKeyChordText(winrt::hstring const& value);
         bool FocusTabSearch();
+        bool FocusActiveSidebarTab();
+        bool FocusLastSidebarStop();
         void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
@@ -435,6 +439,7 @@ namespace winrt::TerminalApp::implementation
         void SetVerticalPresentation(bool vertical);
         bool IsVerticalPresentation() const noexcept { return _isVerticalPresentation; }
         void RestoreTabOrder(const std::vector<winrt::Windows::Foundation::IInspectable>& items);
+        bool DraggedTabCollectionChanged() const noexcept { return _dragCollectionChanged; }
         void SetTabPinned(const winrt::Microsoft::UI::Xaml::Controls::TabViewItem& item, bool pinned);
         bool RichTabRepositoryVisible() const noexcept { return _richTabRepositoryVisible; }
         void RichTabRepositoryVisible(bool value);
@@ -539,6 +544,8 @@ namespace winrt::TerminalApp::implementation
                                   winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnSidebarListFocusChanged(winrt::Windows::Foundation::IInspectable const& sender,
                                        winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void OnSidebarListGettingFocus(winrt::Windows::Foundation::IInspectable const& sender,
+                                       winrt::Windows::UI::Xaml::Input::GettingFocusEventArgs const& e);
         void OnRowHeaderLoaded(winrt::Windows::Foundation::IInspectable const& sender,
                                winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
         void OnHeaderRenameEnded(winrt::Windows::Foundation::IInspectable const& sender,
@@ -722,6 +729,11 @@ namespace winrt::TerminalApp::implementation
 
         void _onListKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                             winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        void _onSidebarEntryKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+                                    winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        bool _isSidebarFocusableItem(winrt::Windows::Foundation::IInspectable const& item) const;
+        winrt::Windows::UI::Xaml::Controls::ListViewItem _realizeSidebarItem(winrt::Windows::Foundation::IInspectable const& item);
+        winrt::Windows::UI::Xaml::Controls::ListViewItem _sidebarEntryTarget();
         bool _updateDragRejection(winrt::Windows::Foundation::Point const& position);
         void _completeDrag(winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation result);
         void _onHistoryPreviewKeyDown(winrt::Windows::Foundation::IInspectable const& sender,

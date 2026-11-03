@@ -144,7 +144,10 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         Int32 LeadingContentColumnSpan;
         Boolean ShowStatusIcon;
+        // Retained for ABI compatibility; tooltip visuals are template-owned.
         Object ToolTipContent;
+        String ToolTipBody;
+        String ToolTipShortcutLine;
     };
 
     [default_interface] runtimeclass TabStripPaneEventArgs

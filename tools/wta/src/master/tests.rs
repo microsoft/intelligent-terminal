@@ -235,6 +235,133 @@ fn client_connection_to_pending_initialize_agent(
     connection
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_covers_missing_stdout_and_invalid_wsl_receipt() {
+    use crate::telemetry::capture::{self, Event};
+    use std::process::Stdio;
+
+    for source in ["Host", "Wsl"] {
+        capture::take();
+        let wsl = source == "Wsl";
+        let mut command = tokio::process::Command::new("cmd.exe");
+        command.args(["/d", "/c", "echo invalid-receipt"]);
+        command
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .stdout(if wsl { Stdio::piped() } else { Stdio::null() })
+            .kill_on_drop(true);
+        let mut child = crate::protocol::acp::process::AgentProcess::spawn(
+            &mut command,
+            wsl.then(|| {
+                (
+                    "unused-fixture-distro".to_string(),
+                    "expected-marker".to_string(),
+                )
+            }),
+        )
+        .unwrap();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "copilot",
+            source,
+            started: std::time::Instant::now(),
+        };
+        let error = telemetry.take_stdout(&mut child).await.unwrap_err();
+        drop(child);
+        let (failure, message) = if wsl {
+            (ColdStartFailureKind::CleanupFailed, "ownership receipt")
+        } else {
+            (
+                ColdStartFailureKind::TransportFailed,
+                "stdout is not available",
+            )
+        };
+        assert!(format!("{error:#}").contains(message), "{error:#}");
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "copilot".to_string(),
+                source: source.to_string(),
+                failure: Some(failure),
+            }]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_waits_for_failed_startup_cleanup() {
+    use crate::telemetry::capture::{self, Event};
+
+    for failure in [
+        ColdStartFailureKind::TransportFailed,
+        ColdStartFailureKind::InitializeFailed,
+        ColdStartFailureKind::Timeout,
+    ] {
+        capture::take();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "copilot",
+            source: "Wsl",
+            started: std::time::Instant::now(),
+        };
+        let (release, released) = tokio::sync::oneshot::channel();
+        let completion = telemetry.failed(failure, async {
+            released.await.unwrap();
+            Ok(vec!["fixture stderr".to_string()])
+        });
+        tokio::pin!(completion);
+        assert!(futures::poll!(&mut completion).is_pending());
+        assert!(capture::take().is_empty(), "cleanup is not complete yet");
+
+        release.send(()).unwrap();
+        assert_eq!(completion.await.unwrap(), vec!["fixture stderr"]);
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "copilot".to_string(),
+                source: "Wsl".to_string(),
+                failure: Some(failure),
+            }]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cold_start_telemetry_reports_cleanup_failure_without_losing_error() {
+    use crate::telemetry::capture::{self, Event};
+
+    for failure in [
+        ColdStartFailureKind::TransportFailed,
+        ColdStartFailureKind::InitializeFailed,
+        ColdStartFailureKind::Timeout,
+    ] {
+        capture::take();
+        let telemetry = AgentColdStartTelemetry {
+            agent_id: "custom:fixture",
+            source: "Wsl",
+            started: std::time::Instant::now(),
+        };
+        let cleanup = async {
+            Err::<(), _>(
+                anyhow!("fixture cleanup denied")
+                    .context(crate::agent_lifecycle::StartupPhase::Cleanup),
+            )
+        };
+        let error = telemetry.failed(failure, cleanup).await.unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<crate::agent_lifecycle::StartupPhase>(),
+            Some(&crate::agent_lifecycle::StartupPhase::Cleanup)
+        );
+        assert!(format!("{error:#}").contains("fixture cleanup denied"));
+        assert_eq!(
+            capture::take(),
+            vec![Event::AgentColdStartComplete {
+                agent_id: "custom".to_string(),
+                source: "Wsl".to_string(),
+                failure: Some(ColdStartFailureKind::CleanupFailed),
+            }]
+        );
+    }
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn native_initialize_remains_pending_after_fifteen_seconds_and_accepts_reply() {
     LocalSet::new()
@@ -12279,6 +12406,7 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
             assert_eq!(response.action, "resume_cli");
             supported_cases += 1;
             assert!(response.accepted, "{cli:?} {status:?}: {response:?}");
+            assert!(response.launched);
             let expected_calls = vec![
                 (
                     "create_tab".to_string(),
@@ -12317,6 +12445,77 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
         }
     }
     assert_eq!(supported_cases, 40);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_launch_receipt_survives_focus_failure_and_replay() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    use std::path::PathBuf;
+
+    let _resolver = mock_native_delegate_executables();
+    for failed_method in ["focus_pane", "create_tab"] {
+        let mut channel = MockWtChannel::responding(serde_json::json!({
+            "session_id": "created-pane"
+        }));
+        channel.fail_with = Some("terminal request failed".into());
+        channel.fail_on_method = Some(failed_method);
+        let mock = Arc::new(channel);
+        let state = make_state_with_wt(mock.clone());
+        let mut row = SessionInfo::new(SessionId::new("launch-receipt"), PathBuf::from("C:\\repo"));
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.location = SessionLocation::Host;
+        row.origin = Some(SessionOrigin::Unknown);
+        row.status = Some(AgentStatus::Historical);
+        let params = SessionActivateParams {
+            identity: SessionIdentity::from_info(&row),
+            window_id: 42,
+            activation_id: "launch-receipt".into(),
+        };
+        state.registry.upsert(row).await;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let raw = handle_session_activate(&state, &params).await.unwrap();
+                let response =
+                    crate::session_registry::parse_session_activate_response(&raw.0).unwrap();
+                assert_eq!(response.action, "resume_cli");
+                assert!(!response.accepted);
+                assert_eq!(response.launched, failed_method == "focus_pane");
+                if response.launched {
+                    assert!(response
+                        .detail
+                        .as_deref()
+                        .unwrap()
+                        .contains("could not be focused"));
+                    assert_eq!(
+                        state
+                            .registry
+                            .lookup_identity(&params.identity)
+                            .await
+                            .unwrap()
+                            .pane_session_id
+                            .as_deref(),
+                        Some("created-pane")
+                    );
+                }
+                let calls = mock.calls();
+                let replay = handle_session_activate(&state, &params).await.unwrap();
+                assert_eq!(
+                    crate::session_registry::parse_session_activate_response(&replay.0).unwrap(),
+                    response
+                );
+                assert_eq!(mock.calls(), calls);
+                assert_eq!(
+                    calls
+                        .iter()
+                        .filter(|(method, _)| method == "create_tab")
+                        .count(),
+                    1
+                );
+            })
+            .await;
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -12533,6 +12732,7 @@ async fn sidebar_activation_live_bound_focus_does_not_require_launchable_provide
                 assert_eq!(response.state, SessionActivationState::Complete);
                 assert_eq!(response.action, "focus", "{cli:?}: {response:?}");
                 assert_eq!(response.accepted, !fail);
+                assert!(!response.launched);
                 assert_eq!(
                     response.detail.as_deref(),
                     fail.then_some("pane lookup unavailable")
@@ -13622,6 +13822,7 @@ async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
                         state: SessionActivationState::Pending,
                         action: String::new(),
                         accepted: false,
+                        launched: false,
                         detail: None,
                     },
                     params: pending,
@@ -13812,6 +14013,10 @@ async fn sidebar_antigravity_resume_preserves_interface_and_source() {
                     .find(|event| event["method"] == "resume_in_new_agent_tab")
                     .unwrap();
                 assert_eq!(event["params"]["agent_id"], "antigravity");
+                assert_eq!(
+                    event["params"]["sidebar_activation_id"],
+                    params.activation_id
+                );
                 assert_eq!(event["params"]["cwd"], cwd);
                 assert_eq!(
                     event["params"]["agent_source"],

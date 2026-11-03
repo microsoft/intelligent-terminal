@@ -29,9 +29,16 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
+        <ContentPresenter x:Name="HeaderLeadingContentPresenter"
+                          VerticalAlignment="Center"
+                          HorizontalContentAlignment="Stretch"
+                          Content="{x:Bind LeadingContent, Mode=OneWay}" />
         <StackPanel x:Name="HeaderStackPanel"
+                    Grid.Column="1"
                     Orientation="Horizontal">
             <Grid x:Name="HeaderProgressRingPresenter"
                   Visibility="{x:Bind ShowProgressRing, Mode=OneWay}">
@@ -103,7 +110,8 @@
                       Glyph="&#xEC05;"
                       Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
         </StackPanel>
-        <Grid Grid.Column="1"
+        <Grid x:Name="HeaderTitleGrid"
+              Grid.Column="2"
               MinWidth="0"
               HorizontalAlignment="Left"
               VerticalAlignment="Center">
@@ -179,20 +187,22 @@
                       Glyph="&#xE8EE;"
                       Visibility="{x:Bind TabStatus.IsKeepRunning, Mode=OneWay}" />
         </Grid>
+        <ContentPresenter x:Name="HeaderTrailingContentPresenter"
+                          Grid.Column="3"
+                          VerticalAlignment="Center"
+                          Content="{x:Bind TrailingContent, Mode=OneWay}" />
         <local:HighlightedTextControl x:Name="HeaderMetadataTextBlock"
                                       Grid.Row="1"
+                                      Grid.Column="1"
                                       Grid.ColumnSpan="2"
                                       Margin="0,1,0,0"
                                       x:Load="False"
                                       AutomationProperties.Name="{x:Bind MetadataAutomationName, Mode=OneWay}"
                                       CautionHighlightBrush="{ThemeResource SystemFillColorCautionBrush}"
-                                      ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
-                                      ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                       CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
                                       Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
-                                      Text="{x:Bind MetadataText, Mode=OneWay}"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
                 <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"

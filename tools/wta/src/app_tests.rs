@@ -24027,6 +24027,12 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
     );
     app.request_turn_cancel_for_tab(DEFAULT_TAB_ID);
 
+    let observation_id = uuid::Uuid::new_v4();
+    app.handle_event(AppEvent::SessionTelemetryBound {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "lazy-session".into(),
+        observation_id,
+    });
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "lazy-session".into(),
@@ -24035,6 +24041,10 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
         current_model_id: None,
     });
 
+    assert_eq!(
+        app.current_tab().telemetry_observation,
+        Some(("lazy-session".into(), observation_id))
+    );
     assert_eq!(
         app.current_tab()
             .active_prompt_cancellation
@@ -25273,6 +25283,90 @@ fn error_fix_telemetry_ignores_stale_generation_and_new_turn_gets_new_id() {
     assert_ne!(old_id, new_id);
     flush_error_fix_telemetry_frame(&mut app, 100, 30);
     assert_eq!(take(), vec![Event::ErrorFixOffered(new_id)]);
+}
+
+#[test]
+fn error_fix_telemetry_blocked_shell_failure_never_arms_ui_or_analysis() {
+    use crate::telemetry::{
+        capture::{take, Event},
+        AutoFixPolicyState,
+    };
+    take();
+    let mut app = test_app();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.autofix_enabled = true;
+    app.autofix_policy_state = AutoFixPolicyState::Enabled;
+    app.handle_event(AppEvent::WtEvent {
+        method: "shell_command_failed".into(),
+        pane_id: "blocked-shell".into(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+    });
+    assert_eq!(
+        take(),
+        vec![Event::ErrorDetected {
+            policy: AutoFixPolicyState::Disabled,
+            enabled: false,
+        }]
+    );
+    assert!(!app.show_notification_banner);
+    assert!(app.wt_notifications.is_empty());
+    assert!(app.current_tab().autofix.detected_offer.is_none());
+    assert!(app.current_tab().autofix.offer.is_none());
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+}
+
+#[test]
+fn error_fix_telemetry_blocked_shell_failure_rejects_unscoped_or_invalid_events() {
+    use crate::telemetry::capture::take;
+    let mut app = test_app();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    for (pane, tab, params) in [
+        (
+            "pane",
+            Some("other-tab"),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            None,
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "enabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": true}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": "false"}),
+        ),
+    ] {
+        take();
+        app.handle_event(AppEvent::WtEvent {
+            method: "shell_command_failed".into(),
+            pane_id: pane.into(),
+            tab_id: tab.map(str::to_string),
+            params,
+        });
+        assert!(take().is_empty());
+        assert!(!app.show_notification_banner);
+        assert!(app.current_tab().autofix.detected_offer.is_none());
+    }
 }
 
 #[test]

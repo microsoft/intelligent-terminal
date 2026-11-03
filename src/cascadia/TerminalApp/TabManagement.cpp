@@ -334,14 +334,6 @@ namespace winrt::TerminalApp::implementation
             const auto tab = weakTab.get();
             if (page && tab && page->_GetTabIndex(*tab))
             {
-                const auto pinnedCount = page->_KeepRunningTabCounts().second;
-                TraceLoggingWrite(
-                    g_hTerminalAppProvider,
-                    "SidebarTabPinned",
-                    TraceLoggingDescription("User enabled keep running for a sidebar tab"),
-                    TraceLoggingUInt32(pinnedCount, "pinned_count"),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
                 page->_LogKeepRunningMarked(tab);
             }
         });
@@ -1003,11 +995,14 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_LogKeepRunningMarked(const winrt::com_ptr<Tab>& tab)
     {
         const auto [totalTabCount, keepRunningTabCount] = _KeepRunningTabCounts();
+        const auto agentPane = tab->FindAgentPaneContent();
+        const auto sessionId = agentPane ? winrt::get_self<AgentPaneContent>(agentPane)->TelemetrySessionId() : winrt::hstring{};
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "KeepRunningMarked",
             TraceLoggingWideString(tab->KeepRunningTelemetryId().c_str(), "KeepId"),
             TraceLoggingBool(!!tab->FindAgentPaneContent(), "HasAgentPane"),
+            TraceLoggingWideString(sessionId.c_str(), "TelemetrySessionId"),
             TraceLoggingUInt32(totalTabCount, "TotalTabCount"),
             TraceLoggingUInt32(keepRunningTabCount, "KeepRunningTabCount"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -1068,6 +1063,7 @@ namespace winrt::TerminalApp::implementation
         bool hasAgentPane = false;
         bool hasAgentSession = false;
         bool restored = false;
+        bool targetGone = false;
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "KeepRunningReattachStarted",
@@ -1080,13 +1076,14 @@ namespace winrt::TerminalApp::implementation
                 "KeepRunningReattached",
                 TraceLoggingWideString(attemptId.c_str(), "AttemptId"),
                 TraceLoggingWideString(keepId.c_str(), "KeepId"),
-                TraceLoggingString(restored ? "live" : "failed", "Outcome"),
+                TraceLoggingString(restored ? "live" : (targetGone ? "gone" : "failed"), "Outcome"),
                 TraceLoggingBool(hasAgentPane, "HasAgentPane"),
                 TraceLoggingBool(hasAgentSession, "HasAgentSession"),
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         });
         const auto owner = _manager.KeptGroupOwner(groupId);
+        targetGone = !owner;
         THROW_HR_IF(E_INVALIDARG, !owner);
         const auto sourceTab = _GetTabImpl(_manager.BeginReattachKeptGroup(groupId));
         auto rollback = wil::scope_exit([&]() noexcept {
@@ -1151,6 +1148,10 @@ namespace winrt::TerminalApp::implementation
     //   window via ContentId).
     void TerminalPage::_RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway, bool keepAlive)
     {
+        if (const auto impl = _GetTabImpl(tab))
+        {
+            _pendingSidebarResumeTelemetry.erase(impl->StableId());
+        }
         uint32_t tabIndex{};
         if (!_tabs.IndexOf(tab, tabIndex))
         {
@@ -2432,7 +2433,7 @@ namespace winrt::TerminalApp::implementation
                 const auto chord = chosen ? winrt::hstring{ hints[*chosen].text } : winrt::hstring{};
                 winrt::get_self<TabStripDisplayItem>(display)->SetSidebarHints(
                     std::pair{ chord, tab->ToolTipTextForKeyChord(chord) },
-                    tab->ToolTipContentForKeyChord(chord),
+                    tab->ToolTipBody(),
                     tabStrip->IsVerticalPresentation());
                 tabStrip->SetTabItemVisibility(display, visible);
             }
@@ -2958,7 +2959,9 @@ namespace winrt::TerminalApp::implementation
                                   *from >= 0 && *to >= 0 &&
                                   *from < gsl::narrow_cast<int32_t>(_tabs.Size()) &&
                                   *to < gsl::narrow_cast<int32_t>(_tabs.Size());
-        const auto canCommitReorder = _tabDragReorderAuthorized && validIndices &&
+        const auto collectionChanged = _isVerticalLayout &&
+                                       winrt::get_self<implementation::TabStrip>(_tabStrip)->DraggedTabCollectionChanged();
+        const auto canCommitReorder = _tabDragReorderAuthorized && !collectionChanged && validIndices &&
                                       _GetTabImpl(_tabs.GetAt(*from))->IsPinned() ==
                                           _GetTabImpl(_tabs.GetAt(*to))->IsPinned();
 

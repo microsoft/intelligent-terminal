@@ -5,8 +5,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Thickness x:Key="SidebarSectionPadding">12,0,0,0</Thickness>
-    <StaticResource x:Key="SidebarToolbarPadding"
-                    ResourceKey="SidebarSectionPadding" />
+    <Thickness x:Key="SidebarToolbarPadding">24,0,0,0</Thickness>
+    <GridLength x:Key="SidebarToolbarActionCellWidth">40</GridLength>
     <Thickness x:Key="SidebarTrailingActionMargin">0</Thickness>
     <Thickness x:Key="SidebarLiveRowMargin">6,4</Thickness>
     <x:Double x:Key="SidebarToolbarActionExtent">40</x:Double>

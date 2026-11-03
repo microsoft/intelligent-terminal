@@ -599,6 +599,9 @@ pub struct SessionActivateResponse {
     pub state: SessionActivationState,
     pub action: String,
     pub accepted: bool,
+    /// A native CLI was created and bound, independently of subsequent focus.
+    #[serde(default)]
+    pub launched: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
@@ -4863,14 +4866,14 @@ mod tests {
                     pane_session_id: "owner".into(),
                     cwd: PathBuf::from("/other"),
                 },
-                20_000,
+                15_000,
             );
             let before = state.sessions.values().next().unwrap().clone();
             let wire = serde_json::to_value(&before).unwrap();
             let decoded: SessionInfo = serde_json::from_value(wire).unwrap();
             let helper = crate::app::session_info_to_agent_session(&decoded);
             let round_trip = agent_session_to_session_info(&helper);
-            assert_eq!(round_trip.attention_cooldown_until_ms, Some(40_000));
+            assert_eq!(round_trip.attention_cooldown_until_ms, Some(20_000));
             assert_eq!(round_trip.attention_timestamp_ms, attention_timestamp);
             assert!(!apply_event_at_ms(
                 &mut state,
@@ -4878,7 +4881,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                39_999,
+                19_999,
             ));
             assert_eq!(state.sessions.values().next().unwrap(), &before);
             apply_event_at_ms(
@@ -4888,7 +4891,7 @@ mod tests {
                     pane_session_id: "owner".into(),
                     cwd: PathBuf::from("/at-expiry"),
                 },
-                40_000,
+                20_000,
             );
             assert_eq!(
                 state.sessions.values().next().unwrap().status,
@@ -4900,7 +4903,7 @@ mod tests {
                     key: "cooldown".into(),
                     timestamp_ms: return_timestamp,
                 },
-                40_000,
+                20_000,
             ));
             let recovered = state.sessions.values().next().unwrap();
             assert_eq!(recovered.status, Some(AgentStatus::Working));
@@ -4930,7 +4933,7 @@ mod tests {
                 .next()
                 .unwrap()
                 .attention_cooldown_until_ms,
-            Some(70_000)
+            Some(50_000)
         );
         assert!(!apply_event_at_ms(
             &mut state,
@@ -9236,6 +9239,7 @@ mod tests {
                 state,
                 action: String::new(),
                 accepted: false,
+                launched: false,
                 detail: None,
             };
             let raw = serde_json::value::to_raw_value(&response).unwrap();
@@ -9249,6 +9253,22 @@ mod tests {
             parse_session_activate_response(&legacy).unwrap().state,
             SessionActivationState::Complete
         );
+        assert!(!parse_session_activate_response(&legacy).unwrap().launched);
+        let launched = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"launch","action":"resume_cli","accepted":false,"launched":true}"#
+                .to_string(),
+        )
+        .unwrap();
+        let response = parse_session_activate_response(&launched).unwrap();
+        assert!(response.launched);
+        assert!(!response.accepted);
+        let raw = serde_json::value::to_raw_value(&response).unwrap();
+        assert_eq!(parse_session_activate_response(&raw).unwrap(), response);
+        let invalid = serde_json::value::RawValue::from_string(
+            r#"{"activation_id":"launch","action":"resume_cli","accepted":false,"launched":"true"}"#.to_string(),
+        )
+        .unwrap();
+        assert!(parse_session_activate_response(&invalid).is_err());
     }
 
     #[test]

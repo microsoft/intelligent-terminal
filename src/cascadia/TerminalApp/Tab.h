@@ -81,6 +81,7 @@ namespace winrt::TerminalApp::implementation
         void SetTabText(winrt::hstring title);
         winrt::hstring GetTabText() const;
         winrt::hstring ToolTipTextForKeyChord(const winrt::hstring& keyChord);
+        winrt::hstring ToolTipBody();
         winrt::Windows::UI::Xaml::Controls::TextBlock ToolTipContentForKeyChord(const winrt::hstring& keyChord);
         void RefreshToolTip();
         void ResetTabText();

@@ -128,9 +128,9 @@ impl AgentStderrLog {
                 let mut line = Vec::new();
                 match reader.read_until(b'\n', &mut line).await {
                     Ok(0) => break,
-                    Ok(_) => log.log_line(
-                        String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']),
-                    ),
+                    Ok(_) => {
+                        log.log_line(String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']))
+                    }
                     Err(error) => {
                         log.log_line(&format!("failed to read agent stderr: {error}"));
                         break;
@@ -662,11 +662,11 @@ fn spawn_wsl_agent_process(
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let child = super::process::AgentProcess::spawn(
-        &mut command,
-        Some((distro.to_string(), marker)),
-    )
-    .with_context(|| format!("failed to spawn agent '{agent_cmd}' in WSL distro '{distro}'"))?;
+    let child =
+        super::process::AgentProcess::spawn(&mut command, Some((distro.to_string(), marker)))
+            .with_context(|| {
+                format!("failed to spawn agent '{agent_cmd}' in WSL distro '{distro}'")
+            })?;
 
     Ok(AgentSpawn {
         child,
@@ -883,11 +883,18 @@ mod tests {
             let process = OwnedHandle::from_raw_handle(handle);
             let mut in_job = 0;
             assert_ne!(
-                IsProcessInJob(process.as_raw_handle(), safety_job.as_raw_handle(), &mut in_job),
+                IsProcessInJob(
+                    process.as_raw_handle(),
+                    safety_job.as_raw_handle(),
+                    &mut in_job
+                ),
                 0
             );
             assert_ne!(in_job, 0);
-            assert_eq!(WaitForSingleObject(process.as_raw_handle(), 0), WAIT_TIMEOUT);
+            assert_eq!(
+                WaitForSingleObject(process.as_raw_handle(), 0),
+                WAIT_TIMEOUT
+            );
             process
         };
 

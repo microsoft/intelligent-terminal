@@ -103,6 +103,7 @@ namespace winrt::TerminalApp::implementation
             }
         };
         void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
+        bool HasReportedAgentStatus(uint64_t contentId) const;
         bool HasUnreadAgentCompletion(const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId) const;
         void MarkAgentCompletionRead(uint64_t contentId);
         void ResetAgentCompletion(uint64_t contentId);
@@ -149,6 +150,7 @@ namespace winrt::TerminalApp::implementation
             bool observationAdmitted{ false };
             bool agentHelper{ false };
             AgentCompletionState completion;
+            std::optional<winrt::guid> reportedAgentStatusPaneId;
             std::optional<std::pair<winrt::guid, uint64_t>> parsedProgress;
             struct ConfirmedOwner
             {

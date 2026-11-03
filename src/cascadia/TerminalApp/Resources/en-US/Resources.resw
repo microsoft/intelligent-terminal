@@ -271,7 +271,7 @@
     <comment>Tooltip for the toolbar button that opens the Agents sidebar view. Agents are AI agents, not human representatives; the view lists their live and historical sessions.</comment>
   </data>
   <data name="VerticalTabsSessionHistoryHeader.Text" xml:space="preserve">
-    <value>Agent recent sessions</value>
+    <value>Recent agent sessions</value>
     <comment>Noun heading and checkable sidebar display option for recent AI-agent sessions. The option is independent of the Agents only filter. Includes prior sessions, kept-running background tabs, other tracked windows, and external sessions not represented by the current window's open panes; not an archive-only list.</comment>
   </data>
   <data name="VerticalTabsHistoryHeader.Text" xml:space="preserve">
@@ -1632,6 +1632,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
     <value>Switch agent</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Shell pane</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Press Enter to focus the shell.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve">
     <value>Usage</value>

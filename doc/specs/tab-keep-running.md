@@ -30,7 +30,7 @@ also truncates before the indicator column.
 The menu icons and title indicator use Segoe Fluent Icons with Segoe MDL2 Assets as a fallback,
 not a bitmap asset.
 
-**Agent recent sessions** also shows the RepeatAll indicator for a session
+**Recent agent sessions** also shows the RepeatAll indicator for a session
 whose pane belongs to a Keep running tab, including tabs in another window or
 retained in the background. The indicator follows the tab's runtime choice
 without resetting the session list or changing its restore/switch-window action.
@@ -160,13 +160,18 @@ twice and continues keeping the process alive.
 post-enable `TotalTabCount` and `KeepRunningTabCount` for attached terminal
 tabs in the owning window. Search-hidden tabs count; detached tabs, other
 windows, Settings, and other nonterminal tabs do not. The paired counts measure
-the tab share at enable time, not a per-agent-session mark rate. Disabling,
+the tab share at enable time. The additional random TelemetrySessionId joins
+matching AgentSessionStarted observations and prompt SessionId without exposing
+the provider ID. Distinct nonempty observation IDs, including starts whose tab
+was already enabled, provide the ACP-session denominator; unbound/native CLI
+sessions are outside that metric. Disabling,
 startup, and repeated enable requests do not emit a snapshot.
 
 `App.KeepRunningDetached` records successful background retention.
 `App.KeepRunningReattachStarted` and `App.KeepRunningReattached` share a random
 `AttemptId` for each restoration, including pre-transfer failures. Results are
-`live` or `failed`; missing results remain unknown. A random `KeepId` correlates
+`live`, `gone` (no retained owner at lookup), or `failed` (present but not restored);
+missing results remain unknown. A random `KeepId` correlates
 the opt-in, detach and resolved-target restore without publishing the tab routing ID.
 `HasAgentPane` distinguishes
 tabs containing an agent pane from shell-only tabs, but does not assert an
@@ -176,8 +181,8 @@ is true only for prompts on the same ACP session that survived the transfer;
 its `KeepId` and `AttemptId` join it to that restore. Process exit has no `gone` event.
 
 `App.TabPinChanged` separately records successful tab-order pin/unpin actions
-with `Pinned` and post-action `PinnedCount`. The older `SidebarTabPinned` event
-still means the Keep running menu action and is not tab-order pin telemetry.
+with `Pinned` and post-action `PinnedCount`. The misleading SidebarTabPinned
+event is retired; historical records meant Keep running, never tab-order pinning.
 
 Focused coverage lives in `TabTests::KeepRunning*` in
 `src/cascadia/LocalTests_TerminalApp/TabTests.cpp`. The shared history/session

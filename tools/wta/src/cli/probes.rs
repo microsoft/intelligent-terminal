@@ -5,8 +5,8 @@ pub(crate) async fn run_install_acp(
     wsl_distro: Option<&str>,
     retry_startup: bool,
 ) -> Result<()> {
-    let provider = crate::agent_lifecycle::providers::lookup(agent_id)
-        .context("unknown ACP provider")?;
+    let provider =
+        crate::agent_lifecycle::providers::lookup(agent_id).context("unknown ACP provider")?;
     anyhow::ensure!(
         provider.installer_kind()
             == crate::agent_lifecycle::providers::InstallerKind::StandaloneAcp,
