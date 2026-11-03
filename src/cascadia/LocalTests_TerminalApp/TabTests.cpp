@@ -23672,7 +23672,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabs.GetAt(0) == *first);
             VERIFY_IS_TRUE(page->_tabs.GetAt(1) == *middle);
             VERIFY_IS_TRUE(page->_tabs.GetAt(2) == *last);
-            VERIFY_IS_TRUE(first->IsPinned());
+            VERIFY_IS_FALSE(first->IsPinned());
+            VERIFY_ARE_EQUAL(0u, page->_PinnedTabCount());
             VERIFY_IS_TRUE(last->GetRootPane() == root);
             VERIFY_IS_TRUE(last->GetActivePane() == active);
             const auto after = last->GetVisiblePaneSnapshot();
