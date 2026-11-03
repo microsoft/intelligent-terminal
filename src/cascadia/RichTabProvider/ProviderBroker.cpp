@@ -597,6 +597,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 }
             }
             existing = _UpdateFor(session.context.sessionId, session, {}, attachment);
+            _LogCwdLocked(session, attachment, CwdDiagnosticStage::ContextObserved, CwdDiagnosticOutcome::Observed);
         }
 
         for (const auto& [listener, update] : previousCallbacks)
@@ -705,6 +706,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             ++session.contextRevision;
             ++session.updateSequence;
             _InvalidateGitStatusWorkingDirectoryLocked(session);
+            _LogCwdLocked(session, attachment, CwdDiagnosticStage::ContextObserved, CwdDiagnosticOutcome::Changed);
             sessionId = session.context.sessionId;
             notifications = _NotificationsFor(sessionId, session);
         }
@@ -784,6 +786,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             {
                 return;
             }
+            _LogCwdLocked(session, attachment, CwdDiagnosticStage::AgentSelected, CwdDiagnosticOutcome::Changed);
             sessionId = attached->second;
             notifications = _NotificationsFor(sessionId, session);
         }
@@ -792,6 +795,114 @@ namespace Microsoft::Terminal::RichTab::Provider
             callback(update);
         }
         _Refresh(sessionId, ActivationEvent::WorkingDirectoryChanged, false, "com.microsoft.intelligent-terminal.git-status");
+    }
+
+    uint64_t ProviderBroker::_CwdTokenLocked(const std::filesystem::path& path)
+    {
+        // Keep path-to-token associations in memory; only the token reaches the diagnostic file.
+        if (path.empty())
+        {
+            return 0;
+        }
+        if (const auto found = _cwdTokens.find(path); found != _cwdTokens.end())
+        {
+            return found->second;
+        }
+        if (_cwdTokens.size() >= 256)
+        {
+            return 0;
+        }
+        const auto token = _nextCwdToken++;
+        _cwdTokens.emplace(path, token);
+        return token;
+    }
+
+    void ProviderBroker::_LogCwdLocked(
+        const SessionState& session,
+        const AttachmentId attachment,
+        const CwdDiagnosticStage stage,
+        const CwdDiagnosticOutcome outcome,
+        std::optional<std::filesystem::path> observedPath,
+        const uint64_t updateSequence,
+        const uint64_t requestId,
+        const std::optional<uint64_t> outputCwdToken,
+        const std::optional<uint64_t> contextRevision) noexcept
+    {
+        if (!_diagnosticLog || !_diagnosticLog->Enabled())
+        {
+            return;
+        }
+        try
+        {
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Cwd;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = _processEpoch;
+            record.sessionToken = session.sessionIncarnation;
+            record.attachmentId = attachment;
+            record.hostRequestId = requestId;
+            record.contextRevision = contextRevision.value_or(session.contextRevision);
+            record.updateSequence = updateSequence ? updateSequence : session.updateSequence;
+            record.cwdStage = stage;
+            record.cwdOutcome = outcome;
+            record.workingDirectoryAuthoritative = session.context.workingDirectoryAuthoritative;
+            record.agentActive = session.agentActive;
+            record.shellCwdToken = _CwdTokenLocked(session.context.workingDirectory);
+            if (session.agentWorkingDirectory && !session.agentWorkingDirectory->empty())
+            {
+                record.agentCwdToken = _CwdTokenLocked(std::filesystem::path{ _ToWide(*session.agentWorkingDirectory) });
+            }
+            record.cwdSource = session.agentActive                           ? CwdDiagnosticSource::Agent :
+                               session.context.workingDirectoryAuthoritative ? CwdDiagnosticSource::Shell :
+                                                                               CwdDiagnosticSource::None;
+            if (outputCwdToken)
+            {
+                record.cwdToken = *outputCwdToken;
+            }
+            else if (observedPath)
+            {
+                record.cwdToken = _CwdTokenLocked(*observedPath);
+            }
+            else
+            {
+                record.cwdToken = record.cwdSource == CwdDiagnosticSource::Agent ? record.agentCwdToken :
+                                  record.cwdSource == CwdDiagnosticSource::Shell ? record.shellCwdToken :
+                                                                                   0;
+            }
+            record.cwdTokenLimitReached = _cwdTokens.size() >= 256;
+            _diagnosticLog->TryLog(record);
+        }
+        catch (...)
+        {
+        }
+    }
+
+    void ProviderBroker::TraceCwd(
+        const std::string_view sessionId,
+        const AttachmentId attachment,
+        const CwdDiagnosticStage stage,
+        const CwdDiagnosticOutcome outcome,
+        std::optional<std::filesystem::path> observedPath,
+        const uint64_t updateSequence,
+        const std::optional<uint64_t> outputCwdToken,
+        const std::optional<uint64_t> contextRevision)
+    {
+        if (!_diagnosticLog || !_diagnosticLog->Enabled())
+        {
+            return;
+        }
+        try
+        {
+            std::lock_guard lock{ _mutex };
+            if (const auto session = _sessions.find(std::string{ sessionId }); session != _sessions.end())
+            {
+                _LogCwdLocked(session->second, attachment, stage, outcome, std::move(observedPath), updateSequence, 0, outputCwdToken, contextRevision);
+            }
+        }
+        catch (...)
+        {
+        }
     }
 
     void ProviderBroker::_InvalidateGitStatusWorkingDirectoryLocked(SessionState& session)
@@ -909,6 +1020,7 @@ namespace Microsoft::Terminal::RichTab::Provider
                 providerState.generation = generation;
                 Request request;
                 request.hostRequestId = _nextRequest++;
+                request.diagnosticSessionToken = session.sessionIncarnation;
                 request.requestId =
                     std::to_string(_processEpoch) + "-" + std::to_string(request.hostRequestId);
                 request.providerId = provider.manifest.id;
@@ -972,6 +1084,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             diagnosticRecord.processId = GetCurrentProcessId();
             diagnosticRecord.processEpoch = _processEpoch;
             diagnosticRecord.hostRequestId = request.hostRequestId;
+            diagnosticRecord.sessionToken = request.diagnosticSessionToken;
             diagnosticRecord.generation = generation;
             diagnosticRecord.contextRevision = request.contextRevision;
             diagnosticRecord.providerVersion = ParseProviderDiagnosticVersion(provider.manifest.version);
@@ -1052,6 +1165,28 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::vector<std::pair<Callback, BrokerUpdate>> notifications;
         std::optional<PendingRequest> next;
         auto disposition = ProviderBrokerDisposition::NotApplicable;
+        std::optional<std::filesystem::path> resultCwd;
+        if (diagnosticsEnabled && snapshot)
+        {
+            if (const auto field = snapshot->fields.find("workingDirectory");
+                field != snapshot->fields.end())
+            {
+                if (const auto value = std::get_if<std::string>(&field->second))
+                {
+                    try
+                    {
+                        const auto decoded = _ToWide(*value);
+                        if (!decoded.empty())
+                        {
+                            resultCwd = std::filesystem::path{ decoded };
+                        }
+                    }
+                    catch (...)
+                    {
+                    }
+                }
+            }
+        }
         {
             std::lock_guard lock{ _mutex };
             const auto session = _sessions.find(request.sessionId);
@@ -1085,6 +1220,16 @@ namespace Microsoft::Terminal::RichTab::Provider
                     else
                     {
                         disposition = ProviderBrokerDisposition::Accepted;
+                        if (resultCwd && snapshot)
+                        {
+                            try
+                            {
+                                snapshot->diagnosticCwdToken = _CwdTokenLocked(*resultCwd);
+                            }
+                            catch (...)
+                            {
+                            }
+                        }
                         state->second.snapshot = std::move(snapshot);
                         ++session->second.updateSequence;
                         notifications = _NotificationsFor(request.sessionId, session->second, diagnostics);
@@ -1098,6 +1243,17 @@ namespace Microsoft::Terminal::RichTab::Provider
                         state->second.runningGeneration = next->generation;
                     }
                 }
+            }
+            if (diagnosticsEnabled && session != _sessions.end())
+            {
+                _LogCwdLocked(
+                    session->second,
+                    0,
+                    CwdDiagnosticStage::ProviderResult,
+                    disposition == ProviderBrokerDisposition::Accepted ? CwdDiagnosticOutcome::Accepted : CwdDiagnosticOutcome::Stale,
+                    std::move(resultCwd),
+                    session->second.updateSequence,
+                    request.hostRequestId);
             }
         }
 
@@ -1223,13 +1379,24 @@ namespace Microsoft::Terminal::RichTab::Provider
                 visibleFields.insert_or_assign(provider, fields);
             }
         }
+        uint64_t cwdToken = 0;
+        if (const auto fields = visibleFields.find("com.microsoft.intelligent-terminal.git-status");
+            fields == visibleFields.end() || fields->second.contains("workingDirectory"))
+        {
+            if (const auto snapshot = snapshots.find("com.microsoft.intelligent-terminal.git-status");
+                snapshot != snapshots.end() && snapshot->second.fields.contains("workingDirectory"))
+            {
+                cwdToken = snapshot->second.diagnosticCwdToken;
+            }
+        }
         return BrokerUpdate{
             sessionId,
             state.sessionIncarnation,
             state.contextRevision,
             state.updateSequence,
             ComposePresentation(_providers, snapshots, visibleFields, _fieldDisplayNames),
-            std::move(diagnostics)
+            std::move(diagnostics),
+            cwdToken
         };
     }
 

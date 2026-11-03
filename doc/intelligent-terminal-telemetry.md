@@ -1272,12 +1272,26 @@ is not itself an ETW payload.
 The local `rich-tab-provider-*.jsonl` stream is operational diagnostics, not
 telemetry. It records bounded host-observed outcomes for the catalog-origin
 Git metadata provider, including process launch status, timing, parsing, and
-whether the provider broker accepted the result. It does not record request or
-response bodies, stdout or stderr, paths, session IDs, repository or branch
-names, metadata values, exception text, or parser messages. Records are
-best-effort and may be dropped on contention, I/O failure, file-size limits, or
-process exit. The logger never delays provider execution or application
-shutdown to preserve records.
+whether the provider broker accepted the result. CWD records correlate OSC
+receipt, broker context and source selection, provider results, and UI
+application using process-local opaque session, attachment, and directory
+tokens. Equal directory tokens mean equal observed paths in that process; they
+do not reveal a path or prove that the shell reported its actual location.
+`cwdTokenLimitReached` marks runs where the bounded token map can no longer
+identify newly observed paths. An `osc-received` match compares the reported
+path to Core's state after the output write; it does not prove that an
+individual OSC changed Core when multiple sequences arrived in one write.
+For a CWD report, filter by `processEpoch` and `session`, then compare the
+`osc-received` token with the following `context-observed` shell token, the
+recorded shell/agent source, the `provider-result` request and token, and the
+`ui-result` token and disposition. Check `recordSequence`, `droppedRecords`,
+and `cwdTokenLimitReached` before interpreting a missing or zero token.
+The stream does not record request or response bodies, stdout or stderr, raw
+paths, session IDs, repository or branch names, metadata values, exception
+text, or parser messages. Records include attempted sequence and cumulative
+drop counts, but remain best-effort and may be dropped on contention, I/O
+failure, file-size limits, or process exit. The logger never delays provider
+execution or application shutdown to preserve records.
 
 Privacy tags and keywords are build metadata. Local ETW emission and
 decoding do not prove that a telemetry backend ingested events. Conversely,

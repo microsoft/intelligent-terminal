@@ -14200,15 +14200,23 @@ namespace winrt::TerminalApp::implementation
         const uint64_t reservation,
         const ::Microsoft::Terminal::RichTab::Provider::BrokerUpdate& update)
     {
+        auto& broker = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance();
+        ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachmentId{ 0 };
+        bool matchesAttachment = false;
         {
             std::lock_guard lock{ _richTabAttachmentsMutex };
             const auto attachment = _richTabAttachments.find(controlKey);
-            if (attachment == _richTabAttachments.end() ||
-                attachment->second.reservation != reservation ||
-                attachment->second.sessionId != update.sessionId)
+            if (attachment != _richTabAttachments.end())
             {
-                return;
+                attachmentId = attachment->second.id;
+                matchesAttachment = attachment->second.reservation == reservation &&
+                                    attachment->second.sessionId == update.sessionId;
             }
+        }
+        if (!matchesAttachment)
+        {
+            broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
+            return;
         }
 
         auto& state = _richTabPresentations[update.sessionId];
@@ -14216,6 +14224,7 @@ namespace winrt::TerminalApp::implementation
             (state.sessionIncarnation == update.sessionIncarnation &&
              state.updateSequence >= update.updateSequence))
         {
+            broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Stale, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
             return;
         }
         state = RichTabPresentationState{
@@ -14225,6 +14234,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         const auto target = winrt::guid{ winrt::to_hstring(update.sessionId) };
+        bool presented = false;
         for (const auto& projectedTab : _tabs)
         {
             if (const auto tab = _GetTabImpl(projectedTab))
@@ -14241,10 +14251,12 @@ namespace winrt::TerminalApp::implementation
                 if (presentedPane && presentedPane->GetSessionId() == target)
                 {
                     tab->SetRichTabPresentation(update.presentation);
+                    presented = true;
                 }
                 _ApplyTabListProjection(*tab);
             }
         }
+        broker.TraceCwd(update.sessionId, attachmentId, ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::UiResult, presented ? ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Applied : ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched, std::nullopt, update.updateSequence, update.diagnosticCwdToken, update.contextRevision);
     }
 
     static std::optional<winrt::guid> _TryParsePaneSessionId(const std::string_view value) noexcept
@@ -14597,7 +14609,85 @@ namespace winrt::TerminalApp::implementation
                                     {
                                         page->_ReconcileShellPromptAgentExit(richTabControl);
                                     }
+                                    const bool isCwdOsc = seqStr.starts_with("osc:9;9;");
+                                    std::optional<std::filesystem::path> reportedCwd;
+                                    auto oscOutcome = ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Unmatched;
+                                    ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::AttachmentId attachment{ 0 };
+                                    if (isCwdOsc)
+                                    {
+                                        try
+                                        {
+                                            static constexpr std::wstring_view prefix = L"osc:9;9;";
+                                            auto raw = std::wstring_view{ seq.c_str(), seq.size() }.substr(prefix.size());
+                                            if (raw.size() >= 3 && raw.front() == L'"' && raw.back() == L'"')
+                                            {
+                                                raw = raw.substr(1, raw.size() - 2);
+                                            }
+                                            if (raw.size() <= 32768)
+                                            {
+                                                reportedCwd = std::filesystem::path{ raw };
+                                                const auto coreCwd = richTabControl.WorkingDirectory();
+                                                if (raw == std::wstring_view{ coreCwd.c_str(), coreCwd.size() })
+                                                {
+                                                    oscOutcome = ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Matched;
+                                                }
+                                            }
+                                            const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(richTabControl));
+                                            {
+                                                std::lock_guard lock{ page->_richTabAttachmentsMutex };
+                                                if (const auto found = page->_richTabAttachments.find(key);
+                                                    found != page->_richTabAttachments.end())
+                                                {
+                                                    attachment = found->second.id;
+                                                }
+                                            }
+                                            if (attachment != 0)
+                                            {
+                                                ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().TraceCwd(
+                                                    page->_FindSessionIdForControl(richTabControl),
+                                                    attachment,
+                                                    ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::OscReceived,
+                                                    oscOutcome,
+                                                    reportedCwd);
+                                            }
+                                        }
+                                        catch (...)
+                                        {
+                                        }
+                                    }
                                     page->_AttachOrUpdateRichTabControl(richTabControl);
+                                    if (isCwdOsc)
+                                    {
+                                        if (attachment == 0)
+                                        {
+                                            const auto key = reinterpret_cast<uintptr_t>(winrt::get_abi(richTabControl));
+                                            {
+                                                std::lock_guard lock{ page->_richTabAttachmentsMutex };
+                                                if (const auto found = page->_richTabAttachments.find(key);
+                                                    found != page->_richTabAttachments.end())
+                                                {
+                                                    attachment = found->second.id;
+                                                }
+                                            }
+                                            if (attachment != 0)
+                                            {
+                                                ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().TraceCwd(
+                                                    page->_FindSessionIdForControl(richTabControl),
+                                                    attachment,
+                                                    ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::OscReceived,
+                                                    oscOutcome,
+                                                    reportedCwd);
+                                            }
+                                        }
+                                        if (attachment != 0)
+                                        {
+                                            ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::Instance().TraceCwd(
+                                                page->_FindSessionIdForControl(richTabControl),
+                                                attachment,
+                                                ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticStage::ContextObserved,
+                                                ::Microsoft::Terminal::RichTab::Provider::CwdDiagnosticOutcome::Observed);
+                                        }
+                                    }
                                     if (seqStr.starts_with("osc:133;D"))
                                     {
                                         page->_NotifyRichTabControl(
