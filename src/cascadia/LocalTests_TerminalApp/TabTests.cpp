@@ -10215,7 +10215,7 @@ namespace TerminalAppLocalTests
             strip.SearchActive(true);
             strip.SearchQuery(L"power");
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
-            VERIFY_ARE_EQUAL(40.0, stripImpl->SearchPanel().Height());
+            VERIFY_ARE_EQUAL(48.0, stripImpl->SearchPanel().Height());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"power" }, stripImpl->SearchTextBox().Text());
             const auto entry = stripImpl->SearchTextBox().Parent().as<Grid>();
             const auto icon = entry.Children().GetAt(1).as<PathIcon>();
@@ -10235,14 +10235,15 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
                 VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
                 const auto panel = stripImpl->SearchPanel();
-                panel.Measure({ width, 40 });
-                panel.Arrange({ 0, 0, width, 40 });
+                panel.Measure({ width, 48 });
+                panel.Arrange({ 0, 0, width, 48 });
                 panel.UpdateLayout();
                 const auto input = stripImpl->SearchTextBox();
                 const auto inputBounds = input.TransformToVisual(panel).TransformBounds({ 0, 0, static_cast<float>(input.ActualWidth()), static_cast<float>(input.ActualHeight()) });
                 const auto titleLeft = stripImpl->VerticalTabsHeader().TransformToVisual(toolbar).TransformPoint({ 0, 0 }).X;
                 VERIFY_ARE_EQUAL(24.0f, titleLeft);
                 VERIFY_ARE_EQUAL(16.0f, inputBounds.X);
+                VERIFY_ARE_EQUAL(12.0f, static_cast<float>(panel.ActualHeight()) - inputBounds.Y - inputBounds.Height);
                 VERIFY_IS_TRUE(inputBounds.X < titleLeft);
                 VERIFY_ARE_EQUAL(inputBounds.X, width - inputBounds.X - inputBounds.Width);
                 const auto iconBounds = icon.TransformToVisual(input).TransformBounds({ 0, 0, static_cast<float>(icon.ActualWidth()), static_cast<float>(icon.ActualHeight()) });
@@ -19493,8 +19494,8 @@ namespace TerminalAppLocalTests
             strip.IsRailCollapsed(false);
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
-            verifyHoverInset(headerRoot, L"TabHoverBackground");
-            verifyHoverInset(headerRoot, L"TabColorHoverBackground");
+            verifyBackgroundBounds(headerRoot, L"TabHoverBackground", 5, 3);
+            verifyBackgroundBounds(headerRoot, L"TabColorHoverBackground", 5, 3);
             VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
             VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
             strip.IsRailCollapsed(true);

@@ -18,6 +18,12 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="ms-resource:///Files/TerminalApp/SidebarLayoutResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="VerticalTitlebarDividerStyle"
+                   TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource SplitButtonBorderBrushDivider}" />
+                <Setter Property="BorderThickness" Value="0,0,1,1" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+            </Style>
             <ControlTemplate x:Key="VerticalRailToggleTemplate"
                              TargetType="Button">
                 <!--  Keep the hit target larger than the visible affordance.  -->
