@@ -10152,7 +10152,14 @@ namespace TerminalAppLocalTests
                 {
                     VERIFY_IS_TRUE(VisualStateManager::GoToState(search, state, false));
                     const auto fill = presenter.Background().as<Media::SolidColorBrush>().Color();
-                    VERIFY_IS_TRUE(fill.A > 0);
+                    if (state == std::wstring_view{ L"Checked" } && !highContrast)
+                    {
+                        VERIFY_ARE_EQUAL(0, fill.A);
+                    }
+                    else
+                    {
+                        VERIFY_IS_TRUE(fill.A > 0);
+                    }
                     if (!highContrast)
                     {
                         VERIFY_ARE_EQUAL(fill.R, fill.G);
@@ -10223,9 +10230,8 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(40.0, toolbar.ActualHeight());
                 VERIFY_ARE_EQUAL(0.0, toolbar.Margin().Right);
                 VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
-                const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
-                VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 1 - 1.5 * cell)) <= 1.0);
-                VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - cell / 2)) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 60)) <= 1.0);
+                VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - 20)) <= 1.0);
                 VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
                 VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
                 const auto panel = stripImpl->SearchPanel();
@@ -10235,8 +10241,9 @@ namespace TerminalAppLocalTests
                 const auto input = stripImpl->SearchTextBox();
                 const auto inputBounds = input.TransformToVisual(panel).TransformBounds({ 0, 0, static_cast<float>(input.ActualWidth()), static_cast<float>(input.ActualHeight()) });
                 const auto titleLeft = stripImpl->VerticalTabsHeader().TransformToVisual(toolbar).TransformPoint({ 0, 0 }).X;
-                VERIFY_ARE_EQUAL(12.0f, titleLeft);
-                VERIFY_ARE_EQUAL(20.0f, inputBounds.X);
+                VERIFY_ARE_EQUAL(24.0f, titleLeft);
+                VERIFY_ARE_EQUAL(16.0f, inputBounds.X);
+                VERIFY_IS_TRUE(inputBounds.X < titleLeft);
                 VERIFY_ARE_EQUAL(inputBounds.X, width - inputBounds.X - inputBounds.Width);
                 const auto iconBounds = icon.TransformToVisual(input).TransformBounds({ 0, 0, static_cast<float>(icon.ActualWidth()), static_cast<float>(icon.ActualHeight()) });
                 VERIFY_IS_TRUE(iconBounds.Width > 0);
@@ -10277,11 +10284,10 @@ namespace TerminalAppLocalTests
             searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
             const auto optionsBounds = options.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
             VERIFY_ARE_EQUAL(0.0, toolbar.Margin().Right);
-            VERIFY_ARE_EQUAL(12.0, toolbar.Padding().Left);
+            VERIFY_ARE_EQUAL(24.0, toolbar.Padding().Left);
             VERIFY_ARE_EQUAL(0.0, toolbar.Padding().Right);
-            const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
-            VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 1 - 1.5 * cell)) <= 1.0);
-            VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - cell / 2)) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(searchBounds.X + 20 - (toolbar.ActualWidth() - 60)) <= 1.0);
+            VERIFY_IS_TRUE(std::abs(optionsBounds.X + 20 - (toolbar.ActualWidth() - 20)) <= 1.0);
             VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
             VERIFY_ARE_EQUAL(0.0f, optionsBounds.Y);
             stripImpl->ProjectionControlsEnabled(false);
@@ -10526,7 +10532,7 @@ namespace TerminalAppLocalTests
                     const auto leadingEdge = [&](const auto& rect) {
                         return direction == FlowDirection::LeftToRight ? rect.X : width - rect.X - rect.Width;
                     };
-                    VERIFY_IS_TRUE(std::abs(leadingEdge(tabsHeading) - 12) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(leadingEdge(tabsHeading) - 24) <= 1.0);
                     VERIFY_IS_TRUE(leadingEdge(chevron) + chevron.Width < leadingEdge(recentHeading));
                     const auto split = chrome->VerticalNewTabButton();
                     split.ApplyTemplate();
@@ -10535,11 +10541,13 @@ namespace TerminalAppLocalTests
                     const auto secondary = bounds(splitRoot.FindName(L"SecondaryButton").as<Button>());
                     const auto searchAction = bounds(stripImpl->SearchTabsButton());
                     const auto center = [](const auto& rect) { return rect.X + rect.Width / 2; };
-                    VERIFY_IS_TRUE(std::abs(center(primary) - center(searchAction)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(center(secondary) - center(filter)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(leadingEdge(searchAction) + searchAction.Width / 2 - (width - 60)) <= 1.0);
                     const auto cell = winrt::unbox_value<double>(strip.Resources().Lookup(winrt::box_value(L"SidebarActionCellExtent")));
-                    VERIFY_IS_TRUE(std::abs(center(filter) - (direction == FlowDirection::LeftToRight ? width - cell / 2 : cell / 2)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(search.X - 20) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(std::abs(center(primary) - center(secondary)) - cell - 1) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(center(secondary) - (direction == FlowDirection::LeftToRight ? width - cell / 2 : cell / 2)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(leadingEdge(filter) + filter.Width / 2 - (width - 20)) <= 1.0);
+                    VERIFY_IS_TRUE(std::abs(search.X - 16) <= 1.0);
+                    VERIFY_IS_TRUE(leadingEdge(search) < leadingEdge(tabsHeading));
                     const auto rows = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
                     const auto tabRoot = rows.Children().GetAt(0).as<Grid>();
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
@@ -19472,10 +19480,21 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(32.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
             VERIFY_ARE_EQUAL(14.0f, centerX(iconPresenter));
+            for (const auto name : { L"TabHoverBackground", L"TabColorHoverBackground" })
+            {
+                const auto hover = headerRoot.FindName(name).as<Border>();
+                const auto bounds = hover.TransformToVisual(selectionBackground).TransformBounds({ 0, 0, static_cast<float>(hover.ActualWidth()), static_cast<float>(hover.ActualHeight()) });
+                VERIFY_ARE_EQUAL(0.0f, bounds.X);
+                VERIFY_ARE_EQUAL(0.0f, bounds.Y);
+                VERIFY_ARE_EQUAL(static_cast<float>(selectionBackground.ActualWidth()), bounds.Width);
+                VERIFY_ARE_EQUAL(static_cast<float>(selectionBackground.ActualHeight()), bounds.Height);
+            }
 
             strip.IsRailCollapsed(false);
             host.UpdateLayout();
             VERIFY_ARE_EQUAL(Visibility::Collapsed, selectionBackground.Visibility());
+            verifyHoverInset(headerRoot, L"TabHoverBackground");
+            verifyHoverInset(headerRoot, L"TabColorHoverBackground");
             VERIFY_ARE_EQUAL(groupIconCenter, centerX(groupButton));
             VERIFY_ARE_EQUAL(groupTitleOffset, headerPresenter.TransformToVisual(headerRoot).TransformPoint({ 0, 0 }).X);
             strip.IsRailCollapsed(true);
