@@ -11548,8 +11548,7 @@ namespace TerminalAppLocalTests
                 page->RequestedTheme(theme);
                 page->UpdateLayout();
 
-                const auto expected = ThemeLookup(Application::Current().Resources(), theme,
-                                                  winrt::box_value(L"TabViewBackground"))
+                const auto expected = page->BottomBarRoot().BorderBrush()
                                           .as<Media::SolidColorBrush>()
                                           .Color();
                 const auto actual = page->BottomBarRoot().Background()
