@@ -219,10 +219,13 @@ namespace Microsoft::Terminal::WtaProcess
         const auto retireResources = wil::scope_exit([&]() noexcept {
             try
             {
-                if (resources.Retire(resourceJob.get()))
+                resources.BeginRetirement(resourceJob.get());
+                if (resources.RetirementPending())
                 {
-                    const auto cleanup = RunWtaCapture(wtaPath, L"recover-process-resources", 3000, envBlock, false, nullptr, true);
-                    LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
+                    RetireProcessResourcesWithRetry(resources, resourceJob, [wtaPath, environment = resourceEnvironment]() mutable {
+                        const auto cleanup = RunWtaCapture(wtaPath, L"recover-process-resources", 3000, environment.data(), false, nullptr, true);
+                        LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
+                    });
                 }
             }
             catch (...)

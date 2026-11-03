@@ -163,6 +163,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartTimeoutTerminatesThenReapsRetiredProcess);
         TEST_METHOD(RestartWaitFailureTerminatesThenReapsRetiredProcess);
         TEST_METHOD(RestartFailsWhenForcedProcessReapTimesOut);
+        TEST_METHOD(RestartDoesNotWaitForManagedShutdown);
         TEST_METHOD(StaleWaitCallbackCannotClaimReplacementWithReusedPid);
         TEST_METHOD(RetiredWaitCallbackCannotClaimAfterCleanup);
         TEST_METHOD(CurrentUnexpectedExitWithRetainedRefsRespawnsOnce);
@@ -192,6 +193,65 @@ namespace TerminalAppUnitTests
             return owner._AcquireLeaseLocked();
         }
     };
+
+    void SharedWtaTests::RestartDoesNotWaitForManagedShutdown()
+    {
+        SharedWta owner;
+        owner._job = owner._resourceScope.CreateJob();
+        VERIFY_IS_NOT_NULL(owner._job.get());
+        const auto seed = owner._resourceScope.Environment(nullptr);
+        const auto offset = seed.find(L"WTA_PROCESS_RESOURCE_SCOPE=");
+        VERIFY_IS_TRUE(offset != std::wstring::npos);
+        const auto id = seed.substr(offset + 27, 32);
+        const auto local = std::filesystem::temp_directory_path() / (L"WtaRestartTest-" + id);
+        const auto root = IntelligentTerminal::AcpRuntimeRoot(local);
+        std::filesystem::create_directories(root);
+        const auto removeFixture = wil::scope_exit([&]() {
+            std::error_code error;
+            const auto deadline = GetTickCount64() + 5000;
+            do
+            {
+                std::filesystem::remove_all(local, error);
+                if (!error)
+                {
+                    return;
+                }
+                Sleep(10);
+            } while (GetTickCount64() < deadline);
+            LOG_HR_IF(E_FAIL, static_cast<bool>(error));
+        });
+        auto environment = L"LOCALAPPDATA=" + local.wstring();
+        environment.append(2, L'\0');
+        owner._resourceScope.Environment(environment.c_str());
+        wchar_t system[MAX_PATH]{};
+        VERIFY_IS_TRUE(GetSystemDirectoryW(system, ARRAYSIZE(system)) != 0);
+        const auto executable = std::filesystem::path{ system } / L"WindowsPowerShell\\v1.0\\powershell.exe";
+        auto command = L"\"" + executable.wstring() + L"\" -NoProfile -NonInteractive -Command Start-Sleep -Seconds 30";
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        VERIFY_IS_TRUE(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process));
+        owner._process.reset(process.hProcess);
+        wil::unique_handle thread{ process.hThread };
+        owner._pid = process.dwProcessId;
+        VERIFY_IS_TRUE(AssignProcessToJobObject(owner._job.get(), owner._process.get()));
+        owner._resourceScope.Attached();
+        wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, (L"Local\\wta-resources-used-" + id).c_str()) };
+        VERIFY_IS_TRUE(SetEvent(requested.get()));
+        owner._shutdownEvent.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        VERIFY_IS_TRUE(ResumeThread(thread.get()) != static_cast<DWORD>(-1));
+
+        const auto started = GetTickCount64();
+        VERIFY_IS_FALSE(owner._RestartLocked((local / L"missing-wta.exe").wstring(), {}, {}));
+        VERIFY_IS_TRUE(GetTickCount64() - started < 2000);
+        const auto receipt = root / (L".retired-" + id);
+        const auto deadline = GetTickCount64() + 5000;
+        while (!std::filesystem::is_regular_file(receipt) && GetTickCount64() < deadline)
+        {
+            Sleep(10);
+        }
+        VERIFY_IS_TRUE(std::filesystem::is_regular_file(receipt));
+    }
 
     void SharedWtaTests::EmptyLeaseOperationsAreNoOps()
     {

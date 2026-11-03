@@ -108,8 +108,25 @@ pub(crate) struct ProcessJob(OwnedHandle);
 pub(crate) trait ProcessResources: Send + Sync {
     fn job_name(&self) -> &str;
     fn configure(&self, command: &mut tokio::process::Command);
-    /// Called after complete job exit, or a failed spawn that never resumed the child.
+    /// Called for unused resources, after complete job exit, or a spawn that never resumed the child.
     fn cleanup(&mut self) -> Result<()>;
+}
+
+/// Owns cleanup until the synchronous handoff to an AgentProcess spawn.
+pub(crate) struct PreparedProcessResources(Option<Box<dyn ProcessResources>>);
+
+impl PreparedProcessResources {
+    pub(crate) fn new(resources: Box<dyn ProcessResources>) -> Self {
+        Self(Some(resources))
+    }
+}
+
+impl Drop for PreparedProcessResources {
+    fn drop(&mut self) {
+        if let Some(resources) = self.0.take() {
+            cleanup_on_drop(None, resources);
+        }
+    }
 }
 
 impl ProcessJob {
@@ -267,8 +284,9 @@ impl AgentProcess {
     pub(crate) fn spawn_with_resources(
         command: &mut tokio::process::Command,
         wsl_bootstrap: Option<(String, String)>,
-        resources: Option<Box<dyn ProcessResources>>,
+        resources: Option<PreparedProcessResources>,
     ) -> Result<Self> {
+        let resources = resources.and_then(|mut resources| resources.0.take());
         let spawned = match &resources {
             Some(resources) => {
                 resources.configure(command);

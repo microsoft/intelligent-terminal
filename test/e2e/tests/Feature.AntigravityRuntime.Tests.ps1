@@ -72,7 +72,7 @@ Describe 'Feature Antigravity runtime cleanup' -Tag 'Feature', 'AntigravityRunti
             }
             $source = Join-Path $root 'test\e2e\fixtures\WtaCaptureParent.cpp'
             $output = Join-Path $native 'WtaCaptureParent.exe'
-            $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++20 /MT /I`"$wil`" `"$source`" /Fe:`"$output`" /Fo:`"$native\parent.obj`" /link /INCREMENTAL:NO ole32.lib runtimeobject.lib advapi32.lib"
+            $build = "call `"$vcvars`" >nul && cl /nologo /EHsc /std:c++20 /MT /I`"$wil`" `"$source`" /Fe:`"$output`" /Fo:`"$native\parent.obj`" /link /INCREMENTAL:NO ole32.lib oleaut32.lib runtimeobject.lib advapi32.lib"
             $installer = Split-Path -Parent $vswhere
             $buildScript = "`$env:PATH='$($installer.Replace("'", "''"));'+`$env:PATH; & `$env:ComSpec /d /c '$($build.Replace("'", "''"))'; exit `$LASTEXITCODE"
             $buildEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($buildScript))

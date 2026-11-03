@@ -303,8 +303,14 @@ fn has_parent_retirement(root: &Root, scope: Option<&str>) -> Result<bool> {
 }
 
 fn prune_unused_receipts(root: &Root) -> Result<()> {
+    prune_enumerated_receipts(fs::read_dir(&root.path)?)
+}
+
+fn prune_enumerated_receipts(
+    entries: impl IntoIterator<Item = std::io::Result<fs::DirEntry>>,
+) -> Result<()> {
     let mut receipts = Vec::new();
-    for entry in fs::read_dir(&root.path)? {
+    for entry in entries {
         let entry = entry?;
         let name = entry.file_name();
         let Some(scope) = name
@@ -313,7 +319,15 @@ fn prune_unused_receipts(root: &Root) -> Result<()> {
         else {
             return Ok(());
         };
-        let metadata = fs::symlink_metadata(entry.path())?;
+        let metadata = match fs::symlink_metadata(entry.path()) {
+            Ok(metadata) => metadata,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound && valid_resource_scope(scope) =>
+            {
+                continue
+            }
+            Err(error) => return Err(error).context("inspect runtime retirement receipt"),
+        };
         if !valid_resource_scope(scope)
             || !metadata.is_file()
             || metadata.len() != 0
@@ -625,6 +639,26 @@ mod tests {
     }
 
     #[test]
+    fn rust_review_receipt_disappearing_after_enumeration_is_already_pruned() {
+        let scratch = Scratch::new();
+        let root = open_root(&scratch.0, false).unwrap().unwrap();
+        let receipt = |scope: &str| {
+            root.path
+                .join(format!("{RESOURCE_SCOPE_RECEIPT_PREFIX}{scope}"))
+        };
+        let vanished = receipt(&uuid::Uuid::new_v4().simple().to_string());
+        let remaining = receipt(&uuid::Uuid::new_v4().simple().to_string());
+        fs::write(&vanished, []).unwrap();
+        fs::write(&remaining, []).unwrap();
+        let entries: Vec<_> = fs::read_dir(&root.path).unwrap().collect();
+        fs::remove_file(&vanished).unwrap();
+
+        prune_enumerated_receipts(entries)
+            .expect("concurrent receipt removal must not reject the next launch");
+        assert!(!remaining.exists());
+    }
+
+    #[test]
     fn antigravity_runtime_cleanup_parent_receipt_reclaims_only_its_retired_scope() {
         let scratch = Scratch::new();
         let old_scope = uuid::Uuid::new_v4().simple().to_string();
@@ -752,7 +786,7 @@ mod tests {
         let mut child = crate::protocol::acp::process::AgentProcess::spawn_with_resources(
             &mut command,
             None,
-            Some(Box::new(runtime)),
+            Some(crate::protocol::acp::process::PreparedProcessResources::new(Box::new(runtime))),
         )
         .unwrap();
         let error = child.terminate().await.unwrap_err();

@@ -6,12 +6,15 @@
 #include <windows.h>
 #include <objbase.h>
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 #include <wil/resource.h>
+#include <winrt/base.h>
 
 #include "IntelligentTerminalPaths.h"
 
@@ -132,17 +135,6 @@ namespace Microsoft::Terminal::WtaProcess
             return state == WAIT_OBJECT_0;
         }
 
-        void RequestShutdown(const HANDLE shutdown, const HANDLE process, const DWORD timeoutMs) const noexcept
-        {
-            if (Requested() && shutdown && process)
-            {
-                LOG_IF_WIN32_BOOL_FALSE(SetEvent(shutdown));
-                const auto result = WaitForSingleObject(process, timeoutMs);
-                LOG_HR_IF(HRESULT_FROM_WIN32(ERROR_TIMEOUT), result == WAIT_TIMEOUT);
-                LOG_LAST_ERROR_IF(result == WAIT_FAILED);
-            }
-        }
-
         void AttachRequested(const HANDLE process, const HANDLE job) noexcept
         {
             if (!_attachmentAttempted && !_attached && Requested())
@@ -159,7 +151,7 @@ namespace Microsoft::Terminal::WtaProcess
             }
         }
 
-        bool Retire(const HANDLE job, const DWORD timeoutMs = 5000) noexcept
+        bool BeginRetirement(const HANDLE job) noexcept
         try
         {
             // A requester sets "used" before waiting for "ready". Closing that
@@ -172,7 +164,28 @@ namespace Microsoft::Terminal::WtaProcess
             {
                 return false;
             }
+            _retirementPending = true;
             THROW_IF_WIN32_BOOL_FALSE(TerminateJobObject(job, 1));
+            return true;
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return false;
+        }
+
+        bool RetirementPending() const noexcept
+        {
+            return _retirementPending;
+        }
+
+        bool Retire(const HANDLE job, const DWORD timeoutMs = 5000) noexcept
+        try
+        {
+            if (!BeginRetirement(job))
+            {
+                return false;
+            }
             const auto start = GetTickCount64();
             for (;;)
             {
@@ -187,6 +200,7 @@ namespace Microsoft::Terminal::WtaProcess
                 Sleep(25);
             }
             _RecordRetirement();
+            _retirementPending = false;
             return true;
         }
         catch (...)
@@ -208,23 +222,41 @@ namespace Microsoft::Terminal::WtaProcess
             auto current = root.root_path();
             const auto pin = [&](const std::filesystem::path& path) {
                 wil::unique_hfile directory{ CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr) };
-                THROW_LAST_ERROR_IF(!directory);
+                if (!directory)
+                {
+                    const auto error = GetLastError();
+                    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
+                    {
+                        return false;
+                    }
+                    THROW_WIN32(error);
+                }
                 BY_HANDLE_FILE_INFORMATION info{};
                 THROW_IF_WIN32_BOOL_FALSE(GetFileInformationByHandle(directory.get(), &info));
                 THROW_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA),
                             !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
                                 (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT));
                 pins.emplace_back(std::move(directory));
+                return true;
             };
-            pin(current);
+            THROW_HR_IF(HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND), !pin(current));
             for (const auto& component : root.relative_path())
             {
                 current /= component;
-                pin(current);
+                if (!pin(current))
+                {
+                    // Admission can precede cache creation; the empty job cannot create it later.
+                    return;
+                }
             }
             const auto path = root / (L".retired-" + _id);
-            wil::unique_hfile receipt{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr) };
+            wil::unique_hfile receipt{ CreateFileW(path.c_str(), GENERIC_WRITE | FILE_READ_ATTRIBUTES, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr) };
             THROW_LAST_ERROR_IF(!receipt);
+            BY_HANDLE_FILE_INFORMATION info{};
+            THROW_IF_WIN32_BOOL_FALSE(GetFileInformationByHandle(receipt.get(), &info));
+            THROW_HR_IF(HRESULT_FROM_WIN32(ERROR_INVALID_DATA),
+                        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) ||
+                            info.nFileSizeHigh != 0 || info.nFileSizeLow != 0);
             THROW_IF_WIN32_BOOL_FALSE(FlushFileBuffers(receipt.get()));
         }
 
@@ -235,5 +267,46 @@ namespace Microsoft::Terminal::WtaProcess
         bool _available{ false };
         bool _attached{ false };
         bool _attachmentAttempted{ false };
+        bool _retirementPending{ false };
     };
+
+    inline winrt::fire_and_forget QueueProcessResourceRetirement(ProcessResourceScope scope,
+                                                                 wil::unique_handle job,
+                                                                 std::function<void()> reclaimed)
+    {
+        ++winrt::get_module_lock();
+        const auto releaseModule = wil::scope_exit([]() noexcept {
+            --winrt::get_module_lock();
+        });
+        try
+        {
+            co_await winrt::resume_background();
+            auto delay = std::chrono::milliseconds{ 100 };
+            while (!scope.Retire(job.get()))
+            {
+                // Keep the actual job and its scope until durable proof exists.
+                co_await winrt::resume_after(delay);
+                delay = (std::min)(delay * 2, std::chrono::milliseconds{ 30000 });
+            }
+            reclaimed();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+    }
+
+    inline void RetireProcessResourcesWithRetry(ProcessResourceScope& scope,
+                                                wil::unique_handle& job,
+                                                const std::function<void()>& reclaimed)
+    {
+        if (scope.Retire(job.get()))
+        {
+            reclaimed();
+        }
+        else if (scope.RetirementPending())
+        {
+            QueueProcessResourceRetirement(std::move(scope), std::move(job), reclaimed);
+        }
+    }
 }

@@ -485,6 +485,9 @@ extraction starts. Controlled restart, settings replacement, captured-process
 cancellation and WTA exit can then retain a parent-owned job until its complete
 process group has exited. The parent records that retirement so a new WTA can
 reclaim the old instance without guessing from a missing process or job name.
+Restart leaves this resource wait and filesystem work off the UI thread.
+If writing retirement evidence fails, the surviving parent retains the job and
+retries in the background instead of losing its confirmed-exit evidence.
 Other providers do not request this resource policy, keep their inherited
 temporary environment, and retain the existing no-opt-in lifecycle behavior.
 

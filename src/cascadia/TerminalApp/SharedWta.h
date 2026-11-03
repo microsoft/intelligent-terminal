@@ -406,7 +406,8 @@ namespace winrt::TerminalApp::implementation
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
         wil::unique_handle _CleanupLocked(bool* retiredResources = nullptr);
-        static winrt::fire_and_forget _RecoverManagedResources(std::wstring wtaPath);
+        void _QueueResourceRetirement();
+        static void _RecoverManagedResources(const std::wstring& wtaPath);
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
         // a free function. The `context` PVOID carries a monotonically

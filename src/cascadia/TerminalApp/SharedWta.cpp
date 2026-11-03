@@ -930,7 +930,6 @@ namespace winrt::TerminalApp::implementation
         // the old master for the stable, process-wide pipe name. Holding _mtx
         // throughout also preserves cross-window restart deduplication.
         const auto retiredPid = _pid;
-        _resourceScope.RequestShutdown(_shutdownEvent.get(), _process.get(), WtaMasterShutdownTimeoutMs);
         auto retiredProcess = _CleanupLocked();
         if (retiredProcess &&
             !details::EnsureProcessExitedBeforeRestart(
@@ -1170,10 +1169,17 @@ namespace winrt::TerminalApp::implementation
 
     wil::unique_handle SharedWta::_CleanupLocked(bool* retiredResources)
     {
-        const auto resourcesRetired = _resourceScope.Retire(_job.get());
         if (retiredResources)
         {
-            *retiredResources = resourcesRetired;
+            *retiredResources = _resourceScope.Retire(_job.get());
+        }
+        else
+        {
+            _resourceScope.BeginRetirement(_job.get());
+        }
+        if (_resourceScope.RetirementPending())
+        {
+            _QueueResourceRetirement();
         }
         // Order matters: drop the job FIRST so KILL_ON_JOB_CLOSE
         // terminates wta + descendants while we still hold a process
@@ -1243,7 +1249,11 @@ namespace winrt::TerminalApp::implementation
         // diagnosable; deliberate teardowns never reach here (they reset
         // _process first, so the validity check above bails).
         _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(*observedPid) + " (crash/OOM/external kill — observed by wait callback)");
-        const auto retiredResources = _resourceScope.Retire(_job.get());
+        _resourceScope.BeginRetirement(_job.get());
+        if (_resourceScope.RetirementPending())
+        {
+            _QueueResourceRetirement();
+        }
         _job.reset();
         _shutdownEvent.reset();
         _resourceScope = {};
@@ -1258,7 +1268,6 @@ namespace winrt::TerminalApp::implementation
         _pid = 0;
         _masterGeneration = 0;
 
-        bool restarted = false;
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,
                 _serviceRequested,
@@ -1274,22 +1283,24 @@ namespace winrt::TerminalApp::implementation
                     "failed to respawn wta-master after unexpected exit pid=" +
                     std::to_string(*observedPid) + "; retained helpers may remain disconnected");
             }
-            else
-            {
-                restarted = true;
-            }
-        }
-        if (retiredResources && !restarted && !_shuttingDown && !_cachedWtaPath.empty())
-        {
-            _RecoverManagedResources(_cachedWtaPath);
         }
     }
 
-    winrt::fire_and_forget SharedWta::_RecoverManagedResources(std::wstring wtaPath)
+    void SharedWta::_QueueResourceRetirement()
+    {
+        ::Microsoft::Terminal::WtaProcess::QueueProcessResourceRetirement(
+            std::move(_resourceScope), std::move(_job), [wtaPath = _cachedWtaPath]() {
+                if (!wtaPath.empty())
+                {
+                    _RecoverManagedResources(wtaPath);
+                }
+            });
+    }
+
+    void SharedWta::_RecoverManagedResources(const std::wstring& wtaPath)
     {
         try
         {
-            co_await winrt::resume_background();
             const auto cleanup = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(
                 wtaPath, L"recover-process-resources", 3000, nullptr, false, nullptr, true);
             LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
