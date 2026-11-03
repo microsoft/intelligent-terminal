@@ -419,6 +419,7 @@ namespace winrt::TerminalApp::implementation
         void _RequestPinTab(const winrt::com_ptr<Tab>& tab, bool pinned);
         void _ApplyPendingPinRequest();
         void _SetTabPinned(const winrt::com_ptr<Tab>& tab, bool pinned);
+        void _UnpinAllTabs();
         void _MoveTabToIndex(uint32_t from, uint32_t to, bool selectMoved);
 
         TerminalApp::Tab _settingsTab{ nullptr };

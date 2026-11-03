@@ -94,8 +94,6 @@
                    BasedOn="{StaticResource SidebarHistoryContainerStyle}"
                    TargetType="mux:TreeViewItem">
                 <Setter Property="MinHeight" Value="44" />
-                <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="0,1,0,0" />
                 <Setter Property="CornerRadius" Value="{StaticResource SidebarTabCornerRadius}" />
             </Style>
             <Style x:Key="SidebarHistoryStatusContainerStyle"
@@ -443,8 +441,6 @@
               Grid.Row="2"
               Height="40"
               Padding="{StaticResource SidebarToolbarPadding}"
-              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-              BorderThickness="0,1,0,1"
               ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -712,7 +708,7 @@
               Height="0"
               Opacity="0"
               Visibility="Collapsed">
-            <Grid Margin="16,4">
+            <Grid Margin="16,4,16,12">
                 <TextBox x:Name="SearchTextBox"
                          x:Uid="VerticalTabsSearchBox"
                          Height="32"
@@ -736,11 +732,17 @@
             </Grid>
         </Grid>
 
+        <Border x:Name="TabsSectionDivider"
+                Grid.Row="2"
+                Grid.RowSpan="2"
+                Height="1"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource SplitButtonBorderBrushDivider}"
+                IsHitTestVisible="False" />
+
         <Border x:Name="SearchEmptyState"
                 Grid.Row="4"
                 Padding="16"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0"
                 Visibility="Collapsed">
             <TextBlock x:Name="SearchNoResultsText"
                        x:Uid="VerticalTabsSearchNoMatches"

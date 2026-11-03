@@ -36,7 +36,7 @@ using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 
-static constexpr double SearchPanelExpandedHeight = 40.0;
+static constexpr double SearchPanelExpandedHeight = 48.0;
 static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
 // Keep the pane dismiss implementation intact so it can be restored when split-pane chrome exposes the same affordance.
 static constexpr bool PaneDismissActionsEnabled = false;
@@ -3476,6 +3476,8 @@ namespace winrt::TerminalApp::implementation
         FilterTabsButton().IsHitTestVisible(!_isRailCollapsed);
         FilterTabsButton().IsEnabled(_projectionControlsEnabled && !_isRailCollapsed);
         ItemsList().AllowDrop(ItemsList().CanDragItems() && !_isRailCollapsed);
+        ItemsList().Padding(_isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 0, 8, 0, 0 });
+        TabsSectionDivider().Margin(_isRailCollapsed ? WUX::Thickness{ 8, 0, 8, 0 } : WUX::Thickness{});
         TabsToolbar().Padding(_isRailCollapsed ? WUX::Thickness{} :
                                                  unbox_value<WUX::Thickness>(Resources().Lookup(box_value(L"SidebarToolbarPadding"))));
         const auto actionColumn = _isRailCollapsed ? WUX::GridLengthHelper::FromValueAndType(0, WUX::GridUnitType::Pixel) :
