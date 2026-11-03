@@ -829,14 +829,12 @@
                                         </Grid.ColumnDefinitions>
                                         <Border x:Name="TabHoverBackground"
                                                 Grid.ColumnSpan="3"
-                                                Margin="5,3"
                                                 Background="{ThemeResource TabViewItemHeaderBackgroundPointerOver}"
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsHitTestVisible="False"
                                                 Opacity="0" />
                                         <Border x:Name="TabColorHoverBackground"
                                                 Grid.ColumnSpan="3"
-                                                Margin="5,3"
                                                 CornerRadius="{StaticResource SidebarTabCornerRadius}"
                                                 IsHitTestVisible="False"
                                                 Opacity="0" />
