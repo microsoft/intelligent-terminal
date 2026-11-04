@@ -19805,8 +19805,9 @@ namespace TerminalAppLocalTests
                     host.RequestedTheme(theme);
                     host.UpdateLayout();
                     const auto railBrush = groupIndicator.as<Border>().Background().as<Media::SolidColorBrush>();
-                    const auto effectiveOpacity = railBrush.Opacity() * railBrush.Color().A / 255.0;
-                    VERIFY_IS_TRUE(effectiveOpacity > 0.0 && effectiveOpacity < 0.5);
+                    const auto expectedBrush = ThemeLookup(Application::Current().Resources(), theme, winrt::box_value(L"ControlStrongFillColorDefaultBrush")).as<Media::SolidColorBrush>();
+                    VERIFY_ARE_EQUAL(expectedBrush.Color(), railBrush.Color());
+                    VERIFY_ARE_EQUAL(expectedBrush.Opacity(), railBrush.Opacity());
                 }
                 host.RequestedTheme(ElementTheme::Default);
                 host.UpdateLayout();
