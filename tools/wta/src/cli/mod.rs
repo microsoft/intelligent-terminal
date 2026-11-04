@@ -7,7 +7,7 @@ pub(crate) mod probes;
 pub(crate) mod sessions;
 pub(crate) mod wt;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use args::{Command, HooksAction, SessionsAction};
 
@@ -199,6 +199,18 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         } => probes::run_models(&agent, agent_id.as_deref(), retry_startup).await,
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
         Command::ProbeHostAgents => probes::run_host_agents(),
+        Command::AcpConsoleHost {
+            stop_event,
+            arguments,
+        } => {
+            let code = tokio::task::spawn_blocking(move || {
+                crate::protocol::acp::console_host::run(&stop_event, &arguments)
+            })
+            .await
+            .context("join ACP console host")??;
+            crate::logging::shutdown_flush();
+            std::process::exit(code);
+        }
         Command::ProbeProfileAgents => native_agent::probe(),
         Command::LaunchAgent {
             agent_id,
