@@ -2473,6 +2473,7 @@ namespace TerminalAppLocalTests
                         else
                         {
                             VERIFY_ARE_EQUAL(Visibility::Visible, metadata.Visibility());
+                            VERIFY_IS_TRUE(metadata.UsePathEllipsis());
                             VERIFY_IS_TRUE(layout.ActualHeight() > singleLineHeight);
                             VERIFY_IS_TRUE(std::abs(position.X - singleLineX) <= tolerance);
                             const auto metadataPosition = metadata.TransformToVisual(layout).TransformPoint({ 0, 0 });
@@ -2481,6 +2482,21 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"C:\\Users\\haonantang\\Copilot\\intelligent-terminal\\splitPane";
+            tab->SetRichTabPresentation(presentation);
+            header.Width(180);
+            header.Measure({ 180, 100 });
+            header.Arrange({ 0, 0, 180, header.DesiredSize().Height });
+            header.UpdateLayout();
+            const auto metadata = header.FindName(L"HeaderMetadataTextBlock").as<winrt::TerminalApp::HighlightedTextControl>();
+            const auto metadataText = Media::VisualTreeHelper::GetChild(metadata, 0).as<TextBlock>();
+            const std::wstring_view displayedCwd{ metadataText.Text() };
+            VERIFY_IS_TRUE(displayedCwd.starts_with(L"C:\\"));
+            VERIFY_IS_TRUE(displayedCwd.find(L"\u2026") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(displayedCwd.ends_with(L"\\splitPane"));
+            VERIFY_IS_FALSE(metadataText.IsTextTrimmed());
         });
     }
 
@@ -13948,6 +13964,7 @@ namespace TerminalAppLocalTests
             const auto cwd = row.FindName(L"HistoryCwdText").as<winrt::TerminalApp::HighlightedTextControl>();
             VERIFY_ARE_EQUAL(1, Grid::GetColumn(cwd));
             VERIFY_ARE_EQUAL(1, Grid::GetRow(cwd));
+            VERIFY_IS_TRUE(cwd.UsePathEllipsis());
             cwd.Text(L"C:\\work\\project-with-a-long-directory-name\\src");
             cwd.SearchText(L"project");
             const auto metadata = row.FindName(L"HistoryMetadata").as<Grid>();
@@ -14013,9 +14030,40 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(detailPosition.X + detailText.ActualWidth() <= width - row.Padding().Right + tolerance);
                     const auto textCenter = titlePosition.Y + titleText.ActualHeight() / 2;
                     VERIFY_IS_TRUE(std::abs(iconPosition.Y + icon.ActualHeight() / 2 - textCenter) <= tolerance);
-                    VERIFY_ARE_EQUAL(width == 180.0f, cwdText.IsTextTrimmed());
+                    const std::wstring_view displayedCwd{ cwdText.Text() };
+                    if (width == 180.0f)
+                    {
+                        VERIFY_IS_TRUE(displayedCwd.starts_with(L"C:\\"));
+                        VERIFY_IS_TRUE(displayedCwd.find(L"\u2026") != std::wstring_view::npos);
+                        VERIFY_IS_TRUE(displayedCwd.ends_with(L"\\src"));
+                        VERIFY_IS_FALSE(cwdText.IsTextTrimmed());
+                    }
+                    else
+                    {
+                        VERIFY_ARE_EQUAL(std::wstring_view{ cwd.Text() }, displayedCwd);
+                        VERIFY_IS_FALSE(cwdText.IsTextTrimmed());
+                    }
                 }
             }
+            cwd.SearchText(L"");
+            const auto verifyCompactedPath = [&](const winrt::hstring& path, const std::wstring_view anchor, const std::wstring_view suffix) {
+                cwd.Text(path);
+                constexpr float width = 320.0f;
+                row.Width(width);
+                row.Measure({ width, 100 });
+                row.Arrange({ 0, 0, width, row.DesiredSize().Height });
+                row.UpdateLayout();
+                const std::wstring_view displayedCwd{ cwdText.Text() };
+                VERIFY_ARE_NOT_EQUAL(std::wstring_view{ path }, displayedCwd);
+                VERIFY_IS_TRUE(displayedCwd.starts_with(anchor));
+                VERIFY_IS_TRUE(displayedCwd.find(L"\u2026") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(displayedCwd.ends_with(suffix));
+                VERIFY_IS_FALSE(cwdText.IsTextTrimmed());
+            };
+            verifyCompactedPath(L"C:\\directory-with-a-very-long-name-that-cannot-fit\\another-long-directory-name\\src", L"C:\\", L"\\src");
+            verifyCompactedPath(L"/directory-with-a-very-long-name-that-cannot-fit/another-long-directory-name/src", L"/", L"/src");
+            verifyCompactedPath(L"~/directory-with-a-very-long-name-that-cannot-fit/another-long-directory-name/src", L"~/", L"/src");
+            verifyCompactedPath(L"\\\\server\\share\\directory-with-a-very-long-name-that-cannot-fit\\another-long-directory-name\\src", L"\\\\server\\share\\", L"\\src");
             const auto completion = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
             for (const auto unread : { false, true })
             {

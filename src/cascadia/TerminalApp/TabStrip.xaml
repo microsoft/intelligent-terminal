@@ -329,10 +329,12 @@
                     <local:HighlightedTextControl x:Name="HistoryCwdText"
                                                   Grid.Row="1"
                                                   Grid.Column="1"
+                                                  AutomationProperties.Name="{x:Bind Cwd}"
                                                   SearchText="{x:Bind SearchQuery}"
                                                   Style="{StaticResource SidebarCaptionControlStyle}"
                                                   Text="{x:Bind Cwd}"
-                                                  TextBlockStyle="{StaticResource HistorySubtitleTextStyle}" />
+                                                  TextBlockStyle="{StaticResource HistorySubtitleTextStyle}"
+                                                  UsePathEllipsis="True" />
                     <Grid x:Name="HistoryMetadata"
                           Grid.Row="2"
                           Grid.Column="1">

@@ -27,6 +27,7 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, HighlightedRuns);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, TextBlockStyle);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, HighlightedRunStyle);
+        DEPENDENCY_PROPERTY(bool, UsePathEllipsis);
         DEPENDENCY_PROPERTY(winrt::TerminalApp::TextHighlightColor, ColorHighlight);
         DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, ColorHighlightRanges);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, SuccessHighlightBrush);
@@ -38,10 +39,13 @@ namespace winrt::TerminalApp::implementation
         friend struct HighlightedTextControlPropertyRegistration;
         static void _InitializeProperties();
         static void _onPropertyChanged(const Windows::UI::Xaml::DependencyObject& o, const Windows::UI::Xaml::DependencyPropertyChangedEventArgs& e);
+        winrt::hstring _pathEllipsisText(const winrt::hstring& text) const;
         void _updateTextAndStyle();
         void _updateColorHighlights();
         winrt::Windows::UI::Xaml::Controls::TextBlock _textBlock{ nullptr };
+        winrt::hstring _displayText;
         winrt::Windows::UI::Xaml::Media::SolidColorBrush _foreground{ nullptr };
+        winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChangedRevoker;
         int64_t _foregroundToken{};
         int64_t _colorToken{};
         int64_t _opacityToken{};

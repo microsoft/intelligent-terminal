@@ -27,6 +27,7 @@ namespace winrt::TerminalApp::implementation
     DependencyProperty HighlightedTextControl::_HighlightedRunsProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_TextBlockStyleProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_HighlightedRunStyleProperty{ nullptr };
+    DependencyProperty HighlightedTextControl::_UsePathEllipsisProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_ColorHighlightProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_ColorHighlightRangesProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_SuccessHighlightBrushProperty{ nullptr };
@@ -113,6 +114,12 @@ namespace winrt::TerminalApp::implementation
                 xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
                 PropertyMetadata(nullptr, HighlightedTextControl::_onPropertyChanged));
 
+            _UsePathEllipsisProperty = DependencyProperty::Register(
+                L"UsePathEllipsis",
+                xaml_typename<bool>(),
+                xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
+                PropertyMetadata(box_value(false), HighlightedTextControl::_onPropertyChanged));
+
             _ColorHighlightProperty = DependencyProperty::Register(
                 L"ColorHighlight",
                 xaml_typename<winrt::TerminalApp::TextHighlightColor>(),
@@ -183,6 +190,7 @@ namespace winrt::TerminalApp::implementation
 
     void HighlightedTextControl::OnApplyTemplate()
     {
+        _sizeChangedRevoker.revoke();
         if (_textBlock)
         {
             _textBlock.UnregisterPropertyChangedCallback(Controls::TextBlock::ForegroundProperty(), _foregroundToken);
@@ -198,6 +206,12 @@ namespace winrt::TerminalApp::implementation
                 }
             });
             _observeForeground();
+            _sizeChangedRevoker = SizeChanged(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+                if (const auto self = weak.get())
+                {
+                    self->_updateTextAndStyle();
+                }
+            });
         }
         _updateTextAndStyle();
     }
@@ -232,6 +246,139 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    static bool _isPathSeparator(const wchar_t value) noexcept
+    {
+        return value == L'\\' || value == L'/';
+    }
+
+    winrt::hstring HighlightedTextControl::_pathEllipsisText(const winrt::hstring& text) const
+    {
+        const auto width = ActualWidth();
+        if (text.empty() || !_textBlock || width <= 0)
+        {
+            return text;
+        }
+
+        Controls::TextBlock probe;
+        probe.FontFamily(_textBlock.FontFamily());
+        probe.FontSize(_textBlock.FontSize());
+        probe.FontStretch(_textBlock.FontStretch());
+        probe.FontStyle(_textBlock.FontStyle());
+        probe.FontWeight(_textBlock.FontWeight());
+        probe.CharacterSpacing(_textBlock.CharacterSpacing());
+        probe.FlowDirection(_textBlock.FlowDirection());
+        probe.IsTextScaleFactorEnabled(_textBlock.IsTextScaleFactorEnabled());
+        probe.Language(_textBlock.Language());
+        probe.TextWrapping(TextWrapping::NoWrap);
+        const auto unconstrained = std::numeric_limits<float>::infinity();
+        const auto fits = [&](const winrt::hstring& value) {
+            probe.Text(value);
+            probe.Measure({ unconstrained, unconstrained });
+            return probe.DesiredSize().Width <= width - 0.5;
+        };
+        if (fits(text))
+        {
+            return text;
+        }
+
+        const std::wstring_view path{ text };
+        const auto firstSeparator = path.find_first_of(L"\\/");
+        if (firstSeparator == std::wstring_view::npos)
+        {
+            return text;
+        }
+
+        auto separator = path[firstSeparator];
+        size_t contentStart = 0;
+        std::wstring_view anchor;
+        if (path.size() >= 3 && path[1] == L':' && _isPathSeparator(path[2]))
+        {
+            separator = path[2];
+            contentStart = 3;
+            anchor = path.substr(0, contentStart);
+        }
+        else if (path.size() >= 2 && _isPathSeparator(path[0]) && _isPathSeparator(path[1]))
+        {
+            separator = path[0];
+            const auto serverEnd = path.find_first_of(L"\\/", 2);
+            const auto shareEnd = serverEnd == std::wstring_view::npos ?
+                                      std::wstring_view::npos :
+                                      path.find_first_of(L"\\/", serverEnd + 1);
+            if (shareEnd != std::wstring_view::npos)
+            {
+                contentStart = shareEnd + 1;
+                anchor = path.substr(0, contentStart);
+            }
+        }
+        else if (_isPathSeparator(path[0]))
+        {
+            separator = path[0];
+            contentStart = 1;
+            anchor = path.substr(0, contentStart);
+        }
+        else if (path.size() >= 2 && path[0] == L'~' && _isPathSeparator(path[1]))
+        {
+            separator = path[1];
+            contentStart = 2;
+            anchor = path.substr(0, contentStart);
+        }
+
+        std::vector<std::wstring_view> components;
+        for (auto position = contentStart; position < path.size();)
+        {
+            while (position < path.size() && _isPathSeparator(path[position]))
+            {
+                ++position;
+            }
+            const auto componentStart = position;
+            while (position < path.size() && !_isPathSeparator(path[position]))
+            {
+                ++position;
+            }
+            if (componentStart < position)
+            {
+                components.emplace_back(path.substr(componentStart, position - componentStart));
+            }
+        }
+        if (components.size() < 2)
+        {
+            return text;
+        }
+
+        const auto candidate = [&](const std::wstring_view candidateAnchor, const size_t firstComponent) {
+            std::wstring value{ candidateAnchor };
+            value.push_back(L'\u2026');
+            for (auto index = firstComponent; index < components.size(); ++index)
+            {
+                value.push_back(separator);
+                value.append(components[index]);
+            }
+            return winrt::hstring{ value };
+        };
+
+        for (size_t firstComponent = 1; firstComponent < components.size(); ++firstComponent)
+        {
+            const auto value = candidate(anchor, firstComponent);
+            if (fits(value))
+            {
+                return value;
+            }
+        }
+        if (!anchor.empty())
+        {
+            for (size_t firstComponent = 0; firstComponent < components.size(); ++firstComponent)
+            {
+                const auto value = candidate({}, firstComponent);
+                if (fits(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return winrt::hstring{ components.back() };
+    }
+
     void HighlightedTextControl::_updateTextAndStyle()
     {
         if (_updatingTextAndColor)
@@ -244,7 +391,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto text = Text();
+        const auto sourceText = Text();
+        const auto text = UsePathEllipsis() ? _pathEllipsisText(sourceText) : sourceText;
+        _displayText = text;
         const auto runs = HighlightedRuns();
         std::vector<TerminalApp::HighlightedRun> searchRuns;
         if ((!runs || runs.Size() == 0) && !text.empty())
@@ -341,7 +490,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        const auto text = Text();
+        const auto& text = _displayText;
         const auto highlights = _textBlock.TextHighlighters();
         highlights.Clear();
         if (TextOpacity() != 1.0 && _foreground && !text.empty())
