@@ -19743,13 +19743,13 @@ namespace winrt::TerminalApp::implementation
 
             auto acrylicBrush = TitlebarBrush().try_as<Media::AcrylicBrush>();
             if (!acrylicBrush ||
-                acrylicBrush.BackgroundSource() != Media::AcrylicBackgroundSource::HostBackdrop ||
+                acrylicBrush.BackgroundSource() != Media::AcrylicBackgroundSource::Backdrop ||
                 acrylicBrush.FallbackColor() != bgColor ||
                 acrylicBrush.TintColor() != bgColor ||
                 acrylicBrush.TintOpacity() != 0.5)
             {
                 acrylicBrush = Media::AcrylicBrush();
-                acrylicBrush.BackgroundSource(Media::AcrylicBackgroundSource::HostBackdrop);
+                acrylicBrush.BackgroundSource(Media::AcrylicBackgroundSource::Backdrop);
                 acrylicBrush.FallbackColor(bgColor);
                 acrylicBrush.TintColor(bgColor);
                 acrylicBrush.TintOpacity(0.5);
