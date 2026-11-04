@@ -7831,7 +7831,7 @@ namespace TerminalAppLocalTests
                             {
                                 const auto acrylic = brush.try_as<Media::AcrylicBrush>();
                                 VERIFY_IS_NOT_NULL(acrylic);
-                                VERIFY_ARE_EQUAL(Media::AcrylicBackgroundSource::HostBackdrop, acrylic.BackgroundSource());
+                                VERIFY_ARE_EQUAL(Media::AcrylicBackgroundSource::Backdrop, acrylic.BackgroundSource());
                                 VERIFY_ARE_EQUAL(0.5, acrylic.TintOpacity());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.TintColor());
                                 VERIFY_ARE_EQUAL(expectedColor, acrylic.FallbackColor());
