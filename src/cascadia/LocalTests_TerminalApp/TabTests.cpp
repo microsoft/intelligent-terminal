@@ -11457,6 +11457,54 @@ namespace TerminalAppLocalTests
             control.SearchText(L"");
             VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Launch \U0001F680 now" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+
+            control.Text(L"abc");
+            control.UsePathEllipsis(true);
+            control.SuccessHighlightBrush(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Green() });
+            control.ColorHighlight(TextHighlightColor::Success);
+            constexpr auto maxOffset = std::numeric_limits<uint64_t>::max();
+            const struct
+            {
+                uint64_t start;
+                uint64_t end;
+                int32_t length;
+            } cases[]{
+                { 1, 1, 1 },
+                { 1, 3, 2 },
+                { 1, uint64_t{ 1 } << 32, 2 },
+                { 1, maxOffset, 2 },
+                { 2, maxOffset, 1 },
+                { 3, maxOffset, 0 },
+                { (uint64_t{ 1 } << 32) + 1, maxOffset, 0 },
+                { maxOffset, maxOffset, 0 },
+            };
+            for (const auto& test : cases)
+            {
+                const auto ranges = winrt::single_threaded_vector<HighlightedRun>({ { test.start, test.end } });
+                control.HighlightedRuns(ranges);
+                control.ColorHighlightRanges(ranges);
+                control.UpdateLayout();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"abc" }, textBlock.Text());
+                if (test.length)
+                {
+                    const auto match = textBlock.Inlines().GetAt(1).as<Documents::Run>();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ std::wstring_view{ L"abc" }.substr(static_cast<size_t>(test.start), static_cast<size_t>(test.length)) }, match.Text());
+                    VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, match.FontWeight().Weight);
+                    VERIFY_ARE_EQUAL(1u, textBlock.TextHighlighters().Size());
+                    const auto range = textBlock.TextHighlighters().GetAt(0).Ranges().GetAt(0);
+                    VERIFY_ARE_EQUAL(static_cast<int32_t>(test.start), range.StartIndex);
+                    VERIFY_ARE_EQUAL(test.length, range.Length);
+                }
+                else
+                {
+                    VERIFY_ARE_EQUAL(1u, textBlock.Inlines().Size());
+                    VERIFY_ARE_EQUAL(winrt::hstring{ L"abc" }, textBlock.Inlines().GetAt(0).as<Documents::Run>().Text());
+                    VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
+                }
+            }
+            control.Text(L"");
+            VERIFY_ARE_EQUAL(0u, textBlock.Inlines().Size());
+            VERIFY_ARE_EQUAL(0u, textBlock.TextHighlighters().Size());
         });
     }
 

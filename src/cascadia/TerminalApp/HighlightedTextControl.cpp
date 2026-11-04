@@ -415,9 +415,12 @@ namespace winrt::TerminalApp::implementation
             };
             for (const auto& run : runs)
             {
-                appendRun(lastPos, run.Start, false);
-                appendRun(run.Start, run.End + 1, true);
-                lastPos = run.End + 1;
+                // These runs are generated from value, so both offsets fit within its size.
+                const auto start = gsl::narrow<size_t>(run.Start);
+                const auto endExclusive = gsl::narrow<size_t>(run.End) + 1;
+                appendRun(lastPos, start, false);
+                appendRun(start, endExclusive, true);
+                lastPos = endExclusive;
             }
             appendRun(lastPos, value.size(), false);
             probe.Measure({ unconstrained, unconstrained });
@@ -574,10 +577,10 @@ namespace winrt::TerminalApp::implementation
         for (const auto& run : runs)
         {
             THROW_HR_IF(E_INVALIDARG, run.End < run.Start);
-            if (run.Start + 1 < _sourceToDisplay.size())
+            if (_sourceToDisplay.size() > 1 && run.Start < _sourceToDisplay.size() - 1)
             {
-                const auto end = std::min<size_t>(run.End + 1, _sourceToDisplay.size() - 1);
-                const auto start = _sourceToDisplay[run.Start];
+                const auto end = static_cast<size_t>(std::min<uint64_t>(run.End, _sourceToDisplay.size() - 2)) + 1;
+                const auto start = _sourceToDisplay[static_cast<size_t>(run.Start)];
                 const auto endExclusive = _sourceToDisplay[end];
                 if (endExclusive > start)
                 {
