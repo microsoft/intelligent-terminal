@@ -47,6 +47,7 @@ namespace winrt::TerminalApp::implementation
     {
         try
         {
+            _clearTypographyObservers();
             if (_textBlock)
             {
                 _textBlock.UnregisterPropertyChangedCallback(Controls::TextBlock::ForegroundProperty(), _foregroundToken);
@@ -160,12 +161,17 @@ namespace winrt::TerminalApp::implementation
         }();
     }
 
-    void HighlightedTextControl::_onPropertyChanged(const DependencyObject& o, const DependencyPropertyChangedEventArgs& /*e*/)
+    void HighlightedTextControl::_onPropertyChanged(const DependencyObject& o, const DependencyPropertyChangedEventArgs& e)
     {
         const auto control = o.try_as<winrt::TerminalApp::HighlightedTextControl>();
         if (control)
         {
-            winrt::get_self<HighlightedTextControl>(control)->_updateTextAndStyle();
+            const auto self = winrt::get_self<HighlightedTextControl>(control);
+            if (e.Property() == _UsePathEllipsisProperty)
+            {
+                self->_updateTypographyObservers();
+            }
+            self->_updateTextAndStyle();
         }
     }
 
@@ -191,6 +197,7 @@ namespace winrt::TerminalApp::implementation
     void HighlightedTextControl::OnApplyTemplate()
     {
         _sizeChangedRevoker.revoke();
+        _clearTypographyObservers();
         if (_textBlock)
         {
             _textBlock.UnregisterPropertyChangedCallback(Controls::TextBlock::ForegroundProperty(), _foregroundToken);
@@ -215,8 +222,79 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
             });
+            _updateTypographyObservers();
         }
         _updateTextAndStyle();
+    }
+
+    void HighlightedTextControl::_clearTypographyObservers()
+    {
+        _textScaleFactorChangedRevoker.revoke();
+        _uiSettings = nullptr;
+        if (_textBlock)
+        {
+            for (const auto& [property, token] : _typographyTokens)
+            {
+                _textBlock.UnregisterPropertyChangedCallback(property, token);
+            }
+        }
+        _typographyTokens.clear();
+    }
+
+    void HighlightedTextControl::_updateTypographyObservers()
+    {
+        _clearTypographyObservers();
+        if (!_textBlock || !UsePathEllipsis())
+        {
+            return;
+        }
+
+        const auto typographyChanged = [weak = get_weak()](auto&&, auto&&) {
+            if (const auto self = weak.get())
+            {
+                self->_updateTextAndStyle();
+            }
+        };
+        const DependencyProperty properties[]{
+            Controls::TextBlock::FontFamilyProperty(),
+            Controls::TextBlock::FontSizeProperty(),
+            Controls::TextBlock::FontStretchProperty(),
+            Controls::TextBlock::FontStyleProperty(),
+            Controls::TextBlock::FontWeightProperty(),
+            Controls::TextBlock::CharacterSpacingProperty(),
+            Controls::TextBlock::IsTextScaleFactorEnabledProperty(),
+            FrameworkElement::FlowDirectionProperty(),
+            FrameworkElement::LanguageProperty(),
+        };
+        for (const auto& property : properties)
+        {
+            _typographyTokens.emplace_back(property, _textBlock.RegisterPropertyChangedCallback(property, typographyChanged));
+        }
+
+        _uiSettings = Windows::UI::ViewManagement::UISettings{};
+        _textScaleFactorChangedRevoker = _uiSettings.TextScaleFactorChanged(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+            if (const auto self = weak.get())
+            {
+                const auto dispatcher = self->Dispatcher();
+                if (!dispatcher)
+                {
+                    return;
+                }
+                if (dispatcher.HasThreadAccess())
+                {
+                    self->_updateTextAndStyle();
+                }
+                else
+                {
+                    dispatcher.RunAsync(CoreDispatcherPriority::Normal, [weak]() {
+                        if (const auto self = weak.get())
+                        {
+                            self->_updateTextAndStyle();
+                        }
+                    });
+                }
+            }
+        });
     }
 
     static void _applyStyleToObject(const winrt::Windows::UI::Xaml::Style& style, const winrt::Windows::UI::Xaml::DependencyObject& object)

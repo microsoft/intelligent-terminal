@@ -14112,6 +14112,26 @@ namespace TerminalAppLocalTests
             verifyCompactedPath(L"\\\\server\\share\\directory-with-a-very-long-name-that-cannot-fit\\another-long-directory-name\\src", L"\\\\server\\share\\", L"\\src");
             verifyCompactedPath(L"/directory-with-a-very-long-name-that-cannot-fit/another-directory-with-a-very-long-name-that-cannot-fit\\part/src", L"/", L"/src");
             VERIFY_ARE_EQUAL(std::wstring_view{ L"/\u2026/src" }, std::wstring_view{ cwdText.Text() });
+
+            cwd.Text(L"C:\\first-component\\second-component\\third-component\\src");
+            row.Width(320);
+            row.Measure({ 320, 100 });
+            row.Arrange({ 0, 0, 320, row.DesiredSize().Height });
+            row.UpdateLayout();
+            const auto originalFontSize = cwdText.FontSize();
+            const auto normalText = cwdText.Text();
+            cwdText.FontSize(originalFontSize * 2);
+            row.UpdateLayout();
+            const auto enlargedText = cwdText.Text();
+            VERIFY_IS_TRUE(enlargedText.size() < normalText.size());
+            VERIFY_IS_TRUE(std::wstring_view{ enlargedText }.ends_with(L"\\src"));
+            VERIFY_IS_FALSE(cwdText.IsTextTrimmed());
+            cwdText.FontSize(originalFontSize / 2);
+            row.UpdateLayout();
+            VERIFY_IS_TRUE(cwdText.Text().size() > enlargedText.size());
+            VERIFY_IS_TRUE(std::wstring_view{ cwdText.Text() }.ends_with(L"\\src"));
+            VERIFY_IS_FALSE(cwdText.IsTextTrimmed());
+            cwdText.FontSize(originalFontSize);
             const auto completion = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
             for (const auto unread : { false, true })
             {
