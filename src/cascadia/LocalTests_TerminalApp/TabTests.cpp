@@ -531,6 +531,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneContextMenuOmitsDirectClose);
         TEST_METHOD(VerticalTabPaneSelectionTracksSelectedTab);
         TEST_METHOD(VerticalSidebarPaneActivationSkipsPreviousFocus);
+        TEST_METHOD(VerticalTabFocusRequestRepairsSelectionDivergence);
         TEST_METHOD(HorizontalTabProgressSurvivesAsyncVerticalTeardown);
         TEST_METHOD(HeaderProgressWrapperBindingPreservesRingState);
         TEST_METHOD(TabHeaderLoadsOptionalTextOnDemand);
@@ -20187,6 +20188,58 @@ namespace TerminalAppLocalTests
             activateThird();
             VERIFY_IS_FALSE(group->IsZoomed());
             verifyThird();
+        });
+    }
+
+    void TabTests::VerticalTabFocusRequestRepairsSelectionDivergence()
+    {
+        Grid host{ nullptr };
+        TestOnUIThread([&]() {
+            host = Grid{};
+            host.Width(1200);
+            host.Height(800);
+        });
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{bbe0ea84-11ab-42e4-8f82-89ab03724dc1}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection, host, std::nullopt, true);
+
+        TestOnUIThread([&]() {
+            const auto first = page->_GetFocusedTabImpl();
+            const auto secondConnection = winrt::make_self<TestConnection>(
+                winrt::guid{ L"{bbe0ea84-12ab-42e4-8f82-89ab03724dc1}" },
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const auto second = page->_GetTabImpl(
+                page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *secondConnection)));
+            second->SuppressAgentPrewarm();
+            VERIFY_IS_TRUE(page->_SelectTab(1));
+            const auto isDisplayed = [&](const auto& tab) {
+                uint32_t contentIndex{};
+                const auto content = tab->Content();
+                return page->_tabContent.Children().IndexOf(content, contentIndex) &&
+                       content.Opacity() == 1.0 &&
+                       content.IsHitTestVisible();
+            };
+            VERIFY_IS_TRUE(isDisplayed(second));
+
+            page->_changingTabLayout = true;
+            page->_selectedTabItem(first->TabViewItem());
+            page->_changingTabLayout = false;
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == first);
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == first->TabViewItem());
+            VERIFY_IS_TRUE(isDisplayed(second));
+            VERIFY_IS_FALSE(isDisplayed(first));
+
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->TabFocusRequested.raise(
+                *strip,
+                winrt::make<winrt::TerminalApp::implementation::TabStripCloseRequestedEventArgs>(
+                    first->TabViewItem()));
+
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == first);
+            VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == first->TabViewItem());
+            VERIFY_IS_TRUE(isDisplayed(first));
+            VERIFY_IS_FALSE(isDisplayed(second));
         });
     }
 
