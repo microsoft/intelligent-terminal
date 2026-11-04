@@ -1,0 +1,43 @@
+---
+source: tui-markdown/src/renderer/table.rs
+expression: text
+---
+Text::from_iter([
+    Line::from(Span::from("┌─────────────────────────────────────────┐").dark_gray()),
+    Line::from_iter([
+        Span::from("│").dark_gray(),
+        Span::from(" ").cyan().bold(),
+        Span::from("Value").cyan().bold(),
+        Span::from("                                   ").cyan().bold(),
+        Span::from("│").dark_gray(),
+    ]),
+    Line::from(Span::from("├─────────────────────────────────────────┤").dark_gray()),
+    Line::from_iter([
+        Span::from("│").dark_gray(),
+        Span::from(" "),
+        Span::from("bold").bold(),
+        Span::from(" "),
+        Span::from("code").white().on_black(),
+        Span::from(" "),
+        Span::from("link").blue().underlined(),
+        Span::from(" ("),
+        Span::from("url").blue().underlined(),
+        Span::from(")"),
+        Span::from(" "),
+        Span::from("<em>").dim(),
+        Span::from("x"),
+        Span::from("</em>").dim(),
+        Span::from(" "),
+        Span::from("$y$").magenta().italic(),
+        Span::from(" "),
+        Span::from("[n]").dim().italic(),
+        Span::from(" "),
+        Span::from("│").dark_gray(),
+    ]),
+    Line::from(Span::from("└─────────────────────────────────────────┘").dark_gray()),
+    Line::default(),
+    Line::from_iter([
+        Span::from("[n]: ").dim(),
+        Span::from("note"),
+    ]).dim(),
+])

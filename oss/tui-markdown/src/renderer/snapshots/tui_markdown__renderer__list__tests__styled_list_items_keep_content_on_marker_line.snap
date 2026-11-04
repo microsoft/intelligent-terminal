@@ -1,0 +1,37 @@
+---
+source: tui-markdown/src/renderer/list.rs
+expression: |-
+  from_str(indoc!("
+                  - *Emphasis* and **strong**
+                  - Before **strong *emphasis*** after
+  
+                  1. **Strong**
+                  2. Before *emphasis* after
+              "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from("- "),
+        Span::from("Emphasis").italic(),
+        Span::from(" and "),
+        Span::from("strong").bold(),
+    ]),
+    Line::from_iter([
+        Span::from("- "),
+        Span::from("Before "),
+        Span::from("strong ").bold(),
+        Span::from("emphasis").bold().italic(),
+        Span::from(" after"),
+    ]),
+    Line::default(),
+    Line::from_iter([
+        Span::from("1. ").light_blue(),
+        Span::from("Strong").bold(),
+    ]),
+    Line::from_iter([
+        Span::from("2. ").light_blue(),
+        Span::from("Before "),
+        Span::from("emphasis").italic(),
+        Span::from(" after"),
+    ]),
+])

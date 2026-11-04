@@ -3,6 +3,11 @@
 # No provider prompts or authenticated history are used. The selection case requires
 # an accessible clipboard; failure to preserve it is a setup failure, never a pass.
 
+param(
+    [ValidateSet('Campbell', 'One Half Light')]
+    [string]$ColorScheme = 'Campbell'
+)
+
 Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdown' {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -158,6 +163,7 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
                 )
                 profiles = @{
                     defaults = @{
+                        colorScheme = $ColorScheme
                         environment = @{
                             PATH = "$($script:target.InstallLocation);$env:PATH"
                             WT_WTCLI_PATH = $script:target.WtcliPath
@@ -354,7 +360,33 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
     It 'Completed agent replies switch from raw text to Markdown' {
         Start-MarkdownScenario
         $marker = 'QUEUE_HOLD_MD_DONE_' + $script:runId.Substring(0, 6).ToUpperInvariant()
-        $null = Start-MarkdownReply -Marker $marker
+        $reply = @'
+# MD_HEADING
+
+**MD_BOLD**
+
+```rust
+fn main() {
+    let value = 1;
+    println!("Hello, code blocks! {}", value);
+}
+```
+
+```python
+def greet(name):
+    # Keep indentation and syntax colors.
+    return f"Hello, {name}!"
+```
+
+```not-a-language
+    plain code remains readable
+```
+
+> ```rust
+> let quoted_value = 2;
+> ```
+'@
+        $null = Start-MarkdownReply -Marker $marker -Text $reply
         Wait-MarkdownText -Literal '**MD_BOLD**'
         (Get-MarkdownPaneText).Contains('# MD_HEADING') | Should -BeTrue
         @(Get-MarkdownRecords -Kind completion -Marker $marker) | Should -HaveCount 0
@@ -366,9 +398,11 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
         $text.Contains('# MD_HEADING') | Should -BeFalse
         $text.Contains('MD_HEADING') | Should -BeTrue
         $text.Contains('**USER_LITERAL**') | Should -BeTrue
-        $text.Contains('```rust') | Should -BeTrue
+        $text.Contains('```') | Should -BeFalse
         $text.Contains('let value = 1;') | Should -BeTrue
-        ([regex]::Matches($text, '```')).Count | Should -Be 2
+        $text.Contains('def greet(name):') | Should -BeTrue
+        $text.Contains('plain code remains readable') | Should -BeTrue
+        $text.Contains('> let quoted_value = 2;') | Should -BeTrue
         Save-MarkdownEvidence completed-markdown
     }
 

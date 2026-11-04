@@ -1,0 +1,5 @@
+---
+source: tui-markdown/src/renderer/image.rs
+expression: "from_str_with_options(\"![]()\", &options)"
+---
+Text::from(Line::from(Span::from("[img]").dim().italic()))

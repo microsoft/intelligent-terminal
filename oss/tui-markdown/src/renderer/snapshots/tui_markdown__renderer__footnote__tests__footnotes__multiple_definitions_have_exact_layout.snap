@@ -1,0 +1,30 @@
+---
+source: tui-markdown/src/renderer/footnote.rs
+expression: |-
+  from_str(indoc!("
+                      First[^a] second[^b].
+  
+                      [^a]: Alpha.
+  
+                      [^b]: Beta.
+                  "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from("First"),
+        Span::from("[a]").dim().italic(),
+        Span::from(" second"),
+        Span::from("[b]").dim().italic(),
+        Span::from("."),
+    ]),
+    Line::default(),
+    Line::from_iter([
+        Span::from("[a]: ").dim(),
+        Span::from("Alpha."),
+    ]).dim(),
+    Line::default(),
+    Line::from_iter([
+        Span::from("[b]: ").dim(),
+        Span::from("Beta."),
+    ]).dim(),
+])
