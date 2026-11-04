@@ -800,7 +800,13 @@ namespace winrt::TerminalApp::implementation
                 if (const auto tab = page->_GetTabByTabViewItem(args.Tab()))
                 {
                     const auto tabImpl = page->_GetTabImpl(tab);
-                    if (page->_GetFocusedTabImpl() != tabImpl)
+                    const auto content = tab.Content();
+                    uint32_t contentIndex{};
+                    const auto isDisplayed = content &&
+                                             page->_tabContent.Children().IndexOf(content, contentIndex) &&
+                                             content.Opacity() == 1.0 &&
+                                             content.IsHitTestVisible();
+                    if (!isDisplayed)
                     {
                         if (page->_selectedTabItem() == tab.TabViewItem())
                         {

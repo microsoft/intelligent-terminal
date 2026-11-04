@@ -20213,13 +20213,22 @@ namespace TerminalAppLocalTests
                 page->_CreateNewTabFromPane(page->_MakePane(nullptr, nullptr, *secondConnection)));
             second->SuppressAgentPrewarm();
             VERIFY_IS_TRUE(page->_SelectTab(1));
-            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == second);
+            const auto isDisplayed = [&](const auto& tab) {
+                uint32_t contentIndex{};
+                const auto content = tab->Content();
+                return page->_tabContent.Children().IndexOf(content, contentIndex) &&
+                       content.Opacity() == 1.0 &&
+                       content.IsHitTestVisible();
+            };
+            VERIFY_IS_TRUE(isDisplayed(second));
 
             page->_changingTabLayout = true;
             page->_selectedTabItem(first->TabViewItem());
             page->_changingTabLayout = false;
-            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == second);
+            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == first);
             VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == first->TabViewItem());
+            VERIFY_IS_TRUE(isDisplayed(second));
+            VERIFY_IS_FALSE(isDisplayed(first));
 
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             strip->TabFocusRequested.raise(
@@ -20229,6 +20238,8 @@ namespace TerminalAppLocalTests
 
             VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == first);
             VERIFY_IS_TRUE(page->_tabStrip.SelectedItem() == first->TabViewItem());
+            VERIFY_IS_TRUE(isDisplayed(first));
+            VERIFY_IS_FALSE(isDisplayed(second));
         });
     }
 
