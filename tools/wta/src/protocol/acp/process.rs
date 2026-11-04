@@ -579,9 +579,12 @@ pub(crate) mod tests {
                 })
                 .to_string(),
             );
+            // The unpackaged spawn path prepends this executable's directory
+            // to PATH. Keep checkout-directory whitespace out of the command.
+            let executable = std::env::current_exe().unwrap();
             let command = format!(
                 "{} --exact {NATIVE_EXIT_FIXTURE} --nocapture",
-                std::env::current_exe().unwrap().display()
+                executable.file_name().unwrap().to_str().unwrap()
             );
             let spawned = spawn_agent_process_with_provider(
                 &command,
