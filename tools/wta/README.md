@@ -208,14 +208,13 @@ nonzero exit with stderr means discovery is unknown/failed, not unavailable.
 `launch-agent` resolves the executable afresh on each launch. The existing
 `probe-host-agents` retains its separate ACP prerequisites and behavior.
 
-### Native Antigravity ACP shutdown
+### Antigravity temporary-file cleanup workaround
 
-Built-in Windows-host Antigravity ACP uses an invisible, contained console.
-Controlled teardown sends the standard Windows Ctrl+Break interrupt so its
-launcher can perform native extraction cleanup before forced containment
-teardown. Redirected ACP stdio, working directory and inherited `TEMP`/`TMP`
-are preserved. Other providers, custom provider IDs, WSL and interactive
-`launch-agent` profiles do not opt into this behavior.
+This workaround addresses Antigravity ACP's temporary-file cleanup issue on
+Windows. An invisible, contained console delivers the standard Windows
+Ctrl+Break interrupt so the launcher can perform native cleanup before bounded
+forced teardown.
+Redirected ACP stdio, working directory and inherited `TEMP`/`TMP` are preserved.
 
 The maximum opportunity is defined once by `NATIVE_EXIT_GRACE_PERIOD` in
 `src\agent_lifecycle\providers\antigravity.rs`, currently **5 seconds**.

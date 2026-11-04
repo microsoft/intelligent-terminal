@@ -153,12 +153,12 @@ mod tests {
     }
 
     #[test]
-    fn native_shutdown_is_an_antigravity_only_opt_in() {
+    fn antigravity_temp_cleanup_workaround() {
         for provider in PROVIDERS {
             assert_eq!(
                 provider.host_console_interrupt_grace().is_some(),
                 provider.family_id() == crate::agent_registry::ANTIGRAVITY_AGENT_ID,
-                "other providers must retain their existing teardown"
+                "Antigravity temporary-file cleanup workaround"
             );
         }
         assert!(lookup("custom:antigravity").is_none());
