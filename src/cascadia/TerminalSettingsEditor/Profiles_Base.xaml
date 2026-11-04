@@ -79,10 +79,6 @@
                 </StackPanel>
             </local:SettingContainer>
 
-            <TextBlock x:Uid="Profile_AgentPolicyBlocked"
-                       Style="{StaticResource DisclaimerStyle}"
-                       Visibility="{x:Bind Profile.IsAgentProfilePolicyBlocked, Mode=OneWay}" />
-
             <local:SettingContainer x:Uid="Profile_AgentModel"
                                     ClearSettingValue="{x:Bind Profile.ClearAgentProfileModel}"
                                     CurrentValue="{x:Bind Profile.AgentProfileModel, Mode=OneWay}"
