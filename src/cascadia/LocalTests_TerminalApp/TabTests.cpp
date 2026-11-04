@@ -11345,6 +11345,17 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"Shell" }, highlighted.Text());
             VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, highlighted.FontWeight().Weight);
 
+            control.Measure({ 200, 40 });
+            control.Arrange({ 0, 0, 200, 40 });
+            control.UpdateLayout();
+            const auto unchangedInline = textBlock.Inlines().GetAt(1);
+            control.Arrange({ 0, 0, 200, 60 });
+            control.UpdateLayout();
+            VERIFY_IS_TRUE(textBlock.Inlines().GetAt(1) == unchangedInline);
+            control.Arrange({ 0, 0, 160, 60 });
+            control.UpdateLayout();
+            VERIFY_IS_TRUE(textBlock.Inlines().GetAt(1) == unchangedInline);
+
             control.Text(L"Launch \U0001F680 now");
             control.SearchText(L"\U0001F680");
             VERIFY_ARE_EQUAL(3u, textBlock.Inlines().Size());
@@ -14099,6 +14110,8 @@ namespace TerminalAppLocalTests
             verifyCompactedPath(L"/directory-with-a-very-long-name-that-cannot-fit/another-long-directory-name/src", L"/", L"/src");
             verifyCompactedPath(L"~/directory-with-a-very-long-name-that-cannot-fit/another-long-directory-name/src", L"~/", L"/src");
             verifyCompactedPath(L"\\\\server\\share\\directory-with-a-very-long-name-that-cannot-fit\\another-long-directory-name\\src", L"\\\\server\\share\\", L"\\src");
+            verifyCompactedPath(L"/directory-with-a-very-long-name-that-cannot-fit/another-directory-with-a-very-long-name-that-cannot-fit\\part/src", L"/", L"/src");
+            VERIFY_ARE_EQUAL(std::wstring_view{ L"/\u2026/src" }, std::wstring_view{ cwdText.Text() });
             const auto completion = row.FindName(L"HistoryCompletionIndicator").as<Grid>();
             for (const auto unread : { false, true })
             {

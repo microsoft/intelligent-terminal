@@ -206,10 +206,13 @@ namespace winrt::TerminalApp::implementation
                 }
             });
             _observeForeground();
-            _sizeChangedRevoker = SizeChanged(auto_revoke, [weak = get_weak()](auto&&, auto&&) {
+            _sizeChangedRevoker = SizeChanged(auto_revoke, [weak = get_weak()](auto&&, const SizeChangedEventArgs& args) {
                 if (const auto self = weak.get())
                 {
-                    self->_updateTextAndStyle();
+                    if (self->UsePathEllipsis() && args.NewSize().Width != args.PreviousSize().Width)
+                    {
+                        self->_updateTextAndStyle();
+                    }
                 }
             });
         }
@@ -352,6 +355,7 @@ namespace winrt::TerminalApp::implementation
 
             wchar_t separator = L'\\';
             size_t contentStart = 0;
+            bool windowsSeparators = true;
             if (path.size() >= 3 && path[1] == L':' && _isPathSeparator(path[2]))
             {
                 separator = path[2];
@@ -369,32 +373,45 @@ namespace winrt::TerminalApp::implementation
                     contentStart = shareEnd + 1;
                 }
             }
-            else if (!path.empty() && _isPathSeparator(path[0]))
+            else if (!path.empty() && path[0] == L'\\')
             {
-                separator = path[0];
                 contentStart = 1;
             }
-            else if (path.size() >= 2 && path[0] == L'~' && _isPathSeparator(path[1]))
+            else if (!path.empty() && path[0] == L'/')
             {
-                separator = path[1];
+                separator = L'/';
+                contentStart = 1;
+                windowsSeparators = false;
+            }
+            else if (path.size() >= 2 && path[0] == L'~' && path[1] == L'\\')
+            {
                 contentStart = 2;
+            }
+            else if (path.size() >= 2 && path[0] == L'~' && path[1] == L'/')
+            {
+                separator = L'/';
+                contentStart = 2;
+                windowsSeparators = false;
             }
             if (contentStart == 0)
             {
                 return lineResult;
             }
 
+            const auto isSeparator = [windowsSeparators](const wchar_t value) noexcept {
+                return value == L'/' || (windowsSeparators && value == L'\\');
+            };
             std::vector<size_t> componentStarts;
             for (auto position = contentStart; position < path.size();)
             {
-                while (position < path.size() && _isPathSeparator(path[position]))
+                while (position < path.size() && isSeparator(path[position]))
                 {
                     ++position;
                 }
                 if (position < path.size())
                 {
                     componentStarts.emplace_back(position);
-                    while (position < path.size() && !_isPathSeparator(path[position]))
+                    while (position < path.size() && !isSeparator(path[position]))
                     {
                         ++position;
                     }
