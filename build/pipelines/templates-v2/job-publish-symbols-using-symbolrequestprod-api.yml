@@ -83,6 +83,33 @@ jobs:
       LIB: $(Build.SourcesDirectory)
 
   - pwsh: |-
+      function Invoke-SymbolRequest {
+        param([uri]$Uri, [string]$Body)
+
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+          try {
+            # A redirected POST may already have been accepted before a later DNS failure.
+            Invoke-RestMethod -Uri $Uri -Body $Body -MaximumRedirection 0 -Verbose -ErrorAction Stop
+            return
+          } catch [System.Net.Http.HttpRequestException] {
+            $exception = $_.Exception
+            while ($null -ne $exception -and $exception -isnot [System.Net.Sockets.SocketException]) {
+              $exception = $exception.InnerException
+            }
+            if ($attempt -eq 3 -or $null -eq $exception -or $exception.SocketErrorCode -notin @(
+              [System.Net.Sockets.SocketError]::HostNotFound,
+              [System.Net.Sockets.SocketError]::TryAgain,
+              [System.Net.Sockets.SocketError]::NoData
+            )) {
+              throw
+            }
+
+            Write-Warning "Symbol service name resolution failed (attempt $attempt of 3); retrying in 5 seconds."
+            Start-Sleep -Seconds 5
+          }
+        }
+      }
+
       # Prepare the defaults for IRM
       $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ Authorization = "Bearer $(SymbolAccessToken)" }
       $PSDefaultParameterValues['Invoke-RestMethod:ContentType'] = "application/json"
@@ -97,7 +124,7 @@ jobs:
         expirationTime = $expiration.ToString();
       }
       Write-Host "##[debug]Starting request $($createRequestBody.requestName) with expiration date of $($createRequestBody.expirationTime)"
-      Invoke-RestMethod -Uri "$BaseUri" -Body ($createRequestBody | ConvertTo-Json -Compress) -Verbose
+      Invoke-SymbolRequest -Uri "$BaseUri" -Body ($createRequestBody | ConvertTo-Json -Compress)
 
       # Request symbol publication
       $publishRequestBody = @{
@@ -105,5 +132,5 @@ jobs:
         publishToPublicServer = $${{ parameters.includePublicSymbolServer }};
       }
       Write-Host "##[debug]Submitting request $($createRequestBody.requestName) ($($publishRequestBody | ConvertTo-Json -Compress))"
-      Invoke-RestMethod -Uri "$BaseUri/$($createRequestBody.requestName)" -Body ($publishRequestBody | ConvertTo-Json -Compress) -Verbose
+      Invoke-SymbolRequest -Uri "$BaseUri/$($createRequestBody.requestName)" -Body ($publishRequestBody | ConvertTo-Json -Compress)
     displayName: Publish Symbols using internal REST API
