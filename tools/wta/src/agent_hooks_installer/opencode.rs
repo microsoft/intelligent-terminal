@@ -105,6 +105,17 @@ fn probe_version_with_timeout(executable: &str, timeout: Duration) -> Result<Str
         }
         return Err(error);
     }
+    #[cfg(test)]
+    tests::PROBE_PROCESS_OBSERVER.with(|observer| {
+        if let Some(sender) = observer.take() {
+            use std::os::windows::io::AsHandle;
+            let handle = child
+                .as_handle()
+                .try_clone_to_owned()
+                .expect("clone probe handle");
+            sender.send(handle).expect("probe process observer");
+        }
+    });
     if let Err(error) = resume_probe_child(child.id()) {
         // Close the assigned job before waiting, even when resume failed.
         drop(job);
@@ -663,6 +674,11 @@ pub(super) fn remove_support_files(home: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    thread_local! {
+        pub(super) static PROBE_PROCESS_OBSERVER: std::cell::Cell<Option<std::sync::mpsc::Sender<std::os::windows::io::OwnedHandle>>> =
+            const { std::cell::Cell::new(None) };
+    }
+
     #[test]
     fn migrates_legacy_v2_layout_and_preserves_foreign_nested_dependencies() {
         let fixture = Fixture::new();
@@ -864,16 +880,56 @@ mod tests {
     #[test]
     fn version_probe_runs_the_resolved_shim_and_bounds_its_descendants() {
         use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
-        use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows_sys::Win32::Foundation::{
+            ERROR_NO_MORE_FILES, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        };
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        };
         use windows_sys::Win32::System::Threading::{
-            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            GetProcessId, OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
             PROCESS_TERMINATE,
         };
-        struct Descendant(OwnedHandle);
-        impl Drop for Descendant {
+
+        fn powershell_child_pid(parent_pid: u32) -> Option<u32> {
+            // SAFETY: the snapshot is immediately owned and the entry has its required size.
+            unsafe {
+                let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                assert_ne!(
+                    snapshot,
+                    INVALID_HANDLE_VALUE,
+                    "{}",
+                    std::io::Error::last_os_error()
+                );
+                let snapshot = OwnedHandle::from_raw_handle(snapshot);
+                let mut entry = PROCESSENTRY32W {
+                    dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                    ..Default::default()
+                };
+                let mut more = Process32FirstW(snapshot.as_raw_handle(), &mut entry);
+                while more != 0 {
+                    let name = "powershell.exe\0";
+                    if entry.th32ParentProcessID == parent_pid
+                        && String::from_utf16_lossy(&entry.szExeFile[..name.len()])
+                            .eq_ignore_ascii_case(name)
+                    {
+                        return Some(entry.th32ProcessID);
+                    }
+                    more = Process32NextW(snapshot.as_raw_handle(), &mut entry);
+                }
+                assert_eq!(
+                    std::io::Error::last_os_error().raw_os_error(),
+                    Some(ERROR_NO_MORE_FILES as i32)
+                );
+                None
+            }
+        }
+
+        struct FixtureProcessGuard(OwnedHandle);
+        impl Drop for FixtureProcessGuard {
             fn drop(&mut self) {
-                // SAFETY: this retained handle belongs only to our fixture child.
-                // On failure, kill it before the scoped worker joins its reader.
+                // SAFETY: retain exact fixture handles for cleanup before the worker joins.
                 unsafe {
                     let handle = self.0.as_raw_handle();
                     if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
@@ -894,19 +950,12 @@ mod tests {
             detect(executable.to_str().unwrap()).unwrap().1,
             ApiVariant::V2
         );
-        let pid_file = fixture.0.join("descendant.pid");
         let release = fixture.0.join("release");
-        let diagnostics = fixture.0.join("descendant.stderr");
-        // WriteAllText permits readers and closes its complete ASCII record.
-        // Ping blocks with null stdin, unlike cmd's timeout command.
         fs::write(
             &executable,
             format!(
                 "@echo off\r\n\
-                 start \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"\
-                 $ErrorActionPreference='Stop'; \
-                 [IO.File]::WriteAllText('{}', [string]$PID + [Environment]::NewLine, [Text.Encoding]::ASCII); \
-                 Start-Sleep -Seconds 30\" 2>\"{}\"\r\n\
+                 start \"\" /b powershell.exe -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 10\"\r\n\
                  if errorlevel 1 exit /b 1\r\n\
                  for /L %%i in (0,1,10) do (\r\n\
                      if exist \"{}\" (echo 2.0.10 & exit /b 0)\r\n\
@@ -914,65 +963,73 @@ mod tests {
                      \"%SystemRoot%\\System32\\ping.exe\" -n 2 127.0.0.1 >nul\r\n\
                      if errorlevel 1 exit /b 1\r\n\
                  )\r\n",
-                pid_file.display().to_string().replace('\'', "''"),
-                diagnostics.display(),
                 release.display()
             ),
         )
         .unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
-        // Readiness includes launch; the probe's own timer starts after spawn.
+        let (process_sender, process_receiver) = std::sync::mpsc::channel();
         let start = Instant::now();
+        // Five-second production timeout plus two seconds' test-side launch/completion grace.
+        let deadline = start + Duration::from_secs(7);
         std::thread::scope(|scope| {
             let probe = executable.to_str().unwrap();
             scope.spawn(move || {
-                let _ = sender.send(probe_version_with_timeout(probe, Duration::from_secs(10)));
+                PROBE_PROCESS_OBSERVER.with(|observer| observer.set(Some(process_sender)));
+                let _ = sender.send(probe_version(probe));
             });
+            let parent = FixtureProcessGuard(
+                process_receiver
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .expect("probe did not report its process handle"),
+            );
+            // SAFETY: the duplicated parent handle pins its identity throughout enumeration.
+            let parent_pid = unsafe { GetProcessId(parent.0.as_raw_handle()) };
+            assert_ne!(parent_pid, 0, "{}", std::io::Error::last_os_error());
             let pid = loop {
-                // Default Windows sharing permits writes; the read closes here.
-                let record = fs::read_to_string(&pid_file);
-                assert!(
-                    start.elapsed() < Duration::from_secs(10),
-                    "descendant readiness exceeded ten seconds ({:?}); stderr: {:?}",
-                    start.elapsed(),
-                    fs::read_to_string(&diagnostics)
-                );
-                match record {
-                    Ok(record) if record.ends_with('\n') => {
-                        break record.trim().parse::<u32>().expect("descendant PID");
-                    }
-                    Ok(_) => {} // Incomplete record.
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => panic!("read descendant PID: {error}"),
+                if let Some(pid) = powershell_child_pid(parent_pid) {
+                    break pid;
                 }
-                let remaining = Duration::from_secs(10).saturating_sub(start.elapsed());
-                match receiver.recv_timeout(remaining.min(Duration::from_millis(10))) {
+                assert!(
+                    Instant::now() < deadline,
+                    "no PowerShell child of probe {parent_pid} after {:?}",
+                    start.elapsed()
+                );
+                match receiver.recv_timeout(Duration::from_millis(10)) {
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                    result => panic!(
-                        "probe ended before PID: {result:?}; stderr: {:?}",
-                        fs::read_to_string(&diagnostics)
-                    ),
+                    result => {
+                        panic!("probe ended before its waiting child was observed: {result:?}")
+                    }
                 }
             };
-            // SAFETY: retain only our reported child's handle, with failure cleanup rights.
+            // Pin the opened identity before rechecking ancestry and granting cleanup ownership.
             let descendant = unsafe {
                 let handle = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid);
-                assert!(!handle.is_null());
-                Descendant(OwnedHandle::from_raw_handle(handle))
+                assert!(!handle.is_null(), "{}", std::io::Error::last_os_error());
+                let handle = OwnedHandle::from_raw_handle(handle);
+                assert_eq!(powershell_child_pid(parent_pid), Some(pid));
+                FixtureProcessGuard(handle)
             };
             assert_eq!(
                 unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 0) },
                 WAIT_TIMEOUT
             );
+            assert_eq!(
+                unsafe { WaitForSingleObject(parent.0.as_raw_handle(), 0) },
+                WAIT_TIMEOUT
+            );
             fs::write(&release, "").unwrap();
-            // Completion has two seconds' grace, not another full probe budget.
             assert_eq!(
                 receiver
-                    .recv_timeout(Duration::from_secs(12).saturating_sub(start.elapsed()))
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                     .unwrap()
                     .unwrap()
                     .trim(),
                 "2.0.10"
+            );
+            assert_eq!(
+                unsafe { WaitForSingleObject(parent.0.as_raw_handle(), 0) },
+                WAIT_OBJECT_0
             );
             assert_eq!(
                 unsafe { WaitForSingleObject(descendant.0.as_raw_handle(), 5000) },
