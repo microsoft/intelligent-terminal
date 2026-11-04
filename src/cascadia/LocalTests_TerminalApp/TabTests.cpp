@@ -28032,6 +28032,7 @@ namespace TerminalAppLocalTests
             const auto firstSlot = firstRow.FindName(L"TabCloseButtonSlot").as<Grid>();
             const auto secondDisplay = impl->DisplayItemForTab(second);
 
+            VERIFY_ARE_EQUAL(12.0, firstClose.Content().as<FontIcon>().FontSize());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, firstClose.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, secondClose.Visibility());
             const auto verifyCloseAlignment = [](const FrameworkElement& row, const FrameworkElement& slot) {
@@ -28084,6 +28085,7 @@ namespace TerminalAppLocalTests
             const auto paneRoot = Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(0), 0).as<Grid>();
             const auto paneClose = paneRoot.FindName(L"PaneCloseButton").as<Button>();
             const auto paneSlot = paneRoot.FindName(L"PaneCloseButtonSlot").as<Grid>();
+            VERIFY_ARE_EQUAL(12.0, paneClose.Content().as<FontIcon>().FontSize());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, paneClose.Visibility());
             verifyCloseAlignment(paneRoot, paneSlot);
             VERIFY_IS_TRUE(std::abs(paneRoot.ColumnDefinitions().GetAt(1).ActualWidth() - paneSlot.ActualWidth() - paneSlot.Margin().Left - paneSlot.Margin().Right) <= 1.0);

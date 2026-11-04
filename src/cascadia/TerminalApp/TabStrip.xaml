@@ -1012,7 +1012,7 @@
                                                             CornerRadius="4"
                                                             Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
                                                         <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                                  FontSize="10"
+                                                                  FontSize="12"
                                                                   Glyph="&#xE711;" />
                                                     </Button>
                                                 </Grid>
@@ -1205,7 +1205,7 @@
                                                                 CornerRadius="4"
                                                                 Visibility="{x:Bind CloseVisibility, Mode=OneWay}">
                                                             <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                                      FontSize="10"
+                                                                      FontSize="12"
                                                                       Glyph="&#xE711;" />
                                                         </Button>
                                                     </Grid>
