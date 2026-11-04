@@ -93,7 +93,8 @@ test('repair worker collects the agent-written report from its pre-created outpu
 });
 
 async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead = 'a'.repeat(40),
-    outcome = 'success', comments = [], failComment = false, commentSequence, headSequence } = {}) {
+    outcome = 'success', comments = [], failComment = false, commentSequence, headSequence,
+    onCreateComment, onUpdateComment } = {}) {
     const root = temporaryDirectory('performance-delivery-');
     const checks = [];
     const posted = [];
@@ -108,8 +109,16 @@ async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead 
         },
         issues: {
             listComments: 'comments',
-            async createComment(value) { if (failComment) throw new Error('Comment denied'); posted.push(value); },
-            async updateComment(value) { if (failComment) throw new Error('Comment denied'); posted.push(value); },
+            async createComment(value) {
+                if (failComment) throw new Error('Comment denied');
+                await onCreateComment?.();
+                posted.push(value);
+            },
+            async updateComment(value) {
+                if (failComment) throw new Error('Comment denied');
+                await onUpdateComment?.();
+                posted.push(value);
+            },
         },
         pulls: { async get() {
             return { data: { head: { sha: headSequence?.[Math.min(headRead++, headSequence.length - 1)] ?? currentHead } } };
@@ -288,4 +297,67 @@ test('controller dispatches only the repair worker with immutable pull-request c
     });
     assert.equal(outputs.run_id, '101');
     assert.equal(outputs.conclusion, 'success');
+});
+
+test('verify-after-write: older run detects and restores a newer report that won the race after its write', async () => {
+    const newerBody = '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:101:1 -->\n## Performance review\n\nNewer result.';
+    const newerComment = { id: 88, user: { login: 'github-actions[bot]' }, body: newerBody };
+    // commentSequence indices:
+    //   0 - early freshness read before createCheck   -> no newer comment
+    //   1 - final freshness read before write         -> no newer comment (race not yet observed)
+    //   2 - verify-after-write read                   -> newer comment appeared
+    const race = await reportRun('Older result.\n', {
+        commentSequence: [[], [], [newerComment]],
+    });
+    // The first posted call is the createComment from the older run.
+    // The second posted call is the restore updateComment that writes the newer body back.
+    assert.equal(race.posted.length, 2);
+    assert.ok(race.posted[0].body.includes('<!-- ghaw-pr-performance-run:100:1 -->'), 'first write carries our marker');
+    assert.equal(race.posted[1].comment_id, 88);
+    assert.equal(race.posted[1].body, newerBody, 'restore patches the comment back to the newer body');
+    assert.equal(race.check.conclusion, 'cancelled', 'check conclusion is cancelled, not success');
+    assert.match(race.warnings.join('\n'), /newer report/, 'warns about restoring a newer report');
+    assert.equal(race.error, undefined);
+});
+
+test('verify-after-write: no existing comment path (createComment) also detects post-write race', async () => {
+    const newerBody = '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:102:1 -->\n## Performance review\n\nNewest.';
+    const newerComment = { id: 99, user: { login: 'github-actions[bot]' }, body: newerBody };
+    // Start with no existing comment so the script takes the createComment path.
+    // After the createComment the newer run has published.
+    const race = await reportRun('Old result.\n', {
+        commentSequence: [[], [], [newerComment]],
+    });
+    assert.equal(race.posted.length, 2);
+    assert.equal(race.posted[1].comment_id, 99);
+    assert.equal(race.posted[1].body, newerBody);
+    assert.equal(race.check.conclusion, 'cancelled');
+});
+
+test('verify-after-write: same runId higher attempt wins (numeric, not lexicographic)', async () => {
+    // run 100 attempt 1 (ours) loses to run 100 attempt 10.
+    // Lexicographic: '10' < '9', but numeric: 10 > 1. BigInt comparison is always numeric.
+    const newerBody = '<!-- ghaw-pr-performance-report -->\n<!-- ghaw-pr-performance-run:100:10 -->\n## Performance review\n\nHigher attempt.';
+    const newerComment = { id: 77, user: { login: 'github-actions[bot]' }, body: newerBody };
+    const race = await reportRun('Old result attempt 1.\n', {
+        commentSequence: [[], [], [newerComment]],
+    });
+    assert.equal(race.posted.length, 2);
+    assert.equal(race.posted[1].body, newerBody, 'numeric comparison: attempt 10 > attempt 1 (our run)');
+    assert.equal(race.check.conclusion, 'cancelled');
+});
+
+test('verify-after-write: sequential non-racing run updates normally without restore', async () => {
+    // After our write, paginate returns our own comment (same run/attempt). No restore needed.
+    const ourMarker = '<!-- ghaw-pr-performance-run:100:1 -->';
+    const ourComment = { id: 55, user: { login: 'github-actions[bot]' },
+        body: `<!-- ghaw-pr-performance-report -->\n${ourMarker}\n## Performance review\n\nOur body.` };
+    const sequential = await reportRun('Sequential result.\n', {
+        commentSequence: [[], [], [ourComment]],
+    });
+    // Only one post (our own write), no restore call.
+    assert.equal(sequential.posted.length, 1);
+    assert.ok(sequential.posted[0].body.includes(ourMarker));
+    assert.equal(sequential.check.conclusion, 'success');
+    assert.equal(sequential.error, undefined);
 });

@@ -20,6 +20,9 @@ jobs:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
     timeout-minutes: 175
+    concurrency:
+      group: perf-controller-publish-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     outputs:
       worker_run_id: ${{ steps.worker.outputs.run_id }}
       comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
@@ -318,6 +321,15 @@ jobs:
                 await github.rest.issues.createComment({
                   ...context.repo, issue_number: Number(process.env.PR_NUMBER), body
                 });
+              }
+              const afterWrite = await readExistingReport();
+              if (newerReport(afterWrite)) {
+                core.warning("Older controller clobbered a newer report; restoring newer body.");
+                await github.rest.issues.updateComment({
+                  ...context.repo, comment_id: afterWrite.id, body: afterWrite.body
+                });
+                conversationDelivery = "superseded by newer run";
+                conclusion = "cancelled";
               }
             }
             await github.rest.checks.update({
