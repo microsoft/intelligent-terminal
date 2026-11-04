@@ -120,6 +120,52 @@
                    TargetType="ToggleButton">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
             </Style>
+            <ControlTemplate x:Key="CompactNewTabButtonTemplate"
+                             TargetType="Button">
+                <Grid Background="Transparent">
+                    <ContentPresenter x:Name="CompactActionPresenter"
+                                      Width="{StaticResource SidebarHoverBackgroundExtent}"
+                                      Height="{StaticResource SidebarHoverBackgroundExtent}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center"
+                                      Background="{TemplateBinding Background}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Control.IsTemplateFocusTarget="True"
+                                      CornerRadius="{TemplateBinding CornerRadius}"
+                                      FocusVisualMargin="{TemplateBinding FocusVisualMargin}"
+                                      FocusVisualPrimaryBrush="{TemplateBinding FocusVisualPrimaryBrush}"
+                                      FocusVisualPrimaryThickness="{TemplateBinding FocusVisualPrimaryThickness}"
+                                      FocusVisualSecondaryBrush="{TemplateBinding FocusVisualSecondaryBrush}"
+                                      FocusVisualSecondaryThickness="{TemplateBinding FocusVisualSecondaryThickness}"
+                                      Foreground="{TemplateBinding Foreground}" />
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Target="CompactActionPresenter.Background" Value="{ThemeResource ButtonBackgroundPointerOver}" />
+                                    <Setter Target="CompactActionPresenter.Foreground" Value="{ThemeResource ButtonForegroundPointerOver}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Target="CompactActionPresenter.Background" Value="{ThemeResource ButtonBackgroundPressed}" />
+                                    <Setter Target="CompactActionPresenter.Foreground" Value="{ThemeResource ButtonForegroundPressed}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Target="CompactActionPresenter.Background" Value="{ThemeResource ButtonBackgroundDisabled}" />
+                                    <Setter Target="CompactActionPresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                </Grid>
+            </ControlTemplate>
             <Style x:Key="SidebarTitleTextStyle"
                    TargetType="TextBlock">
                 <Setter Property="LineHeight" Value="20" />
@@ -399,7 +445,7 @@
 
         <Grid x:Name="CompactNewTabToolbar"
               Grid.Row="1"
-              Width="40"
+              Width="{StaticResource SidebarActionCellExtent}"
               Height="80"
               Visibility="Collapsed">
             <Grid.RowDefinitions>
@@ -409,11 +455,12 @@
 
             <Button x:Name="CompactNewTabButton"
                     x:Uid="CompactNewTabButton"
-                    Width="40"
+                    Width="{StaticResource SidebarActionCellExtent}"
                     Height="40"
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
+                    Template="{StaticResource CompactNewTabButtonTemplate}"
                     Click="OnCompactNewTabClick">
                 <Viewbox Width="16"
                          Height="16">
@@ -425,11 +472,12 @@
             <Button x:Name="CompactNewTabMenuButton"
                     x:Uid="CompactNewTabMenuButton"
                     Grid.Row="1"
-                    Width="40"
+                    Width="{StaticResource SidebarActionCellExtent}"
                     Height="40"
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
+                    Template="{StaticResource CompactNewTabButtonTemplate}"
                     Click="OnCompactNewTabMenuClick">
                 <Viewbox Width="16"
                          Height="16">
@@ -511,8 +559,8 @@
                         <!--  Keep the hit target larger than the visible toolbar affordance.  -->
                         <Grid Background="Transparent">
                             <ContentPresenter x:Name="SearchButtonPresenter"
-                                              Width="24"
-                                              Height="24"
+                                              Width="{StaticResource SidebarHoverBackgroundExtent}"
+                                              Height="{StaticResource SidebarHoverBackgroundExtent}"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
                                               HorizontalContentAlignment="Center"
@@ -600,8 +648,8 @@
                         <!--  Match the search button's compact visual inside the larger hit target.  -->
                         <Grid Background="Transparent">
                             <ContentPresenter x:Name="FilterButtonPresenter"
-                                              Width="24"
-                                              Height="24"
+                                              Width="{StaticResource SidebarHoverBackgroundExtent}"
+                                              Height="{StaticResource SidebarHoverBackgroundExtent}"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
                                               HorizontalContentAlignment="Center"

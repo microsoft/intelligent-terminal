@@ -3478,7 +3478,8 @@ namespace winrt::TerminalApp::implementation
         const auto expandedVisibility = _isRailCollapsed ? Visibility::Collapsed : Visibility::Visible;
         const auto collapsedVisibility = _isRailCollapsed ? Visibility::Visible : Visibility::Collapsed;
 
-        MinWidth(_isRailCollapsed ? 40.0 : 180.0);
+        const auto collapsedActionWidth = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
+        MinWidth(_isRailCollapsed ? collapsedActionWidth : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(true);
@@ -3497,7 +3498,7 @@ namespace winrt::TerminalApp::implementation
         TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
-        SearchTabsButton().Width(40.0);
+        SearchTabsButton().Width(_isRailCollapsed ? collapsedActionWidth : 40.0);
         SearchTabsButton().Height(40.0);
 
         if (_isRailCollapsed)
