@@ -361,6 +361,124 @@ impl WslProcessGroup {
 mod tests {
     use super::*;
 
+    const NATIVE_EXIT_FIXTURE: &str =
+        "protocol::acp::process::tests::native_exit_fixture";
+    const NATIVE_EXIT_CONFIGURATION: &str = "WTA_TEST_NATIVE_EXIT";
+
+    #[test]
+    fn native_exit_fixture() {
+        use std::io::Write;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use windows_sys::Win32::System::Console::{
+            GetConsoleWindow, SetConsoleCtrlHandler, CTRL_BREAK_EVENT,
+        };
+
+        let Ok(configuration) = std::env::var(NATIVE_EXIT_CONFIGURATION) else {
+            return;
+        };
+        let configuration: serde_json::Value = serde_json::from_str(&configuration).unwrap();
+        static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+        unsafe extern "system" fn on_control(event: u32) -> i32 {
+            if event == CTRL_BREAK_EVENT {
+                INTERRUPTED.store(true, Ordering::SeqCst);
+                return 1;
+            }
+            0
+        }
+        // The baseline has no console; it is ready but cannot receive a
+        // native interrupt. Only the opted-in launch supplies this channel.
+        if !unsafe { GetConsoleWindow() }.is_null() {
+            assert_ne!(unsafe { SetConsoleCtrlHandler(Some(on_control), 1) }, 0);
+        }
+        println!("NATIVE_EXIT_READY");
+        std::io::stdout().flush().unwrap();
+        loop {
+            if configuration["cooperative"] == true && INTERRUPTED.load(Ordering::SeqCst) {
+                std::fs::write(configuration["marker"].as_str().unwrap(), b"native cleanup")
+                    .unwrap();
+                std::process::exit(0);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    async fn native_exit_test_process(
+        agent_id: &str,
+        marker: &std::path::Path,
+        cooperative: bool,
+    ) -> AgentProcess {
+        use crate::protocol::acp::spawn::{
+            spawn_agent_process_with_provider, ChildEnvironmentPolicy,
+            SharedProviderSelection,
+        };
+
+        let spawned = {
+            let _environment = crate::test_support::lock_env();
+            let previous = std::env::var_os(NATIVE_EXIT_CONFIGURATION);
+            std::env::set_var(
+                NATIVE_EXIT_CONFIGURATION,
+                serde_json::json!({"marker": marker, "cooperative": cooperative}).to_string(),
+            );
+            let command = format!(
+                "{} --exact {NATIVE_EXIT_FIXTURE} --nocapture",
+                std::env::current_exe().unwrap().display()
+            );
+            let spawned = spawn_agent_process_with_provider(
+                &command,
+                None,
+                Some(agent_id),
+                ChildEnvironmentPolicy::ApplySharedProvider,
+                SharedProviderSelection::Disabled,
+            );
+            match previous {
+                Some(value) => std::env::set_var(NATIVE_EXIT_CONFIGURATION, value),
+                None => std::env::remove_var(NATIVE_EXIT_CONFIGURATION),
+            }
+            spawned.unwrap()
+        };
+        let mut process = spawned.child;
+        let mut output = process.take_stdout().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                let mut line = String::new();
+                assert_ne!(output.read_line(&mut line).await.unwrap(), 0);
+                if line.trim() == "NATIVE_EXIT_READY" {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the owned native fixture must initialize before testing shutdown");
+        process
+    }
+
+    #[tokio::test]
+    async fn antigravity_native_cleanup_runs_before_forced_job_fallback() {
+        let directory = std::env::temp_dir()
+            .join(format!("wta-native-exit-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let marker = directory.join("native-cleanup");
+        let mut custom =
+            native_exit_test_process("custom:native-exit-fixture", &marker, true).await;
+        custom.terminate().await.unwrap();
+        assert!(
+            !marker.exists(),
+            "custom commands must keep their existing forceful teardown"
+        );
+
+        let mut native = native_exit_test_process("antigravity", &marker, true).await;
+        native.terminate().await.unwrap();
+        let cleaned = marker.is_file();
+        if cleaned {
+            std::fs::remove_file(&marker).unwrap();
+        }
+        std::fs::remove_dir(&directory).unwrap();
+        assert!(
+            cleaned,
+            "the Antigravity opt-in must let the process perform native cleanup before containment teardown"
+        );
+    }
+
     #[test]
     fn wsl_ownership_receipt_and_cleanup_reject_unrelated_processes() {
         for line in [
