@@ -10395,6 +10395,33 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(tip.IsLightDismissEnabled());
             VERIFY_IS_TRUE(tip.Title().empty());
             VERIFY_IS_TRUE(tip.Subtitle().empty());
+            const auto background = tip.Background();
+            VERIFY_IS_NOT_NULL(background);
+            if (!winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
+            {
+                const auto acrylic = background.try_as<Media::AcrylicBrush>();
+                VERIFY_IS_NOT_NULL(acrylic);
+                VERIFY_ARE_EQUAL(Media::AcrylicBackgroundSource::Backdrop, acrylic.BackgroundSource());
+                const auto luminosity = acrylic.TintLuminosityOpacity();
+                VERIFY_IS_NOT_NULL(luminosity);
+                if (tip.ActualTheme() == ElementTheme::Light)
+                {
+                    const auto tint = winrt::Windows::UI::ColorHelper::FromArgb(255, 252, 252, 252);
+                    const auto fallback = winrt::Windows::UI::ColorHelper::FromArgb(255, 249, 249, 249);
+                    VERIFY_ARE_EQUAL(tint, acrylic.TintColor());
+                    VERIFY_ARE_EQUAL(0.0, acrylic.TintOpacity());
+                    VERIFY_ARE_EQUAL(0.85, luminosity.Value());
+                    VERIFY_ARE_EQUAL(fallback, acrylic.FallbackColor());
+                }
+                else
+                {
+                    const auto color = winrt::Windows::UI::ColorHelper::FromArgb(255, 44, 44, 44);
+                    VERIFY_ARE_EQUAL(color, acrylic.TintColor());
+                    VERIFY_ARE_EQUAL(0.15, acrylic.TintOpacity());
+                    VERIFY_ARE_EQUAL(0.96, luminosity.Value());
+                    VERIFY_ARE_EQUAL(color, acrylic.FallbackColor());
+                }
+            }
             const auto content = tip.Content().try_as<FrameworkElement>();
             VERIFY_IS_NOT_NULL(content);
             title = content.FindName(L"SidebarIntroductionTitleText").try_as<TextBlock>();
@@ -10492,9 +10519,10 @@ namespace TerminalAppLocalTests
                 }
             }
             VERIFY_IS_NOT_NULL(closeButton);
+            VERIFY_IS_NOT_NULL(tipBox);
+            VERIFY_IS_TRUE(tipBox.as<Grid>().Background() == tip.Background());
             if (!vertical)
             {
-                VERIFY_IS_NOT_NULL(tipBox);
                 const auto firstTab = page->_tabView.TabItems().GetAt(0).as<FrameworkElement>();
                 VERIFY_ARE_EQUAL(expectedFlowDirection, firstTab.FlowDirection());
                 const auto firstTabBounds = firstTab.TransformToVisual(page->Root()).TransformBounds({ 0, 0, static_cast<float>(firstTab.ActualWidth()), static_cast<float>(firstTab.ActualHeight()) });
