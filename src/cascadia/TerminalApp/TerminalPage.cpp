@@ -799,7 +799,19 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto tab = page->_GetTabByTabViewItem(args.Tab()))
                 {
-                    page->_GetTabImpl(tab)->RequestFocusActiveControl.raise();
+                    const auto tabImpl = page->_GetTabImpl(tab);
+                    if (page->_GetFocusedTabImpl() != tabImpl)
+                    {
+                        if (page->_selectedTabItem() == tab.TabViewItem())
+                        {
+                            page->_UpdatedSelectedTab(tab);
+                        }
+                        else if (const auto index = page->_GetTabIndex(tab))
+                        {
+                            page->_SelectTab(*index);
+                        }
+                    }
+                    tabImpl->RequestFocusActiveControl.raise();
                 }
             }
         });
