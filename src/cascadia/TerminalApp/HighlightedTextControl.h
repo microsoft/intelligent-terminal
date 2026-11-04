@@ -36,14 +36,22 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(double, TextOpacity);
 
     private:
+        struct PathEllipsisResult
+        {
+            winrt::hstring text;
+            std::vector<size_t> sourceToDisplay;
+        };
+
         friend struct HighlightedTextControlPropertyRegistration;
         static void _InitializeProperties();
         static void _onPropertyChanged(const Windows::UI::Xaml::DependencyObject& o, const Windows::UI::Xaml::DependencyPropertyChangedEventArgs& e);
-        winrt::hstring _pathEllipsisText(const winrt::hstring& text) const;
+        PathEllipsisResult _pathEllipsisText(const winrt::hstring& text) const;
+        std::vector<winrt::TerminalApp::HighlightedRun> _mapRuns(const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& runs) const;
         void _updateTextAndStyle();
         void _updateColorHighlights();
         winrt::Windows::UI::Xaml::Controls::TextBlock _textBlock{ nullptr };
         winrt::hstring _displayText;
+        std::vector<size_t> _sourceToDisplay;
         winrt::Windows::UI::Xaml::Media::SolidColorBrush _foreground{ nullptr };
         winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChangedRevoker;
         int64_t _foregroundToken{};

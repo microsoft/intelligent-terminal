@@ -251,12 +251,44 @@ namespace winrt::TerminalApp::implementation
         return value == L'\\' || value == L'/';
     }
 
-    winrt::hstring HighlightedTextControl::_pathEllipsisText(const winrt::hstring& text) const
+    static std::vector<TerminalApp::HighlightedRun> _searchRuns(const std::wstring_view text, const std::wstring_view query)
     {
+        std::vector<TerminalApp::HighlightedRun> runs;
+        if (!query.empty() && query.size() <= text.size())
+        {
+            for (size_t offset = 0; offset + query.size() <= text.size();)
+            {
+                if (til::compare_ordinal_insensitive(text.substr(offset, query.size()), query) == 0)
+                {
+                    runs.emplace_back(offset, offset + query.size() - 1);
+                    offset += query.size();
+                }
+                else
+                {
+                    ++offset;
+                }
+            }
+        }
+        return runs;
+    }
+
+    static std::vector<size_t> _identityOffsets(const size_t size)
+    {
+        std::vector<size_t> offsets(size + 1);
+        for (size_t index = 0; index < offsets.size(); ++index)
+        {
+            offsets[index] = index;
+        }
+        return offsets;
+    }
+
+    HighlightedTextControl::PathEllipsisResult HighlightedTextControl::_pathEllipsisText(const winrt::hstring& text) const
+    {
+        PathEllipsisResult result{ text, _identityOffsets(text.size()) };
         const auto width = ActualWidth();
         if (text.empty() || !_textBlock || width <= 0)
         {
-            return text;
+            return result;
         }
 
         Controls::TextBlock probe;
@@ -272,111 +304,193 @@ namespace winrt::TerminalApp::implementation
         probe.TextWrapping(TextWrapping::NoWrap);
         const auto unconstrained = std::numeric_limits<float>::infinity();
         const auto fits = [&](const winrt::hstring& value) {
-            probe.Text(value);
+            const auto inlines = probe.Inlines();
+            inlines.Clear();
+            const auto explicitRuns = HighlightedRuns();
+            const auto searchText = SearchText();
+            const auto runs = explicitRuns && explicitRuns.Size() && !value.empty() ?
+                                  std::vector<TerminalApp::HighlightedRun>{ TerminalApp::HighlightedRun{ 0, value.size() - 1 } } :
+                                  _searchRuns(std::wstring_view{ value }, std::wstring_view{ searchText });
+            size_t lastPos = 0;
+            const auto appendRun = [&](const size_t start, const size_t end, const bool highlighted) {
+                if (end <= start)
+                {
+                    return;
+                }
+                Documents::Run run;
+                run.Text(hstring{ til::safe_slice_abs(value, start, end) });
+                if (highlighted)
+                {
+                    if (const auto runStyle = HighlightedRunStyle())
+                    {
+                        _applyStyleToObject(runStyle, run);
+                    }
+                    else
+                    {
+                        run.FontWeight(FontWeights::Bold());
+                    }
+                }
+                inlines.Append(run);
+            };
+            for (const auto& run : runs)
+            {
+                appendRun(lastPos, run.Start, false);
+                appendRun(run.Start, run.End + 1, true);
+                lastPos = run.End + 1;
+            }
+            appendRun(lastPos, value.size(), false);
             probe.Measure({ unconstrained, unconstrained });
             return probe.DesiredSize().Width <= width - 0.5;
         };
-        if (fits(text))
-        {
-            return text;
-        }
 
-        const std::wstring_view path{ text };
-        const auto firstSeparator = path.find_first_of(L"\\/");
-        if (firstSeparator == std::wstring_view::npos)
-        {
-            return text;
-        }
+        const auto compactLine = [&](const std::wstring_view path) {
+            PathEllipsisResult lineResult{ hstring{ path }, _identityOffsets(path.size()) };
+            if (fits(lineResult.text))
+            {
+                return lineResult;
+            }
 
-        auto separator = path[firstSeparator];
-        size_t contentStart = 0;
-        std::wstring_view anchor;
-        if (path.size() >= 3 && path[1] == L':' && _isPathSeparator(path[2]))
-        {
-            separator = path[2];
-            contentStart = 3;
-            anchor = path.substr(0, contentStart);
-        }
-        else if (path.size() >= 2 && _isPathSeparator(path[0]) && _isPathSeparator(path[1]))
-        {
-            separator = path[0];
-            const auto serverEnd = path.find_first_of(L"\\/", 2);
-            const auto shareEnd = serverEnd == std::wstring_view::npos ?
-                                      std::wstring_view::npos :
-                                      path.find_first_of(L"\\/", serverEnd + 1);
-            if (shareEnd != std::wstring_view::npos)
+            wchar_t separator = L'\\';
+            size_t contentStart = 0;
+            if (path.size() >= 3 && path[1] == L':' && _isPathSeparator(path[2]))
             {
-                contentStart = shareEnd + 1;
-                anchor = path.substr(0, contentStart);
+                separator = path[2];
+                contentStart = 3;
             }
-        }
-        else if (_isPathSeparator(path[0]))
-        {
-            separator = path[0];
-            contentStart = 1;
-            anchor = path.substr(0, contentStart);
-        }
-        else if (path.size() >= 2 && path[0] == L'~' && _isPathSeparator(path[1]))
-        {
-            separator = path[1];
-            contentStart = 2;
-            anchor = path.substr(0, contentStart);
-        }
+            else if (path.size() >= 2 && _isPathSeparator(path[0]) && _isPathSeparator(path[1]))
+            {
+                separator = path[0];
+                const auto serverEnd = path.find_first_of(L"\\/", 2);
+                const auto shareEnd = serverEnd == std::wstring_view::npos ?
+                                          std::wstring_view::npos :
+                                          path.find_first_of(L"\\/", serverEnd + 1);
+                if (shareEnd != std::wstring_view::npos)
+                {
+                    contentStart = shareEnd + 1;
+                }
+            }
+            else if (!path.empty() && _isPathSeparator(path[0]))
+            {
+                separator = path[0];
+                contentStart = 1;
+            }
+            else if (path.size() >= 2 && path[0] == L'~' && _isPathSeparator(path[1]))
+            {
+                separator = path[1];
+                contentStart = 2;
+            }
+            if (contentStart == 0)
+            {
+                return lineResult;
+            }
 
-        std::vector<std::wstring_view> components;
-        for (auto position = contentStart; position < path.size();)
-        {
-            while (position < path.size() && _isPathSeparator(path[position]))
+            std::vector<size_t> componentStarts;
+            for (auto position = contentStart; position < path.size();)
             {
-                ++position;
+                while (position < path.size() && _isPathSeparator(path[position]))
+                {
+                    ++position;
+                }
+                if (position < path.size())
+                {
+                    componentStarts.emplace_back(position);
+                    while (position < path.size() && !_isPathSeparator(path[position]))
+                    {
+                        ++position;
+                    }
+                }
             }
-            const auto componentStart = position;
-            while (position < path.size() && !_isPathSeparator(path[position]))
+            if (componentStarts.size() < 2)
             {
-                ++position;
+                return lineResult;
             }
-            if (componentStart < position)
-            {
-                components.emplace_back(path.substr(componentStart, position - componentStart));
-            }
-        }
-        if (components.size() < 2)
-        {
-            return text;
-        }
 
-        const auto candidate = [&](const std::wstring_view candidateAnchor, const size_t firstComponent) {
-            std::wstring value{ candidateAnchor };
-            value.push_back(L'\u2026');
-            for (auto index = firstComponent; index < components.size(); ++index)
+            const auto anchor = path.substr(0, contentStart);
+            for (size_t firstComponent = 1; firstComponent < componentStarts.size(); ++firstComponent)
             {
-                value.push_back(separator);
-                value.append(components[index]);
+                const auto suffixStart = componentStarts[firstComponent];
+                std::wstring candidate{ anchor };
+                candidate.push_back(L'\u2026');
+                candidate.push_back(separator);
+                candidate.append(path.substr(suffixStart));
+                const hstring candidateText{ candidate };
+                const auto isLastCandidate = firstComponent + 1 == componentStarts.size();
+                if (fits(candidateText) || isLastCandidate)
+                {
+                    lineResult.text = candidateText;
+                    const auto ellipsisStart = contentStart;
+                    std::fill(lineResult.sourceToDisplay.begin() + contentStart,
+                              lineResult.sourceToDisplay.begin() + suffixStart,
+                              ellipsisStart);
+                    const auto suffixDisplayStart = contentStart + 2;
+                    for (auto sourceOffset = suffixStart; sourceOffset <= path.size(); ++sourceOffset)
+                    {
+                        lineResult.sourceToDisplay[sourceOffset] = suffixDisplayStart + sourceOffset - suffixStart;
+                    }
+                    return lineResult;
+                }
             }
-            return winrt::hstring{ value };
+            return lineResult;
         };
 
-        for (size_t firstComponent = 1; firstComponent < components.size(); ++firstComponent)
+        std::wstring displayText;
+        displayText.reserve(text.size());
+        const std::wstring_view source{ text };
+        for (size_t lineStart = 0; lineStart < source.size();)
         {
-            const auto value = candidate(anchor, firstComponent);
-            if (fits(value))
+            const auto lineEnd = source.find_first_of(L"\r\n", lineStart);
+            const auto contentEnd = lineEnd == std::wstring_view::npos ? source.size() : lineEnd;
+            const auto line = compactLine(source.substr(lineStart, contentEnd - lineStart));
+            const auto displayStart = displayText.size();
+            displayText.append(line.text);
+            for (size_t offset = 0; offset <= contentEnd - lineStart; ++offset)
             {
-                return value;
+                result.sourceToDisplay[lineStart + offset] = displayStart + line.sourceToDisplay[offset];
             }
-        }
-        if (!anchor.empty())
-        {
-            for (size_t firstComponent = 0; firstComponent < components.size(); ++firstComponent)
+            if (lineEnd == std::wstring_view::npos)
             {
-                const auto value = candidate({}, firstComponent);
-                if (fits(value))
+                break;
+            }
+
+            auto newlineEnd = lineEnd + 1;
+            if (source[lineEnd] == L'\r' && newlineEnd < source.size() && source[newlineEnd] == L'\n')
+            {
+                ++newlineEnd;
+            }
+            for (auto offset = lineEnd; offset < newlineEnd; ++offset)
+            {
+                result.sourceToDisplay[offset] = displayText.size();
+                displayText.push_back(source[offset]);
+                result.sourceToDisplay[offset + 1] = displayText.size();
+            }
+            lineStart = newlineEnd;
+        }
+        result.text = hstring{ displayText };
+        return result;
+    }
+
+    std::vector<TerminalApp::HighlightedRun> HighlightedTextControl::_mapRuns(const IVector<TerminalApp::HighlightedRun>& runs) const
+    {
+        std::vector<TerminalApp::HighlightedRun> mapped;
+        if (!runs)
+        {
+            return mapped;
+        }
+        for (const auto& run : runs)
+        {
+            THROW_HR_IF(E_INVALIDARG, run.End < run.Start);
+            if (run.Start + 1 < _sourceToDisplay.size())
+            {
+                const auto end = std::min<size_t>(run.End + 1, _sourceToDisplay.size() - 1);
+                const auto start = _sourceToDisplay[run.Start];
+                const auto endExclusive = _sourceToDisplay[end];
+                if (endExclusive > start)
                 {
-                    return value;
+                    mapped.emplace_back(start, endExclusive - 1);
                 }
             }
         }
-
-        return winrt::hstring{ components.back() };
+        return mapped;
     }
 
     void HighlightedTextControl::_updateTextAndStyle()
@@ -392,30 +506,17 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto sourceText = Text();
-        const auto text = UsePathEllipsis() ? _pathEllipsisText(sourceText) : sourceText;
-        _displayText = text;
+        auto pathResult = UsePathEllipsis() ? _pathEllipsisText(sourceText) : PathEllipsisResult{ sourceText, _identityOffsets(sourceText.size()) };
+        _displayText = std::move(pathResult.text);
+        _sourceToDisplay = std::move(pathResult.sourceToDisplay);
+        const auto& text = _displayText;
         const auto runs = HighlightedRuns();
+        const auto mappedRuns = _mapRuns(runs);
         std::vector<TerminalApp::HighlightedRun> searchRuns;
         if ((!runs || runs.Size() == 0) && !text.empty())
         {
             const auto searchText = SearchText();
-            const std::wstring_view query{ searchText.c_str(), searchText.size() };
-            const std::wstring_view candidate{ text.c_str(), text.size() };
-            if (!query.empty() && query.size() <= candidate.size())
-            {
-                for (size_t offset = 0; offset + query.size() <= candidate.size();)
-                {
-                    if (til::compare_ordinal_insensitive(candidate.substr(offset, query.size()), query) == 0)
-                    {
-                        searchRuns.emplace_back(offset, offset + query.size() - 1);
-                        offset += query.size();
-                    }
-                    else
-                    {
-                        ++offset;
-                    }
-                }
-            }
+            searchRuns = _searchRuns(std::wstring_view{ text }, std::wstring_view{ searchText });
         }
 
         const auto inlinesCollection = textBlock.Inlines();
@@ -455,9 +556,9 @@ namespace winrt::TerminalApp::implementation
                 lastPos = static_cast<size_t>(end + 1);
             };
 
-            if (runs && runs.Size())
+            if (!mappedRuns.empty())
             {
-                for (const auto& highlightedRun : runs)
+                for (const auto& highlightedRun : mappedRuns)
                 {
                     appendHighlightedRun(highlightedRun);
                 }
@@ -537,9 +638,8 @@ namespace winrt::TerminalApp::implementation
             highlighter.Foreground(brush);
             highlighter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
             const auto ranges = highlighter.Ranges();
-            for (const auto& range : colorRanges)
+            for (const auto& range : _mapRuns(colorRanges))
             {
-                THROW_HR_IF(E_INVALIDARG, range.End < range.Start);
                 if (range.Start < text.size())
                 {
                     const auto end = std::min<uint64_t>(range.End, text.size() - 1);

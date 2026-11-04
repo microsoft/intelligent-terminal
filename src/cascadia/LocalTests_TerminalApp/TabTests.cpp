@@ -2497,6 +2497,41 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(displayedCwd.find(L"\u2026") != std::wstring_view::npos);
             VERIFY_IS_TRUE(displayedCwd.ends_with(L"\\splitPane"));
             VERIFY_IS_FALSE(metadataText.IsTextTrimmed());
+
+            metadata.SearchText(L"splitPane");
+            header.Measure({ 180, 100 });
+            header.Arrange({ 0, 0, 180, header.DesiredSize().Height });
+            header.UpdateLayout();
+            VERIFY_IS_FALSE(metadataText.IsTextTrimmed());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"splitPane" }, metadataText.Inlines().GetAt(metadataText.Inlines().Size() - 1).as<Documents::Run>().Text());
+            VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, metadataText.Inlines().GetAt(metadataText.Inlines().Size() - 1).as<Documents::Run>().FontWeight().Weight);
+
+            presentation.text = L"Active\nC:\\Users\\haonantang\\Copilot\\intelligent-terminal\\splitPane";
+            presentation.agentStatus = "Working";
+            presentation.agentStatusRanges = { { 0, 6 } };
+            tab->SetRichTabPresentation(presentation);
+            header.Measure({ 180, 100 });
+            header.Arrange({ 0, 0, 180, header.DesiredSize().Height });
+            header.UpdateLayout();
+            const std::wstring_view statusBeforeCwd{ metadataText.Text() };
+            VERIFY_IS_TRUE(statusBeforeCwd.starts_with(L"Active\nC:\\"));
+            VERIFY_IS_TRUE(statusBeforeCwd.find(L"\nC:\\\u2026\\") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(statusBeforeCwd.ends_with(L"\\splitPane"));
+            VERIFY_ARE_EQUAL(1u, metadataText.TextHighlighters().Size());
+            VERIFY_ARE_EQUAL(0, metadataText.TextHighlighters().GetAt(0).Ranges().GetAt(0).StartIndex);
+            VERIFY_ARE_EQUAL(6, metadataText.TextHighlighters().GetAt(0).Ranges().GetAt(0).Length);
+
+            presentation.text = L"C:\\Users\\haonantang\\Copilot\\intelligent-terminal\\splitPane\nActive";
+            presentation.agentStatusRanges = { { presentation.text.size() - 6, 6 } };
+            tab->SetRichTabPresentation(presentation);
+            header.Measure({ 180, 100 });
+            header.Arrange({ 0, 0, 180, header.DesiredSize().Height });
+            header.UpdateLayout();
+            const std::wstring_view cwdBeforeStatus{ metadataText.Text() };
+            VERIFY_IS_TRUE(cwdBeforeStatus.starts_with(L"C:\\"));
+            VERIFY_IS_TRUE(cwdBeforeStatus.ends_with(L"\nActive"));
+            VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(cwdBeforeStatus.size() - 6), metadataText.TextHighlighters().GetAt(0).Ranges().GetAt(0).StartIndex);
+            VERIFY_ARE_EQUAL(6, metadataText.TextHighlighters().GetAt(0).Ranges().GetAt(0).Length);
         });
     }
 
