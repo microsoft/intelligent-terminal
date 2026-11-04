@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures::future::BoxFuture;
@@ -12,6 +13,10 @@ use crate::agent_source::AgentSource;
 pub(super) struct AntigravityProvider;
 pub(super) static ADAPTER: AntigravityProvider = AntigravityProvider;
 
+// Native extraction cleanup measured about three seconds. Outer shutdown
+// deadlines still take precedence over this maximum opportunity.
+const NATIVE_EXIT_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
 impl ProviderLifecycleAdapter for AntigravityProvider {
     fn family_id(&self) -> &'static str {
         crate::agent_registry::ANTIGRAVITY_AGENT_ID
@@ -23,6 +28,10 @@ impl ProviderLifecycleAdapter for AntigravityProvider {
 
     fn installer_kind(&self) -> InstallerKind {
         InstallerKind::StandaloneAcp
+    }
+
+    fn host_console_interrupt_grace(&self) -> Option<Duration> {
+        Some(NATIVE_EXIT_GRACE_PERIOD)
     }
 
     fn find_host_acp(&self) -> Option<String> {

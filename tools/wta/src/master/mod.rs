@@ -1989,6 +1989,7 @@ struct AgentCli {
     /// Master is the ACP *client* of this CLI. Every helper request for
     /// a session owned by this agent forwards onto this connection.
     conn: conn::ClientLink,
+    graceful_shutdown: Option<crate::protocol::acp::process::GracefulShutdown>,
     /// This CLI's `initialize` response, replayed verbatim to every
     /// helper that binds to it (re-forwarding `initialize` to the CLI
     /// returns empty `agent_info` on most backends, which blanks the
@@ -5330,6 +5331,12 @@ async fn shutdown_master(state: &Arc<MasterStateInner>) {
         .values()
         .filter_map(|cell| cell.get().cloned())
         .collect();
+    let native_deadline = tokio::time::Instant::now()
+        + agents
+            .iter()
+            .filter_map(|agent| agent.graceful_shutdown.as_ref().map(|stop| stop.grace))
+            .max()
+            .unwrap_or(CLEANUP_TIMEOUT);
     let sessions: Vec<_> = state
         .session_to_helper
         .lock()
@@ -5351,7 +5358,13 @@ async fn shutdown_master(state: &Arc<MasterStateInner>) {
             }
         }))
         .await;
-        futures::future::join_all(agents.iter().map(|agent| retire_agent_history(agent))).await;
+        futures::future::join_all(
+            agents
+                .iter()
+                .filter(|agent| agent.graceful_shutdown.is_none())
+                .map(|agent| retire_agent_history(agent)),
+        )
+        .await;
     };
     if tokio::time::timeout(CLEANUP_TIMEOUT, cleanup)
         .await
@@ -5359,10 +5372,48 @@ async fn shutdown_master(state: &Arc<MasterStateInner>) {
     {
         tracing::warn!(target: "master", "service cleanup deadline reached; closing owned transports");
     }
-    for agent in agents {
+    for agent in &agents {
+        if agent.graceful_shutdown.is_none() {
+            agent.history_refresh.cancelled.cancel();
+            agent.conn.shutdown();
+        }
+    }
+    stop_graceful_agents(&agents, native_deadline).await;
+}
+
+async fn stop_graceful_agents(agents: &[Arc<AgentCli>], deadline: tokio::time::Instant) {
+    let started = tokio::time::Instant::now();
+    futures::future::join_all(agents.iter().filter_map(|agent| {
+        let shutdown = agent.graceful_shutdown.clone()?;
         agent.history_refresh.cancelled.cancel();
         agent.conn.shutdown();
-    }
+        shutdown.request();
+        let deadline = deadline.min(started + shutdown.grace);
+        Some(async move {
+            // History and the shared process retire concurrently, using one
+            // deadline rather than a serial grace period for each instance.
+            let completion = tokio::time::timeout_at(deadline, async {
+                let history = async {
+                    retire_agent_history(agent).await;
+                    // A concurrent reaper may have begun this same retirement.
+                    drop(agent.history_refresh.gate.lock().await);
+                };
+                let (result, ()) = tokio::join!(shutdown.wait(), history);
+                result
+            })
+            .await;
+            match completion {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => tracing::warn!(target: "master",
+                    instance_id = %agent.instance_id, %error,
+                    "native process exit was not confirmed before host teardown"),
+                Err(_) => tracing::warn!(target: "master",
+                    instance_id = %agent.instance_id,
+                    "native process shutdown deadline reached; retaining host fallback"),
+            }
+        })
+    }))
+    .await;
 }
 
 /// Normalize the host-supplied `--allowed-agent-ids` argv into the
@@ -6311,6 +6362,7 @@ async fn spawn_one_agent(
     };
     cold_start.complete(None);
 
+    let graceful_shutdown = child.graceful_shutdown();
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so
     // the next helper respawns it; the master stays up for other agents.
@@ -6370,6 +6422,7 @@ async fn spawn_one_agent(
         instance_id,
         resolved_agent_id: resolved_agent_id.clone(),
         conn,
+        graceful_shutdown,
         cached_init_resp: init_resp,
         cli_source,
         source: source.clone(),
@@ -10589,6 +10642,16 @@ async fn run_retirement_operation(
                     .then(|| format!("orphan:{session_id}"))
             },
         ));
+        let agents: Vec<_> = state
+            .agents
+            .lock()
+            .await
+            .values()
+            .filter_map(|cell| cell.get().cloned())
+            .collect();
+        // Keep the all-generation fence active while opted-in processes stop.
+        // Helpers admitted during this wait remain in the outgoing batches.
+        stop_graceful_agents(&agents, deadline).await;
         while let Some(next_batch) = finish_all_retirement_batch(&state, &processed_helpers).await {
             let (captured, captured_orphaned_tabs) =
                 capture_helper_retirements(&state, &next_batch).await;

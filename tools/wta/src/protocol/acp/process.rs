@@ -35,14 +35,16 @@ pub(crate) fn configure_child_error_reporting() {
 
 pub(crate) struct ProcessJob(OwnedHandle);
 
+impl AsRawHandle for ProcessJob {
+    fn as_raw_handle(&self) -> std::os::windows::io::RawHandle {
+        self.0.as_raw_handle()
+    }
+}
+
 impl ProcessJob {
-    pub(crate) fn spawn(
-        command: &mut tokio::process::Command,
-    ) -> Result<(tokio::process::Child, Self)> {
-        // SAFETY: every returned handle is immediately owned. The child is
-        // suspended until assigned, so even cmd/npx descendants inherit this
-        // job before any agent code can execute.
-        let job = unsafe {
+    pub(super) fn new() -> Result<Self> {
+        // SAFETY: every successful handle is immediately owned.
+        unsafe {
             let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
             if handle.is_null() {
                 return Err(std::io::Error::last_os_error()).context("create ACP process job");
@@ -59,25 +61,34 @@ impl ProcessJob {
             {
                 return Err(std::io::Error::last_os_error()).context("configure ACP process job");
             }
-            Self(handle)
-        };
+            Ok(Self(handle))
+        }
+    }
+
+    pub(super) fn assign(&self, process: std::os::windows::io::RawHandle) -> Result<()> {
+        // SAFETY: callers retain the still-suspended child's process handle.
+        if unsafe { AssignProcessToJobObject(self.0.as_raw_handle(), process) } == 0 {
+            return Err(std::io::Error::last_os_error()).context("assign ACP child to job");
+        }
+        Ok(())
+    }
+
+    pub(crate) fn spawn(
+        command: &mut tokio::process::Command,
+    ) -> Result<(tokio::process::Child, Self)> {
+        let job = Self::new()?;
+        // Assignment precedes resume, including for cmd/npx descendants.
         command.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
         let mut child = command.spawn().context("spawn contained ACP server")?;
-        let assigned = unsafe {
-            // SAFETY: the child and job handles remain live across the call.
-            AssignProcessToJobObject(
-                job.0.as_raw_handle(),
-                child
-                    .raw_handle()
-                    .ok_or_else(|| anyhow!("ACP child has no process handle"))?,
-            )
-        };
-        if assigned == 0 {
-            let error = std::io::Error::last_os_error();
+        if let Err(error) = job.assign(
+            child
+                .raw_handle()
+                .ok_or_else(|| anyhow!("ACP child has no process handle"))?,
+        ) {
             if let Err(kill_error) = child.start_kill() {
                 tracing::error!(target: "acp_process", %kill_error, "failed to kill unassigned suspended ACP child");
             }
-            return Err(error).context("assign ACP child to job");
+            return Err(error);
         }
         resume_suspended_child(child.id().ok_or_else(|| anyhow!("ACP child has no PID"))?)?;
         Ok((child, job))
@@ -127,6 +138,33 @@ pub(crate) struct AgentProcess {
     wsl_group: Option<WslProcessGroup>,
     receipt: Vec<u8>,
     stop_requested: tokio_util::sync::CancellationToken,
+    graceful_shutdown: Option<super::console_host::ShutdownRequest>,
+    completion: Option<tokio::sync::watch::Sender<Option<bool>>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct GracefulShutdown {
+    stop: tokio_util::sync::CancellationToken,
+    completion: tokio::sync::watch::Receiver<Option<bool>>,
+    pub grace: Duration,
+}
+
+impl GracefulShutdown {
+    pub fn request(&self) {
+        self.stop.cancel();
+    }
+
+    pub async fn wait(mut self) -> Result<()> {
+        let completed = *self
+            .completion
+            .wait_for(Option::is_some)
+            .await
+            .context("ACP process owner ended before confirming exit")?;
+        if completed != Some(true) {
+            return Err(anyhow!("ACP process cleanup did not confirm exit"));
+        }
+        Ok(())
+    }
 }
 
 impl AgentProcess {
@@ -134,7 +172,18 @@ impl AgentProcess {
         command: &mut tokio::process::Command,
         wsl_bootstrap: Option<(String, String)>,
     ) -> Result<Self> {
+        Self::spawn_with_graceful_shutdown(command, wsl_bootstrap, None)
+    }
+
+    pub(crate) fn spawn_with_graceful_shutdown(
+        command: &mut tokio::process::Command,
+        wsl_bootstrap: Option<(String, String)>,
+        graceful_shutdown: Option<super::console_host::ShutdownRequest>,
+    ) -> Result<Self> {
         let (mut child, job) = ProcessJob::spawn(command)?;
+        let completion = graceful_shutdown
+            .as_ref()
+            .map(|_| tokio::sync::watch::channel(None).0);
         Ok(Self {
             stdin: child.stdin.take(),
             stderr: child.stderr.take(),
@@ -145,6 +194,8 @@ impl AgentProcess {
             wsl_group: None,
             receipt: Vec::new(),
             stop_requested: tokio_util::sync::CancellationToken::new(),
+            graceful_shutdown,
+            completion,
         })
     }
 
@@ -159,6 +210,14 @@ impl AgentProcess {
 
     pub(crate) fn stop_token(&self) -> tokio_util::sync::CancellationToken {
         self.stop_requested.clone()
+    }
+
+    pub(crate) fn graceful_shutdown(&self) -> Option<GracefulShutdown> {
+        Some(GracefulShutdown {
+            stop: self.stop_requested.clone(),
+            completion: self.completion.as_ref()?.subscribe(),
+            grace: self.graceful_shutdown.as_ref()?.grace,
+        })
     }
 
     async fn read_wsl_receipt(&mut self) -> Result<()> {
@@ -197,6 +256,20 @@ impl AgentProcess {
             if let Some(group) = &self.wsl_group {
                 group.terminate().await?;
             }
+            if let Some(shutdown) = &self.graceful_shutdown {
+                let deadline = tokio::time::Instant::now() + shutdown.grace;
+                match shutdown.request() {
+                    Ok(()) => match tokio::time::timeout_at(deadline, self.child.wait()).await {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(error)) => tracing::warn!(target: "acp_process", %error,
+                            "native ACP exit wait failed; using contained teardown"),
+                        Err(_) => tracing::warn!(target: "acp_process",
+                            "native ACP interrupt deadline reached; using contained teardown"),
+                    },
+                    Err(error) => tracing::warn!(target: "acp_process", %error,
+                        "native ACP interrupt request failed; using contained teardown"),
+                }
+            }
             self.job.terminate().await?;
             tokio::time::timeout(Duration::from_secs(5), self.child.wait())
                 .await
@@ -205,6 +278,9 @@ impl AgentProcess {
             Ok(())
         }
         .await;
+        if let Some(completion) = &self.completion {
+            let _ = completion.send_replace(Some(result.is_ok()));
+        }
         result.context(crate::agent_lifecycle::StartupPhase::Cleanup)
     }
 
@@ -358,12 +434,31 @@ impl WslProcessGroup {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    const NATIVE_EXIT_FIXTURE: &str =
-        "protocol::acp::process::tests::native_exit_fixture";
+    const NATIVE_EXIT_FIXTURE: &str = "protocol::acp::process::tests::native_exit_fixture";
     const NATIVE_EXIT_CONFIGURATION: &str = "WTA_TEST_NATIVE_EXIT";
+
+    pub(crate) fn graceful_shutdown_fixture(
+        grace: Duration,
+    ) -> (
+        GracefulShutdown,
+        tokio_util::sync::CancellationToken,
+        tokio::sync::watch::Sender<Option<bool>>,
+    ) {
+        let stop = tokio_util::sync::CancellationToken::new();
+        let (sender, completion) = tokio::sync::watch::channel(None);
+        (
+            GracefulShutdown {
+                stop: stop.clone(),
+                completion,
+                grace,
+            },
+            stop,
+            sender,
+        )
+    }
 
     #[test]
     fn native_exit_fixture() {
@@ -373,10 +468,30 @@ mod tests {
             GetConsoleWindow, SetConsoleCtrlHandler, CTRL_BREAK_EVENT,
         };
 
+        // Environment is briefly configured in the test runner during spawn;
+        // only the explicitly selected child may enter the fixture loop.
+        let arguments: Vec<_> = std::env::args().collect();
+        if !arguments
+            .windows(2)
+            .any(|pair| pair == ["--exact", NATIVE_EXIT_FIXTURE])
+        {
+            return;
+        }
         let Ok(configuration) = std::env::var(NATIVE_EXIT_CONFIGURATION) else {
             return;
         };
         let configuration: serde_json::Value = serde_json::from_str(&configuration).unwrap();
+        for key in ["TEMP", "TMP"] {
+            assert_eq!(
+                serde_json::to_value(std::env::var(key).ok()).unwrap(),
+                configuration[key],
+                "native temporary environment must remain inherited"
+            );
+        }
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            std::path::PathBuf::from(configuration["cwd"].as_str().unwrap())
+        );
         static INTERRUPTED: AtomicBool = AtomicBool::new(false);
         unsafe extern "system" fn on_control(event: u32) -> i32 {
             if event == CTRL_BREAK_EVENT {
@@ -392,6 +507,10 @@ mod tests {
         }
         println!("NATIVE_EXIT_READY");
         std::io::stdout().flush().unwrap();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        print!("{input}");
+        std::io::stdout().flush().unwrap();
         loop {
             if configuration["cooperative"] == true && INTERRUPTED.load(Ordering::SeqCst) {
                 std::fs::write(configuration["marker"].as_str().unwrap(), b"native cleanup")
@@ -402,14 +521,13 @@ mod tests {
         }
     }
 
-    async fn native_exit_test_process(
+    pub(crate) async fn native_exit_test_process(
         agent_id: &str,
         marker: &std::path::Path,
         cooperative: bool,
     ) -> AgentProcess {
         use crate::protocol::acp::spawn::{
-            spawn_agent_process_with_provider, ChildEnvironmentPolicy,
-            SharedProviderSelection,
+            spawn_agent_process_with_provider, ChildEnvironmentPolicy, SharedProviderSelection,
         };
 
         let spawned = {
@@ -417,7 +535,14 @@ mod tests {
             let previous = std::env::var_os(NATIVE_EXIT_CONFIGURATION);
             std::env::set_var(
                 NATIVE_EXIT_CONFIGURATION,
-                serde_json::json!({"marker": marker, "cooperative": cooperative}).to_string(),
+                serde_json::json!({
+                    "marker": marker,
+                    "cooperative": cooperative,
+                    "TEMP": std::env::var("TEMP").ok(),
+                    "TMP": std::env::var("TMP").ok(),
+                    "cwd": std::env::current_dir().unwrap(),
+                })
+                .to_string(),
             );
             let command = format!(
                 "{} --exact {NATIVE_EXIT_FIXTURE} --nocapture",
@@ -446,6 +571,18 @@ mod tests {
                     break;
                 }
             }
+            use tokio::io::AsyncWriteExt;
+            let payload = "native stdio remains unchanged\n";
+            process
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(payload.as_bytes())
+                .await
+                .unwrap();
+            let mut echoed = String::new();
+            output.read_line(&mut echoed).await.unwrap();
+            assert_eq!(echoed, payload);
         })
         .await
         .expect("the owned native fixture must initialize before testing shutdown");
@@ -454,8 +591,8 @@ mod tests {
 
     #[tokio::test]
     async fn antigravity_native_cleanup_runs_before_forced_job_fallback() {
-        let directory = std::env::temp_dir()
-            .join(format!("wta-native-exit-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("wta-native-exit-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
         let marker = directory.join("native-cleanup");
         let mut custom =
@@ -477,6 +614,29 @@ mod tests {
             cleaned,
             "the Antigravity opt-in must let the process perform native cleanup before containment teardown"
         );
+    }
+
+    #[tokio::test]
+    async fn antigravity_native_cleanup_timeout_preserves_containment_and_other_processes() {
+        let directory =
+            std::env::temp_dir().join(format!("wta-native-deadline-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let marker = directory.join("native-cleanup");
+        let mut unrelated = native_exit_test_process("custom:unrelated", &marker, true).await;
+        let mut native = native_exit_test_process("antigravity", &marker, false).await;
+        native.graceful_shutdown.as_mut().unwrap().grace = Duration::from_millis(100);
+        tokio::time::timeout(Duration::from_secs(3), native.terminate())
+            .await
+            .expect("non-cooperation must reach the existing contained fallback")
+            .unwrap();
+        assert!(native.try_wait().unwrap().is_some());
+        assert!(
+            !marker.exists(),
+            "forced fallback must not claim native cleanup"
+        );
+        assert!(unrelated.try_wait().unwrap().is_none());
+        unrelated.terminate().await.unwrap();
+        std::fs::remove_dir(directory).unwrap();
     }
 
     #[test]

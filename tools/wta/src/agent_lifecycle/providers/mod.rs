@@ -58,6 +58,9 @@ pub(crate) trait ProviderLifecycleAdapter: Sync {
     fn host_bootstrap_available(&self, _launch_ready: bool) -> bool {
         false
     }
+    fn host_console_interrupt_grace(&self) -> Option<std::time::Duration> {
+        None
+    }
     fn prepare<'a>(
         &'a self,
         _command: &'a str,
@@ -147,6 +150,18 @@ mod tests {
         assert_eq!(PROVIDERS.len(), crate::agent_registry::KNOWN_AGENTS.len());
         assert!(lookup("custom:antigravity").is_none());
         assert!(lookup("unknown").is_none());
+    }
+
+    #[test]
+    fn native_shutdown_is_an_antigravity_only_opt_in() {
+        for provider in PROVIDERS {
+            assert_eq!(
+                provider.host_console_interrupt_grace().is_some(),
+                provider.family_id() == crate::agent_registry::ANTIGRAVITY_AGENT_ID,
+                "other providers must retain their existing teardown"
+            );
+        }
+        assert!(lookup("custom:antigravity").is_none());
     }
 
     #[tokio::test]

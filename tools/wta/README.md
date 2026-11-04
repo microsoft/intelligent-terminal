@@ -208,6 +208,27 @@ nonzero exit with stderr means discovery is unknown/failed, not unavailable.
 `launch-agent` resolves the executable afresh on each launch. The existing
 `probe-host-agents` retains its separate ACP prerequisites and behavior.
 
+### Native Antigravity ACP shutdown
+
+Built-in Windows-host Antigravity ACP uses an invisible, contained console.
+Controlled teardown sends the standard Windows Ctrl+Break interrupt so its
+launcher can perform native extraction cleanup before forced containment
+teardown. Redirected ACP stdio, working directory and inherited `TEMP`/`TMP`
+are preserved. Other providers, custom provider IDs, WSL and interactive
+`launch-agent` profiles do not opt into this behavior.
+
+The maximum opportunity is defined once by `NATIVE_EXIT_GRACE_PERIOD` in
+`src\agent_lifecycle\providers\antigravity.rs`, currently **5 seconds**.
+Shared-process and history shutdown run concurrently within existing retirement
+deadlines. Cleanup does not add a directory-disappearance check or a new startup
+gate; existing old-process exit and pipe-release safeguards remain.
+
+This is best effort. A shorter outer deadline, including Terminal's current
+3-second final master-shutdown limit, can cut the opportunity short. Crashes,
+forced termination, interrupted startup, unresponsive processes or native
+filesystem errors can still leave `_MEI*` directories. WTA neither redirects
+temporary storage nor deletes or sweeps existing runtime files.
+
 ### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
