@@ -1215,24 +1215,27 @@ class CopilotFixture {
         @($final.sessions | Where-Object { $_.session_id -eq $sid -and $_.status -eq 'Attention' -and $_.provider_id -eq 'copilot' -and $_.location -eq 'Host' }) |
             Should -HaveCount 1
         $afterRestart = Restart-StatusFixture $native
-        $afterRestart.agent_session_id | Should -BeExactly $sid
+        $afterRestart.agent_session_id | Should -BeNullOrEmpty -Because 'restart cannot prove that the old conversation continues'
         foreach ($step in @(@{ State = 1; Status = 'Working'; Text = 'Working' },
             @{ State = -1; Status = 'Attention'; Text = 'Waiting for input' })) {
             if ($step.State -eq -1) { Send-StatusSignal $native -Kind bell } else { Send-StatusSignal $native -State $step.State }
-            Wait-Until -TimeoutSec 10 -Because 'the restarted exact resume keeps its canonical identity and truthful status' -Condition {
+            Wait-Until -TimeoutSec 10 -Because 'the restarted pane reports local status without inheriting the old conversation' -Condition {
                 $snapshot = Get-StatusRegistrySnapshot
-                $rows = @($snapshot.sessions | Where-Object {
-                    $_.session_id -eq $sid -and $_.status -eq $step.Status -and
-                    ([string]$_.pane_session_id).Trim('{}') -eq ([string]$native.Pane.session_id).Trim('{}')
+                $rows = @($snapshot.native_pane_observations | Where-Object {
+                    $_.status -eq $step.Status -and
+                    ([string]$_.pane_id).Trim('{}') -eq ([string]$native.Pane.session_id).Trim('{}')
                 })
-                if ($rows.Count -eq 1 -and (Get-StatusText $native) -match [regex]::Escape($step.Text)) { $rows[0] }
+                if ($rows.Count -eq 1 -and (Get-StatusText $native) -match [regex]::Escape($step.Text)) {
+                    $rows[0].agent_session_id | Should -BeNullOrEmpty
+                    $rows[0]
+                }
             } | Out-Null
         }
         $restartedSnapshot = Get-StatusRegistrySnapshot
         @($restartedSnapshot.sessions | Where-Object {
             $_.session_id -eq $sid -and
             ([string]$_.pane_session_id).Trim('{}') -eq ([string]$native.Pane.session_id).Trim('{}')
-        }) | Should -HaveCount 1
+        }) | Should -HaveCount 0 -Because 'the old conversation must not be rebound by restarting its former pane'
     }
 
     It 'Full trust Settings remains usable during native agent metadata refresh' {
