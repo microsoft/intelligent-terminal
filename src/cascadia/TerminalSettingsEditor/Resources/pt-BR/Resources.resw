@@ -3051,8 +3051,8 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Use as regras de aspas da linha de comando do Windows para valores que contenham espaços. Os argumentos são passados ao agente, que valida suas opções. Comandos de shell não são aceitos.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Use as regras de aspas da linha de comando do Windows para valores que contenham espaços.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Usar a preferência de divisão do perfil</value>

@@ -3015,8 +3015,8 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>針對包含空格的值，請使用 Windows 命令列的引號規則。引數會傳遞給智能體，由智能體驗證其選項。不支援殼層命令。</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>針對包含空格的值，請使用 Windows 命令列的引號規則。</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>使用設定檔的分割喜好設定</value>

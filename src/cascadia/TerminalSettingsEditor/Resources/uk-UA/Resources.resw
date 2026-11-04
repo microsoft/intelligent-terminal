@@ -2582,8 +2582,8 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows. Аргументи передаються агенту, який перевіряє свої параметри. Команди оболонки не підтримуються.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Використовувати налаштування розділення профілю</value>

@@ -3055,8 +3055,8 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>За вредности које садрже размаке користите правила за наводнике у Windows командној линији. Аргументи се прослеђују агенту, који проверава своје опције. Команде љуске нису подржане.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>За вредности које садрже размаке користите правила за наводнике у Windows командној линији.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Користи подешавање поделе профила</value>

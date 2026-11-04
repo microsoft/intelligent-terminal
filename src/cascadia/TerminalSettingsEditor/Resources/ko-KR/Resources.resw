@@ -3051,8 +3051,8 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>공백이 포함된 값에는 Windows 명령줄의 따옴표 규칙을 사용하세요. 인수는 에이전트에 전달되며, 에이전트가 옵션의 유효성을 검사합니다. 셸 명령은 지원되지 않습니다.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>공백이 포함된 값에는 Windows 명령줄의 따옴표 규칙을 사용하세요.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>프로필의 분할 기본 설정 사용</value>

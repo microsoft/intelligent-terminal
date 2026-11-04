@@ -3015,8 +3015,8 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>スペースを含む値には、Windows コマンド ラインの引用符の規則を使用してください。引数はエージェントに渡され、エージェントがオプションを検証します。シェル コマンドはサポートされていません。</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>スペースを含む値には、Windows コマンド ラインの引用符の規則を使用してください。</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>プロファイルの分割設定を使用する</value>

@@ -3015,8 +3015,8 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Per i valori contenenti spazi, usa le regole per le virgolette della riga di comando di Windows. Gli argomenti vengono passati all’agente, che convalida le proprie opzioni. I comandi della shell non sono supportati.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Per i valori contenenti spazi, usa le regole per le virgolette della riga di comando di Windows.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Usa la preferenza di divisione del profilo</value>

@@ -3016,8 +3016,8 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Utilisez les règles de mise entre guillemets de la ligne de commande Windows pour les valeurs contenant des espaces. Les arguments sont transmis à l’agent, qui valide ses options. Les commandes shell ne sont pas prises en charge.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Utilisez les règles de mise entre guillemets de la ligne de commande Windows pour les valeurs contenant des espaces.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Utiliser la préférence de fractionnement du profil</value>

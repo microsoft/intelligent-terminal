@@ -3051,8 +3051,8 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Для значений с пробелами используйте правила заключения в кавычки командной строки Windows. Аргументы передаются агенту, который проверяет свои параметры. Команды оболочки не поддерживаются.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Для значений с пробелами используйте правила заключения в кавычки командной строки Windows.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Использовать настройку разделения профиля</value>

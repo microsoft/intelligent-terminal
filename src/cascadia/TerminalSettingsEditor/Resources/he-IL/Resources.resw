@@ -3078,8 +3078,8 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>השתמש בכללי הצבת מרכאות של שורת הפקודה של Windows לערכים המכילים רווחים. הארגומנטים מועברים לסוכן, שמאמת את האפשרויות שלו. פקודות מעטפת (shell) אינן נתמכות.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>השתמש בכללי הצבת מרכאות של שורת הפקודה של Windows לערכים המכילים רווחים.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>השתמש בהעדפת הפיצול של הפרופיל</value>

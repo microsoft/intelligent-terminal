@@ -3012,8 +3012,8 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>‮Üšë ‬Windows‮ çöḿḿåñđ-ŀïñë ɋüöŧïñģ ƒöŕ ṽåŀüëš çöñŧåïñïñģ šƥåçëš. Åŕģüḿëñŧš åŕë ƥåššëđ ŧö ŧħë åģëñŧ, ŵħïçħ ṽåŀïđåŧëš ïŧš öƥŧïöñš. Šħëŀŀ çöḿḿåñđš åŕë ñöŧ šüƥƥöŕŧëđ.‬ !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>‮Üšë ‬Windows‮ çöḿḿåñđ-ŀïñë ɋüöŧïñģ ƒöŕ ṽåŀüëš çöñŧåïñïñģ šƥåçëš.‬ !!! !!! !!! !!!</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>‮Üšë ƥŕöƒïŀë šƥŀïŧ ƥŕëƒëŕëñçë‬ !!! !!!</value>

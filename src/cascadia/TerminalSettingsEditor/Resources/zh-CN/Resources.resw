@@ -3051,8 +3051,8 @@ Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>对于包含空格的值，请使用 Windows 命令行的引号规则。参数会传递给智能体，由智能体验证其选项。不支持 shell 命令。</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>对于包含空格的值，请使用 Windows 命令行的引号规则。</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>使用配置文件的拆分首选项</value>
