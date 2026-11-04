@@ -27139,8 +27139,17 @@ namespace TerminalAppLocalTests
             if (!highContrast)
             {
                 strip->OnSidebarRowPointerEntered(headerGrid(0), nullptr);
-                const auto nativeHover = sidebarDefaultHover();
-                VERIFY_ARE_EQUAL(nativeHover.Color(), headerGrid(0).FindName(L"TabHoverBackground").as<Border>().Background().as<Media::SolidColorBrush>().Color());
+                const auto nativeHover = headerGrid(0).FindName(L"TabHoverBackground").as<Border>();
+                const auto colorHover = headerGrid(0).FindName(L"TabColorHoverBackground").as<Border>();
+                const auto groupHover = colorHover.Background().try_as<Media::SolidColorBrush>();
+                VERIFY_IS_NOT_NULL(groupHover);
+                if (groupHover)
+                {
+                    VERIFY_ARE_EQUAL(horizontalHover.Color(), groupHover.Color());
+                    VERIFY_ARE_EQUAL(horizontalHover.Opacity(), groupHover.Opacity());
+                }
+                VERIFY_ARE_EQUAL(0.0, nativeHover.Opacity());
+                VERIFY_ARE_EQUAL(1.0, colorHover.Opacity());
                 VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
                 for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
                 {

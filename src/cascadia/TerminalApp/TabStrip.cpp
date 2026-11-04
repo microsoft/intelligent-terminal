@@ -1534,7 +1534,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto isGroup = display.IsGroup();
-            const auto hoverBrush = !isGroup && !_highContrast ? _tabHoverBrush(display.Tab()) : nullptr;
+            const auto hoverBrush = !_highContrast ? _tabHoverBrush(display.Tab()) : nullptr;
             const auto hovered = hoverBrush && winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             bool selectedPaneVisible = false;
             if (isGroup && display.ChildrenVisibility() == Visibility::Visible)
