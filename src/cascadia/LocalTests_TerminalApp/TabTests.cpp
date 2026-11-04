@@ -976,7 +976,7 @@ namespace TerminalAppLocalTests
         void _verifyContentTransferReviewScroll(bool transfer, bool reject = true);
         void _verifyContentTransferReviewSuppression(bool singlePane, bool destinationSuppressed = false);
         void _waitForContentTransferReviewUI(const std::function<bool()>& predicate);
-        void _verifyTabIntroductionPopup(const bool vertical, const wchar_t* language);
+        void _verifyTabIntroductionPopup(const bool vertical, const wchar_t* language, ElementTheme theme);
         TransferTabSnapshot _snapshotTransferTab(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                                const winrt::com_ptr<winrt::TerminalApp::implementation::Tab>& tab);
         void _verifyTransferTabUnchanged(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
@@ -10218,12 +10218,18 @@ namespace TerminalAppLocalTests
 
     void TabTests::SidebarIntroductionPopupMatchesDesign()
     {
-        _verifyTabIntroductionPopup(true, L"en-US");
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+        {
+            _verifyTabIntroductionPopup(true, L"en-US", theme);
+        }
     }
 
     void TabTests::HorizontalTabsIntroductionPopupMatchesDesign()
     {
-        _verifyTabIntroductionPopup(false, L"en-US");
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+        {
+            _verifyTabIntroductionPopup(false, L"en-US", theme);
+        }
     }
 
     void TabTests::AgentProfilesIntroductionHostOverlayGate()
@@ -10326,10 +10332,13 @@ namespace TerminalAppLocalTests
 
     void TabTests::HorizontalTabsIntroductionPopupMatchesDesignRtl()
     {
-        _verifyTabIntroductionPopup(false, L"ar-SA");
+        for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+        {
+            _verifyTabIntroductionPopup(false, L"ar-SA", theme);
+        }
     }
 
-    void TabTests::_verifyTabIntroductionPopup(const bool vertical, const wchar_t* language)
+    void TabTests::_verifyTabIntroductionPopup(const bool vertical, const wchar_t* language, const ElementTheme theme)
     {
         const auto rtl = std::wstring_view{ language } == L"ar-SA";
         const auto expectedFlowDirection = rtl ? FlowDirection::RightToLeft : FlowDirection::LeftToRight;
@@ -10354,10 +10363,15 @@ namespace TerminalAppLocalTests
         Grid host{ nullptr };
         TestOnUIThread([&]() {
             host = Grid{};
+            host.RequestedTheme(theme);
             host.Width(1300);
             host.Height(690);
         });
         _initializeTerminalPage(page, settings, *connection, host);
+        _waitForContentTransferReviewUI([&]() {
+            host.UpdateLayout();
+            return host.ActualTheme() == theme && page->ActualTheme() == theme;
+        });
 
         winrt::MUX::Controls::TeachingTip tip{ nullptr };
         TextBlock title{ nullptr };
@@ -10391,6 +10405,7 @@ namespace TerminalAppLocalTests
             host.UpdateLayout();
             tip = page->_PrepareSidebarIntroduction();
             VERIFY_IS_NOT_NULL(tip);
+            VERIFY_ARE_EQUAL(theme, tip.ActualTheme());
             VERIFY_ARE_EQUAL(FlowDirection::LeftToRight, tip.FlowDirection());
             VERIFY_IS_FALSE(tip.IsLightDismissEnabled());
             VERIFY_IS_TRUE(tip.Title().empty());
@@ -10404,7 +10419,7 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Media::AcrylicBackgroundSource::Backdrop, acrylic.BackgroundSource());
                 const auto luminosity = acrylic.TintLuminosityOpacity();
                 VERIFY_IS_NOT_NULL(luminosity);
-                if (tip.ActualTheme() == ElementTheme::Light)
+                if (theme == ElementTheme::Light)
                 {
                     const auto tint = winrt::Windows::UI::ColorHelper::FromArgb(255, 252, 252, 252);
                     const auto fallback = winrt::Windows::UI::ColorHelper::FromArgb(255, 249, 249, 249);
