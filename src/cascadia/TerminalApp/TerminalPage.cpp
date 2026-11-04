@@ -97,7 +97,7 @@ using namespace std::chrono_literals;
 
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
-static constexpr double railCollapsedWidth = 40.0;
+static constexpr double railCollapsedWidth = 46.0;
 static constexpr auto sidebarHistoryMasterRecoveryTimeout = std::chrono::seconds{ 15 };
 static constexpr auto sidebarHistoryFastRefreshInterval = std::chrono::seconds{ 5 };
 static constexpr auto sidebarHistoryRefreshInterval = std::chrono::seconds{ 60 };
