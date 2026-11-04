@@ -388,6 +388,7 @@ namespace winrt::TerminalApp::implementation
         bool FocusLastSidebarStop();
         void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
+        void SetHistoryExpanded(bool expanded);
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
         void SetAgentCompletionResolver(std::function<bool(const TerminalApp::TabStripHistoryItem&)> resolver);
         void RefreshHistoryAgentCompletions();
@@ -670,7 +671,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::ProgressRing _historyLoadingIndicator{ nullptr };
         winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
-        bool _historyExpanded{ true };
+        bool _historyExpanded{ false };
         bool _syncingHistorySection{ false };
         winrt::Windows::UI::Xaml::FrameworkElement _historyElement(const wchar_t* name)
         {

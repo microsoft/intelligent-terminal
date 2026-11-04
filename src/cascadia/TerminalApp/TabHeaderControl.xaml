@@ -203,6 +203,7 @@
                                       SearchText="{x:Bind SearchText, Mode=OneWay}"
                                       Style="{StaticResource SidebarCaptionControlStyle}"
                                       SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
+                                      UsePathEllipsis="True"
                                       Visibility="Collapsed">
             <local:HighlightedTextControl.TextBlockStyle>
                 <Style BasedOn="{StaticResource SidebarCaptionTextStyle}"

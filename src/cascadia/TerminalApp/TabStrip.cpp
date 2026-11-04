@@ -35,6 +35,7 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
+using winrt::Microsoft::Terminal::Settings::Model::ApplicationState;
 
 static constexpr double SearchPanelExpandedHeight = 48.0;
 static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
@@ -783,7 +784,8 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TabStrip::TabStrip()
+    TabStrip::TabStrip() :
+        _historyExpanded{ ApplicationState::SharedInstance().SidebarRecentSessionsExpanded() }
     {
         _tabItems = single_threaded_observable_vector<IInspectable>();
         _displayItems = single_threaded_observable_vector<TerminalApp::TabStripDisplayItem>();
@@ -1534,7 +1536,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto isGroup = display.IsGroup();
-            const auto hoverBrush = !isGroup && !_highContrast ? _tabHoverBrush(display.Tab()) : nullptr;
+            const auto hoverBrush = !_highContrast ? _tabHoverBrush(display.Tab()) : nullptr;
             const auto hovered = hoverBrush && winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             bool selectedPaneVisible = false;
             if (isGroup && display.ChildrenVisibility() == Visibility::Visible)
@@ -3252,12 +3254,18 @@ namespace winrt::TerminalApp::implementation
         return header ? _findNamedElement(header, _historyNode && _historyNode.IsExpanded() ? L"ExpandedGlyph" : L"CollapsedGlyph").try_as<TextBlock>() : nullptr;
     }
 
+    void TabStrip::SetHistoryExpanded(const bool expanded)
+    {
+        _historyExpanded = expanded;
+        ApplicationState::SharedInstance().SidebarRecentSessionsExpanded(expanded);
+        _updateHistoryVisualState();
+    }
+
     void TabStrip::OnTreeExpanding(MUX::Controls::TreeView const&, MUX::Controls::TreeViewExpandingEventArgs const& e)
     {
-        if (!_syncingTree && e.Node() == _historyNode)
+        if (!_syncingTree && e.Node() == _historyNode && !_sidebarFilters.HasSearchQuery())
         {
-            _historyExpanded = true;
-            _updateHistoryVisualState();
+            SetHistoryExpanded(true);
         }
     }
 
@@ -3267,9 +3275,12 @@ namespace winrt::TerminalApp::implementation
         {
             if (!_sidebarFilters.HasSearchQuery())
             {
-                _historyExpanded = false;
+                SetHistoryExpanded(false);
             }
-            _updateHistoryVisualState();
+            else
+            {
+                _updateHistoryVisualState();
+            }
         }
     }
 
@@ -3467,7 +3478,8 @@ namespace winrt::TerminalApp::implementation
         const auto expandedVisibility = _isRailCollapsed ? Visibility::Collapsed : Visibility::Visible;
         const auto collapsedVisibility = _isRailCollapsed ? Visibility::Visible : Visibility::Collapsed;
 
-        MinWidth(_isRailCollapsed ? 40.0 : 180.0);
+        const auto collapsedActionWidth = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
+        MinWidth(_isRailCollapsed ? collapsedActionWidth : 180.0);
         CompactNewTabToolbar().Visibility(collapsedVisibility);
         VerticalTabsHeader().Visibility(expandedVisibility);
         SearchTabsButton().IsHitTestVisible(true);
@@ -3486,7 +3498,7 @@ namespace winrt::TerminalApp::implementation
         TabsToolbar().ColumnDefinitions().GetAt(2).Width(actionColumn);
         WUX::Controls::Grid::SetColumn(SearchTabsButton(), _isRailCollapsed ? 0 : 1);
         WUX::Controls::Grid::SetColumnSpan(SearchTabsButton(), _isRailCollapsed ? 4 : 1);
-        SearchTabsButton().Width(40.0);
+        SearchTabsButton().Width(_isRailCollapsed ? collapsedActionWidth : 40.0);
         SearchTabsButton().Height(40.0);
 
         if (_isRailCollapsed)

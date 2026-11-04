@@ -718,7 +718,7 @@
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
-    <value>Stäng alla flikar som körs i bakgrunden</value>
+    <value>Stäng alla flikar i läge utan gränssnitt</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">

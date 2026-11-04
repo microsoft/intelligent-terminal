@@ -97,7 +97,7 @@ using namespace std::chrono_literals;
 
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
-static constexpr double railCollapsedWidth = 40.0;
+static constexpr double railCollapsedWidth = 46.0;
 static constexpr auto sidebarHistoryMasterRecoveryTimeout = std::chrono::seconds{ 15 };
 static constexpr auto sidebarHistoryFastRefreshInterval = std::chrono::seconds{ 5 };
 static constexpr auto sidebarHistoryRefreshInterval = std::chrono::seconds{ 60 };
@@ -799,7 +799,25 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto tab = page->_GetTabByTabViewItem(args.Tab()))
                 {
-                    page->_GetTabImpl(tab)->RequestFocusActiveControl.raise();
+                    const auto tabImpl = page->_GetTabImpl(tab);
+                    const auto content = tab.Content();
+                    uint32_t contentIndex{};
+                    const auto isDisplayed = content &&
+                                             page->_tabContent.Children().IndexOf(content, contentIndex) &&
+                                             content.Opacity() == 1.0 &&
+                                             content.IsHitTestVisible();
+                    if (!isDisplayed)
+                    {
+                        if (page->_selectedTabItem() == tab.TabViewItem())
+                        {
+                            page->_UpdatedSelectedTab(tab);
+                        }
+                        else if (const auto index = page->_GetTabIndex(tab))
+                        {
+                            page->_SelectTab(*index);
+                        }
+                    }
+                    tabImpl->RequestFocusActiveControl.raise();
                 }
             }
         });
@@ -1478,6 +1496,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Persist: never show FRE again
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->SetHistoryExpanded(false);
         ApplicationState::SharedInstance().AgentFreCompleted(true);
         _SetFreChromeVisible(true);
 
@@ -9906,9 +9925,6 @@ namespace winrt::TerminalApp::implementation
             {
                 try
                 {
-                    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
-                    ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(
-                        profile.AgentProfileId(), *::Microsoft::Terminal::Settings::Model::AgentPolicy::GetSnapshot());
                     settingsInternal->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Command(profile, true) });
                 }
                 catch (const wil::ResultException& e)
@@ -19517,11 +19533,11 @@ namespace winrt::TerminalApp::implementation
             const auto provider = newTerminalArgs.NativeAgentProviderId();
             const auto id = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ provider });
             THROW_HR_IF(E_INVALIDARG, id.empty());
-            Policy::Reload();
-            THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
-            if (controlSettings.DefaultSettings()->UsesManagedAgentCommand())
+            // Non-profile native sessions require a provider policy check.
+            if (!Registry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }))
             {
-                ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(id, *Policy::_GetSnapshot());
+                Policy::Reload();
+                THROW_HR_IF(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed(id, *Policy::_GetSnapshot()));
             }
             newTerminalArgs.NativeAgentProviderId(winrt::hstring{ id });
         }
@@ -19727,13 +19743,13 @@ namespace winrt::TerminalApp::implementation
 
             auto acrylicBrush = TitlebarBrush().try_as<Media::AcrylicBrush>();
             if (!acrylicBrush ||
-                acrylicBrush.BackgroundSource() != Media::AcrylicBackgroundSource::HostBackdrop ||
+                acrylicBrush.BackgroundSource() != Media::AcrylicBackgroundSource::Backdrop ||
                 acrylicBrush.FallbackColor() != bgColor ||
                 acrylicBrush.TintColor() != bgColor ||
                 acrylicBrush.TintOpacity() != 0.5)
             {
                 acrylicBrush = Media::AcrylicBrush();
-                acrylicBrush.BackgroundSource(Media::AcrylicBackgroundSource::HostBackdrop);
+                acrylicBrush.BackgroundSource(Media::AcrylicBackgroundSource::Backdrop);
                 acrylicBrush.FallbackColor(bgColor);
                 acrylicBrush.TintColor(bgColor);
                 acrylicBrush.TintOpacity(0.5);

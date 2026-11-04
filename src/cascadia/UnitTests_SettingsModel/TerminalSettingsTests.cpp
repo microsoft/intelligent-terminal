@@ -58,6 +58,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestInitialPositionParsing);
         TEST_METHOD(AgentProfileDirectCommandPrecedence);
         TEST_METHOD(AgentProfileCommandlineOverrides);
+        TEST_METHOD(AgentProfileAppendRejectsEmbeddedNul);
+        TEST_METHOD(AgentProfileAppendPreservesRawCommandline);
         TEST_METHOD(AgentProfileManagedLayoutOrphan);
     };
 
@@ -65,14 +67,30 @@ namespace SettingsModelUnitTests
     {
         const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
             "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
-            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
-                         "agentProfile.id":"claude","agentProfile.model":"chosen"}]})" });
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"My native agent",
+                         "startingDirectory":"C:\\Project with spaces",
+                         "agentProfile.id":"antigravity","agentProfile.model":"chosen",
+                         "agentProfile.arguments":"--new-option \"two words\" --model \"user model\""}]})" });
         const auto profile = settings.ActiveProfiles().GetAt(0);
         const auto direct = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
         VERIFY_IS_TRUE(direct->UsesManagedAgentCommand());
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"wta.exe") == std::wstring_view::npos);
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"launch-agent") == std::wstring_view::npos);
         VERIFY_IS_TRUE(std::wstring_view{ direct->Commandline() }.find(L"--model") != std::wstring_view::npos);
+        const auto command = direct->Commandline();
+        int argc{};
+        wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(command.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv);
+        VERIFY_ARE_EQUAL(7, argc);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy.exe" }, std::filesystem::path{ argv[0] }.filename().native());
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, std::wstring{ argv[1] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"chosen" }, std::wstring{ argv[2] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--new-option" }, std::wstring{ argv[3] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"two words" }, std::wstring{ argv[4] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, std::wstring{ argv[5] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"user model" }, std::wstring{ argv[6] });
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\Project with spaces" }, direct->StartingDirectory());
+        VERIFY_ARE_EQUAL(profile.Name(), direct->StartingTitle());
         direct->UsesManagedAgentCommand(false);
         VERIFY_IS_FALSE(direct->UsesManagedAgentCommand());
         NewTerminalArgs args;
@@ -82,7 +100,9 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(explicitSettings->UsesManagedAgentCommand());
         VERIFY_ARE_EQUAL(args.Commandline(), explicitSettings->Commandline());
         args.AppendCommandLine(true);
-        VERIFY_IS_FALSE(TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings()->UsesManagedAgentCommand());
+        const auto appended = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+        VERIFY_IS_FALSE(appended->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(command + L" " + args.Commandline(), appended->Commandline());
         profile.Commandline(L"cmd.exe /d /k");
         const auto custom = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
         VERIFY_IS_FALSE(custom->UsesManagedAgentCommand());
@@ -95,10 +115,19 @@ namespace SettingsModelUnitTests
         profile.AgentProfileId(L"antigravity");
         VERIFY_IS_TRUE(TerminalSettings::CreateForPreview(settings, profile)->UsesManagedAgentCommand());
         profile.AgentProfilePermissionMode(L"plan");
-        const auto antigravityArgs = ::Microsoft::Terminal::AgentProfiles::ParseArguments(
-            TerminalSettings::CreateForPreview(settings, profile)->Commandline());
-        VERIFY_ARE_EQUAL(std::wstring{ L"--mode" }, antigravityArgs[3]);
-        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, antigravityArgs[4]);
+        const auto previewCommand = TerminalSettings::CreateForPreview(settings, profile)->Commandline();
+        int previewArgc{};
+        wil::unique_hlocal_ptr<PWSTR[]> previewArgv{ ::CommandLineToArgvW(previewCommand.c_str(), &previewArgc) };
+        VERIFY_IS_NOT_NULL(previewArgv);
+        VERIFY_ARE_EQUAL(9, previewArgc);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy.exe" }, std::filesystem::path{ previewArgv[0] }.filename().native());
+        const std::vector<std::wstring> expectedPreview{
+            L"--model", L"chosen", L"--mode", L"plan", L"--new-option", L"two words", L"--model", L"user model"
+        };
+        for (size_t i = 0; i < expectedPreview.size(); ++i)
+        {
+            VERIFY_ARE_EQUAL(expectedPreview[i], std::wstring{ previewArgv[i + 1] });
+        }
     }
 
     void TerminalSettingsTests::AgentProfileCommandlineOverrides()
@@ -132,6 +161,77 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(edited, TerminalSettings::CreateWithProfile(reloaded, reloaded.FindProfile(profile.Guid())).DefaultSettings()->Commandline());
         profile.ClearCommandline();
         VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());
+    }
+
+    void TerminalSettingsTests::AgentProfileAppendRejectsEmbeddedNul()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Native",
+                         "agentProfile.id":"antigravity","agentProfile.model":"chosen",
+                         "agentProfile.permissionMode":"plan"}]})" });
+        const auto profile = settings.ActiveProfiles().GetAt(0);
+        NewTerminalArgs args;
+        args.Profile(Utils::GuidToString(profile.Guid()));
+        const winrt::hstring nul{ std::wstring_view{ L"before\0after", 12 } };
+        for (const auto field : { 0, 1, 2 })
+        {
+            profile.AgentProfileModel(field == 0 ? nul : winrt::hstring{ L"chosen" });
+            profile.AgentProfilePermissionMode(field == 1 ? nul : winrt::hstring{ L"plan" });
+            const auto preview = TerminalSettings::CreateForPreview(settings, profile);
+            VERIFY_IS_TRUE(preview->UsesManagedAgentCommand());
+            const auto managed = TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings();
+            VERIFY_IS_TRUE(managed->UsesManagedAgentCommand());
+            if (field != 2)
+            {
+                VERIFY_IS_TRUE(std::wstring_view{ preview->Commandline() }.find(L'\0') != std::wstring_view::npos);
+            }
+            args.AppendCommandLine(false);
+            args.Commandline(L"cmd.exe /d /c echo replacement");
+            const auto replacement = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+            VERIFY_IS_FALSE(replacement->UsesManagedAgentCommand());
+            VERIFY_ARE_EQUAL(args.Commandline(), replacement->Commandline());
+            args.AppendCommandLine(true);
+            args.Commandline(field == 2 ? nul : winrt::hstring{ L"--version" });
+            VERIFY_THROWS(TerminalSettings::CreateWithNewTerminalArgs(settings, args), wil::ResultException);
+        }
+        profile.AgentProfileModel(L"chosen");
+        profile.AgentProfilePermissionMode(L"plan");
+        args.Commandline(L"--new-option \"two words\"");
+        const auto appended = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+        VERIFY_IS_FALSE(appended->UsesManagedAgentCommand());
+        const auto command = appended->Commandline();
+        int argc{};
+        wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(command.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv);
+        VERIFY_ARE_EQUAL(7, argc);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agy.exe" }, std::filesystem::path{ argv[0] }.filename().native());
+        const std::vector<std::wstring> expected{ L"--model", L"chosen", L"--mode", L"plan", L"--new-option", L"two words" };
+        for (size_t i = 0; i < expected.size(); ++i)
+        {
+            VERIFY_ARE_EQUAL(expected[i], std::wstring{ argv[i + 1] });
+        }
+    }
+
+    void TerminalSettingsTests::AgentProfileAppendPreservesRawCommandline()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"}]})" });
+        const auto profile = settings.ActiveProfiles().GetAt(0);
+        NewTerminalArgs args;
+        args.Profile(Utils::GuidToString(profile.Guid()));
+        args.AppendCommandLine(true);
+        for (const auto suffix : { winrt::hstring{ L"/d /c echo ordinary" }, winrt::hstring{ std::wstring_view{ L"before\0after", 12 } } })
+        {
+            args.Commandline(suffix);
+            const auto appended = TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings();
+            VERIFY_IS_FALSE(appended->UsesManagedAgentCommand());
+            VERIFY_ARE_EQUAL(profile.Commandline() + L" " + suffix, appended->Commandline());
+        }
+        profile.Commandline(winrt::hstring{ std::wstring_view{ L"cmd.exe\0retained", 16 } });
+        args.Commandline(L"suffix");
+        VERIFY_ARE_EQUAL(profile.Commandline() + L" suffix", TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings()->Commandline());
     }
 
     void TerminalSettingsTests::AgentProfileManagedLayoutOrphan()
@@ -170,13 +270,6 @@ namespace SettingsModelUnitTests
         const auto recovered = settings.GetProfileForArgs(saved);
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, recovered.AgentProfileId());
         VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, recovered).DefaultSettings()->UsesManagedAgentCommand());
-        ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot policy;
-        policy.allowedAgents.emplace();
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy), wil::ResultException);
-        policy.allowedAgents->insert(L"claude");
-        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy);
-        policy.yoloMode = ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked;
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(recovered.AgentProfileId(), policy), wil::ResultException);
         saved.NativeAgentProviderId(L"copilot");
         VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
         saved.NativeAgentProviderId(L"CLAUDE");

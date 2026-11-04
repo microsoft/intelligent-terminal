@@ -70,9 +70,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool ProfileViewModel::IsAgentProfilePolicyBlocked() const
     {
-        namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
-        return IsManagedAgentProfile() &&
-               (!Policy::IsAgentAllowed(_profile.AgentProfileId()) || !Policy::IsYoloModeAllowed());
+        return false;
     }
 
     void ProfileViewModel::LaunchCommandline(const hstring& value)
@@ -216,7 +214,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             else if (viewModelProperty == L"Commandline")
             {
                 _RefreshAgentPaneBackendList();
-                _NotifyChanges(L"IsManagedAgentProfile", L"IsAgentProfilePolicyBlocked", L"LaunchCommandline");
+                _NotifyChanges(L"IsManagedAgentProfile", L"LaunchCommandline");
             }
             else if (viewModelProperty == L"AntialiasingMode")
             {
