@@ -6088,21 +6088,21 @@ namespace TerminalAppLocalTests
                 button.RequestedTheme(theme);
                 for (const auto collapsed : { false, true, false })
                 {
-                    row->SetVerticalRailState(true, collapsed, collapsed ? 40 : 220);
+                    row->SetVerticalRailState(true, collapsed, collapsed ? 46 : 220);
                     for (const auto state : { L"Normal", L"PointerOver", L"Pressed", L"Normal" })
                     {
                         VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
                         button.UpdateLayout();
                         VERIFY_ARE_EQUAL(collapsed ? Visibility::Visible : Visibility::Collapsed, background.Visibility());
-                        VERIFY_ARE_EQUAL(40.0, button.ActualWidth());
+                        VERIFY_ARE_EQUAL(46.0, button.ActualWidth());
                         VERIFY_ARE_EQUAL(40.0, button.ActualHeight());
-                        VERIFY_ARE_EQUAL(24.0, presenter.ActualWidth());
-                        VERIFY_ARE_EQUAL(24.0, presenter.ActualHeight());
+                        VERIFY_ARE_EQUAL(30.0, presenter.ActualWidth());
+                        VERIFY_ARE_EQUAL(30.0, presenter.ActualHeight());
                         if (collapsed)
                         {
                             VERIFY_IS_TRUE(background.Background().as<Media::SolidColorBrush>().Color().A > 0);
-                            VERIFY_ARE_EQUAL(24.0, background.ActualWidth());
-                            VERIFY_ARE_EQUAL(24.0, background.ActualHeight());
+                            VERIFY_ARE_EQUAL(30.0, background.ActualWidth());
+                            VERIFY_ARE_EQUAL(30.0, background.ActualHeight());
                             VERIFY_ARE_EQUAL(4.0, background.CornerRadius().TopLeft);
                             VERIFY_ARE_EQUAL(1.0, background.Opacity());
                         }
@@ -7091,7 +7091,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
             VERIFY_IS_NULL(firstTabItem.ContextFlyout());
-            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(46.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_verticalRailSplitter.Visibility());
             VERIFY_IS_FALSE(page->_verticalRailSplitter.IsHitTestVisible());
 
@@ -7130,10 +7130,10 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTitlebarDragAreaExcludesControls()
     {
         TestOnUIThread([]() {
-            constexpr auto newTabRegionWidth = 46.02;
+            constexpr auto newTabRegionWidth = 46.0;
             constexpr auto newTabButtonWidth = newTabRegionWidth * 2 + 1;
-            constexpr auto newTabButtonHeight = 36.81;
-            constexpr auto sidebarToggleIconSize = 14.0f;
+            constexpr auto newTabButtonHeight = 40.0;
+            constexpr auto sidebarToggleIconSize = 16.0f;
             constexpr auto newTabIconSize = 16.0f;
             constexpr auto layoutTolerance = 1.0f;
             const auto row = winrt::make_self<winrt::TerminalApp::implementation::TabRowControl>();
@@ -7178,7 +7178,7 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(40.0f, dragBounds.Height);
                     VERIFY_IS_TRUE(dragBounds.X >= 52.0f);
                     const auto toggleBounds = bounds(row->VerticalRailToggleButton());
-                    VERIFY_ARE_EQUAL(40.0f, toggleBounds.Width);
+                    VERIFY_ARE_EQUAL(46.0f, toggleBounds.Width);
                     VERIFY_ARE_EQUAL(26.0f, toggleBounds.X + toggleBounds.Width / 2);
                     VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
@@ -7200,19 +7200,26 @@ namespace TerminalAppLocalTests
                     const auto secondaryBackground = buttonRoot.FindName(L"SecondaryBackgroundGrid").as<Grid>();
                     const auto primaryButton = buttonRoot.FindName(L"PrimaryButton").as<Button>();
                     const auto secondaryButton = buttonRoot.FindName(L"SecondaryButton").as<Button>();
-                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - primaryButton.ActualWidth()) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - secondaryButton.ActualWidth()) <= layoutTolerance);
+                    const auto primaryHitBounds = bounds(primaryButton);
+                    const auto secondaryHitBounds = bounds(secondaryButton);
+                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - primaryHitBounds.Width) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(newTabRegionWidth - secondaryHitBounds.Width) <= layoutTolerance);
+                    VERIFY_ARE_EQUAL(40.0f, primaryHitBounds.Height);
+                    VERIFY_ARE_EQUAL(40.0f, secondaryHitBounds.Height);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.X - primaryHitBounds.X) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(secondaryHitBounds.X - primaryHitBounds.X - primaryHitBounds.Width - 1) <= layoutTolerance);
+                    VERIFY_IS_TRUE(std::abs(buttonBounds.X + buttonBounds.Width -
+                                            secondaryHitBounds.X - secondaryHitBounds.Width) <= layoutTolerance);
                     const auto primaryBounds = bounds(primaryBackground);
                     const auto secondaryBounds = bounds(secondaryBackground);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.X - primaryBounds.X) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(primaryBounds.X + primaryBounds.Width - secondaryBounds.X) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.X + buttonBounds.Width - secondaryBounds.X - secondaryBounds.Width) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.Y - primaryBounds.Y) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.Height - primaryBounds.Height) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.Y - secondaryBounds.Y) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(buttonBounds.Height - secondaryBounds.Height) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(primaryBounds.Width - newTabRegionWidth) <= layoutTolerance);
-                    VERIFY_IS_TRUE(std::abs(secondaryBounds.Width - newTabRegionWidth) <= layoutTolerance);
+                    const auto verifyCenteredBackground = [&](const auto& background, const auto& hit) {
+                        VERIFY_IS_TRUE(std::abs(background.Width - 30.0f) <= layoutTolerance);
+                        VERIFY_IS_TRUE(std::abs(background.Height - 30.0f) <= layoutTolerance);
+                        VERIFY_IS_TRUE(std::abs(background.X + background.Width / 2 - hit.X - hit.Width / 2) <= layoutTolerance);
+                        VERIFY_IS_TRUE(std::abs(background.Y + background.Height / 2 - hit.Y - hit.Height / 2) <= layoutTolerance);
+                    };
+                    verifyCenteredBackground(primaryBounds, primaryHitBounds);
+                    verifyCenteredBackground(secondaryBounds, secondaryHitBounds);
                     VERIFY_IS_TRUE(newTab.CornerRadius().TopLeft > 0);
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), primaryBackground.CornerRadius());
                     VERIFY_ARE_EQUAL(newTab.CornerRadius(), secondaryBackground.CornerRadius());
@@ -7220,8 +7227,6 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(secondaryBackground.CornerRadius(), secondaryButton.CornerRadius());
                     VERIFY_ARE_EQUAL(Thickness{}, primaryButton.FocusVisualMargin());
                     VERIFY_ARE_EQUAL(Thickness{}, secondaryButton.FocusVisualMargin());
-                    VERIFY_ARE_EQUAL(primaryBounds, bounds(primaryButton));
-                    VERIFY_ARE_EQUAL(secondaryBounds, bounds(secondaryButton));
                     VERIFY_ARE_EQUAL(Thickness{}, primaryButton.Padding());
                     VERIFY_ARE_EQUAL(Thickness{}, secondaryButton.Padding());
                     const auto glyph = primaryButton.Content().as<FrameworkElement>();
@@ -7243,9 +7248,8 @@ namespace TerminalAppLocalTests
                     for (const auto state : { L"PrimaryPointerOver", L"SecondaryPointerOver" })
                     {
                         VERIFY_IS_TRUE(VisualStateManager::GoToState(newTab, state, false));
-                        VERIFY_IS_TRUE(std::abs(buttonBounds.X - bounds(primaryBackground).X) <= layoutTolerance);
-                        VERIFY_IS_TRUE(std::abs(buttonBounds.X + buttonBounds.Width -
-                                                bounds(secondaryBackground).X - bounds(secondaryBackground).Width) <= layoutTolerance);
+                        verifyCenteredBackground(bounds(primaryBackground), bounds(primaryButton));
+                        verifyCenteredBackground(bounds(secondaryBackground), bounds(secondaryButton));
                     }
                     VERIFY_IS_TRUE(VisualStateManager::GoToState(newTab, L"Normal", false));
                     if (elevated)
@@ -7261,11 +7265,11 @@ namespace TerminalAppLocalTests
                 }
             }
 
-            row->SetVerticalRailState(true, true, 40);
+            row->SetVerticalRailState(true, true, 46);
             titlebar.UpdateLayout();
             const auto compactToggleBounds = bounds(row->VerticalRailToggleButton());
             VERIFY_ARE_EQUAL(0.0f, compactToggleBounds.X);
-            VERIFY_ARE_EQUAL(40.0f, compactToggleBounds.Width);
+            VERIFY_ARE_EQUAL(46.0f, compactToggleBounds.Width);
             VERIFY_ARE_EQUAL(Visibility::Collapsed, area.Parent().as<UIElement>().Visibility());
             row->SetVerticalRailState(false, false, 333);
             titlebar.UpdateLayout();
@@ -7778,7 +7782,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_tabStrip.Background() == page->TitlebarBrush());
             VERIFY_IS_NOT_NULL(page->_tabStrip.Background().try_as<Media::AcrylicBrush>());
             VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
-            VERIFY_ARE_EQUAL(40.0, page->VerticalRailColumn().Width().Value);
+            VERIFY_ARE_EQUAL(46.0, page->VerticalRailColumn().Width().Value);
             VERIFY_ARE_EQUAL(333.0, page->_verticalRailWidth);
         });
     }
@@ -10468,11 +10472,11 @@ namespace TerminalAppLocalTests
                 const auto presenter = root.FindName(L"SearchButtonPresenter").as<ContentPresenter>();
                 VERIFY_ARE_EQUAL(40.0, search.ActualWidth());
                 VERIFY_ARE_EQUAL(40.0, search.ActualHeight());
-                VERIFY_ARE_EQUAL(24.0, presenter.ActualWidth());
-                VERIFY_ARE_EQUAL(24.0, presenter.ActualHeight());
-                const auto bounds = presenter.TransformToVisual(search).TransformBounds({ 0, 0, 24, 24 });
-                VERIFY_ARE_EQUAL(8.0f, bounds.X);
-                VERIFY_ARE_EQUAL(8.0f, bounds.Y);
+                VERIFY_ARE_EQUAL(30.0, presenter.ActualWidth());
+                VERIFY_ARE_EQUAL(30.0, presenter.ActualHeight());
+                const auto bounds = presenter.TransformToVisual(search).TransformBounds({ 0, 0, 30, 30 });
+                VERIFY_ARE_EQUAL(5.0f, bounds.X);
+                VERIFY_ARE_EQUAL(5.0f, bounds.Y);
                 VERIFY_IS_TRUE(search.UseSystemFocusVisuals());
                 for (const auto state : { L"Checked", L"CheckedPointerOver", L"CheckedPressed" })
                 {
@@ -10502,11 +10506,11 @@ namespace TerminalAppLocalTests
                 const auto optionsPresenter = optionsRoot.FindName(L"FilterButtonPresenter").as<ContentPresenter>();
                 VERIFY_ARE_EQUAL(40.0, options.ActualWidth());
                 VERIFY_ARE_EQUAL(40.0, options.ActualHeight());
-                VERIFY_ARE_EQUAL(24.0, optionsPresenter.ActualWidth());
-                VERIFY_ARE_EQUAL(24.0, optionsPresenter.ActualHeight());
-                const auto optionsBounds = optionsPresenter.TransformToVisual(options).TransformBounds({ 0, 0, 24, 24 });
-                VERIFY_ARE_EQUAL(8.0f, optionsBounds.X);
-                VERIFY_ARE_EQUAL(8.0f, optionsBounds.Y);
+                VERIFY_ARE_EQUAL(30.0, optionsPresenter.ActualWidth());
+                VERIFY_ARE_EQUAL(30.0, optionsPresenter.ActualHeight());
+                const auto optionsBounds = optionsPresenter.TransformToVisual(options).TransformBounds({ 0, 0, 30, 30 });
+                VERIFY_ARE_EQUAL(5.0f, optionsBounds.X);
+                VERIFY_ARE_EQUAL(5.0f, optionsBounds.Y);
                 VERIFY_IS_TRUE(options.UseSystemFocusVisuals());
                 const auto optionsContent = optionsPresenter.Content().as<Grid>();
                 const auto optionsIcon = optionsContent.Children().GetAt(0).as<PathIcon>();
@@ -10516,13 +10520,13 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Width());
                 VERIFY_ARE_EQUAL(16.0, optionsIcon.Height());
                 const auto optionsIconBounds = optionsIcon.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 16, 16 });
-                VERIFY_ARE_EQUAL(4.0f, optionsIconBounds.X);
-                VERIFY_ARE_EQUAL(4.0f, optionsIconBounds.Y);
+                VERIFY_ARE_EQUAL(7.0f, optionsIconBounds.X);
+                VERIFY_ARE_EQUAL(7.0f, optionsIconBounds.Y);
                 indicator.Visibility(Visibility::Visible);
                 options.UpdateLayout();
                 const auto indicatorBounds = indicator.TransformToVisual(optionsPresenter).TransformBounds({ 0, 0, 4, 4 });
-                VERIFY_ARE_EQUAL(17.0f, indicatorBounds.X);
-                VERIFY_ARE_EQUAL(1.0f, indicatorBounds.Y);
+                VERIFY_ARE_EQUAL(20.0f, indicatorBounds.X);
+                VERIFY_ARE_EQUAL(4.0f, indicatorBounds.Y);
                 for (const auto state : { L"PointerOver", L"Pressed" })
                 {
                     VERIFY_IS_TRUE(VisualStateManager::GoToState(options, state, false));
@@ -10590,14 +10594,38 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(stripImpl->FilterTabsButton().IsEnabled());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, stripImpl->VerticalTabsHeader().Visibility());
             const auto toolbar = stripImpl->TabsToolbar();
-            toolbar.Measure({ 40, 40 });
-            toolbar.Arrange({ 0, 0, 40, 40 });
+            toolbar.Measure({ 46, 40 });
+            toolbar.Arrange({ 0, 0, 46, 40 });
             toolbar.UpdateLayout();
-            auto searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 40, 40 });
+            auto searchBounds = search.TransformToVisual(toolbar).TransformBounds({ 0, 0, 46, 40 });
             VERIFY_ARE_EQUAL(Thickness{}, toolbar.Margin());
             VERIFY_ARE_EQUAL(Thickness{}, toolbar.Padding());
+            VERIFY_ARE_EQUAL(46.0, search.ActualWidth());
             VERIFY_ARE_EQUAL(0.0f, searchBounds.X);
             VERIFY_ARE_EQUAL(0.0f, searchBounds.Y);
+            const auto collapsedPresenter = Media::VisualTreeHelper::GetChild(search, 0).as<Grid>().FindName(L"SearchButtonPresenter").as<ContentPresenter>();
+            const auto collapsedPresenterBounds = collapsedPresenter.TransformToVisual(search).TransformBounds({ 0, 0, 30, 30 });
+            VERIFY_ARE_EQUAL(8.0f, collapsedPresenterBounds.X);
+            VERIFY_ARE_EQUAL(5.0f, collapsedPresenterBounds.Y);
+            for (const auto compactButton : { stripImpl->CompactNewTabButton(), stripImpl->CompactNewTabMenuButton() })
+            {
+                compactButton.ApplyTemplate();
+                compactButton.Measure({ 46, 40 });
+                compactButton.Arrange({ 0, 0, 46, 40 });
+                compactButton.UpdateLayout();
+                const auto compactRoot = Media::VisualTreeHelper::GetChild(compactButton, 0).as<Grid>();
+                const auto compactPresenter = compactRoot.FindName(L"CompactActionPresenter").as<ContentPresenter>();
+                const auto compactBounds = compactPresenter.TransformToVisual(compactButton).TransformBounds({ 0, 0, 30, 30 });
+                VERIFY_ARE_EQUAL(46.0, compactButton.ActualWidth());
+                VERIFY_ARE_EQUAL(40.0, compactButton.ActualHeight());
+                VERIFY_ARE_EQUAL(30.0, compactPresenter.ActualWidth());
+                VERIFY_ARE_EQUAL(30.0, compactPresenter.ActualHeight());
+                VERIFY_ARE_EQUAL(8.0f, compactBounds.X);
+                VERIFY_ARE_EQUAL(5.0f, compactBounds.Y);
+                VERIFY_IS_TRUE(VisualStateManager::GoToState(compactButton, L"PointerOver", false));
+                VERIFY_IS_TRUE(compactPresenter.Background().as<Media::SolidColorBrush>().Color().A > 0);
+                VERIFY_IS_TRUE(VisualStateManager::GoToState(compactButton, L"Normal", false));
+            }
 
             strip.IsRailCollapsed(false);
             VERIFY_ARE_EQUAL(Visibility::Visible, stripImpl->SearchPanel().Visibility());
@@ -10879,7 +10907,7 @@ namespace TerminalAppLocalTests
                     const auto tabRoot = rows.Children().GetAt(0).as<Grid>();
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
                     const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
-                    VERIFY_ARE_EQUAL(40.0f, toggle.Width);
+                    VERIFY_ARE_EQUAL(46.0f, toggle.Width);
                     VERIFY_IS_TRUE(std::abs(center(toggle) - center(chevron)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(center(toggle) - center(groupToggle)) <= 1.0);
                     VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
@@ -10954,12 +10982,12 @@ namespace TerminalAppLocalTests
             {
                 strip.FlowDirection(direction);
                 strip.IsRailCollapsed(true);
-                strip.Width(40);
-                chrome->SetVerticalRailState(true, true, 40);
+                strip.Width(46);
+                chrome->SetVerticalRailState(true, true, 46);
                 strip.UpdateLayout();
                 const auto toggle = bounds(chrome->VerticalRailToggleButton());
-                VERIFY_ARE_EQUAL(40.0f, toggle.Width);
-                VERIFY_ARE_EQUAL(20.0f, toggle.X + toggle.Width / 2);
+                VERIFY_ARE_EQUAL(46.0f, toggle.Width);
+                VERIFY_ARE_EQUAL(23.0f, toggle.X + toggle.Width / 2);
                 const auto glyph = bounds(chrome->VerticalRailToggleButton().Content().as<FrameworkElement>());
                 VERIFY_IS_TRUE(std::abs(glyph.X + glyph.Width / 2 - toggle.X - toggle.Width / 2) <= 1.0);
             }
