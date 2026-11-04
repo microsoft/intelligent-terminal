@@ -723,6 +723,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabProgrammaticSearchQueryFiltersHistory);
         TEST_METHOD(VerticalTabHistorySingleViewportCollapseAndSizing);
         TEST_METHOD(VerticalTabHistoryTreeActivationGuards);
+        TEST_METHOD(VerticalTabHistoryRestoresExpansionChoice);
         TEST_METHOD(VerticalTabHistoryRejectsVirtualizedTabDrop);
         TEST_METHOD(VerticalTabHistoryTemplateInstancesOwnDistinctVisuals);
         TEST_METHOD(AgentsViewTabVectorChangesKeepViewportInSync);
@@ -1042,6 +1043,7 @@ namespace TerminalAppLocalTests
         explicit HistoryTestView(const bool usePhysicalCoordinateHost = false)
         {
             TestOnUIThread([&]() {
+                previousHistoryExpanded = ApplicationState::SharedInstance().SidebarRecentSessionsExpanded();
                 strip = winrt::TerminalApp::TabStrip{};
                 previousContent = Window::Current().Content();
                 if (usePhysicalCoordinateHost)
@@ -1057,6 +1059,7 @@ namespace TerminalAppLocalTests
                 }
                 Window::Current().Activate();
                 strip.HistoryActive(true);
+                winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->SidebarTree().RootNodes().GetAt(0).IsExpanded(true);
                 strip.UpdateLayout();
             });
         }
@@ -1071,6 +1074,7 @@ namespace TerminalAppLocalTests
                     coordinateHost = nullptr;
                 }
                 strip = nullptr;
+                ApplicationState::SharedInstance().SidebarRecentSessionsExpanded(previousHistoryExpanded);
             }));
         }
 
@@ -1113,6 +1117,7 @@ namespace TerminalAppLocalTests
 
     private:
         UIElement previousContent{ nullptr };
+        bool previousHistoryExpanded{ false };
     };
 
     TabTests::VerticalProgressProjectionFixture TabTests::_createVerticalProgressProjectionFixture(
@@ -7311,11 +7316,18 @@ namespace TerminalAppLocalTests
 
     void TabTests::FreHidesAndRestoresTabChrome()
     {
+        const auto state = ApplicationState::SharedInstance();
+        const auto previousHistoryExpanded = state.SidebarRecentSessionsExpanded();
+        const auto restore = wil::scope_exit([&]() { state.SidebarRecentSessionsExpanded(previousHistoryExpanded); });
+        state.SidebarRecentSessionsExpanded(true);
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
 
         TestOnUIThread([&]() {
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
             const auto verticalTitlebar = row->VerticalTitleBarContent();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
+            VERIFY_IS_TRUE(strip->_historyNode.IsExpanded());
 
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
@@ -7328,10 +7340,16 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, page->_tabStrip.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, verticalTitlebar.Visibility());
 
+            strip->SetHistoryExpanded(false);
             page->_SetFreChromeVisible(true);
 
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+            VERIFY_IS_FALSE(strip->_historyNode.IsExpanded());
+            VERIFY_IS_FALSE(state.SidebarRecentSessionsExpanded());
+            winrt::TerminalApp::TabStrip restarted;
+            restarted.HistoryActive(true);
+            VERIFY_IS_FALSE(winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(restarted)->_historyNode.IsExpanded());
         });
     }
 
@@ -15224,6 +15242,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->_historyExpanded = true;
             page->_tabStrip.HistoryActive(true);
             const auto generation = page->_historyRequestGeneration;
             page->UpdateLayout();
@@ -15262,6 +15281,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -15543,6 +15563,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -15593,6 +15614,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -16564,6 +16586,8 @@ namespace TerminalAppLocalTests
 
     void TabTests::VerticalTabHistoryRefreshPreservesScroll()
     {
+        const auto state = ApplicationState::SharedInstance();
+        const auto previousHistoryExpanded = state.SidebarRecentSessionsExpanded();
         winrt::TerminalApp::TabStrip strip{ nullptr };
         Grid host{ nullptr };
         UIElement previousContent{ nullptr };
@@ -16594,6 +16618,7 @@ namespace TerminalAppLocalTests
                 scroll = nullptr;
                 strip = nullptr;
                 host = nullptr;
+                state.SidebarRecentSessionsExpanded(previousHistoryExpanded);
             });
         });
         TestOnUIThread([&]() {
@@ -16612,6 +16637,7 @@ namespace TerminalAppLocalTests
             }
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             impl->CommitHistorySnapshot(snapshot(L"1 minute ago", 80));
+            impl->_historyNode.IsExpanded(true);
             host.Children().Append(strip);
             previousContent = Window::Current().Content();
             Window::Current().Content(host);
@@ -18296,6 +18322,10 @@ namespace TerminalAppLocalTests
     void TabTests::VerticalTabHistoryTreeActivationGuards()
     {
         TestOnUIThread([&]() {
+            const auto state = ApplicationState::SharedInstance();
+            const auto previousHistoryExpanded = state.SidebarRecentSessionsExpanded();
+            const auto restore = wil::scope_exit([&]() { state.SidebarRecentSessionsExpanded(previousHistoryExpanded); });
+            state.SidebarRecentSessionsExpanded(false);
             winrt::TerminalApp::TabStrip strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             strip.HistoryActive(true);
@@ -18309,14 +18339,21 @@ namespace TerminalAppLocalTests
                 ++activations;
             });
             strip.HistoryLoading(true);
+            VERIFY_IS_FALSE(impl->_historyNode.IsExpanded());
             impl->_activateHistoryItem(item);
             VERIFY_ARE_EQUAL(0u, activations);
             impl->CommitHistorySnapshot({ item }, true);
             const auto group = impl->_historyNode;
             const auto node = group.Children().GetAt(0);
             VERIFY_IS_TRUE(node.Content() == item);
-            group.IsExpanded(false);
+            VERIFY_IS_FALSE(group.IsExpanded());
             VERIFY_IS_FALSE(impl->_historyExpanded);
+            strip.SearchQuery(L"Tree");
+            VERIFY_IS_TRUE(group.IsExpanded());
+            strip.SearchQuery(L"");
+            VERIFY_IS_FALSE(group.IsExpanded());
+            impl->CommitHistorySnapshot({ item }, true);
+            VERIFY_IS_FALSE(group.IsExpanded());
             VERIFY_IS_TRUE(group.Children().GetAt(0) == node);
             group.IsExpanded(true);
             VERIFY_ARE_EQUAL(0u, activations);
@@ -18335,6 +18372,41 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, activations);
             strip.SearchQuery(L"");
             VERIFY_IS_TRUE(impl->_historyExpanded);
+        });
+    }
+
+    void TabTests::VerticalTabHistoryRestoresExpansionChoice()
+    {
+        TestOnUIThread([&]() {
+            const auto state = ApplicationState::SharedInstance();
+            const auto previousHistoryExpanded = state.SidebarRecentSessionsExpanded();
+            const auto restore = wil::scope_exit([&]() { state.SidebarRecentSessionsExpanded(previousHistoryExpanded); });
+            for (const auto expanded : { false, true })
+            {
+                state.SidebarRecentSessionsExpanded(expanded);
+                winrt::TerminalApp::TabStrip strip;
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+                strip.HistoryActive(true);
+                const auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(L"remembered-session");
+                item.Title(L"Remembered session");
+                item.Status(L"Idle");
+                impl->CommitHistorySnapshot({ item }, true);
+                VERIFY_ARE_EQUAL(expanded, impl->_historyNode.IsExpanded());
+
+                impl->_historyNode.IsExpanded(!expanded);
+                VERIFY_ARE_EQUAL(!expanded, state.SidebarRecentSessionsExpanded());
+                strip.SearchQuery(L"Remembered");
+                VERIFY_IS_TRUE(impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(!expanded, state.SidebarRecentSessionsExpanded());
+                strip.SearchQuery(L"");
+                VERIFY_ARE_EQUAL(!expanded, impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(!expanded, state.SidebarRecentSessionsExpanded());
+
+                winrt::TerminalApp::TabStrip restarted;
+                restarted.HistoryActive(true);
+                VERIFY_ARE_EQUAL(!expanded, winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(restarted)->_historyNode.IsExpanded());
+            }
         });
     }
 
@@ -18748,6 +18820,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            impl->_historyExpanded = true;
             const auto list = impl->ItemsList();
             const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             history.SessionId(L"recent-idle-session");

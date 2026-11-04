@@ -1496,6 +1496,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Persist: never show FRE again
+        winrt::get_self<implementation::TabStrip>(_tabStrip)->SetHistoryExpanded(false);
         ApplicationState::SharedInstance().AgentFreCompleted(true);
         _SetFreChromeVisible(true);
 

@@ -35,6 +35,7 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
+using winrt::Microsoft::Terminal::Settings::Model::ApplicationState;
 
 static constexpr double SearchPanelExpandedHeight = 48.0;
 static constexpr auto SearchPanelAnimationDuration = std::chrono::milliseconds{ 200 };
@@ -783,7 +784,8 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TabStrip::TabStrip()
+    TabStrip::TabStrip() :
+        _historyExpanded{ ApplicationState::SharedInstance().SidebarRecentSessionsExpanded() }
     {
         _tabItems = single_threaded_observable_vector<IInspectable>();
         _displayItems = single_threaded_observable_vector<TerminalApp::TabStripDisplayItem>();
@@ -3252,12 +3254,18 @@ namespace winrt::TerminalApp::implementation
         return header ? _findNamedElement(header, _historyNode && _historyNode.IsExpanded() ? L"ExpandedGlyph" : L"CollapsedGlyph").try_as<TextBlock>() : nullptr;
     }
 
+    void TabStrip::SetHistoryExpanded(const bool expanded)
+    {
+        _historyExpanded = expanded;
+        ApplicationState::SharedInstance().SidebarRecentSessionsExpanded(expanded);
+        _updateHistoryVisualState();
+    }
+
     void TabStrip::OnTreeExpanding(MUX::Controls::TreeView const&, MUX::Controls::TreeViewExpandingEventArgs const& e)
     {
-        if (!_syncingTree && e.Node() == _historyNode)
+        if (!_syncingTree && e.Node() == _historyNode && !_sidebarFilters.HasSearchQuery())
         {
-            _historyExpanded = true;
-            _updateHistoryVisualState();
+            SetHistoryExpanded(true);
         }
     }
 
@@ -3267,9 +3275,12 @@ namespace winrt::TerminalApp::implementation
         {
             if (!_sidebarFilters.HasSearchQuery())
             {
-                _historyExpanded = false;
+                SetHistoryExpanded(false);
             }
-            _updateHistoryVisualState();
+            else
+            {
+                _updateHistoryVisualState();
+            }
         }
     }
 

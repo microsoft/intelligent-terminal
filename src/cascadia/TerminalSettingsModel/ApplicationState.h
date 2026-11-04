@@ -53,7 +53,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, winrt::guid, FeatureRolloutId, "featureRolloutId")                                                                                              \
     X(FileSource::Shared, uint32_t, SidebarRolloutVersion, "sidebarRolloutVersion", 0)                                                                                    \
     X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")                                                                           \
-    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)
+    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)                                                                  \
+    X(FileSource::Shared, bool, SidebarRecentSessionsExpanded, "sidebarRecentSessionsExpanded", false)
 
     struct WindowLayout : WindowLayoutT<WindowLayout>
     {
@@ -117,13 +118,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     void name(const type& value) noexcept;
         MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)
 #undef MTSM_APPLICATION_STATE_GEN
-
     private:
         struct state_t
         {
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) std::optional<type> name{ __VA_ARGS__ };
             MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)
 #undef MTSM_APPLICATION_STATE_GEN
+            std::optional<bool> PendingSidebarRecentSessionsExpanded;
+            uint64_t SidebarRecentSessionsExpansionRevision{ 0 };
         };
         til::shared_mutex<state_t> _state;
         std::filesystem::path _sharedPath;
@@ -143,7 +145,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool _hasValidSidebarRollout() const noexcept;
         wil::unique_handle _lockSidebarFile(std::wstring_view suffix, bool wait) const;
         void _persistSidebarFlag(std::string_view key) const;
-        static void _preserveSidebarFlags(Json::Value& root, const Json::Value& previous);
+        static void _preserveSidebarFlags(Json::Value& root, const Json::Value& previous, std::optional<bool> expanded);
 
         Json::Value _toJsonWithBlob(Json::Value& root, FileSource parseSource) const noexcept;
 
