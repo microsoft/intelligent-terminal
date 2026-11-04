@@ -15236,6 +15236,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            strip->_historyExpanded = true;
             page->_tabStrip.HistoryActive(true);
             const auto generation = page->_historyRequestGeneration;
             page->UpdateLayout();
@@ -15274,6 +15275,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -15555,6 +15557,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -15605,6 +15608,7 @@ namespace TerminalAppLocalTests
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
             page->_historyRefreshInFlight = true;
+            winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->_historyExpanded = true;
             page->_settings.GlobalSettings().SidebarShowRecentAgentSessions(true);
             page->_ApplySidebarFilterSettings();
             page->_historyRefreshPending = false;
@@ -18810,6 +18814,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             winrt::TerminalApp::TabStrip strip;
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            impl->_historyExpanded = true;
             const auto list = impl->ItemsList();
             const auto history = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
             history.SessionId(L"recent-idle-session");
