@@ -27,6 +27,7 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, HighlightedRuns);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, TextBlockStyle);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, HighlightedRunStyle);
+        DEPENDENCY_PROPERTY(bool, UsePathEllipsis);
         DEPENDENCY_PROPERTY(winrt::TerminalApp::TextHighlightColor, ColorHighlight);
         DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, ColorHighlightRanges);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, SuccessHighlightBrush);
@@ -35,13 +36,29 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(double, TextOpacity);
 
     private:
+        struct PathEllipsisResult
+        {
+            winrt::hstring text;
+            std::vector<size_t> sourceToDisplay;
+        };
+
         friend struct HighlightedTextControlPropertyRegistration;
         static void _InitializeProperties();
         static void _onPropertyChanged(const Windows::UI::Xaml::DependencyObject& o, const Windows::UI::Xaml::DependencyPropertyChangedEventArgs& e);
+        PathEllipsisResult _pathEllipsisText(const winrt::hstring& text) const;
+        std::vector<winrt::TerminalApp::HighlightedRun> _mapRuns(const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& runs) const;
         void _updateTextAndStyle();
         void _updateColorHighlights();
+        void _updateTypographyObservers();
+        void _clearTypographyObservers();
         winrt::Windows::UI::Xaml::Controls::TextBlock _textBlock{ nullptr };
+        winrt::hstring _displayText;
+        std::vector<size_t> _sourceToDisplay;
         winrt::Windows::UI::Xaml::Media::SolidColorBrush _foreground{ nullptr };
+        winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker _sizeChangedRevoker;
+        winrt::Windows::UI::ViewManagement::UISettings _uiSettings{ nullptr };
+        winrt::Windows::UI::ViewManagement::UISettings::TextScaleFactorChanged_revoker _textScaleFactorChangedRevoker;
+        std::vector<std::pair<winrt::Windows::UI::Xaml::DependencyProperty, int64_t>> _typographyTokens;
         int64_t _foregroundToken{};
         int64_t _colorToken{};
         int64_t _opacityToken{};
