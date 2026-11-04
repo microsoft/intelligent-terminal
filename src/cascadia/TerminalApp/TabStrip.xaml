@@ -31,7 +31,7 @@
                     <ResourceDictionary.ThemeDictionaries>
                         <ResourceDictionary x:Key="Light">
                             <StaticResource x:Key="PaneGroupRailBrush"
-                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
+                                            ResourceKey="ControlStrongFillColorDefaultBrush" />
                             <StaticResource x:Key="SidebarTabSelectionBackground"
                                             ResourceKey="TabViewItemHeaderBackgroundSelected" />
                             <StaticResource x:Key="PaneProgressAccentBrush"
@@ -43,7 +43,7 @@
                         </ResourceDictionary>
                         <ResourceDictionary x:Key="Dark">
                             <StaticResource x:Key="PaneGroupRailBrush"
-                                            ResourceKey="SystemControlForegroundBaseLowBrush" />
+                                            ResourceKey="ControlStrongFillColorDefaultBrush" />
                             <StaticResource x:Key="SidebarTabSelectionBackground"
                                             ResourceKey="TabViewItemHeaderBackgroundSelected" />
                             <StaticResource x:Key="PaneProgressAccentBrush"

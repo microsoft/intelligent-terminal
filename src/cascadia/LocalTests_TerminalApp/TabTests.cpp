@@ -19800,13 +19800,20 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(std::abs(groupIndicator.TransformToVisual(paneList).TransformPoint({ 0, 0 }).X) <= 1.0);
             if (!winrt::Windows::UI::ViewManagement::AccessibilitySettings{}.HighContrast())
             {
+                const auto railReference = Markup::XamlReader::Load(
+                                               LR"(<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                                           Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                                           Visibility="Collapsed"/>)")
+                                               .as<Border>();
+                host.Children().Append(railReference);
                 for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
                 {
                     host.RequestedTheme(theme);
                     host.UpdateLayout();
                     const auto railBrush = groupIndicator.as<Border>().Background().as<Media::SolidColorBrush>();
-                    const auto effectiveOpacity = railBrush.Opacity() * railBrush.Color().A / 255.0;
-                    VERIFY_IS_TRUE(effectiveOpacity > 0.0 && effectiveOpacity < 0.5);
+                    const auto expectedBrush = railReference.Background().as<Media::SolidColorBrush>();
+                    VERIFY_ARE_EQUAL(expectedBrush.Color(), railBrush.Color());
+                    VERIFY_ARE_EQUAL(expectedBrush.Opacity(), railBrush.Opacity());
                 }
                 host.RequestedTheme(ElementTheme::Default);
                 host.UpdateLayout();
