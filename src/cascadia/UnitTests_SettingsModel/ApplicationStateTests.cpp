@@ -31,6 +31,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(RecentSessionsExpansionPersistsAcrossInstances);
         TEST_METHOD(SidebarMigrationPersistsAndRespectsLaterHorizontal);
         TEST_METHOD(SidebarMigrationFailedSaveDoesNotComplete);
         TEST_METHOD(SidebarMigrationFailedStateSaveRestoresLayout);
@@ -231,6 +232,22 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::RecentSessionsExpansionPersistsAcrossInstances()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto state = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_FALSE(state->SidebarRecentSessionsExpanded());
+        for (const auto expanded : { true, false })
+        {
+            state->SidebarRecentSessionsExpanded(expanded);
+            state->Flush();
+            auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+            VERIFY_ARE_EQUAL(expanded, restarted->SidebarRecentSessionsExpanded());
+            state = std::move(restarted);
+        }
     }
 
     void ApplicationStateTests::SidebarMigrationPersistsAndRespectsLaterHorizontal()

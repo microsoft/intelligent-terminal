@@ -53,7 +53,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, winrt::guid, FeatureRolloutId, "featureRolloutId")                                                                                              \
     X(FileSource::Shared, uint32_t, SidebarRolloutVersion, "sidebarRolloutVersion", 0)                                                                                    \
     X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")                                                                           \
-    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)
+    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)                                                                  \
+    X(FileSource::Shared, bool, SidebarRecentSessionsExpanded, "sidebarRecentSessionsExpanded", false)
 
     struct WindowLayout : WindowLayoutT<WindowLayout>
     {

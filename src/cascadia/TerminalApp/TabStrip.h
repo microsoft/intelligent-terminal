@@ -388,6 +388,7 @@ namespace winrt::TerminalApp::implementation
         bool FocusLastSidebarStop();
         void DismissDisplayOptions();
         winrt::Windows::Foundation::Collections::IObservableVector<TerminalApp::TabStripHistoryItem> HistoryItems() const { return _historyItems; }
+        void SetHistoryExpanded(bool expanded);
         void CommitHistorySnapshot(std::vector<TerminalApp::TabStripHistoryItem> items, bool ready = false);
         void SetAgentCompletionResolver(std::function<bool(const TerminalApp::TabStripHistoryItem&)> resolver);
         void RefreshHistoryAgentCompletions();
