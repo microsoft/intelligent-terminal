@@ -469,6 +469,39 @@ the target's budget, but retry does not override unconfirmed cleanup within the
 same process. Logs retain safely filtered diagnostic details.
 See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
 
+Native Windows Antigravity ACP processes receive their own `TEMP` and `TMP`
+under the current package's `LocalCache\acp\<instance>` (unpackaged development
+uses `IntelligentTerminal\acp` under LocalAppData). Short Windows paths are used
+when needed to leave room for the bundled extraction; an unsupported path fails
+explicitly rather than falling back to shared Temp.
+
+The directory belongs to the complete ACP process job, not a pane or session.
+Verification, history, failed startup and normal process retirement reclaim it
+only after all contained processes exit. Cancellation also schedules cleanup.
+Antigravity alone opts into the native parent's optional resource scope before
+extraction starts. Controlled restart, settings replacement, captured-process
+cancellation and WTA exit can then retain a parent-owned job until its complete
+process group has exited. The parent records that retirement so a new WTA can
+reclaim the old instance without guessing from a missing process or job name.
+Restart leaves this resource wait and filesystem work off the UI thread.
+If writing retirement evidence fails, the surviving parent retains the job and
+retries in the background instead of losing its confirmed-exit evidence.
+Policy-driven stops queue this work without waiting on the UI thread. Final
+shutdown drains tracked retirement tasks with a bounded wait; an expired deadline
+is logged and on-disk ownership records remain intact.
+Other providers do not request this resource policy, keep their inherited
+temporary environment, and retain the existing no-opt-in lifecycle behavior.
+
+Subsequent recovery checks exclusive leases, recorded retirement, parent scope
+receipts, queryable job liveness and directory identity. Unconfirmed exits,
+locked files or unsafe paths retain ownership records and emit
+`antigravity_runtime` diagnostics. Losing the entire Terminal/WTA management
+chain before retirement was recorded remains deferred; Windows-reboot-based
+recovery is separate follow-up work, not part of this behavior.
+These records do not persist startup failure budgets. Existing shared `_MEI*`
+folders, custom commands, other providers, WSL and installation caches are not
+automatically cleaned or redirected.
+
 Dedicated history connections retain their own single-flight, adaptive wait,
 hard timeout, backoff and confirmed-cleanup recovery without consuming the chat
 startup budget. Automatic recovery pauses after three consecutive failed query

@@ -301,7 +301,7 @@ impl AgentSpawn {
 /// matter). `agent_id` is authoritative when supplied by the master, so a
 /// custom command whose executable happens to match a built-in agent cannot
 /// inherit that built-in's BYOK configuration.
-pub(crate) fn spawn_agent_process_with_provider(
+pub(crate) async fn spawn_agent_process_with_provider(
     agent_cmd: &str,
     cwd: Option<&Path>,
     agent_id: Option<&str>,
@@ -315,9 +315,10 @@ pub(crate) fn spawn_agent_process_with_provider(
         environment_policy,
         provider_selection,
     )
+    .await
 }
 
-fn spawn_host_agent_process(
+async fn spawn_host_agent_process(
     agent_cmd: &str,
     cwd: Option<&Path>,
     agent_id: Option<&str>,
@@ -367,6 +368,7 @@ fn spawn_host_agent_process(
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
+    cmd.env_remove(super::process::RESOURCE_SCOPE_ENV);
     configure_child_environment(
         &mut cmd,
         agent_cmd,
@@ -456,7 +458,13 @@ fn spawn_host_agent_process(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let child = super::process::AgentProcess::spawn(&mut cmd, None)
+    let resources = crate::agent_lifecycle::providers::prepare_runtime_resources(
+        agent_cmd,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+    )
+    .await?;
+    let child = super::process::AgentProcess::spawn_with_resources(&mut cmd, None, resources)
         .with_context(|| format!("failed to spawn agent '{agent_cmd}'"))?;
 
     Ok(AgentSpawn {
@@ -582,7 +590,7 @@ fn should_omit_optional_dependencies(agent_cmd: &str, agent_id: Option<&str>) ->
 }
 
 /// Spawn an ACP agent in the selected per-tab execution source.
-pub(crate) fn spawn_agent_process_for_source_with_provider(
+pub(crate) async fn spawn_agent_process_for_source_with_provider(
     agent_cmd: &str,
     cwd: Option<&Path>,
     agent_id: Option<&str>,
@@ -591,20 +599,23 @@ pub(crate) fn spawn_agent_process_for_source_with_provider(
     provider_selection: SharedProviderSelection<'_>,
 ) -> Result<AgentSpawn> {
     match source {
-        crate::agent_source::AgentSource::Host => spawn_agent_process_with_provider(
-            agent_cmd,
-            cwd,
-            agent_id,
-            environment_policy,
-            provider_selection,
-        ),
+        crate::agent_source::AgentSource::Host => {
+            spawn_agent_process_with_provider(
+                agent_cmd,
+                cwd,
+                agent_id,
+                environment_policy,
+                provider_selection,
+            )
+            .await
+        }
         crate::agent_source::AgentSource::Wsl { distro } => {
             spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
         }
     }
 }
 
-pub(crate) fn spawn_history_agent_process(
+pub(crate) async fn spawn_history_agent_process(
     agent_cmd: &str,
     agent_id: &str,
     source: &crate::agent_source::AgentSource,
@@ -618,6 +629,7 @@ pub(crate) fn spawn_history_agent_process(
         ChildEnvironmentPolicy::ApplySharedProvider,
         provider_selection,
     )
+    .await
 }
 
 fn spawn_wsl_agent_process(
@@ -828,6 +840,7 @@ mod tests {
             ChildEnvironmentPolicy::CleanCloudDiscovery,
             SharedProviderSelection::Inherit,
         )
+        .await
         .expect("spawn the real ACP launcher fixture");
 
         // The fixture waits for stdin before spawning, so this independent

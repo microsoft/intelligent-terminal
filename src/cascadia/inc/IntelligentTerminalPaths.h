@@ -86,6 +86,33 @@ namespace IntelligentTerminal
         return base / L"IntelligentTerminal" / L"logs";
     }
 
+    // Matches runtime_paths::acp_runtime_root_for, without a shared-Temp fallback.
+    inline std::filesystem::path AcpRuntimeRoot(const std::filesystem::path& local)
+    {
+        if (local.empty() || !local.is_absolute())
+        {
+            throw std::system_error{ ERROR_BAD_PATHNAME, std::system_category(), "ACP runtime root requires absolute LOCALAPPDATA" };
+        }
+        UINT32 length = 0;
+        const auto queried = GetCurrentPackageFamilyName(&length, nullptr);
+        if (queried == APPMODEL_ERROR_NO_PACKAGE)
+        {
+            return local / L"IntelligentTerminal" / L"acp";
+        }
+        if (queried != ERROR_INSUFFICIENT_BUFFER || length == 0)
+        {
+            throw std::system_error{ static_cast<int>(queried), std::system_category(), "query ACP runtime package identity" };
+        }
+        std::wstring family(length, L'\0');
+        const auto result = GetCurrentPackageFamilyName(&length, family.data());
+        if (result != ERROR_SUCCESS)
+        {
+            throw std::system_error{ static_cast<int>(result), std::system_category(), "read ACP runtime package identity" };
+        }
+        family.resize(wcslen(family.c_str()));
+        return local / L"Packages" / family / L"LocalCache" / L"acp";
+    }
+
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads

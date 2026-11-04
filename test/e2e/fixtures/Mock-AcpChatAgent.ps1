@@ -4,6 +4,9 @@ param(
     [string]$HistoryPath,
     [string]$HistoryControlPath,
     [string]$StartupControlPath,
+    [string]$RuntimeReceiptPath,
+    [string]$RuntimeReceiptDirectory,
+    [string]$ExpectedRuntimeRoot,
     [switch]$SupportsImages
 )
 
@@ -50,6 +53,31 @@ function Complete-HistoryRequest {
 
 if ($StartupControlPath) {
     Write-FixtureLog -Message "start|$([DateTimeOffset]::UtcNow.ToString('o'))"
+}
+
+if ($RuntimeReceiptDirectory) {
+    $RuntimeReceiptPath = Join-Path $RuntimeReceiptDirectory ("runtime-$PID-" + [guid]::NewGuid().ToString('N') + '.json')
+}
+if ($RuntimeReceiptPath) {
+    $extractionName = '_MEI-fixture-' + [guid]::NewGuid().ToString('N')
+    $extraction = Join-Path $env:TEMP $extractionName
+    New-Item -ItemType Directory -Path $extraction | Out-Null
+    [IO.File]::WriteAllText((Join-Path $extraction 'payload.dll'), 'owned fixture')
+    $instance = (Get-Item -LiteralPath $env:TEMP).Name
+    $expectedPayload = if ($ExpectedRuntimeRoot) {
+        Join-Path $ExpectedRuntimeRoot "$instance\$extractionName\payload.dll"
+    }
+    @{
+        temp = $env:TEMP
+        tmp = $env:TMP
+        instance = $instance
+        extraction = $extraction
+        inExpectedRoot = [bool]($expectedPayload -and [IO.File]::Exists($expectedPayload))
+        pid = $PID
+        processStartTicks = [Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks
+        parentScope = $env:WTA_PROCESS_RESOURCE_SCOPE
+    } | ConvertTo-Json | Set-Content -LiteralPath $RuntimeReceiptPath -Encoding utf8
+    [IO.File]::WriteAllText("$RuntimeReceiptPath.ready", 'ready')
 }
 
 $pendingPrompt = $null
@@ -104,8 +132,11 @@ while ($true) {
             if ($StartupControlPath) {
                 $startup = Get-Content -LiteralPath $StartupControlPath -Raw |
                     ConvertFrom-Json -AsHashtable
-                if ($startup.mode -notin @('ready', 'fail')) {
-                    throw 'startup control must select ready or fail'
+                if ($startup.mode -notin @('ready', 'fail', 'hold')) {
+                    throw 'startup control must select ready, fail or hold'
+                }
+                if ($startup.mode -eq 'hold') {
+                    [Threading.Thread]::Sleep(120000)
                 }
                 if ($startup.mode -eq 'fail') {
                     if ($startup['failureStderr']) {

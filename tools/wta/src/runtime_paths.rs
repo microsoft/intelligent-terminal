@@ -44,6 +44,32 @@ pub fn intelligent_terminal_local_root() -> Option<PathBuf> {
         .clone()
 }
 
+/// Short, package-private scratch root for process-owned ACP runtimes.
+pub(crate) fn acp_runtime_root() -> anyhow::Result<PathBuf> {
+    use anyhow::{ensure, Context};
+
+    let local = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .context("LOCALAPPDATA is required for ACP runtime storage")?;
+    ensure!(
+        local.is_absolute(),
+        "ACP runtime storage requires an absolute local path"
+    );
+    let family = query_package_family_name()?;
+    Ok(acp_runtime_root_for(&local, family.as_deref()))
+}
+
+fn acp_runtime_root_for(local: &std::path::Path, family: Option<&std::ffi::OsStr>) -> PathBuf {
+    match family {
+        Some(family) => local
+            .join("Packages")
+            .join(family)
+            .join("LocalCache")
+            .join("acp"),
+        None => local.join("IntelligentTerminal").join("acp"),
+    }
+}
+
 /// Resolve a root under `%LOCALAPPDATA%`. When the process is packaged the
 /// data lands under `Packages\<PackageFamilyName>\<package_subdir…>\IntelligentTerminal`;
 /// otherwise it falls back to the bare `%LOCALAPPDATA%\IntelligentTerminal`
@@ -72,32 +98,38 @@ fn resolve_root(package_subdir: &[&str]) -> Option<PathBuf> {
 /// `None` when the process has no package identity (unpackaged) or the OS
 /// call fails for any other reason.
 pub(crate) fn current_package_family_name() -> Option<std::ffi::OsString> {
+    query_package_family_name().ok().flatten()
+}
+
+fn query_package_family_name() -> anyhow::Result<Option<std::ffi::OsString>> {
+    use anyhow::{ensure, Context};
     use std::os::windows::ffi::OsStringExt;
-    use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+    use windows_sys::Win32::Foundation::{APPMODEL_ERROR_NO_PACKAGE, ERROR_INSUFFICIENT_BUFFER};
     use windows_sys::Win32::Storage::Packaging::Appx::GetCurrentPackageFamilyName;
 
-    // First call with a null buffer queries the required length. A packaged
-    // process returns ERROR_INSUFFICIENT_BUFFER and fills `len`; an
-    // unpackaged process returns APPMODEL_ERROR_NO_PACKAGE (any non-122 rc
-    // means "no usable identity" for our purposes).
+    // SAFETY: the first call queries the size; the second owns that many UTF-16 units.
     let mut len: u32 = 0;
     let rc = unsafe { GetCurrentPackageFamilyName(&mut len, std::ptr::null_mut()) };
-    if rc != ERROR_INSUFFICIENT_BUFFER || len == 0 {
-        return None;
+    if rc == APPMODEL_ERROR_NO_PACKAGE {
+        return Ok(None);
     }
+    if rc != ERROR_INSUFFICIENT_BUFFER {
+        return Err(std::io::Error::from_raw_os_error(rc as i32))
+            .context("query current package identity");
+    }
+    ensure!(len > 0, "package identity length is empty");
 
     // `len` includes the trailing NUL; allocate exactly that and call again.
     let mut buf = vec![0u16; len as usize];
     let rc = unsafe { GetCurrentPackageFamilyName(&mut len, buf.as_mut_ptr()) };
     if rc != 0 {
-        return None;
+        return Err(std::io::Error::from_raw_os_error(rc as i32))
+            .context("read current package identity");
     }
 
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-    if end == 0 {
-        return None;
-    }
-    Some(std::ffi::OsString::from_wide(&buf[..end]))
+    ensure!(end > 0, "package identity is empty");
+    Ok(Some(std::ffi::OsString::from_wide(&buf[..end])))
 }
 
 pub fn runtime_prompt_root() -> Option<PathBuf> {
@@ -181,6 +213,19 @@ pub fn wt_state_json_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn acp_runtime_root_is_short_and_isolated_by_package() {
+        let local = std::path::Path::new(r"C:\Users\Example\AppData\Local");
+        let dev = acp_runtime_root_for(local, Some(std::ffi::OsStr::new("Dev_family")));
+        let store = acp_runtime_root_for(local, Some(std::ffi::OsStr::new("Store_family")));
+        assert_eq!(dev, local.join(r"Packages\Dev_family\LocalCache\acp"));
+        assert_eq!(store, local.join(r"Packages\Store_family\LocalCache\acp"));
+        assert_eq!(
+            acp_runtime_root_for(local, None),
+            local.join(r"IntelligentTerminal\acp")
+        );
+    }
 
     #[test]
     fn unpackaged_process_has_no_package_family_name() {
