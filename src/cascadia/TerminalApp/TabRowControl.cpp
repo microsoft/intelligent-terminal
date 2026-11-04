@@ -21,7 +21,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static constexpr double SidebarToggleIconSize = 14.0;
+    static constexpr double SidebarToggleIconSize = 16.0;
 
     static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
     {
