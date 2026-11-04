@@ -1055,6 +1055,7 @@ namespace TerminalAppLocalTests
                 }
                 Window::Current().Activate();
                 strip.HistoryActive(true);
+                winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip)->SidebarTree().RootNodes().GetAt(0).IsExpanded(true);
                 strip.UpdateLayout();
             });
         }
@@ -7314,6 +7315,8 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto row = winrt::get_self<winrt::TerminalApp::implementation::TabRowControl>(page->_tabRow);
             const auto verticalTitlebar = row->VerticalTitleBarContent();
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            page->_tabStrip.HistoryActive(true);
 
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabRow.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
@@ -7330,6 +7333,7 @@ namespace TerminalAppLocalTests
 
             VERIFY_ARE_EQUAL(Visibility::Visible, page->_tabStrip.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, verticalTitlebar.Visibility());
+            VERIFY_IS_FALSE(strip->_historyNode.IsExpanded());
         });
     }
 
@@ -16606,6 +16610,7 @@ namespace TerminalAppLocalTests
             }
             const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
             impl->CommitHistorySnapshot(snapshot(L"1 minute ago", 80));
+            impl->_historyNode.IsExpanded(true);
             host.Children().Append(strip);
             previousContent = Window::Current().Content();
             Window::Current().Content(host);
@@ -18303,14 +18308,21 @@ namespace TerminalAppLocalTests
                 ++activations;
             });
             strip.HistoryLoading(true);
+            VERIFY_IS_FALSE(impl->_historyNode.IsExpanded());
             impl->_activateHistoryItem(item);
             VERIFY_ARE_EQUAL(0u, activations);
             impl->CommitHistorySnapshot({ item }, true);
             const auto group = impl->_historyNode;
             const auto node = group.Children().GetAt(0);
             VERIFY_IS_TRUE(node.Content() == item);
-            group.IsExpanded(false);
+            VERIFY_IS_FALSE(group.IsExpanded());
             VERIFY_IS_FALSE(impl->_historyExpanded);
+            strip.SearchQuery(L"Tree");
+            VERIFY_IS_TRUE(group.IsExpanded());
+            strip.SearchQuery(L"");
+            VERIFY_IS_FALSE(group.IsExpanded());
+            impl->CommitHistorySnapshot({ item }, true);
+            VERIFY_IS_FALSE(group.IsExpanded());
             VERIFY_IS_TRUE(group.Children().GetAt(0) == node);
             group.IsExpanded(true);
             VERIFY_ARE_EQUAL(0u, activations);

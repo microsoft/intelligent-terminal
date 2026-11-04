@@ -670,7 +670,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::ProgressRing _historyLoadingIndicator{ nullptr };
         winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
-        bool _historyExpanded{ true };
+        bool _historyExpanded{ false };
         bool _syncingHistorySection{ false };
         winrt::Windows::UI::Xaml::FrameworkElement _historyElement(const wchar_t* name)
         {
