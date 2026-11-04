@@ -226,8 +226,8 @@ gate; existing old-process exit and pipe-release safeguards remain.
 This is best effort. A shorter outer deadline, including Terminal's current
 3-second final master-shutdown limit, can cut the opportunity short. Crashes,
 forced termination, interrupted startup, unresponsive processes or native
-filesystem errors can still leave `_MEI*` directories. WTA neither redirects
-temporary storage nor deletes or sweeps existing runtime files.
+filesystem errors can still leave temporary extraction directories. WTA neither
+redirects temporary storage nor deletes or sweeps existing runtime files.
 
 ### Sidebar Agent sessions
 

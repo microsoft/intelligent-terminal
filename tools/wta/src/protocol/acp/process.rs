@@ -94,12 +94,17 @@ impl ProcessJob {
         Ok((child, job))
     }
 
-    pub(crate) async fn terminate(&self) -> Result<()> {
+    fn request_termination(&self) -> Result<()> {
         // SAFETY: this handle refers only to this launcher's private job,
         // never the master, helper, or another provider instance.
         if unsafe { TerminateJobObject(self.0.as_raw_handle(), 1) } == 0 {
             return Err(std::io::Error::last_os_error()).context("terminate ACP process job");
         }
+        Ok(())
+    }
+
+    pub(crate) async fn terminate(&self) -> Result<()> {
+        self.request_termination()?;
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
@@ -125,6 +130,26 @@ impl ProcessJob {
         })
         .await
         .context("ACP descendants did not exit within 5 seconds")?
+    }
+}
+
+// A cancelled grace period can leave its history owner alive. Request forced
+// containment without dropping that ownership or claiming confirmed exit.
+struct JobTerminationOnCancel<'a> {
+    job: &'a ProcessJob,
+    armed: bool,
+}
+
+impl Drop for JobTerminationOnCancel<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            tracing::warn!(target: "acp_process",
+                "native ACP teardown interrupted; forcing the owned process job");
+            if let Err(error) = self.job.request_termination() {
+                tracing::error!(target: "acp_process", %error,
+                    "failed to force interrupted native ACP teardown");
+            }
+        }
     }
 }
 
@@ -256,6 +281,13 @@ impl AgentProcess {
             if let Some(group) = &self.wsl_group {
                 group.terminate().await?;
             }
+            let mut cancellation =
+                self.graceful_shutdown
+                    .as_ref()
+                    .map(|_| JobTerminationOnCancel {
+                        job: &self.job,
+                        armed: true,
+                    });
             if let Some(shutdown) = &self.graceful_shutdown {
                 let deadline = tokio::time::Instant::now() + shutdown.grace;
                 match shutdown.request() {
@@ -275,6 +307,9 @@ impl AgentProcess {
                 .await
                 .context("ACP launcher exit timed out")?
                 .context("wait for ACP launcher")?;
+            if let Some(cancellation) = &mut cancellation {
+                cancellation.armed = false;
+            }
             Ok(())
         }
         .await;
