@@ -391,6 +391,7 @@
 
         <mux:TeachingTip x:Name="SidebarIntroductionTip"
                          AutomationProperties.AutomationId="SidebarIntroductionTip"
+                         Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                          x:Load="False"
                          CloseButtonClick="_OnSidebarIntroductionCloseButtonClick"
                          Closed="_OnSidebarIntroductionClosed"
