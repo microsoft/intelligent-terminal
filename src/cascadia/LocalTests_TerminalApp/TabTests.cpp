@@ -7450,7 +7450,7 @@ namespace TerminalAppLocalTests
                     const auto image = fre.FindName(name).as<Image>();
                     VERIFY_ARE_EQUAL(actualTheme, image.RequestedTheme());
                     const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
-                    const winrt::hstring expectedSource{ std::wstring_view{ name } == L"SidebarImage" ? L"ms-appx:///FREAssets/sidebar.png" : L"ms-appx:///FREAssets/Error-detection.png" };
+                    const winrt::hstring expectedSource{ std::wstring_view{ name } == L"SidebarImage" ? L"ms-appx:///FREAssets/Headless-mode.png" : L"ms-appx:///FREAssets/Error-detection.png" };
                     VERIFY_ARE_EQUAL(expectedSource, source);
                 }
             });
