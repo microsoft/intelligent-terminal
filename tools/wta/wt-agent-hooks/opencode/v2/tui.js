@@ -1,8 +1,10 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 import { createEffect, createRoot } from "solid-js";
 import { bindingRpc } from "./rpc.js";
+import { tryWriteHookVt } from "./bridge.js";
 
 async function bridge(topic, sessionID, data) {
+  if (tryWriteHookVt(topic, sessionID, { session_id: sessionID, ...data })) return;
   const executable = process.env.WTCLI_PATH || "wtcli.exe";
   const child = Bun.spawn({
     cmd: [executable, "agent-hook", "--cli-source", "opencode", "--event", topic],

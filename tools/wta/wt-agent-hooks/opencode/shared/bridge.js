@@ -1,6 +1,32 @@
 // Managed by Intelligent Terminal: wt-agent-hooks
 
-import { appendFileSync, mkdirSync } from "node:fs"
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
+
+export function tryWriteHookVt(topic, sessionID, payload, write = writeFileSync) {
+  if (!process.env.WT_AGENT_HOOK_DIR) return false
+  const params = {
+    event: topic, cli_source: "opencode", agent_session_id: sessionID, payload,
+  }
+  const encoded = Buffer.from(JSON.stringify(params), "utf8").toString("base64")
+  const sequence = `\x1b]9001;AgentEvent64;${encoded}\x07`
+  try {
+    // Hook stdout may be captured or owned by the provider's renderer.
+    write("CONOUT$", sequence, { flag: "r+" })
+    return true
+  } catch (error) {
+    try {
+      const dir = process.env.WTA_HOOK_LOG_DIR
+      if (dir) {
+        mkdirSync(dir, { recursive: true })
+        appendFileSync(`${dir}\\hook-trace.log`,
+          `${new Date().toISOString()} opencode VT unavailable topic=${topic} code=${error.code || "unknown"}\n`)
+      }
+    } catch {
+      // Diagnostics cannot make an optional hook fail.
+    }
+    return false
+  }
+}
 
 export function eventMessage(value) {
   if (typeof value === "string") return value
@@ -47,6 +73,9 @@ export function noteFailure(context, topic, error) {
 
 export function emit(context, topic, sessionID, payload = {}) {
   if (!context || !sessionID) return
+  if (context.pane_session_id === process.env.WT_SESSION &&
+      context.com_clsid === process.env.WT_COM_CLSID &&
+      tryWriteHookVt(topic, sessionID, { session_id: sessionID, ...payload })) return
   try {
     const child = Bun.spawn({
       // Bun cannot resolve the packaged app-execution alias; use WTCLI_PATH

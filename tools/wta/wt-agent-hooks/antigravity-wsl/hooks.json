@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'try { if ($env:WT_AGENT_HOOK_DIR) { & (Join-Path $env:WT_AGENT_HOOK_DIR emit-hook.ps1) -CliSource antigravity -Event agent.prompt.submit } else { wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
         "timeout": 5
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } catch { }; [Console]::Out.WriteLine(\"{`\"decision`\":`\"ask`\"}\"); exit 0' || printf '{\"decision\":\"ask\"}\\n'; exit 0",
+            "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'try { if ($env:WT_AGENT_HOOK_DIR) { & (Join-Path $env:WT_AGENT_HOOK_DIR emit-hook.ps1) -CliSource antigravity -Event agent.tool.starting } else { wtcli.exe agent-hook --cli-source antigravity --event agent.tool.starting } } catch { }; [Console]::Out.WriteLine(\"{`\"decision`\":`\"ask`\"}\"); exit 0' || printf '{\"decision\":\"ask\"}\\n'; exit 0",
             "timeout": 5
           }
         ]
@@ -22,7 +22,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'try { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
+        "command": "[ -n \"${WT_SESSION:-}\" ] && [ -n \"${WT_COM_CLSID:-}\" ] && command -v powershell.exe >/dev/null 2>&1 && WTA_HOOK_CWD=\"$PWD\" WSLENV=\"${WSLENV:+$WSLENV:}WSL_DISTRO_NAME/w:WTA_HOOK_CWD/w\" powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'try { if ($env:WT_AGENT_HOOK_DIR) { & (Join-Path $env:WT_AGENT_HOOK_DIR emit-hook.ps1) -CliSource antigravity -Event agent.stop } else { wtcli.exe agent-hook --cli-source antigravity --event agent.stop } } catch { }; [Console]::Out.WriteLine(\"{}\"); exit 0' || printf '{}\\n'; exit 0",
         "timeout": 5
       }
     ]

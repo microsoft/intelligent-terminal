@@ -1212,8 +1212,8 @@ const OPENCODE_BRIDGE_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/shared/bridge.js");
 const OPENCODE_PLUGIN_JSON: &str = include_str!("../wt-agent-hooks/opencode/plugin.json");
 
-/// Every manifest-driven CLI invokes the native wtcli bridge without an
-/// intermediate script or batch launcher. Copilot also skips the hook shell.
+/// Every manifest-driven CLI selects the shared VT writer while retaining the
+/// native bridge for older Terminal versions and unavailable consoles.
 #[test]
 fn bundle_files_are_well_formed() {
     for hooks in [
@@ -1226,13 +1226,8 @@ fn bundle_files_are_well_formed() {
         assert!(doc["hooks"].is_object());
         assert!(hooks.contains("wtcli.exe"));
         assert!(hooks.contains("agent-hook"));
-        for banned in [
-            "send-event.ps1",
-            ".ps1",
-            "pwsh",
-            "powershell.exe",
-            "agent-hook.cmd",
-        ] {
+        assert!(hooks.contains("WT_AGENT_HOOK_DIR"));
+        for banned in ["send-event.ps1", "agent-hook.cmd"] {
             assert!(
                 !hooks.contains(banned),
                 "hook bundle must not spawn {banned} again"
@@ -1417,12 +1412,15 @@ fn copilot_hooks_use_direct_exec_with_matching_event_args() {
             assert!(!hooks.is_empty(), "{event} needs a hook handler");
             for hook in hooks {
                 assert_eq!(hook["type"], "command");
-                assert_eq!(hook["exec"], "wtcli.exe");
-                assert_eq!(
-                    hook["args"],
-                    serde_json::json!(["agent-hook", "--cli-source", "copilot", "--event", topic]),
-                    "{event} must preserve the native hook routing"
-                );
+                assert_eq!(hook["exec"], "powershell.exe");
+                let args = hook["args"].as_array().unwrap();
+                assert_eq!(args[args.len() - 2], "-Command");
+                let command = args.last().unwrap().as_str().unwrap();
+                assert!(command.contains(&format!("-CliSource copilot -Event {topic}")));
+                assert!(command.contains(&format!(
+                    "wtcli.exe agent-hook --cli-source copilot --event {topic}"
+                )));
+                assert!(command.ends_with("catch { }; exit 0"));
                 assert_eq!(hook["timeoutSec"], 5);
                 for field in ["command", "powershell", "bash", "shell"] {
                     assert!(
@@ -1523,6 +1521,7 @@ fn run_hook_command(shell: HookShell, command: &str) -> Option<std::process::Out
         spawned
             .env_remove("WT_COM_CLSID")
             .env_remove("WT_SESSION")
+            .env_remove("WT_AGENT_HOOK_DIR")
             .output()
             .expect("hook shell should start"),
     )
@@ -1535,7 +1534,8 @@ fn antigravity_windows_hook_process(command: &str) -> std::process::Command {
     process
         .args(argv)
         .env_remove("WT_COM_CLSID")
-        .env_remove("WT_SESSION");
+        .env_remove("WT_SESSION")
+        .env_remove("WT_AGENT_HOOK_DIR");
     process
 }
 
@@ -1794,7 +1794,7 @@ fn gemini_hooks_exit_zero_when_the_bridge_is_missing() {
     let commands = hook_command_strings(GEMINI_HOOKS_JSON);
     for command in &commands {
         assert!(
-            command.starts_with("try { wtcli.exe agent-hook ")
+            command.starts_with("try { if ($env:WT_AGENT_HOOK_DIR)")
                 && command.ends_with("} catch { }; exit 0"),
             "gemini hook must wrap the bridge in a PowerShell guard: {command}"
         );
@@ -1847,7 +1847,7 @@ fn codex_hooks_exit_zero_when_the_bridge_is_missing() {
     for (shell, command) in pinned {
         assert!(matches!(shell, HookShell::Bash));
         assert!(
-            command.starts_with("command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook ")
+            command.contains("else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook ")
                 && command.ends_with("; exit 0"),
             "codex POSIX hook must guard the bridge: {command}"
         );
@@ -1869,13 +1869,22 @@ fn codex_hooks_exit_zero_when_the_bridge_is_missing() {
     }
     for (_, command) in windows {
         assert!(
-            command.starts_with("cmd.exe /d /s /c \"wtcli.exe agent-hook ")
-                && command.ends_with(" >nul 2>&1 & exit /b 0\""),
+            command.starts_with("powershell.exe -NoLogo -NoProfile -NonInteractive ")
+                && command.contains("[Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')")
+                && command.ends_with("catch { }; exit 0\""),
             "codex Windows hook must guard the bridge in either shell: {command}"
         );
-        let probe = command
-            .replacen("wtcli.exe agent-hook", "echo HOOK_INVOKED", 1)
-            .replace(" >nul 2>&1", "");
+        let topic = command
+            .split("--event ")
+            .nth(1)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap();
+        let probe = command.replace(
+            &format!("wtcli.exe agent-hook --cli-source codex --event {topic}"),
+            "[Console]::Out.WriteLine('HOOK_INVOKED')",
+        );
         let uninstalled = command.replace("wtcli.exe", MISSING_BRIDGE);
         for shell in [HookShell::Cmd, HookShell::PowerShell] {
             let out = run_hook_command(shell, &probe).unwrap();
@@ -2138,16 +2147,11 @@ fn claude_and_copilot_carry_full_event_catalog() {
             let handlers = doc["hooks"]["PostToolUse"][0]["hooks"].as_array().unwrap();
             assert!(!handlers.is_empty());
             for handler in handlers {
-                assert_eq!(
-                    handler["args"],
-                    serde_json::json!([
-                        "agent-hook",
-                        "--cli-source",
-                        "copilot",
-                        "--event",
-                        "agent.tool.finished"
-                    ])
-                );
+                let command = handler["args"].as_array().unwrap().last().unwrap();
+                assert!(command
+                    .as_str()
+                    .unwrap()
+                    .contains("-CliSource copilot -Event agent.tool.finished"));
             }
         } else {
             assert!(doc["hooks"].get("PostToolUse").is_none());
@@ -2257,20 +2261,20 @@ fn copilot_uses_native_plugin_layout() {
 #[test]
 fn native_hook_bundle_versions_match_their_marketplaces() {
     let manifests = [
-        ("claude", CLAUDE_PLUGIN_JSON, "0.1.9"),
-        ("copilot", COPILOT_PLUGIN_JSON, "0.1.9"),
-        ("gemini", GEMINI_EXTENSION_JSON, "0.1.7"),
-        ("codex", CODEX_PLUGIN_JSON, "0.1.9"),
-        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.17"),
+        ("claude", CLAUDE_PLUGIN_JSON, "0.1.10"),
+        ("copilot", COPILOT_PLUGIN_JSON, "0.1.10"),
+        ("gemini", GEMINI_EXTENSION_JSON, "0.1.8"),
+        ("codex", CODEX_PLUGIN_JSON, "0.1.10"),
+        ("opencode", OPENCODE_PLUGIN_JSON, "0.1.18"),
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
         (
             "antigravity-wsl",
             include_str!("../wt-agent-hooks/antigravity-wsl/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
     ];
     for (provider, manifest, expected_release) in manifests {

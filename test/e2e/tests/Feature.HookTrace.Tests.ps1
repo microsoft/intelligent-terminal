@@ -17,11 +17,21 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        . (Join-Path $PSScriptRoot 'helpers\HookInvocation.ps1')
+        $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+        $evidence = Join-Path $root ('Generated Files\hook-trace-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $evidence | Out-Null
+        $fixture = Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1'
+        $fixtureCode = "& '$($fixture.Replace("'", "''"))' -LogPath '$($evidence.Replace("'", "''"))\acp.log'"
+        $fixtureCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureCode))
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             agentSessionManagementEnabled = $false
             autoErrorDetectionEnabled = $false
             autoFixEnabled = $false
+            acpAgent = 'custom:hook-trace-fixture'
+            acpCustomCommand = "`"$([Environment]::ProcessPath)`" -NoProfile -EncodedCommand $fixtureCommand"
         }
+        $script:BridgeInvocation = "& '$($script:app.WtcliPath.Replace("'", "''"))'"
 
         # Prefer the bundle inside the installed package: that is the artifact that
         # actually ships, so a guard that landed in source but never made it into the
@@ -36,14 +46,6 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
         Write-ItLog -Level INFO -Message "HookTrace: bundle root = $($script:BundleRoot)"
 
-        $script:BundleRel = @{
-            copilot = 'copilot\wt-agent-hooks\hooks\hooks.json'
-            claude  = 'claude\wt-agent-hooks\hooks\hooks.json'
-            gemini  = 'gemini-extension\hooks\hooks.json'
-            codex   = 'codex\wt-agent-hooks\hooks\hooks.json'
-            antigravity = 'antigravity\hooks.json'
-        }
-
         # Claude pins its hooks to bash (`"shell": "bash"`); without one installed the
         # claude row cannot be exercised, so it is reported instead of silently passing.
         $script:GitBash = @(
@@ -52,66 +54,14 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         function script:Get-ShippedHook {
-            <# The hook object a CLI ships for one WTA topic, straight out of hooks.json. #>
             param([string]$Cli, [string]$Event)
-            $path = Join-Path $script:BundleRoot $script:BundleRel[$Cli]
-            if (-not (Test-Path $path)) { throw "missing hook bundle for '$Cli': $path" }
-            $json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
-            # Guarded forms terminate the event name with ';' (bash) or ' }' (PowerShell
-            # try-block), so the delimiter class must cover both, not just whitespace.
-            $needle = '--event ' + [regex]::Escape($Event) + '(?=[\s;]|$)'
-            if ($Cli -eq 'antigravity') {
-                foreach ($topic in $json.'wt-agent-hooks'.PSObject.Properties) {
-                    foreach ($handler in $topic.Value) {
-                        $handlers = if ($handler.hooks) { $handler.hooks } else { @($handler) }
-                        foreach ($hook in $handlers) {
-                            if ($hook.command -match $needle) { return $hook }
-                        }
-                    }
-                }
-                throw "no shipped hook for '$Cli' / '$Event'"
-            }
-            foreach ($topic in $json.hooks.PSObject.Properties) {
-                foreach ($matcher in $topic.Value) {
-                    foreach ($h in $matcher.hooks) {
-                        foreach ($field in @('command', 'powershell', 'bash')) {
-                            if ($h.$field -and $h.$field -match $needle) { return $h }
-                        }
-                    }
-                }
-            }
-            throw "no shipped hook for '$Cli' / '$Event'"
+            Get-ShippedAgentHook -BundleRoot $script:BundleRoot -Cli $Cli -Event $Event
         }
 
         function script:New-HookInvocation {
-            <#
-            .SYNOPSIS
-                Pane command that pipes a payload file into a CLI's SHIPPED hook string,
-                executed by the shell that CLI really dispatches hooks through.
-            .DESCRIPTION
-                Running the string in the wrong shell is not a neutral simplification: the
-                guards are shell-specific (`try/catch` is a parse error in bash, `command -v`
-                is not a PowerShell command), so a mismatched shell tests a spelling nobody
-                ships. Returns $null when the required shell is unavailable.
-            #>
             param([string]$Cli, [string]$Event, [string]$PayloadFile, [ValidateSet('auto', 'bash', 'powershell')][string]$Variant = 'auto')
-            $h = script:Get-ShippedHook -Cli $Cli -Event $Event
-            switch ($Variant) {
-                'bash' { $cmd = if ($h.bash) { $h.bash } else { $h.command }; $shell = 'bash' }
-                'powershell' { $cmd = if ($h.powershell) { $h.powershell } else { $h.command }; $shell = 'pwsh' }
-                default {
-                    if ($h.shell -eq 'bash') { $cmd = $h.command; $shell = 'bash' }
-                    elseif ($h.powershell) { $cmd = $h.powershell; $shell = 'pwsh' }
-                    else { $cmd = $h.command; $shell = 'pwsh' }
-                }
-            }
-            if ($cmd.Contains("'")) { throw "shipped command contains a single quote, which this driver's quoting cannot carry: $cmd" }
-            $feed = "Get-Content -Raw -LiteralPath '$PayloadFile' | "
-            if ($shell -eq 'bash') {
-                if (-not $script:GitBash) { return $null }
-                return $feed + "& '$($script:GitBash)' -c '$cmd'"
-            }
-            $feed + "& pwsh -NoProfile -Command '$cmd'"
+            New-AgentHookInvocation -BundleRoot $script:BundleRoot -Cli $Cli -Event $Event `
+                -PayloadFile $PayloadFile -GitBash $script:GitBash -Variant $Variant
         }
 
         function script:Write-HookPayload {
@@ -143,7 +93,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 3 `
-                -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit" | Out-Null
+                -Command "Get-Content -Raw -LiteralPath '$payloadFile' | $script:BridgeInvocation agent-hook --cli-source AnTiGrAvItY --event agent.prompt.submit" | Out-Null
             $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.cli_source -eq 'antigravity' -and $_.params.pane_id -eq $paneId
             }
@@ -177,7 +127,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                     transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
                 } | ConvertTo-Json -Compress)
                 Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
-                    -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+                    -Command "Get-Content -Raw -LiteralPath '$file' | $script:BridgeInvocation agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
                 $index++
             }
             Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
@@ -206,7 +156,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         } | ConvertTo-Json -Compress)
         $listener = Start-WtEventListener -App $script:app -WaitForReady
         try {
-            $childCommand = "Set-Location '$pluginDirectory'; `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit"
+            $childCommand = "Set-Location '$pluginDirectory'; `$env:WSL_DISTRO_NAME='Unrelated-WSL'; `$env:WTA_HOOK_CWD=''; Get-Content -Raw -LiteralPath '$file' | $script:BridgeInvocation agent-hook --cli-source antigravity --event agent.prompt.submit"
             $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 2 `
                 -Command "pwsh -NoProfile -EncodedCommand $encoded" | Out-Null
@@ -241,7 +191,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                     transcriptPath = '/test/.gemini/antigravity-cli/brain/session/transcript.jsonl'
                 } | ConvertTo-Json -Compress)
                 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($distro))
-                $command = "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; try { `$env:WSL_DISTRO_NAME=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); `$env:WTA_HOOK_CWD='/tmp'; Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd }"
+                $command = "`$savedDistro=`$env:WSL_DISTRO_NAME; `$savedCwd=`$env:WTA_HOOK_CWD; try { `$env:WSL_DISTRO_NAME=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); `$env:WTA_HOOK_CWD='/tmp'; Get-Content -Raw -LiteralPath '$file' | $script:BridgeInvocation agent-hook --cli-source antigravity --event agent.prompt.submit } finally { `$env:WSL_DISTRO_NAME=`$savedDistro; `$env:WTA_HOOK_CWD=`$savedCwd }"
                 Invoke-RunCommand -App $script:app -SessionId $paneId -Command $command -SettleSec 1 | Out-Null
                 $index++
             }
@@ -251,7 +201,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                 transcriptPath = 'C:\test\.gemini\antigravity-cli\brain\session\transcript.jsonl'
             } | ConvertTo-Json -Compress)
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 1 `
-                -Command "Get-Content -Raw -LiteralPath '$file' | wtcli.exe agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
+                -Command "Get-Content -Raw -LiteralPath '$file' | $script:BridgeInvocation agent-hook --cli-source antigravity --event agent.prompt.submit" | Out-Null
             Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and $_.params.agent_session_id -eq $control
             } | Should -Not -BeNullOrEmpty
@@ -288,7 +238,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
                     terminationReason = if ($sample.error) { 'ERROR' } else { 'NO_TOOL_CALL' }
                 } | ConvertTo-Json -Compress)
                 Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 3 `
-                    -Command "Get-Content -Raw -LiteralPath '$payloadFile' | wtcli.exe agent-hook --cli-source antigravity --event agent.stop" | Out-Null
+                    -Command "Get-Content -Raw -LiteralPath '$payloadFile' | $script:BridgeInvocation agent-hook --cli-source antigravity --event agent.stop" | Out-Null
             }
             $idle = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
                 $_.method -eq 'agent_event' -and
@@ -329,7 +279,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             messages        = @($secret)
             model           = $secret
         } | ConvertTo-Json -Compress
-        $command = "'$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.prompt.submit"
+        $command = "'$payload' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.prompt.submit"
 
         $listener = Start-WtEventListener -App $script:app
         try {
@@ -374,7 +324,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app
         try {
             foreach ($f in @($ordinary, $interactive)) {
-                $cmd = "Get-Content -Raw -LiteralPath '$f' | wtcli.exe agent-hook --cli-source copilot --event agent.tool.starting"
+                $cmd = "Get-Content -Raw -LiteralPath '$f' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.tool.starting"
                 Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 3 | Out-Null
             }
 
@@ -413,7 +363,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         $listener = Start-WtEventListener -App $script:app
         try {
             $gatedCmd = "`$saved=`$env:WT_SESSION; `$env:WT_SESSION=''; " +
-            "Get-Content -Raw -LiteralPath '$gated' | wtcli.exe agent-hook --cli-source copilot --event agent.stop; " +
+            "Get-Content -Raw -LiteralPath '$gated' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.stop; " +
             '"GATED_EXIT=$LASTEXITCODE"'
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $gatedCmd -SettleSec 10
             Assert-Pane -App $script:app -SessionId $paneId -Match 'GATED_EXIT=0' -TimeoutSec 10
@@ -422,7 +372,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             # event is what makes the negative assertion below sound — it proves the
             # listener was live and that enough time passed for a gated event to appear.
             $controlCmd = "`$env:WT_SESSION=`$saved; " +
-            "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.stop"
+            "Get-Content -Raw -LiteralPath '$control' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.stop"
             Invoke-RunCommand -App $script:app -SessionId $paneId -Command $controlCmd -SettleSec 10 | Out-Null
             $controlEvent = $null
             try {
@@ -462,7 +412,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
 
         $listener = Start-WtEventListener -App $script:app
         try {
-            $cmd = "Get-Content -Raw -LiteralPath '$payload' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start; " +
+            $cmd = "Get-Content -Raw -LiteralPath '$payload' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.session.start; " +
             '"BOUND" + "_EXIT=$LASTEXITCODE"'
             $out = Invoke-RunCommand -App $script:app -SessionId $paneId -Command $cmd -SettleSec 20
             Assert-Pane -App $script:app -SessionId $paneId -Match 'BOUND_EXIT=0' -TimeoutSec 10
@@ -472,7 +422,7 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
             $controlId = "bound-control-$([guid]::NewGuid())"
             $control = script:Write-HookPayload -Name 'bound-control' -Dir $TestDrive -Json (@{ session_id = $controlId } | ConvertTo-Json -Compress)
             Invoke-RunCommand -App $script:app -SessionId $paneId -SettleSec 20 `
-                -Command "Get-Content -Raw -LiteralPath '$control' | wtcli.exe agent-hook --cli-source copilot --event agent.session.start" | Out-Null
+                -Command "Get-Content -Raw -LiteralPath '$control' | $script:BridgeInvocation agent-hook --cli-source copilot --event agent.session.start" | Out-Null
             $controlEvent = $null
             try {
                 $controlEvent = Wait-WtEvent -Listener $listener -TimeoutSec 30 -Predicate {
@@ -495,24 +445,15 @@ Describe 'Feature §10 native hook bridge' -Tag 'Feature' -Skip:(-not $script:Re
         }
     }
 
-    It 'Shipped hook guards do not swallow the happy path (every CLI bundle still delivers with the bridge present)' {
-        # Each CLI wraps the bridge call in a guard so an uninstalled Terminal cannot break
-        # it: PowerShell try/catch (copilot, gemini), bash `command -v` (copilot, claude),
-        # nothing (codex, whose marketplace entry is removed with the package).
-        #
-        # Those guards make the exit code useless as an oracle — they force 0 whether the
-        # command ran, failed, or was never parsed as a command at all. A typo inside the
-        # try-block would look exactly like success. Only an event arriving at Terminal
-        # tells the two apart, which is why this asserts delivery and not exit status
-        # alone. Unit tests cover the mirror case (guards exit 0 when wtcli is missing);
-        # nothing else covers "the guard still lets a working bridge through".
+    It 'Shipped hook guards do not swallow the happy path (every CLI bundle still delivers with the bridge present)' -Tag HookBundleExecutors {
+        # Exercise each provider's actual executor. Fail-open guards make exit
+        # codes insufficient: only delivery proves that the writer ran.
         $paneId = (Get-ActivePane -App $script:app).session_id
         $cases = @(
-            @{ Cli = 'copilot'; Variant = 'powershell'; Label = 'copilot (PowerShell try/catch)' }
-            @{ Cli = 'copilot'; Variant = 'bash'; Label = 'copilot (bash command -v)' }
+            @{ Cli = 'copilot'; Variant = 'auto'; Label = 'copilot (direct exec)' }
             @{ Cli = 'claude'; Variant = 'auto'; Label = 'claude (shell-pinned bash guard)' }
             @{ Cli = 'gemini'; Variant = 'auto'; Label = 'gemini (PowerShell try/catch)' }
-            @{ Cli = 'codex'; Variant = 'auto'; Label = 'codex (unguarded)' }
+            @{ Cli = 'codex'; Variant = 'auto'; Label = 'codex (Windows PowerShell host)' }
             @{ Cli = 'antigravity'; Variant = 'auto'; Label = 'Antigravity (explicit PowerShell guard)' }
         )
 

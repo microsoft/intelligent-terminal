@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.session.start; exit 0",
-            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.session.start >nul 2>&1 & exit /b 0\""
+            "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" codex agent.session.start; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.session.start; fi; exit 0",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { if ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) { & (Join-Path ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) 'emit-hook.ps1') -CliSource codex -Event agent.session.start } else { wtcli.exe agent-hook --cli-source codex --event agent.session.start } } catch { }; exit 0\""
           }
         ]
       }
@@ -17,8 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.notification; exit 0",
-            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.notification >nul 2>&1 & exit /b 0\""
+            "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" codex agent.notification; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.notification; fi; exit 0",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { if ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) { & (Join-Path ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) 'emit-hook.ps1') -CliSource codex -Event agent.notification } else { wtcli.exe agent-hook --cli-source codex --event agent.notification } } catch { }; exit 0\""
           }
         ]
       }
@@ -28,8 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit; exit 0",
-            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit >nul 2>&1 & exit /b 0\""
+            "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" codex agent.prompt.submit; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit; fi; exit 0",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { if ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) { & (Join-Path ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) 'emit-hook.ps1') -CliSource codex -Event agent.prompt.submit } else { wtcli.exe agent-hook --cli-source codex --event agent.prompt.submit } } catch { }; exit 0\""
           }
         ]
       }
@@ -39,8 +39,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.stop; exit 0",
-            "commandWindows": "cmd.exe /d /s /c \"wtcli.exe agent-hook --cli-source codex --event agent.stop >nul 2>&1 & exit /b 0\""
+            "command": "if [ -n \"${WT_AGENT_HOOK_DIR:-}\" ]; then bash \"$WT_AGENT_HOOK_DIR/emit-hook.sh\" codex agent.stop; else command -v wtcli.exe >/dev/null 2>&1 && wtcli.exe agent-hook --cli-source codex --event agent.stop; fi; exit 0",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { if ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) { & (Join-Path ([Environment]::GetEnvironmentVariable('WT_AGENT_HOOK_DIR')) 'emit-hook.ps1') -CliSource codex -Event agent.stop } else { wtcli.exe agent-hook --cli-source codex --event agent.stop } } catch { }; exit 0\""
           }
         ]
       }

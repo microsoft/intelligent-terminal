@@ -3,6 +3,7 @@
 
 import { appendFileSync, mkdirSync } from "node:fs"
 import { bindingRpc } from "./rpc.js"
+import { tryWriteHookVt } from "./bridge.js"
 
 function eventMessage(value) {
   if (typeof value === "string") return value
@@ -83,6 +84,13 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, delive
       deliver(topic, sessionID, payload)
       return
     }
+    const hookPayload = {
+      session_id: sessionID,
+      cwd: rootSessions.get(sessionID)?.cwd || directory,
+      ...payload,
+      ...(ownsPane ? {} : { pane_owner: false }),
+    }
+    if (ownsPane && tryWriteHookVt(topic, sessionID, hookPayload)) return
     try {
       const child = Bun.spawn({
         cmd: [
@@ -94,12 +102,7 @@ const WtAgentHooks = async ({ directory, resolveSession, ownsPane = true, delive
           topic,
         ],
         stdin: new TextEncoder().encode(
-          JSON.stringify({
-            session_id: sessionID,
-            cwd: rootSessions.get(sessionID)?.cwd || directory,
-            ...payload,
-            ...(ownsPane ? {} : { pane_owner: false }),
-          }),
+          JSON.stringify(hookPayload),
         ),
         stdout: "ignore",
         stderr: "ignore",

@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../TerminalProtocol/AgentEventParsing.h"
 #include "../../tools/wtcli/wtcli_functions.h"
 #include "../inc/TerminalProtocolEnvironment.h"
 
@@ -35,7 +36,115 @@ namespace TerminalAppUnitTests
         TEST_METHOD(OversizedCwdChangeRetainsNewDirectory);
         TEST_METHOD(HostClsidOverridesStaleEnvironment);
         TEST_METHOD(UnpublishedStartupRemovesInheritedClsid);
+        TEST_METHOD(VtHooksUseTheEmittingPaneAndRedactPayloads);
+        TEST_METHOD(VtHooksDecodeBase64AndRejectMalformedEvents);
+        TEST_METHOD(VtHookProgressPreservesStopAndNativeProgress);
+        TEST_METHOD(VtHookProgressIgnoresDetachedAndInformationalEvents);
     };
+
+    void ProtocolParsingTests::VtHooksUseTheEmittingPaneAndRedactPayloads()
+    {
+        Json::Value params;
+        VERIFY_IS_TRUE(ParseAgentEventSequence(
+            LR"(osc:9001;AgentEvent;{"event":"agent.prompt.submit","cli_source":"claude","pane_id":"foreign-pane","tab_id":"foreign-tab","payload":{"session_id":"fixture","cwd":"C:\\repo","prompt":"private"}})",
+            "owning-pane",
+            params));
+        VERIFY_ARE_EQUAL("owning-pane", params["pane_id"].asString());
+        VERIFY_ARE_EQUAL("fixture", params["agent_session_id"].asString());
+        VERIFY_ARE_EQUAL("C:\\repo", params["payload"]["cwd"].asString());
+        VERIFY_IS_FALSE(params["payload"].isMember("prompt"));
+        VERIFY_IS_FALSE(params.isMember("tab_id"));
+
+        VERIFY_IS_TRUE(ParseAgentEventSequence(
+            LR"(osc:9001;AgentEvent;{"event":"agent.stop","cli_source":"custom:fixture","payload":{"sessionId":"custom-session","message":"ready"}})",
+            "owning-pane",
+            params));
+        VERIFY_ARE_EQUAL("custom-session", params["agent_session_id"].asString());
+        VERIFY_ARE_EQUAL("ready", params["payload"]["message"].asString());
+        VERIFY_IS_TRUE(ParseAgentEventSequence(
+            LR"(osc:9001;AgentEvent;{"event":"agent.stop","cli_source":"claude","wsl_distro":"Ubuntu-24.04","payload":{"session_id":"wsl-session","cwd":"/repo"}})",
+            "owning-pane",
+            params));
+        VERIFY_ARE_EQUAL("Ubuntu-24.04", params["wsl_distro"].asString());
+    }
+
+    void ProtocolParsingTests::VtHooksDecodeBase64AndRejectMalformedEvents()
+    {
+        Json::Value params;
+        VERIFY_IS_TRUE(ParseAgentEventSequence(
+            L"osc:9001;AgentEvent64;eyJldmVudCI6ImFnZW50LnN0b3AiLCJjbGlfc291cmNlIjoiY29waWxvdCIsInBheWxvYWQiOnsic2Vzc2lvbl9pZCI6ImZpeHR1cmUifX0=",
+            "owning-pane",
+            params));
+        VERIFY_ARE_EQUAL("agent.stop", params["event"].asString());
+        VERIFY_ARE_EQUAL("fixture", params["agent_session_id"].asString());
+        for (const auto sequence : {
+                 L"osc:9001;AgentEvent64;not-base64!",
+                 L"osc:9001;AgentEvent;[]",
+                 L"osc:9001;AgentEvent;{\"event\":42}",
+                 L"osc:9001;AgentEvent;{\"event\":\"agent.stop\",\"cli_source\":[]}",
+                 L"osc:9001;AgentEvent;{\"event\":\"agent.stop\",\"wsl_distro\":\"Ubuntu & command\"}",
+                 L"osc:9001;AgentEvent;{\"event\":\"agent.stop\",\"agent_session_id\":\"unsafe & command\"}",
+                 L"osc:9001;AgentEvent;{\"event\":\"agent.stop\",\"agent_session_id\":\"sidekick-fixture\"}" })
+        {
+            VERIFY_IS_FALSE(ParseAgentEventSequence(sequence, "owning-pane", params));
+        }
+    }
+
+    void ProtocolParsingTests::VtHookProgressPreservesStopAndNativeProgress()
+    {
+        AgentHookProgress progress;
+        Json::Value params;
+        params["agent_session_id"] = "fixture";
+        params["cli_source"] = "copilot";
+        params["event"] = "agent.prompt.submit";
+        VERIFY_ARE_EQUAL(AgentProgressState::Working, *progress.Apply(params));
+        params["event"] = "agent.stop";
+        VERIFY_ARE_EQUAL(AgentProgressState::Clear, *progress.Apply(params));
+        params["event"] = "agent.tool.finished";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+
+        params["event"] = "agent.prompt.submit";
+        VERIFY_ARE_EQUAL(AgentProgressState::Working, *progress.Apply(params));
+        progress.ObserveNativeProgress();
+        params["event"] = "agent.notification";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+        params["event"] = "agent.stop";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+        params["event"] = "agent.prompt.submit";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+        progress.ObserveNativeProgress(false);
+        VERIFY_ARE_EQUAL(AgentProgressState::Working, *progress.Apply(params));
+        VERIFY_ARE_EQUAL(AgentProgressState::Clear, *progress.ShellPrompt());
+        params["event"] = "agent.stop";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+    }
+
+    void ProtocolParsingTests::VtHookProgressIgnoresDetachedAndInformationalEvents()
+    {
+        AgentHookProgress progress;
+        Json::Value params;
+        params["agent_session_id"] = "fixture";
+        params["cli_source"] = "copilot";
+        params["event"] = "agent.prompt.submit";
+        VERIFY_ARE_EQUAL(AgentProgressState::Working, *progress.Apply(params));
+        params["event"] = "agent.notification";
+        params["payload"]["notificationType"] = "shell_completed";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+        params["payload"]["notificationType"] = "permission";
+        VERIFY_ARE_EQUAL(AgentProgressState::Attention, *progress.Apply(params));
+        params["event"] = "agent.tool.starting";
+        params["payload"]["tool_name"] = "AskUserQuestion";
+        VERIFY_ARE_EQUAL(AgentProgressState::Attention, *progress.Apply(params));
+
+        params["event"] = "agent.session.end";
+        params["agent_session_id"] = "detached";
+        params["payload"]["pane_owner"] = false;
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+        params["agent_session_id"] = "fixture";
+        VERIFY_ARE_EQUAL(AgentProgressState::Clear, *progress.Apply(params));
+        params["event"] = "agent.prompt.submit";
+        VERIFY_IS_FALSE(progress.Apply(params).has_value());
+    }
 
     void ProtocolParsingTests::OversizedCopilotHooksRetainNotificationType()
     {
