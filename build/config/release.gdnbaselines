@@ -280,6 +280,44 @@
       "createdDate": "2026-07-03 05:00:17Z",
       "expirationDate": "2026-12-20 05:26:10Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-07-03 05:26:10Z"
+    },
+    "e1494501219f5dd4699fec08a26f7539383621d92635d005c9fefd2952d9e38e": {
+      "signature": "e1494501219f5dd4699fec08a26f7539383621d92635d005c9fefd2952d9e38e",
+      "alternativeSignatures": [
+        "afe58776d2a43eaa2bb7a762194c02b1dc3b88b1119733d111fa2553b5d209b7",
+        "27d52fee6bca0848cf50b75ed0ff271a5e944d9c7900e66ca517b6c451ac4978",
+        "757b8c976c6163beb698e29a6035ad61eef469ada28dba821650eca393747d3e"
+      ],
+      "target": "test/e2e/tests/Feature.OpenCodeHookLifecycle.Tests.ps1",
+      "line": 363,
+      "uriBaseId": "file:///C:/a/_work/1/s/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "psscriptanalyzer",
+      "ruleId": "PSAvoidUsingConvertToSecureStringWithPlainText",
+      "createdDate": "2026-11-05 03:37:53Z",
+      "expirationDate": "2027-04-24 04:48:06Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-11-05 04:48:06Z"
+    },
+    "c5313a0a8162f5c95a45fba087f51a8bf851cb643eb4f1010cd96c256934aa27": {
+      "signature": "c5313a0a8162f5c95a45fba087f51a8bf851cb643eb4f1010cd96c256934aa27",
+      "alternativeSignatures": [
+        "94844f2c5c8e44fe097b04b42bb2927bb731e30433644f922bed184f9432b4e5",
+        "b1bc269e453a5a96953acf99281cd16b93821c82adae01a97c4f4d81bff4b63b",
+        "c89257e53ddad0eb1701de9116831ea9b9e8c7398dd9ffa17731c629a9fcca7f"
+      ],
+      "target": "test/e2e/tests/Feature.OpenCodeHookLifecycle.Tests.ps1",
+      "line": 483,
+      "uriBaseId": "file:///C:/a/_work/1/s/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "psscriptanalyzer",
+      "ruleId": "PSAvoidUsingConvertToSecureStringWithPlainText",
+      "createdDate": "2026-11-05 03:37:53Z",
+      "expirationDate": "2027-04-24 04:48:06Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-11-05 04:48:06Z"
     }
   }
 }
