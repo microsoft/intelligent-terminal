@@ -5136,7 +5136,7 @@ namespace winrt::TerminalApp::implementation
 
         // Look up the active tab's agent pane state. The pane is
         // window-level chrome, so when there's no AgentPaneContent on the
-        // active tab the bar still shows but with the toggle dark and
+        // active tab the bar still shows with both toggles unhighlighted and
         // diagnostics disabled.
         winrt::TerminalApp::AgentPaneContent activeAgent{ nullptr };
         if (focusedTabImpl)
@@ -5144,9 +5144,14 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // Each toggle is highlighted only while its view is visible.
+        // Each toggle is highlighted only while its view is visible. Use a
+        // theme-aware neutral overlay so the selection remains visible on the
+        // light toolbar background as well as the dark one.
+        const auto lightTheme = BottomBarRoot().ActualTheme() == ElementTheme::Light;
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-            winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
+            lightTheme ?
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 0, 0, 0) :
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 255, 255, 255)
         };
         const auto kTransparent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::Colors::Transparent()
