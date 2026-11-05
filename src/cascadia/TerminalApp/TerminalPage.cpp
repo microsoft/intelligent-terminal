@@ -5136,7 +5136,7 @@ namespace winrt::TerminalApp::implementation
 
         // Look up the active tab's agent pane state. The pane is
         // window-level chrome, so when there's no AgentPaneContent on the
-        // active tab the bar still shows but with the toggle dark and
+        // active tab the bar still shows with both toggles unhighlighted and
         // diagnostics disabled.
         winrt::TerminalApp::AgentPaneContent activeAgent{ nullptr };
         if (focusedTabImpl)
@@ -5144,9 +5144,14 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // Each toggle is highlighted only while its view is visible.
+        // Each toggle is highlighted only while its view is visible. Use a
+        // theme-aware neutral overlay so the selection remains visible on the
+        // light toolbar background as well as the dark one.
+        const auto lightTheme = BottomBarRoot().ActualTheme() == ElementTheme::Light;
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-            winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
+            lightTheme ?
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 0, 0, 0) :
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 255, 255, 255)
         };
         const auto kTransparent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::Colors::Transparent()
@@ -5268,7 +5273,6 @@ namespace winrt::TerminalApp::implementation
             }
 
             auto label = DiagnosticsLabel();
-            auto icon = DiagnosticsIcon();
 
             switch (autofixState)
             {
@@ -5279,18 +5283,9 @@ namespace winrt::TerminalApp::implementation
                 ToolTipService::SetToolTip(
                     diagBtn,
                     box_value(RS_(L"Diagnostics_AnalyzingTooltip")));
-                if (icon)
-                {
-                    icon.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
-                }
                 if (label)
                 {
                     label.Text(RS_(L"Diagnostics_ErrorPendingLabel"));
-                    label.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
                     label.Visibility(Visibility::Visible);
                 }
                 break;
@@ -5305,17 +5300,9 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.IsEnabled(true);
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ReviewLabelFormat", hotkey) });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 ToolTipService::SetToolTip(
@@ -5330,17 +5317,9 @@ namespace winrt::TerminalApp::implementation
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
                 std::wstring labelText = RS_fmt(L"Diagnostics_ErrorDetectedLabelFormat", hotkey);
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ labelText });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 std::wstring tooltip = RS_fmt(L"Diagnostics_ErrorDetectedTooltipFormat", hotkey);
