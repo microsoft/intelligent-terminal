@@ -5268,7 +5268,6 @@ namespace winrt::TerminalApp::implementation
             }
 
             auto label = DiagnosticsLabel();
-            auto icon = DiagnosticsIcon();
 
             switch (autofixState)
             {
@@ -5279,18 +5278,9 @@ namespace winrt::TerminalApp::implementation
                 ToolTipService::SetToolTip(
                     diagBtn,
                     box_value(RS_(L"Diagnostics_AnalyzingTooltip")));
-                if (icon)
-                {
-                    icon.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
-                }
                 if (label)
                 {
                     label.Text(RS_(L"Diagnostics_ErrorPendingLabel"));
-                    label.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
                     label.Visibility(Visibility::Visible);
                 }
                 break;
@@ -5305,17 +5295,9 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.IsEnabled(true);
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ReviewLabelFormat", hotkey) });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 ToolTipService::SetToolTip(
@@ -5330,17 +5312,9 @@ namespace winrt::TerminalApp::implementation
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
                 std::wstring labelText = RS_fmt(L"Diagnostics_ErrorDetectedLabelFormat", hotkey);
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ labelText });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 std::wstring tooltip = RS_fmt(L"Diagnostics_ErrorDetectedTooltipFormat", hotkey);
