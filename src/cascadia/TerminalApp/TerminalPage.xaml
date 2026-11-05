@@ -101,7 +101,7 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             The top border uses the TabViewBackground theme resource. -->
+             The background and top border use the TabViewBackground theme resource. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
@@ -196,10 +196,12 @@
                         <FontIcon x:Name="DiagnosticsIcon"
                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                   FontSize="16"
-                                  Glyph="&#xE7BA;" />
+                                  Glyph="&#xE7BA;"
+                                  Foreground="{ThemeResource SystemFillColorCautionBrush}" />
                         <TextBlock x:Name="DiagnosticsLabel"
                                    FontSize="12"
                                    VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    Visibility="Collapsed" />
                     </StackPanel>
                 </Button>
@@ -239,15 +241,11 @@
                         </StackPanel>
                     </ToolTip>
                 </ToolTipService.ToolTip>
-                <Image Width="16"
-                       Height="16"
-                       Stretch="Uniform">
-                    <Image.Source>
-                        <SvgImageSource UriSource="ms-appx:///AgentIcons/session.svg"
-                                        RasterizePixelWidth="32"
-                                        RasterizePixelHeight="32" />
-                    </Image.Source>
-                </Image>
+                <FontIcon x:Name="SessionToggleIcon"
+                          FontFamily="Segoe MDL2 Assets"
+                          FontSize="16"
+                          Glyph="&#xE8FD;"
+                          Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
             </Button>
 
         </Grid>

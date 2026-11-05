@@ -659,7 +659,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SharedWtaTrackingOnlyLaunchHasNoDefaultAgent);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
-        TEST_METHOD(BottomBarBackgroundFollowsTheme);
+        TEST_METHOD(BottomBarColorsMeetContrastInLightAndDarkThemes);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
@@ -11539,22 +11539,50 @@ namespace TerminalAppLocalTests
         }
     }
 
-    void TabTests::BottomBarBackgroundFollowsTheme()
+    void TabTests::BottomBarColorsMeetContrastInLightAndDarkThemes()
     {
         auto page = _commonSetup();
         TestOnUIThread([&]() {
+            const auto luminance = [](const winrt::Windows::UI::Color& color) {
+                const auto linearize = [](const uint8_t channel) {
+                    const auto value = channel / 255.0;
+                    return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+                };
+                return 0.2126 * linearize(color.R) + 0.7152 * linearize(color.G) + 0.0722 * linearize(color.B);
+            };
+            const auto contrastRatio = [&](const winrt::Windows::UI::Color& foreground,
+                                           const winrt::Windows::UI::Color& background) {
+                const auto foregroundLuminance = luminance(foreground);
+                const auto backgroundLuminance = luminance(background);
+                return (std::max(foregroundLuminance, backgroundLuminance) + 0.05) /
+                       (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
+            };
+
             for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
             {
                 page->RequestedTheme(theme);
                 page->UpdateLayout();
 
-                const auto expected = page->BottomBarRoot().BorderBrush()
-                                          .as<Media::SolidColorBrush>()
-                                          .Color();
-                const auto actual = page->BottomBarRoot().Background()
+                const auto background = page->BottomBarRoot().Background()
+                                            .as<Media::SolidColorBrush>()
+                                            .Color();
+                const auto border = page->BottomBarRoot().BorderBrush()
                                         .as<Media::SolidColorBrush>()
                                         .Color();
-                VERIFY_ARE_EQUAL(expected, actual);
+                const auto sessionsForeground = page->SessionToggleIcon().Foreground()
+                                                    .as<Media::SolidColorBrush>()
+                                                    .Color();
+                const auto diagnosticsIconForeground = page->DiagnosticsIcon().Foreground()
+                                                           .as<Media::SolidColorBrush>()
+                                                           .Color();
+                const auto diagnosticsForeground = page->DiagnosticsLabel().Foreground()
+                                                      .as<Media::SolidColorBrush>()
+                                                      .Color();
+
+                VERIFY_ARE_EQUAL(border, background);
+                VERIFY_IS_TRUE(contrastRatio(sessionsForeground, background) >= 3.0);
+                VERIFY_IS_TRUE(contrastRatio(diagnosticsIconForeground, background) >= 3.0);
+                VERIFY_IS_TRUE(contrastRatio(diagnosticsForeground, background) >= 4.5);
             }
         });
     }
