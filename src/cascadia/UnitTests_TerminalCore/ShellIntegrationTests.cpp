@@ -794,6 +794,19 @@ if ([regex]::Matches($rendered, '\x1b]133;D;-1\x07').Count -ne 1) {
 }
 $redraw = prompt
 if ($redraw -match '\x1b]133;D;') { throw 'Duplicate unhistoried drive-error mark' }
+
+$Global:LASTEXITCODE = 0
+$PSDefaultParameterValues['Disabled'] = $false
+try {
+    Set-StrictMode -Version Latest
+    Assert-DriveMark $missing -1
+    $PSDefaultParameterValues['Disabled'] = $true
+    Assert-DriveMark $missing -1
+}
+finally {
+    Set-StrictMode -Off
+    $PSDefaultParameterValues.Clear()
+}
 'passed'
 )PS";
     _WriteFile(runner, script);
