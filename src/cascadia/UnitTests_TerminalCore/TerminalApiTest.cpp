@@ -391,6 +391,15 @@ void TerminalCoreUnitTests::TerminalApiTest::SetWorkingDirectory()
 
     stateMachine.ProcessString(L"\x1b]9;9;D:\\中文\x1b\\");
     VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"D:\\中文");
+
+    stateMachine.ProcessString(L"\x1b]9;9;C:\\work\\repo;demo\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"C:\\work\\repo;demo");
+
+    stateMachine.ProcessString(L"\x1b]9;9;\"C:\\work\\repo;demo;\"\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"C:\\work\\repo;demo;");
+
+    stateMachine.ProcessString(L"\x1b]9;9;C:\\work;invalid\"quote\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"C:\\work\\repo;demo;");
 }
 
 void TerminalCoreUnitTests::TerminalApiTest::SetShellType()

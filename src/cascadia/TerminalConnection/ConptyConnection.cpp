@@ -9,6 +9,7 @@
 
 #include "CTerminalHandoff.h"
 #include "../../types/inc/utils.hpp"
+#include "../inc/CmdShellIntegration.h"
 #include "../inc/IntelligentTerminalPaths.h"
 #include "../inc/TerminalProtocolEnvironment.h"
 
@@ -204,6 +205,7 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
         // abort the launch rather than silently selecting another server.
         const auto hostClsid = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_COM_CLSID");
         ::Microsoft::Terminal::Protocol::ApplyHostClsid(environment, hostClsid);
+        ::Microsoft::Terminal::ShellIntegration::ApplyCmdCwdReporting(environment, cmdline);
 
         auto newEnvVars = environment.to_string();
         const auto lpEnvironment = newEnvVars.empty() ? nullptr : newEnvVars.data();
