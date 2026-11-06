@@ -386,7 +386,7 @@ void ShellIntegrationTests::CmdCwdReporting_OnlyCmdLaunches()
         VERIFY_ARE_EQUAL(L"$e]9;9;$P$e\\$P$G", environment.as_map().at(L"PROMPT"));
     }
 
-    for (const auto commandline : { L"", L"pwsh.exe", L"pwsh.exe -Command cmd.exe", L"wsl.exe --exec cmd", L"mycmd.exe", L"cmd.exe.bat" })
+    for (const auto commandline : { L"", L"pwsh.exe", L"pwsh.exe -Command cmd.exe", L"wsl.exe --exec cmd", L"test_cmd.exe", L"cmd.exe.bat" })
     {
         til::env environment;
         ApplyCmdCwdReporting(environment, commandline);
