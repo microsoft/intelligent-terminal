@@ -715,13 +715,16 @@ function Global:prompt { 'PS> ' }
                         ShellIntegrationScriptContent() +
                         R"PS(
 function Assert-DriveMark {
-    param([string]$line, [int]$expected)
+    param([string]$line, [int]$expected, [switch]$suppressed)
     $Global:__DriveTestLine = $line
     $Global:__DriveTestHistoryId++
     $returned = PSConsoleHostReadLine
     if ($returned -cne $line) { throw 'ReadLine changed the submitted command' }
     $commandOutput = Invoke-Expression $line 2>&1
     $rendered = prompt
+    if ($suppressed -and @($commandOutput).Count -ne 0) {
+        throw "ErrorAction default did not suppress the error for: $line"
+    }
     $marks = [regex]::Matches($rendered, '\x1b]133;D;(-?\d+)\x07')
     if ($marks.Count -ne 1 -or [int]$marks[0].Groups[1].Value -ne $expected) {
         throw "Incorrect command-finished mark for: $line (expected $expected)"
@@ -731,7 +734,8 @@ function Assert-DriveMark {
 }
 
 $missing = $null
-foreach ($letter in [char[]]'ZYXWVUTSRQPONMLKJIHGFEDCBA') {
+foreach ($code in 90..65) {
+    $letter = [char]$code
     $name = "${letter}:"
     $function = Get-Command -Name $name -ErrorAction Ignore
     if (-not (Get-PSDrive -Name $letter -ErrorAction Ignore) -and
@@ -760,8 +764,13 @@ Assert-DriveMark "Get-Item '$missing' -ErrorAction SilentlyContinue; Write-Outpu
 $ErrorActionPreference = 'SilentlyContinue'
 Assert-DriveMark $missing 0
 $ErrorActionPreference = 'Continue'
-$PSDefaultParameterValues['Set-Location:ErrorAction'] = 'SilentlyContinue'
-Assert-DriveMark $missing 0
+foreach ($parameter in @('ErrorAction', 'ea', 'ErrorAct*', '[e]a')) {
+    $PSDefaultParameterValues["Set-Location:$parameter"] = 'SilentlyContinue'
+    Assert-DriveMark $missing 0 -suppressed
+    $PSDefaultParameterValues.Clear()
+}
+$PSDefaultParameterValues['Set-Location:ErrorAct`*'] = 'SilentlyContinue'
+Assert-DriveMark $missing -1
 $PSDefaultParameterValues.Clear()
 Assert-DriveMark $missing -1
 

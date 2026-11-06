@@ -1047,7 +1047,9 @@ if (-not $Global:__ShellInteg_Installed) {
         # ErrorRecords do not retain whether an ErrorAction default suppressed
         # their display. Leave these configurations to the normal $? path.
         foreach ($key in $PSDefaultParameterValues.Keys) {
-            if ($key -match ':(ErrorAction|ea)$') { return $false }
+            $parameterPattern = ($key -split ':', 2)[1]
+            if ($parameterPattern -and
+                ('ErrorAction' -like $parameterPattern -or 'ea' -like $parameterPattern)) { return $false }
         }
         if ($null -eq $ast.EndBlock -or $ast.BeginBlock -or
             $ast.ProcessBlock -or $ast.ParamBlock -or
