@@ -11661,13 +11661,6 @@ namespace TerminalAppLocalTests
                 };
                 return 0.2126 * linearize(color.R) + 0.7152 * linearize(color.G) + 0.0722 * linearize(color.B);
             };
-            const auto contrastRatio = [&](const winrt::Windows::UI::Color& foreground,
-                                           const winrt::Windows::UI::Color& background) {
-                const auto foregroundLuminance = luminance(foreground);
-                const auto backgroundLuminance = luminance(background);
-                return (std::max(foregroundLuminance, backgroundLuminance) + 0.05) /
-                       (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
-            };
             const auto composite = [](const winrt::Windows::UI::Color& overlay,
                                       const winrt::Windows::UI::Color& background) {
                 const auto alpha = overlay.A / 255.0;
@@ -11678,6 +11671,14 @@ namespace TerminalAppLocalTests
                                                                  channel(overlay.R, background.R),
                                                                  channel(overlay.G, background.G),
                                                                  channel(overlay.B, background.B));
+            };
+            const auto contrastRatio = [&](const winrt::Windows::UI::Color& foreground,
+                                           const winrt::Windows::UI::Color& background) {
+                const auto renderedForeground = composite(foreground, background);
+                const auto foregroundLuminance = luminance(renderedForeground);
+                const auto backgroundLuminance = luminance(background);
+                return (std::max(foregroundLuminance, backgroundLuminance) + 0.05) /
+                       (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
             };
 
             const auto tab = page->_GetFocusedTabImpl();
