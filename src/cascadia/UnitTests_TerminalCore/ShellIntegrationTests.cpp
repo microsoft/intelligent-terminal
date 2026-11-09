@@ -118,6 +118,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_DriveSwitchErrors_PreserveHandledSuccess);
     TEST_METHOD(PowerShell_ResumeCommand_EmitsOscBeforeExecution);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
@@ -795,6 +796,138 @@ foreach ($case in $cases) {
         '{0}]9001;Resume;{1};resume-test{2}' -f [char]0x1B, $case.Agent, [char]0x07
     } else { '' }
     if ($output.ToString() -cne $expected) { throw "Incorrect Resume OSC for: $($case.Line)" }
+}
+'passed'
+)PS";
+    _WriteFile(runner, script);
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
+void ShellIntegrationTests::PowerShell_DriveSwitchErrors_PreserveHandledSuccess()
+{
+    const auto runner = _scratchDir / L"drive-switch-test.ps1";
+    const auto script = std::string{ "\xef\xbb\xbf" } +
+                        R"($ErrorActionPreference = 'Continue'
+$Global:__DriveTestHistoryId = 0
+function Global:Get-History { param($Count) [pscustomobject]@{ Id = $Global:__DriveTestHistoryId } }
+function Global:PSConsoleHostReadLine { return $Global:__DriveTestLine }
+function Global:prompt { 'PS> ' }
+)" +
+                        ShellIntegrationScriptContent() +
+                        R"PS(
+function Assert-DriveMark {
+    param([string]$line, [int]$expected, [switch]$suppressed)
+    $Global:__DriveTestLine = $line
+    $Global:__DriveTestHistoryId++
+    $returned = PSConsoleHostReadLine
+    if ($returned -cne $line) { throw 'ReadLine changed the submitted command' }
+    $commandOutput = Invoke-Expression $line 2>&1
+    $rendered = prompt
+    if ($suppressed -and @($commandOutput).Count -ne 0) {
+        throw "ErrorAction default did not suppress the error for: $line"
+    }
+    $marks = [regex]::Matches($rendered, '\x1b]133;D;(-?\d+)\x07')
+    if ($marks.Count -ne 1 -or [int]$marks[0].Groups[1].Value -ne $expected) {
+        throw "Incorrect command-finished mark for: $line (expected $expected)"
+    }
+    $redraw = prompt
+    if ($redraw -match '\x1b]133;D;') { throw "Duplicate command-finished mark for: $line" }
+}
+
+$missing = $null
+foreach ($code in 90..65) {
+    $letter = [char]$code
+    $name = "${letter}:"
+    $function = Get-Command -Name $name -ErrorAction Ignore
+    if (-not (Get-PSDrive -Name $letter -ErrorAction Ignore) -and
+        $function -is [System.Management.Automation.FunctionInfo] -and
+        $function.Definition.Trim() -ceq 'Set-Location $MyInvocation.MyCommand.Name') {
+        $missing = $name
+        break
+    }
+}
+if ($null -eq $missing) { throw 'No missing drive with a default drive-switch function is available' }
+$existing = (Get-Location).Drive.Name + ':'
+$originalFunction = (Get-Command -Name $missing).ScriptBlock
+[void](prompt)
+
+Assert-DriveMark $missing -1
+Assert-DriveMark $missing -1
+Assert-DriveMark $existing 0
+Assert-DriveMark 'Write-Output ok' 0
+Assert-DriveMark "'$missing'" 0
+Assert-DriveMark "$missing; Write-Output recovered" 0
+Assert-DriveMark "$missing | Out-Null" 0
+Assert-DriveMark "$missing 2>`$null" 0
+Assert-DriveMark "try { Set-Location '$missing' -ErrorAction Stop } catch { 'handled' }" 0
+Assert-DriveMark "Get-Item '$missing' -ErrorAction SilentlyContinue; Write-Output ok" 0
+
+$ErrorActionPreference = 'SilentlyContinue'
+Assert-DriveMark $missing 0
+$ErrorActionPreference = 'Continue'
+foreach ($parameter in @('ErrorAction', 'ea', 'ErrorAct*', '[e]a')) {
+    $PSDefaultParameterValues["Set-Location:$parameter"] = 'SilentlyContinue'
+    Assert-DriveMark $missing 0 -suppressed
+    $PSDefaultParameterValues.Clear()
+}
+$PSDefaultParameterValues['Set-Location:ErrorAct`*'] = 'SilentlyContinue'
+Assert-DriveMark $missing -1
+$PSDefaultParameterValues.Clear()
+Assert-DriveMark $missing -1
+
+try {
+    $replacement = [scriptblock]::Create("Set-Location '$missing'; Write-Output recovered")
+    Set-Item -LiteralPath "Function:\global:$missing" -Value $replacement
+    Assert-DriveMark $missing 0
+}
+finally {
+    Set-Item -LiteralPath "Function:\global:$missing" -Value $originalFunction
+}
+Assert-DriveMark $missing -1
+
+# Without history advancement, a fresh drive error still needs one mark.
+$Global:__DriveTestLine = $missing
+$returned = PSConsoleHostReadLine
+$commandOutput = Invoke-Expression $missing 2>&1
+$rendered = prompt
+if ([regex]::Matches($rendered, '\x1b]133;D;-1\x07').Count -ne 1) {
+    throw 'Missing command-finished mark for an unhistoried drive error'
+}
+$redraw = prompt
+if ($redraw -match '\x1b]133;D;') { throw 'Duplicate unhistoried drive-error mark' }
+
+$Global:LASTEXITCODE = 0
+$PSDefaultParameterValues['Disabled'] = $false
+try {
+    Set-StrictMode -Version Latest
+    Assert-DriveMark $missing -1
+    $PSDefaultParameterValues['Disabled'] = $true
+    Assert-DriveMark $missing -1
+}
+finally {
+    Set-StrictMode -Off
+    $PSDefaultParameterValues.Clear()
 }
 'passed'
 )PS";
