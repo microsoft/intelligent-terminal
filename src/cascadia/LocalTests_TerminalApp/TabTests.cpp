@@ -841,6 +841,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
         TEST_METHOD(ProfileAwareSplitPreservesExplicitTargets);
+        TEST_METHOD(PaletteSplitCommandsUseSourceProfile);
         TEST_METHOD(SplitActionDoesNotRetainAgentIdentity);
         TEST_METHOD(NewTabActionDoesNotRetainDefaultAgentIdentity);
         TEST_METHOD(SplitDirectoryFollowsShellAndAgentSources);
@@ -31410,6 +31411,56 @@ namespace TerminalAppLocalTests
                         VERIFY_IS_TRUE(preservedSource->GetTerminalControl() == sourceControl);
                     });
                 }
+            }
+        }
+    }
+
+    void TabTests::PaletteSplitCommandsUseSourceProfile()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto map = CascadiaSettings::LoadDefaults().ActionMap();
+        for (const auto agentSource : { false, true })
+        {
+            for (const auto id : { L"Terminal.SplitPaneUp", L"Terminal.SplitPaneDown", L"Terminal.SplitPaneLeft", L"Terminal.SplitPaneRight" })
+            {
+                const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+                auto page = _commonSetup(*connection);
+                TestOnUIThread([&]() {
+                    const auto tab = page->_GetFocusedTabImpl();
+                    const auto sourcePane = tab->GetActivePane();
+                    tab->SuppressAgentPrewarm();
+                    auto shutdown = wil::scope_exit([&]() { tab->GetRootPane()->Shutdown(); });
+                    const auto source = tab->GetFocusedProfile();
+                    const auto globalDefault = page->_settings.ActiveProfiles().GetAt(1);
+                    source.Commandline(L"cmd.exe /d /k");
+                    source.AgentProfileId(agentSource ? L"copilot" : L"");
+                    source.DefaultSplitProfile(L"");
+                    globalDefault.Commandline(L"cmd.exe /d /k");
+                    page->_settings.GlobalSettings().DefaultProfile(globalDefault.Guid());
+                    VERIFY_ARE_NOT_EQUAL(source.Guid(), globalDefault.Guid());
+                    const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+                    source.StartingDirectory(winrt::hstring{ directory + L"\\System32" });
+                    const auto output = L"\x1b]9;9;\"" + directory + L"\"\x1b\\";
+                    connection->TerminalOutput.raise(winrt::array_view<const char16_t>{
+                        reinterpret_cast<const char16_t*>(output.data()),
+                        reinterpret_cast<const char16_t*>(output.data() + output.size()) });
+
+                    const auto palette = page->LoadCommandPalette();
+                    palette.Visibility(Visibility::Visible);
+                    VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
+                    VERIFY_IS_TRUE(tab->GetActivePane() == sourcePane);
+                    palette.Visibility(Visibility::Collapsed);
+                    VERIFY_IS_TRUE(tab->GetActivePane() == sourcePane);
+                    page->_OnDispatchCommandRequested(palette, map.GetActionByID(id));
+                    VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+                    VERIFY_ARE_EQUAL(source.Guid(), tab->GetFocusedProfile().Guid());
+                    const auto created = tab->GetActiveTerminalControl();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ directory }, created.Settings().StartingDirectory());
+                    VERIFY_ARE_NOT_EQUAL(connection->SessionId(), created.Connection().SessionId());
+                    VERIFY_IS_FALSE(page->_paneAgentSessions.contains(created.Connection().SessionId()));
+                    const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                    VERIFY_ARE_EQUAL(winrt::hstring{ agentSource ? L"copilot" : L"" }, manager->NativeAgentProviderId(created.ContentId()));
+                });
             }
         }
     }

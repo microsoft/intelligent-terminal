@@ -36,6 +36,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestExplicitUnbind);
         TEST_METHOD(TestArbitraryArgs);
         TEST_METHOD(TestSplitPaneArgs);
+        TEST_METHOD(DefaultSplitCommandsUseSourceProfile);
         TEST_METHOD(TestStringOverload);
         TEST_METHOD(TestSetTabColorArgs);
         TEST_METHOD(TestScrollArgs);
@@ -484,6 +485,29 @@ namespace SettingsModelUnitTests
             // Verify the args have the expected value
             VERIFY_ARE_EQUAL(SplitDirection::Automatic, realArgs.SplitDirection());
         }
+    }
+
+    void KeyBindingsTests::DefaultSplitCommandsUseSourceProfile()
+    {
+        const auto map = CascadiaSettings::LoadDefaults().ActionMap();
+        for (const auto& [id, direction] : {
+                 std::pair{ L"Terminal.SplitPaneUp", SplitDirection::Up },
+                 std::pair{ L"Terminal.SplitPaneDown", SplitDirection::Down },
+                 std::pair{ L"Terminal.SplitPaneLeft", SplitDirection::Left },
+                 std::pair{ L"Terminal.SplitPaneRight", SplitDirection::Right } })
+        {
+            const auto command = map.GetActionByID(id);
+            VERIFY_IS_NOT_NULL(command);
+            const auto action = command.ActionAndArgs();
+            VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, action.Action());
+            const auto args = action.Args().as<SplitPaneArgs>();
+            VERIFY_ARE_EQUAL(SplitType::Profile, args.SplitMode());
+            VERIFY_ARE_EQUAL(direction, args.SplitDirection());
+        }
+        const auto [parsed, warnings] = implementation::SplitPaneArgs::FromJson(VerifyParseSucceeded(R"({"action":"splitPane"})"));
+        VERIFY_IS_TRUE(warnings.empty());
+        VERIFY_ARE_EQUAL(SplitType::Manual, parsed.as<SplitPaneArgs>().SplitMode());
+        VERIFY_ARE_EQUAL(SplitType::Manual, SplitPaneArgs{ SplitType::Manual }.SplitMode());
     }
 
     void KeyBindingsTests::TestSetTabColorArgs()

@@ -115,7 +115,8 @@ security boundary.
 
 ## Splitting panes
 
-The default split shortcuts and tab split action use `splitMode: "profile"`.
+The default split shortcuts, tab split action, and command palette's
+non-profile-selecting Split up/down/left/right commands use `splitMode: "profile"`.
 Configure the source profile's `defaultSplitProfile` in `settings.json`; there
 is no default split target control in the profile editor. It determines the target:
 
@@ -128,11 +129,15 @@ is no default split target control in the profile editor. It determines the targ
 An explicit `splitMode: "duplicate"` always starts another instance of the
 current profile. An action specifying a profile, profile index, command, or
 another content type keeps its explicit target. Existing user-defined actions
-are not rewritten.
+are not rewritten. A user-defined action with an omitted `splitMode` still uses
+`manual` (the specified or global default profile), as does `wt split-pane`
+unless `--duplicate` is supplied. Saved layouts retain their recorded profiles.
 
 All new-terminal splits, including Alt-click profile selections and protocol
 splits, inherit the source pane's working directory unless the operation supplies
-an explicit directory. Shell-to-shell, shell-to-agent, agent-to-shell and
+an explicit directory. A compatible source directory takes precedence over the
+target profile's configured starting directory. Ordinary new tabs continue to
+use their configured starting directory. Shell-to-shell, shell-to-agent, agent-to-shell and
 agent-to-agent splits follow the same rule. Native agents use their current
 pane-bound session directory when available; otherwise their resolved launch
 directory (including relative `-d` arguments), not subsequently edited settings.
