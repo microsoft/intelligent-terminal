@@ -11689,14 +11689,25 @@ namespace TerminalAppLocalTests
             const auto agentContentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
             using AutofixState = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
             page->_settings.GlobalSettings().AutoErrorDetectionEnabled(true);
+            agentContent.SetSessionsView(false);
+            agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
+            page->_UpdateBottomBarState();
 
             for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
             {
                 page->RequestedTheme(theme);
                 page->UpdateLayout();
+                const auto activeFill = page->AgentToggleButton().Background()
+                                            .as<Media::SolidColorBrush>()
+                                            .Color();
+                const auto expectedActiveChannel = theme == ElementTheme::Light ? uint8_t{ 0 } : uint8_t{ 255 };
+                VERIFY_ARE_EQUAL(uint8_t{ 64 }, activeFill.A);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.R);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.G);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.B);
+
                 agentContent.SetSessionsView(false);
                 agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
-                page->_UpdateBottomBarState();
 
                 const auto background = page->BottomBarRoot().Background()
                                             .as<Media::SolidColorBrush>()
