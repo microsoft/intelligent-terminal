@@ -36,7 +36,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestExplicitUnbind);
         TEST_METHOD(TestArbitraryArgs);
         TEST_METHOD(TestSplitPaneArgs);
-        TEST_METHOD(DefaultSplitCommandsUseSourceProfile);
+        TEST_METHOD(DefaultDirectionalSplitCommandsUseProfileMode);
         TEST_METHOD(TestStringOverload);
         TEST_METHOD(TestSetTabColorArgs);
         TEST_METHOD(TestScrollArgs);
@@ -487,7 +487,7 @@ namespace SettingsModelUnitTests
         }
     }
 
-    void KeyBindingsTests::DefaultSplitCommandsUseSourceProfile()
+    void KeyBindingsTests::DefaultDirectionalSplitCommandsUseProfileMode()
     {
         const auto map = CascadiaSettings::LoadDefaults().ActionMap();
         for (const auto& [id, direction] : {

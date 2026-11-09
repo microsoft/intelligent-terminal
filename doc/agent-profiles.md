@@ -115,8 +115,9 @@ security boundary.
 
 ## Splitting panes
 
-The default split shortcuts, tab split action, and command palette's
-non-profile-selecting Split up/down/left/right commands use `splitMode: "profile"`.
+The default split shortcuts, tab split action, and Command Palette's four
+directional split commands use `splitMode: "profile"`. These commands do not
+prompt for a profile, unlike `Split pane...`.
 Configure the source profile's `defaultSplitProfile` in `settings.json`; there
 is no default split target control in the profile editor. It determines the target:
 
