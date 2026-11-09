@@ -31424,7 +31424,7 @@ namespace TerminalAppLocalTests
             for (const auto id : { L"Terminal.SplitPaneUp", L"Terminal.SplitPaneDown", L"Terminal.SplitPaneLeft", L"Terminal.SplitPaneRight" })
             {
                 const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
-                auto page = _commonSetup(*connection);
+                auto page = _keepRunningSetup(*connection);
                 TestOnUIThread([&]() {
                     const auto tab = page->_GetFocusedTabImpl();
                     const auto sourcePane = tab->GetActivePane();
