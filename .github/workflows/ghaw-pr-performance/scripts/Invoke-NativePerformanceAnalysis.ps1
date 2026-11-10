@@ -41,6 +41,13 @@ try {
     if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
         throw 'Native performance analysis requires Windows x64.'
     }
+    foreach ($sha in @($scope.identity.baseSha, $scope.identity.headSha)) {
+        & git cat-file -e "${sha}^{commit}" 2>$null
+        if ($LASTEXITCODE -ne 0 -and
+            (Invoke-RecordedCommand 'git' @('fetch', '--no-tags', 'origin', $sha) "fetch-$sha.log") -ne 0) {
+            throw "Could not fetch immutable native analysis commit $sha."
+        }
+    }
     & git merge-base --is-ancestor $scope.identity.baseSha $scope.identity.headSha
     if ($LASTEXITCODE -ne 0) { throw 'Comparison base is not an ancestor of the reviewed head.' }
     $changedConfiguration = @(& git diff --name-only $scope.identity.baseSha $scope.identity.headSha -- `

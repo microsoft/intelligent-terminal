@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const script = fileURLToPath(new URL('../scripts/Invoke-NativePerformanceAnalysis.ps1', import.meta.url));
@@ -23,13 +23,13 @@ function fixture(t) {
         git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', message]);
         return git(['rev-parse', 'HEAD']);
     };
-    const run = (scope, suffix = 'analysis') => {
+    const run = (scope, suffix = 'analysis', cwd = root) => {
         const output = path.join(root, '.git', suffix);
         fs.mkdirSync(output, { recursive: true });
         const input = path.join(root, '.git', 'scope.json');
         fs.writeFileSync(input, JSON.stringify(scope));
         const result = spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-File', script,
-            '-ScopePath', input, '-OutputDirectory', output], { cwd: root, encoding: 'utf8', timeout: 180000 });
+            '-ScopePath', input, '-OutputDirectory', output], { cwd, encoding: 'utf8', timeout: 180000 });
         assert.equal(result.error, undefined);
         const metadata = JSON.parse(fs.readFileSync(path.join(output, 'native-results.json'), 'utf8'));
         return { result, metadata, output };
@@ -104,6 +104,25 @@ test('unmapped C++ inputs cannot be reported as completed coverage', { skip: pro
     assert.equal(metadata.status, 'incomplete');
     assert.deepEqual(metadata.unmappedCpp, ['src/no-owner.cpp']);
     assert.match(metadata.reason, /no verified direct project membership/);
+});
+
+test('a checkout missing the reviewed head fetches that exact commit before analysis', { skip: process.platform !== 'win32' }, t => {
+    const f = fixture(t);
+    f.write('src/no-owner.cpp', 'int value() { return 1; }\n');
+    const baseSha = f.commit('baseline');
+    f.git(['branch', 'baseline', baseSha]);
+    f.write('src/no-owner.cpp', 'int value() { return 2; }\n');
+    const headSha = f.commit('reviewed head');
+    const checkout = path.join(f.root, '.git', 'narrow-checkout');
+    f.git(['clone', '--quiet', '--single-branch', '--branch', 'baseline', pathToFileURL(f.root).href, checkout]);
+    assert.notEqual(spawnSync('git', ['cat-file', '-e', `${headSha}^{commit}`], { cwd: checkout }).status, 0);
+    const { result, metadata } = f.run({ identity: { baseSha, headSha },
+        nativeAnalysis: { enabled: true, cpp: ['src/no-owner.cpp'], rust: false } }, 'recovery-analysis', checkout);
+    assert.equal(result.status, 1);
+    assert.match(metadata.reason, /no verified direct project membership/);
+    assert.ok(metadata.phases.some(phase => phase.command.join(' ') === `git fetch --no-tags origin ${headSha}` &&
+        phase.exitCode === 0));
+    assert.equal(spawnSync('git', ['cat-file', '-e', `${headSha}^{commit}`], { cwd: checkout }).status, 0);
 });
 
 test('a C++ coverage failure does not suppress valid Rust analysis',
