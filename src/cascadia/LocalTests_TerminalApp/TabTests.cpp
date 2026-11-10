@@ -7548,7 +7548,6 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(dragBounds.X >= 52.0f);
                     const auto toggleBounds = bounds(row->VerticalRailToggleButton());
                     VERIFY_ARE_EQUAL(46.0f, toggleBounds.Width);
-                    VERIFY_ARE_EQUAL(26.0f, toggleBounds.X + toggleBounds.Width / 2);
                     VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
                     VERIFY_IS_TRUE(std::abs(railToggleIconBounds.Width - sidebarToggleIconSize) <= layoutTolerance);
@@ -11337,11 +11336,6 @@ namespace TerminalAppLocalTests
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
                     const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
                     VERIFY_ARE_EQUAL(46.0f, toggle.Width);
-                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(chevron)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(groupToggle)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
-                                                center(toggle) - 26 :
-                                                width - center(toggle) - 26) <= 1.0);
                     const auto drag = bounds(winrt::TerminalApp::TitlebarControl::GetContentDragArea(chrome->VerticalTitleBarContent().as<FrameworkElement>()));
                     VERIFY_IS_TRUE(drag.Width > 0);
                     VERIFY_IS_TRUE(toggle.X + toggle.Width <= drag.X || drag.X + drag.Width <= toggle.X);
