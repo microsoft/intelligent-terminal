@@ -879,12 +879,6 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <Border x:Name="TabCollapsedHoverBackground"
-                                                Grid.ColumnSpan="3"
-                                                Background="{ThemeResource ButtonBackgroundPointerOver}"
-                                                CornerRadius="{ThemeResource ControlCornerRadius}"
-                                                IsHitTestVisible="False"
-                                                Opacity="0" />
                                         <Border x:Name="TabHoverBackground"
                                                 Grid.ColumnSpan="3"
                                                 Background="{ThemeResource TabViewItemHeaderBackgroundPointerOver}"

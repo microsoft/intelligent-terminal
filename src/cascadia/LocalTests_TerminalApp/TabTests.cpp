@@ -20119,7 +20119,9 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, selectionBackground.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
+            VERIFY_ARE_EQUAL(32.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
+            VERIFY_ARE_EQUAL(14.0f, centerX(iconPresenter));
             for (const auto name : { L"TabHoverBackground", L"TabColorHoverBackground" })
             {
                 const auto hover = headerRoot.FindName(name).as<Border>();
