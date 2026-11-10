@@ -335,6 +335,9 @@ jobs:
             if (!runId) {
               throw new Error(`Could not correlate dispatched ${worker} run for ${dispatchId}.`);
             }
+            // Persist identity before waiting, including when this step is cancelled.
+            core.setOutput("run_id", String(runId));
+            core.setOutput("worker", worker);
 
             const deadline = Date.now() + 55 * 60 * 1000;
             while (Date.now() < deadline) {
@@ -378,8 +381,50 @@ jobs:
             }
             throw new Error(`Internal GHAW run ${runId} did not complete within 55 minutes.`);
 
+      - name: Cancel unfinished detached worker
+        if: always() && steps.gate.outputs.should_run == 'true' && steps.worker.outputs.conclusion == ''
+        timeout-minutes: 3
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          WORKER_RUN_ID: ${{ steps.worker.outputs.run_id }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const dispatchId =
+              `ensure-localization-${pr.number}-${pr.head.sha}-${context.runId}-${context.runAttempt}`;
+            // Dispatch can finish after cancellation, before run_id was recorded.
+            let runId = Number(process.env.WORKER_RUN_ID) || undefined;
+            const controller = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: context.runId });
+            for (let attempt = 0; !runId && attempt < 20; attempt++) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo,
+                workflow_id: "ensure-localization.lock.yml",
+                event: "workflow_dispatch",
+                created: `>=${controller.data.created_at}`,
+                per_page: 100
+              });
+              runId = runs.find(run => run.display_title === `Ensure Localization ${dispatchId}`)?.id;
+              if (!runId) await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            if (!runId) {
+              core.warning(`No detached worker found for ${dispatchId}; dispatch may not have started.`);
+              return;
+            }
+            const args = { ...context.repo, run_id: runId };
+            const current = await github.rest.actions.getWorkflowRun(args);
+            if (current.data.status === "completed") return;
+            try {
+              await github.rest.actions.cancelWorkflowRun(args);
+            } catch (error) {
+              // Completion can race the cancellation request; other errors are real.
+              if (error.status !== 409) throw error;
+              const latest = await github.rest.actions.getWorkflowRun(args);
+              if (latest.data.status !== "completed") throw error;
+            }
+
       - name: Download agent-authored localization summary
-        if: steps.worker.outputs.conclusion == 'success' && steps.worker.outputs.inference_skipped != 'true'
+        if: always() && steps.worker.outputs.run_id != '' && steps.worker.outputs.inference_skipped != 'true'
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
@@ -388,7 +433,7 @@ jobs:
           path: ${{ runner.temp }}/localization-summary
 
       - name: Publish agent-authored localization summary
-        if: steps.worker.outputs.conclusion == 'success' && steps.worker.outputs.inference_skipped != 'true'
+        if: always() && steps.worker.outputs.run_id != '' && steps.worker.outputs.inference_skipped != 'true' && !cancelled()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |

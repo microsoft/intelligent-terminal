@@ -251,9 +251,26 @@ Same-repo localization repair for PR #${{ github.event.inputs.pr_number }} in
 
 Imported runtime role: `localization-expert`.
 
-Use `pwsh` for programmatic file reads, XML/YAML processing, and summary writes.
-If a tool call is denied, switch directly to the permitted PowerShell operation;
-do not probe permissions or retry variants of the denied operation.
+The shell tool runs Bash, not PowerShell. Use `pwsh -NoProfile -NonInteractive
+-File .github/skills/ensure-localization/scripts/localization_checks.ps1`
+with the shared skill's CLI arguments for individual checks. For batching, use
+`pwsh -NoProfile -NonInteractive -Command '<PowerShell code>'`, with single
+quotes around the entire command so Bash does not expand PowerShell variables.
+Use the native file edit tool for batch content and the summary, not shell
+heredocs or unapproved Python substitutes.
+
+Before discovery, execute this preflight through the shell tool:
+
+```bash
+pwsh -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; "PSHOME=$PSHOME; filesystem-root=$($ExecutionContext.SessionState.Drive.GetAll().Where({$_.Name -eq "/"}).Root); cwd=$PWD"; Get-ChildItem -LiteralPath .github/skills/ensure-localization/scripts/localization_checks.ps1 -ErrorAction Stop | Out-Null; . ./.github/skills/ensure-localization/scripts/localization_checks.ps1; $probe = Test-ResourceSyntax -File tools/wta/locales/en-US.yml; $probe | ConvertTo-Json -Depth 10 -Compress; if ($probe.status -cne "PASS") { throw "Shared checker preflight failed." }'
+```
+
+This fixed-file smoke check proves checker execution only; it does not select
+or validate the PR's English-derived scope.
+If that command is denied or fails, stop validation, record its actual error in
+the summary and report the native incomplete outcome. In particular, a launched
+`pwsh` with unavailable core cmdlets is an execution failure, not a passed check.
+Do not probe permissions, retry denied variants, or replace the shared checker.
 
 ## Goal
 
@@ -344,4 +361,7 @@ content independently, treat only English source-authority additions, updates,
 or deletions as scope-creating, audit all shipped localized counterparts
 implicated by that scope, and fail `PASS` when any expected key block in that
 scope is mismatched or omitted.
+Denied or failed checker execution and missing validation are `BLOCKED`, never
+`PASS`. Reuse actual successful final checker results, but do not infer them
+from matching resource shapes, a parent verdict, or a clean working tree.
 ## end agent: `localization-review-gate`

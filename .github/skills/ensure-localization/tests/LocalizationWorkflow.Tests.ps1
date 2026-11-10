@@ -36,6 +36,86 @@ Describe 'Localization workflow contracts' -Tag 'Unit' {
                 $global:LASTEXITCODE = $previousExitCode
             }
         }
+
+            function Invoke-CompletionGate {
+                param(
+                    [object[]]$Items = @(@{ type = 'noop' }),
+                    [string]$Checks = 'PASS',
+                    [string]$Review = 'PASS',
+                    [object[]]$Errors = @(),
+                    [switch]$MissingSummary
+                )
+                $root = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+                [IO.Directory]::CreateDirectory((Join-Path $root 'agent')) | Out-Null
+                @{ items = $Items; errors = $Errors } | ConvertTo-Json -Depth 10 |
+                    Set-Content -LiteralPath (Join-Path $root 'agent_output.json')
+                if (-not $MissingSummary) {
+                    "**Final checks:** $Checks`n**Independent review:** $Review" |
+                        Set-Content -LiteralPath (Join-Path $root 'agent/localization-summary.md')
+                }
+                $template = Get-Content -LiteralPath (Join-Path $script:workflowRoot 'shared/localization-summary.md') -Raw
+                $match = [regex]::Match($template, '(?s)- name: Require complete localization outcome before publication.*?run: \|\r?\n(?<script>.*?)  - name: Upload agent-authored')
+                if (-not $match.Success) { throw 'Cannot locate the native completion gate.' }
+                $body = ($match.Groups['script'].Value -replace '(?m)^      ', '').Replace('/tmp/gh-aw', $root.Replace('\', '/'))
+                & ([scriptblock]::Create($body))
+            }
+
+            function Invoke-WorkerCancellation {
+                param(
+                    [switch]$KnownRun,
+                    [switch]$LateDispatch,
+                    [switch]$Completed,
+                    [int]$CancelError = 0,
+                    [switch]$CompletesDuringCancel
+                )
+                $root = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+                [IO.Directory]::CreateDirectory($root) | Out-Null
+                $controller = Get-Content -LiteralPath (Join-Path $script:workflowRoot 'ensure-localization-controller.yml') -Raw
+                $match = [regex]::Match($controller, '(?ms)^      - name: Cancel unfinished detached worker\r?\n.*?^          script: \|\r?\n(?<script>.*?)(?=^      - name:)')
+                if (-not $match.Success) { throw 'Cannot locate detached worker cancellation.' }
+                $bodyLiteral = ConvertTo-Json -InputObject ($match.Groups['script'].Value -replace '(?m)^            ', '') -Compress
+                $nodeScript = @"
+const assert = require('node:assert/strict');
+const run = new (Object.getPrototypeOf(async function() {}).constructor)('github', 'context', 'core', $bodyLiteral);
+const expected = 'Ensure Localization ensure-localization-1-' + 'a'.repeat(40) + '-10-2';
+const context = { repo: { owner: 'test', repo: 'repo' }, runId: 10, runAttempt: 2,
+  payload: { pull_request: { number: 1, head: { sha: 'a'.repeat(40) } } } };
+let listed = 0, cancelled = [], reads = 0;
+process.env.WORKER_RUN_ID = $(if ($KnownRun) { "'20'" } else { "''" });
+global.setTimeout = cb => cb();
+const github = { rest: { actions: {
+  listWorkflowRuns: () => {},
+  getWorkflowRun: async args => {
+    if (args.run_id === 10) return { data: { created_at: '2026-11-10T00:00:00Z' } };
+    reads++;
+    return { data: { status: $(
+            if ($Completed) { "'completed'" }
+            elseif ($CompletesDuringCancel) { "reads > 1 ? 'completed' : 'in_progress'" }
+            else { "'in_progress'" }) } };
+  },
+  cancelWorkflowRun: async args => {
+    cancelled.push(args.run_id);
+    if ($CancelError) throw Object.assign(new Error('cancel failed'), { status: $CancelError });
+  }
+} }, paginate: async (_, args) => {
+  assert.equal(args.workflow_id, 'ensure-localization.lock.yml');
+  assert.equal(args.created, '>=2026-11-10T00:00:00Z');
+  if ($(if ($LateDispatch) { 'true' } else { 'false' }) && listed++ === 0) return [];
+  return [
+    { id: 21, display_title: expected + '-newer' },
+    { id: 22, display_title: expected.replace('-10-2', '-10-1') },
+    { id: 20, display_title: expected }
+  ];
+} };
+run(github, context, { warning: () => {} }).then(() => {
+  assert.deepEqual(cancelled, $(if ($Completed) { '[]' } else { '[20]' }));
+}).catch(error => { console.error(error.message); process.exitCode = 1; });
+"@
+                $path = Join-Path $root 'cancel.js'
+                [IO.File]::WriteAllText($path, $nodeScript)
+                $output = & node $path 2>&1
+                [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output | Out-String) }
+            }
     }
 
     It 'does not require an aggregate checker report in the source or compiled worker' {
@@ -93,5 +173,50 @@ Describe 'Localization workflow contracts' -Tag 'Unit' {
         $repair | Should -Match 'historical evidence only'
         $repair | Should -Match 'pre-deletion snapshots'
         $repair | Should -Match 'Localized-only edits or deletions do not independently create'
+    }
+
+    It 'accepts only unambiguous successful native outcomes with both required PASS attestations' {
+        { Invoke-CompletionGate } | Should -Not -Throw
+        { Invoke-CompletionGate -Items @(@{ type = 'push_to_pull_request_branch' }) } | Should -Not -Throw
+        foreach ($type in @('report_incomplete', 'missing_tool', 'missing_data', 'unknown')) {
+            { Invoke-CompletionGate -Items @(@{ type = $type }) } | Should -Throw '*Localization did not complete*'
+        }
+        { Invoke-CompletionGate -Items @() } | Should -Throw '*Localization did not complete*'
+        { Invoke-CompletionGate -Items @(@{ type = 'noop' }, @{ type = 'report_incomplete' }) } | Should -Throw '*Localization did not complete*'
+        { Invoke-CompletionGate -Items @(@{ type = 'noop' }, @{ type = 'noop' }) } | Should -Throw '*Localization did not complete*'
+        { Invoke-CompletionGate -Errors @('tool failed') } | Should -Throw '*Localization did not complete*'
+    }
+
+    It 'rejects denied or failed checks, unrun reviews, and missing summaries rather than promoting prose to PASS' {
+        foreach ($status in @('BLOCKED', 'FIXABLE', 'INVALID_INPUT', '', 'PASS but not executed')) {
+            { Invoke-CompletionGate -Checks $status } | Should -Throw '*Final checks must explicitly be PASS*'
+            { Invoke-CompletionGate -Review $status } | Should -Throw '*Independent review must explicitly be PASS*'
+        }
+        { Invoke-CompletionGate -MissingSummary } | Should -Throw
+    }
+
+    It 'executes the documented preflight and fails on unavailable PowerShell cmdlets' {
+        $repair = Get-Content -LiteralPath $script:repairPath -Raw
+        $match = [regex]::Match($repair, '(?m)^pwsh -NoProfile -NonInteractive -Command ''(?<command>.*)''$')
+        $match.Success | Should -BeTrue
+        $repoRoot = (Resolve-Path (Join-Path $script:workflowRoot '../..')).Path
+        Push-Location $repoRoot
+        try {
+            $output = & pwsh -NoProfile -NonInteractive -Command $match.Groups['command'].Value 2>&1
+            $LASTEXITCODE | Should -Be 0
+            ($output | Out-String) | Should -Match '"check":"Test-ResourceSyntax".*"status":"PASS"'
+            $output = & pwsh -NoProfile -NonInteractive -Command ('$PSModuleAutoLoadingPreference = "None"; ' + $match.Groups['command'].Value) 2>&1
+            $LASTEXITCODE | Should -Not -Be 0
+            ($output | Out-String) | Should -Match 'Get-ChildItem'
+        } finally { Pop-Location }
+    }
+
+    It 'cancels only the correlated detached run, including delayed dispatch and completion races' {
+        (Invoke-WorkerCancellation -KnownRun).ExitCode | Should -Be 0
+        (Invoke-WorkerCancellation -LateDispatch).ExitCode | Should -Be 0
+        (Invoke-WorkerCancellation -Completed).ExitCode | Should -Be 0
+        (Invoke-WorkerCancellation -CancelError 409 -CompletesDuringCancel).ExitCode | Should -Be 0
+        (Invoke-WorkerCancellation -CancelError 409).ExitCode | Should -Be 1
+        (Invoke-WorkerCancellation -CancelError 403).ExitCode | Should -Be 1
     }
 }
