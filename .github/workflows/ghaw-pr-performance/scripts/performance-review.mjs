@@ -79,11 +79,12 @@ export function prepareScope(expected, directory) {
 }
 
 export function planNativeAnalysis(candidates) {
+    const wtaRustInputPattern = /^tools\/wta\/(?:src\/.+\.rs|build\.rs|Cargo\.(toml|lock))$/;
     const cpp = candidates.filter(file => file.filename.startsWith('src/') &&
         /\.(c|cc|cpp|cxx|h|hh|hpp|ixx)$/i.test(file.filename)).map(file => file.filename);
-    const rust = candidates.some(file => /^tools\/wta\/(?:src\/.+\.rs|build\.rs|Cargo\.(toml|lock))$/.test(file.filename));
+    const rust = candidates.some(file => wtaRustInputPattern.test(file.filename));
     const inputs = candidates.filter(file => cpp.includes(file.filename) ||
-        /^tools\/wta\/(?:src\/.+\.rs|build\.rs|Cargo\.(toml|lock))$/.test(file.filename));
+        wtaRustInputPattern.test(file.filename));
     const lines = inputs.reduce((sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0), 0);
     const bounded = inputs.length <= 20 && lines <= 2000 &&
         inputs.every(file => Number.isInteger(file.additions) && Number.isInteger(file.deletions));
