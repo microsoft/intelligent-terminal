@@ -320,14 +320,14 @@ namespace winrt::Microsoft::Terminal::UI::implementation
         {
             try
             {
-                Windows::UI::Xaml::Media::Imaging::SvgImageSource imageSource{ Foundation::Uri{ expandedIconPath } };
-                imageSource.RasterizePixelWidth(64);
-                imageSource.RasterizePixelHeight(64);
                 MUX::Controls::ImageIcon icon;
-                icon.Source(imageSource);
-                ::Microsoft::Terminal::BindAgentIconTheme(icon, imageSource);
                 icon.Width(16);
                 icon.Height(16);
+                Windows::UI::Xaml::Media::Imaging::SvgImageSource imageSource{ Foundation::Uri{ expandedIconPath } };
+                imageSource.RasterizePixelWidth(icon.Width());
+                imageSource.RasterizePixelHeight(icon.Height());
+                icon.Source(imageSource);
+                ::Microsoft::Terminal::BindAgentIconTheme(icon, imageSource);
                 return icon;
             }
             CATCH_LOG();

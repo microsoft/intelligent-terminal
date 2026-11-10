@@ -9026,6 +9026,8 @@ namespace TerminalAppLocalTests
                     item = page->_CreateNewTabFlyoutProfile(profile, 0, {}).as<MenuFlyoutItem>();
                     icon = item.Icon().as<winrt::MUX::Controls::ImageIcon>();
                     source = icon.Source().as<Media::Imaging::SvgImageSource>();
+                    VERIFY_ARE_EQUAL(16.0, source.RasterizePixelWidth());
+                    VERIFY_ARE_EQUAL(16.0, source.RasterizePixelHeight());
                     openedToken = source.Opened([&](auto&&, auto&&) { imageLoaded.Set(); });
                     failedToken = source.OpenFailed([&](auto&&, auto&&) {
                         Log::Error(L"Agent SVG failed to load");
@@ -9057,6 +9059,8 @@ namespace TerminalAppLocalTests
                     TestOnUIThread([&]() {
                         VERIFY_IS_TRUE(VisualStateManager::GoToState(item, state, false));
                         item.UpdateLayout();
+                        VERIFY_ARE_EQUAL(16.0, artwork.ActualWidth());
+                        VERIFY_ARE_EQUAL(16.0, artwork.ActualHeight());
                         bitmap = Media::Imaging::RenderTargetBitmap{};
                         render = bitmap.RenderAsync(artwork);
                     });
@@ -9144,6 +9148,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(changed.m_handle, 10000));
             TestOnUIThread([&]() {
                 const auto source = icon.Source().as<Media::Imaging::SvgImageSource>();
+                VERIFY_ARE_EQUAL(16.0, source.RasterizePixelWidth());
+                VERIFY_ARE_EQUAL(16.0, source.RasterizePixelHeight());
                 const auto expected = theme == ElementTheme::Light ?
                                           L"ms-appx:///AgentIcons/antigravity-light.svg" :
                                           L"ms-appx:///AgentIcons/antigravity.svg";
