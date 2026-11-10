@@ -35,10 +35,9 @@ Budgets sum every parent-to-fix-commit diff and count the union of touched files
 not merely the final net change; later commits cannot hide an oversized rewrite.
 C++ source can be reviewed, but corrections require manual handoff.
 
-**The workflow does not build or test proposals before push.** Neither a
-compiler, native toolchain, existing focused selector nor completed analyzer run
-is a publication prerequisite. Available analyzer/measurement evidence can
-support review, but missing coverage is recorded honestly.
+**The workflow does not build or test proposals before push.** No
+post-fix compiler, native-toolchain or focused-test gate is added. Original-source
+native coverage and its failure policy are described below.
 
 The summary contains one shared notice below the findings table:
 
@@ -101,10 +100,44 @@ after confirming that the worker completed; failed execution still fails.
 Worker preparation also retries its metadata read before applying the unchanged
 immutable PR-identity checks.
 
-This workflow still performs source review, not automatic native C++/Rust
-analysis. The documented analysis profiles are opt-in. Native Windows analysis
-is a separate integration; these recovery changes do not claim that coverage,
-artifact-upload recovery or inference-result reuse.
+## Native analysis of the original change
+
+Before the Linux reviewer starts, an ordinary Windows x64 job runs the existing
+performance profiles for changed production C++ inputs and WTA Rust. It skips
+dedicated tests/docs and XAML-only changes. Native execution is bounded to
+20 changed analysis inputs and 2,000 added/deleted lines; larger or binary
+changes retain source review with an explicit native coverage gap.
+
+The job materializes the original comparison base and head independently,
+restores dependencies and incrementally builds at most three directly affected
+C++ projects with `PerformanceAnalysis=Extended` and `Build;ClangTidy`. Candidate
+projects come from declared source/header items and must pass evaluated MSBuild
+membership and enabled-profile checks. Unmapped/shared-header consumers are
+coverage limitations, not assumed complete translation-unit coverage.
+WTA uses the existing `cargo wta-perf-extended` alias with Rust 1.93.0/Clippy and
+the explicit Windows target. See `doc/building.md` and `tools/wta/README.md`;
+the workflow does not define a second set of analysis rules.
+
+No clean build, whole-solution build, deployment, TestHost or UI automation is
+requested. A cold runner still needs an initial scoped build; outputs are reused
+within each original revision, not mixed between base and head. Analyzer-profile
+changes require manual comparison instead of silently comparing different rules.
+The native job is capped at 45 minutes. Controller wait/job budgets include
+that additional phase and retain reporting headroom; agent time limits do not
+increase.
+
+Raw command/exit-code logs and revision/run metadata pass to the Linux reviewer.
+It compares diagnostics and inspects source/callers; warnings are not
+automatically findings. Failed or unavailable native work remains visible and
+does not prevent source review. It does not validate proposed edits or add a
+post-fix build/test prerequisite. Failed scheduled original-source analysis keeps
+findings in manual handoff rather than publishing edits from a failed run.
+Result reuse and artifact-upload recovery are
+not implemented here.
+
+`performance-native-tests.yml` exercises the analysis wrapper with real
+Clang-Tidy/Clippy diagnostics on small paired fixtures when its implementation
+changes. This proves tool execution and handoff, not full product coverage.
 
 ## Reporting
 
@@ -133,6 +166,12 @@ node --test .github\workflows\ghaw-pr-performance\tests\*.test.mjs
 gh aw compile ghaw-pr-performance --validate --no-check-update
 actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-performance-controller.yml .github\workflows\ghaw-pr-performance.lock.yml
 ```
+
+On a Windows developer shell with MSBuild and Clang-Tidy available, set
+`PERFORMANCE_NATIVE_PROOF=1` to include the real native fixture in the test
+suite. Nested worktrees must set `PERFORMANCE_NATIVE_FIXTURE_ROOT` to a
+`Generated Files` directory beneath only one repository Cargo configuration;
+array-valued Cargo aliases otherwise concatenate across ancestor checkouts.
 
 These are development checks of the automation, not builds/tests performed on
 an autofix before push. No new tooling or paid model trial is required by them.

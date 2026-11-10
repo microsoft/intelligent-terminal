@@ -1,0 +1,46 @@
+name: Native performance analysis contracts
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ghaw-pr-performance.md'
+      - '.github/workflows/ghaw-pr-performance.lock.yml'
+      - '.github/workflows/ghaw-pr-performance-controller.yml'
+      - '.github/workflows/ghaw-pr-performance/**'
+      - '.github/workflows/performance-native-tests.yml'
+      - '.cargo/config.toml'
+      - 'src/common.build.pre.props'
+
+permissions:
+  contents: read
+
+jobs:
+  native-contracts:
+    if: github.event.pull_request.head.repo.id == github.repository_id
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run real native analyzer fixtures
+        shell: cmd
+        env:
+          PERFORMANCE_NATIVE_PROOF: '1'
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
+          for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -property installationPath`) do call "%%I\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
+          if errorlevel 1 exit /b 1
+          where MSBuild.exe >nul 2>nul
+          if errorlevel 1 exit /b 1
+          node --test --test-reporter=spec .github\workflows\ghaw-pr-performance\tests\native-analysis.test.mjs
+      - name: Retain native proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-performance-contracts-${{ github.run_id }}
+          overwrite: true
+          path: Generated Files/native-performance-validation/*
+          if-no-files-found: warn
+          retention-days: 7

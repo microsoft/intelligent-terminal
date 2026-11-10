@@ -69,12 +69,27 @@ export function prepareScope(expected, directory) {
             deletions: removed === '-' ? null : Number(removed) };
     });
     const scope = classifyPullRequest(files, expected);
+    scope.nativeAnalysis = planNativeAnalysis(scope.candidates);
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(path.join(directory, 'performance-scope.json'), `${JSON.stringify(scope, null, 2)}\n`);
     fs.writeFileSync(path.join(directory, 'performance-patch.txt'), scope.candidates.length ?
         git(['diff', '--no-ext-diff', '--no-textconv', '--unified=5', expected.baseSha, expected.headSha,
             '--', ...scope.candidates.map(file => `:(literal)${file.filename}`)]) : '');
     return scope;
+}
+
+export function planNativeAnalysis(candidates) {
+    const cpp = candidates.filter(file => file.filename.startsWith('src/') &&
+        /\.(c|cc|cpp|cxx|h|hh|hpp|ixx)$/i.test(file.filename)).map(file => file.filename);
+    const rust = candidates.some(file => /^tools\/wta\/(?:src\/.+\.rs|build\.rs|Cargo\.(toml|lock))$/.test(file.filename));
+    const inputs = candidates.filter(file => cpp.includes(file.filename) ||
+        /^tools\/wta\/(?:src\/.+\.rs|build\.rs|Cargo\.(toml|lock))$/.test(file.filename));
+    const lines = inputs.reduce((sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0), 0);
+    const bounded = inputs.length <= 20 && lines <= 2000 &&
+        inputs.every(file => Number.isInteger(file.additions) && Number.isInteger(file.deletions));
+    return { enabled: (cpp.length > 0 || rust) && bounded, cpp, rust,
+        reason: !inputs.length ? 'No production C++ or WTA Rust analysis inputs changed.' :
+            !bounded ? 'Native analysis exceeds the 20-file/2,000-line bound or includes a binary change; source review still applies.' : null };
 }
 
 export function verifyPullRequest(pr, expected) {
