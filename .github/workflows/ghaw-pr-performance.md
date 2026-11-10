@@ -122,8 +122,8 @@ jobs:
           retention-days: 7
           if-no-files-found: error
   native_analysis:
-    needs: [prepare]
-    if: needs.prepare.outputs.native_analysis == 'true'
+    needs: [prepare, activation]
+    if: needs.prepare.outputs.native_analysis == 'true' && needs.activation.result == 'success' && needs.activation.outputs.daily_ai_credits_exceeded != 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 45
     permissions:

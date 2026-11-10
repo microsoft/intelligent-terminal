@@ -50,6 +50,9 @@ test('Windows native job is original-source, read-only and feeds Linux review ev
     assert.match(workflow, /safe_outputs:[\s\S]*?needs\.native_analysis\.result == 'success' \|\| needs\.native_analysis\.result == 'skipped'/);
     const compiled = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.lock.yml', import.meta.url), 'utf8');
     assert.match(compiled, /^  safe_outputs:\r?\n    needs:\r?\n(?:      - .+\r?\n)*      - native_analysis\r?\n/m);
+    const compiledNative = compiled.split(/^  native_analysis:\r?\n/m)[1].split(/^  [a-z_]+:\r?\n/m)[0];
+    assert.match(compiledNative, /- activation/);
+    assert.match(compiledNative, /needs\.activation\.result == 'success'\s*&&\s*needs\.activation\.outputs\.daily_ai_credits_exceeded != 'true'/);
 });
 
 test('controller budget includes the compiled native-analysis phase and reporting headroom', () => {
