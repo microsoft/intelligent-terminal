@@ -281,6 +281,12 @@ namespace winrt::TerminalApp::implementation
         _WindowProperties{ std::move(properties) }
     {
         InitializeComponent();
+        BottomBarRoot().ActualThemeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_UpdateBottomBarState();
+            }
+        });
         _WindowProperties.PropertyChanged({ get_weak(), &TerminalPage::_windowPropertyChanged });
         _keepRunningTabsChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(
             [weakThis{ get_weak() }](auto&&, auto&&) {
@@ -655,10 +661,16 @@ namespace winrt::TerminalApp::implementation
         // Cache the layout mode so the routing helpers (_tabItems /
         // _selectedTabItem) don't have to reach into _tabRow on every call.
         _isVerticalLayout = _tabRow.IsVerticalLayout();
+        _isVerticalRailCollapsed = _startupSidebarCollapsed.value_or(_settings.GlobalSettings().SidebarCollapsed());
         // SetSettings captures the runtime baseline before Create applies the layout.
         _lastAgentRuntimeConfig.sessionsInSidebar = _isVerticalLayout;
 
         _ApplyVerticalLayoutReshape(true);
+        if (_isVerticalLayout)
+        {
+            _tabStrip.IsRailCollapsed(_isVerticalRailCollapsed);
+            _SetVerticalRailColumnWidth(_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth);
+        }
 
         const auto canDragDrop = CanDragDrop();
 
@@ -5136,7 +5148,7 @@ namespace winrt::TerminalApp::implementation
 
         // Look up the active tab's agent pane state. The pane is
         // window-level chrome, so when there's no AgentPaneContent on the
-        // active tab the bar still shows but with the toggle dark and
+        // active tab the bar still shows with both toggles unhighlighted and
         // diagnostics disabled.
         winrt::TerminalApp::AgentPaneContent activeAgent{ nullptr };
         if (focusedTabImpl)
@@ -5144,9 +5156,14 @@ namespace winrt::TerminalApp::implementation
             activeAgent = focusedTabImpl->FindAgentPaneContent();
         }
 
-        // Each toggle is highlighted only while its view is visible.
+        // Each toggle is highlighted only while its view is visible. Use a
+        // theme-aware neutral overlay so the selection remains visible on the
+        // light toolbar background as well as the dark one.
+        const auto lightTheme = BottomBarRoot().ActualTheme() == ElementTheme::Light;
         const auto kLitOverlay = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-            winrt::Windows::UI::ColorHelper::FromArgb(30, 255, 255, 255)
+            lightTheme ?
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 0, 0, 0) :
+                winrt::Windows::UI::ColorHelper::FromArgb(0x40, 255, 255, 255)
         };
         const auto kTransparent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
             winrt::Windows::UI::Colors::Transparent()
@@ -5268,7 +5285,6 @@ namespace winrt::TerminalApp::implementation
             }
 
             auto label = DiagnosticsLabel();
-            auto icon = DiagnosticsIcon();
 
             switch (autofixState)
             {
@@ -5279,18 +5295,9 @@ namespace winrt::TerminalApp::implementation
                 ToolTipService::SetToolTip(
                     diagBtn,
                     box_value(RS_(L"Diagnostics_AnalyzingTooltip")));
-                if (icon)
-                {
-                    icon.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
-                }
                 if (label)
                 {
                     label.Text(RS_(L"Diagnostics_ErrorPendingLabel"));
-                    label.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xD6, 0xB7, 0x00) });
                     label.Visibility(Visibility::Visible);
                 }
                 break;
@@ -5305,17 +5312,9 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.IsEnabled(true);
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ReviewLabelFormat", hotkey) });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 ToolTipService::SetToolTip(
@@ -5330,17 +5329,9 @@ namespace winrt::TerminalApp::implementation
 
                 const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
                 std::wstring labelText = RS_fmt(L"Diagnostics_ErrorDetectedLabelFormat", hotkey);
-                const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                    winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
-                };
-                if (icon)
-                {
-                    icon.Foreground(accent);
-                }
                 if (label)
                 {
                     label.Text(winrt::hstring{ labelText });
-                    label.Foreground(accent);
                     label.Visibility(Visibility::Visible);
                 }
                 std::wstring tooltip = RS_fmt(L"Diagnostics_ErrorDetectedTooltipFormat", hotkey);
@@ -7284,6 +7275,28 @@ namespace winrt::TerminalApp::implementation
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
+        const auto globals = _settings.GlobalSettings();
+        const auto previous = globals.SidebarCollapsed();
+        if (previous != collapsing)
+        {
+            const auto hadValue = globals.HasSidebarCollapsed();
+            globals.SidebarCollapsed(collapsing);
+            if (!_settings.WriteSettingsToDisk())
+            {
+                if (hadValue)
+                {
+                    globals.SidebarCollapsed(previous);
+                }
+                else
+                {
+                    globals.ClearSidebarCollapsed();
+                }
+
+                auto warnings = winrt::single_threaded_vector<SettingsLoadWarnings>();
+                warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+                ShowLoadWarningsDialog.raise(*this, warnings.GetView());
+            }
+        }
         if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
@@ -15366,6 +15379,7 @@ namespace winrt::TerminalApp::implementation
 
         WindowLayout layout;
         layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+        layout.SidebarCollapsed({ _isVerticalRailCollapsed });
 
         auto mode = LaunchMode::DefaultMode;
         WI_SetFlagIf(mode, LaunchMode::FullscreenMode, _isFullscreen);
@@ -15430,6 +15444,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         WindowLayout layout;
+        layout.SidebarCollapsed({ _isVerticalRailCollapsed });
         std::vector<ActionAndArgs> actions;
         uint32_t visibleTabCount = 0;
         std::optional<uint32_t> focusedTabIndex;
@@ -18639,6 +18654,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::SetStartupActions(std::vector<ActionAndArgs> actions)
     {
         _startupActions = std::move(actions);
+        _startupSidebarCollapsed.reset();
     }
 
     void TerminalPage::SetStartupConnection(ITerminalConnection connection)

@@ -39,6 +39,7 @@ namespace SettingsModelUnitTests
 
         TEST_METHOD(GlobalSettings);
         TEST_METHOD(SidebarFilterSettingsRoundtrip);
+        TEST_METHOD(SidebarCollapsedRoundtrip);
         TEST_METHOD(RenderAgentMarkdown);
         TEST_METHOD(Profile);
         TEST_METHOD(ColorScheme);
@@ -339,6 +340,24 @@ namespace SettingsModelUnitTests
                 VERIFY_ARE_EQUAL(!agentsOnly, settings->ToJson()["sidebarShowAgentsOnly"].asBool());
                 VERIFY_ARE_EQUAL(recentSessions, settings->ToJson()["sidebarShowRecentAgentSessions"].asBool());
             }
+        }
+    }
+
+    void SerializationTests::SidebarCollapsedRoundtrip()
+    {
+        const auto defaults = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded(R"({})"));
+        VERIFY_IS_FALSE(defaults->SidebarCollapsed());
+        VERIFY_IS_FALSE(defaults->ToJson().isMember("sidebarCollapsed"));
+
+        for (const auto collapsed : { false, true })
+        {
+            auto json = VerifyParseSucceeded(R"({})");
+            json["sidebarCollapsed"] = collapsed;
+            const auto settings = implementation::GlobalAppSettings::FromJson(json);
+            VERIFY_ARE_EQUAL(collapsed, settings->SidebarCollapsed());
+            VERIFY_ARE_EQUAL(collapsed, settings->ToJson()["sidebarCollapsed"].asBool());
+            settings->SidebarCollapsed(!collapsed);
+            VERIFY_ARE_EQUAL(!collapsed, settings->ToJson()["sidebarCollapsed"].asBool());
         }
     }
 

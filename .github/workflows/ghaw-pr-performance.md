@@ -58,6 +58,19 @@ jobs:
           ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Read live PR metadata
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        with:
+          retries: 2
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const number = process.env.PR_NUMBER;
+            if (!/^[1-9][0-9]*$/.test(number ?? "")) throw new Error("Invalid PR number.");
+            const { data } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(number) });
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, "performance-pr.json"), JSON.stringify(data));
       - name: Verify live PR identity
         id: verify
         shell: pwsh
@@ -79,10 +92,7 @@ jobs:
               if ([Environment]::GetEnvironmentVariable($name) -notmatch '^[0-9a-f]{40}$') { throw "$name must be an immutable SHA." }
           }
           if ($env:REPOSITORY -cne $env:GITHUB_REPOSITORY -or $env:SAME_REPO -cne 'true') { throw 'Proposal push requires this repository PR.' }
-          $metadata = & gh api "/repos/$env:REPOSITORY/pulls/$env:PR_NUMBER"
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read live PR metadata.' }
           $file = Join-Path $env:RUNNER_TEMP 'performance-pr.json'
-          [IO.File]::WriteAllText($file, ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
           & node .github/workflows/ghaw-pr-performance/scripts/performance-review.mjs verify-pr `
             --input $file --pr $env:PR_NUMBER --base $env:BASE_SHA --head $env:HEAD_SHA `
             --expected-base $env:EXPECTED_BASE_SHA --repo $env:REPOSITORY `

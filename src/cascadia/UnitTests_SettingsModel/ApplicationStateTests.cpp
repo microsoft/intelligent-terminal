@@ -31,6 +31,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(WindowLayoutSidebarCollapsedRoundtrip);
         TEST_METHOD(RecentSessionsExpansionPersistsAcrossInstances);
         TEST_METHOD(RecentSessionsExpansionSurvivesStaleStateWrites);
         TEST_METHOD(RecentSessionsExpansionRetriesFailedWrite);
@@ -234,6 +235,22 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::WindowLayoutSidebarCollapsedRoundtrip()
+    {
+        const auto oldLayout = WindowLayout::FromJson(L"{\"tabLayout\":[]}");
+        VERIFY_IS_NULL(oldLayout.SidebarCollapsed());
+
+        for (const auto collapsed : { false, true })
+        {
+            const auto layout = _makeLayout();
+            layout.SidebarCollapsed({ collapsed });
+            const auto restored = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+            VERIFY_IS_NOT_NULL(restored.SidebarCollapsed());
+            VERIFY_ARE_EQUAL(collapsed, restored.SidebarCollapsed().Value());
+            VERIFY_IS_NOT_NULL(restored.TabLayout());
+        }
     }
 
     void ApplicationStateTests::RecentSessionsExpansionPersistsAcrossInstances()
