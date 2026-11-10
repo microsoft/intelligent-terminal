@@ -3,8 +3,11 @@
 
 #include "pch.h"
 #include "AppLogic.h"
+#include "SidebarTelemetry.h"
 #include "AppLogic.g.cpp"
 #include "SettingsLoadEventArgs.h"
+#include "SharedWta.h"
+#include "../inc/AgentRegistry.h"
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
 
 #include <WtExeUtils.h>
@@ -161,6 +164,21 @@ namespace winrt::TerminalApp::implementation
         _setupFolderPathEnvVar();
     }
 
+    void AppLogic::ShutdownBackgroundServices() noexcept
+    {
+        SharedWta::Instance().Shutdown();
+    }
+
+    void AppLogic::_UpdateWtaServicePolicy()
+    {
+        namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+        namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        SharedWta::Instance().SetEnabled(
+            !Registry::FilteredAcpAgents().empty() ||
+            Policy::IsCustomAgentAllowed() ||
+            Policy::IsAgentSessionHooksAllowed());
+    }
+
     // Method Description:
     // - Called around the codebase to discover if Terminal is running elevated
     // Arguments:
@@ -223,6 +241,7 @@ namespace winrt::TerminalApp::implementation
             TraceLoggingString(policy.allowedAgentsCategory, "AllowedAgentsPolicy"),
             TraceLoggingString(policy.allowCustomAgentsCategory, "AllowCustomAgentsPolicy"),
             TraceLoggingBool(globals.TabLayout() == TabLayout::Vertical, "SidebarEnabled"),
+            TraceLoggingString(::TerminalApp::SidebarTelemetry::View(globals.SidebarShowAgentsOnly(), globals.SidebarShowRecentAgentSessions()), "SidebarView"),
             TraceLoggingWideString(rolloutName.c_str(), "SidebarRolloutName"),
             TraceLoggingWideString(rolloutAssignment.c_str(), "SidebarRolloutAssignment"),
             TraceLoggingBool(_usingDefaultSettings, "DefaultsFallback"),
@@ -391,6 +410,7 @@ namespace winrt::TerminalApp::implementation
                                     // each own a cache. Refresh this module now; the settings reload
                                     // refreshes SettingsModel and emits the runtime-config diff.
                                     ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                                    self->_UpdateWtaServicePolicy();
                                     self->ReloadSettingsThrottled();
                                 }
                             }
@@ -501,6 +521,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _ApplyLanguageSettingChange();
+        _UpdateWtaServicePolicy();
         _ProcessLazySettingsChanges();
 
         if (initialLoad)

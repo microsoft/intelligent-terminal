@@ -302,6 +302,11 @@ namespace winrt::TerminalApp::implementation
     winrt::hstring Tab::ToolTipTextForKeyChord(const winrt::hstring& keyChord)
     {
         std::wstring text{ _CreateToolTipTitle() };
+        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
+        {
+            text.append(L" ");
+            text.append(paneCount);
+        }
         if (_isVerticalTabLayout && !_richTabTooltipText.empty())
         {
             text.append(L"\n");
@@ -315,54 +320,69 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ text };
     }
 
+    winrt::hstring Tab::ToolTipBody()
+    {
+        std::wstring text{ _CreateToolTipTitle() };
+        if (const auto paneCount = _CreateToolTipPaneCount(); !paneCount.empty())
+        {
+            text.append(L"    ");
+            text.append(paneCount);
+        }
+        if (_isPinned)
+        {
+            text.append(L"\n");
+            text.append(RS_(L"PinnedTabName"));
+        }
+        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        {
+            text.append(L"\n");
+            text.append(_richTabTooltipText);
+        }
+        return winrt::hstring{ text };
+    }
+
+    WUX::Controls::TextBlock Tab::ToolTipContentForKeyChord(const winrt::hstring& keyChord)
+    {
+        auto textBlock = WUX::Controls::TextBlock{};
+        textBlock.TextWrapping(WUX::TextWrapping::Wrap);
+        textBlock.TextAlignment(_isVerticalTabLayout ? WUX::TextAlignment::Left : WUX::TextAlignment::Center);
+
+        auto bodyRun = WUX::Documents::Run();
+        bodyRun.Text(ToolTipBody());
+        textBlock.Inlines().Append(bodyRun);
+        if (!keyChord.empty())
+        {
+            auto keyChordRun = WUX::Documents::Run();
+            keyChordRun.Text(keyChord);
+            keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
+            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+            textBlock.Inlines().Append(keyChordRun);
+        }
+
+        return textBlock;
+    }
+
     // Method Description:
     // - Sets tab tool tip to a concatenation of title and key chord
     // Arguments:
     // - <none>
     // Return Value:
     // - <none>
-    void Tab::_UpdateToolTip()
+    void Tab::_UpdateToolTip(const bool notifyPropertyChanged)
     {
-        const auto title = _CreateToolTipTitle();
-
-        auto titleRun = WUX::Documents::Run();
-        titleRun.Text(title);
-
-        auto textBlock = WUX::Controls::TextBlock{};
-        textBlock.TextWrapping(WUX::TextWrapping::Wrap);
-        textBlock.TextAlignment(WUX::TextAlignment::Center);
-        textBlock.Inlines().Append(titleRun);
-
-        if (_isPinned)
-        {
-            auto pinRun = WUX::Documents::Run();
-            pinRun.Text(RS_(L"PinnedTabName"));
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(pinRun);
-        }
-
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
-        {
-            auto metadataRun = WUX::Documents::Run();
-            metadataRun.Text(_richTabTooltipText);
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(metadataRun);
-        }
-
-        if (!_keyChord.empty())
-        {
-            auto keyChordRun = WUX::Documents::Run();
-            keyChordRun.Text(_keyChord);
-            keyChordRun.FontStyle(winrt::Windows::UI::Text::FontStyle::Italic);
-            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
-            textBlock.Inlines().Append(keyChordRun);
-        }
-
         WUX::Controls::ToolTip toolTip{};
-        toolTip.Content(textBlock);
+        toolTip.Content(ToolTipContentForKeyChord(_keyChord));
         WUX::Controls::ToolTipService::SetToolTip(TabViewItem(), toolTip);
         Automation::AutomationProperties::SetHelpText(TabViewItem(), ToolTipTextForKeyChord(_keyChord));
-        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        if (notifyPropertyChanged)
+        {
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"ToolTip" });
+        }
+    }
+
+    void Tab::RefreshToolTip()
+    {
+        _UpdateToolTip(false);
     }
 
     // Method Description:
@@ -441,6 +461,7 @@ namespace winrt::TerminalApp::implementation
             {
                 ShowBellIndicator(false);
             }
+            Focused.raise();
         }
     }
 
@@ -529,19 +550,21 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::_UpdateIconVisibility()
     {
-        // Retain identity independently of progress. Horizontal progress uses
+        // Retain identity independently of bell/progress. Horizontal status uses
         // the native icon slot, which survives Compact's hidden header. An empty
         // native source keeps that slot enabled without painting an identity;
         // the Sidebar descriptor never receives this presentation-only source.
         const auto source = _iconHidden ? IconSource{ nullptr } : _iconSource;
+        const auto showStatusIcon = _tabStatus.BellIndicator() || _tabStatus.IsProgressRingActive();
         _headerControl.Presentation().IconSource(source);
-        TabViewItem().IconSource(_tabStatus.IsProgressRingActive() ? _progressIconSource : source);
+        const auto keepIconSlot = showStatusIcon || (!source && _headerControl.Presentation().HasUnreadActivity());
+        TabViewItem().IconSource(keepIconSlot ? _progressIconSource : source);
         if (Media::VisualTreeHelper::GetChildrenCount(TabViewItem()) > 0)
         {
             const auto root = Media::VisualTreeHelper::GetChild(TabViewItem(), 0).as<FrameworkElement>();
             if (const auto icon = root.FindName(L"IconControl").try_as<WUX::Controls::ContentControl>())
             {
-                icon.Visibility(_tabStatus.IsProgressRingActive() ? Visibility::Collapsed : Visibility::Visible);
+                icon.Visibility(showStatusIcon ? Visibility::Collapsed : Visibility::Visible);
             }
         }
     }
@@ -554,7 +577,27 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
-        _tabStatus.BellIndicator(show);
+        if (!show)
+        {
+            _terminalBellActive = false;
+        }
+        if (_tabStatus.BellIndicator() != show)
+        {
+            _tabStatus.BellIndicator(show);
+            _UpdateIconVisibility();
+            PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"Icon" });
+        }
+    }
+
+    void Tab::RaiseBellIndicator()
+    {
+        ASSERT_UI_THREAD();
+
+        ShowBellIndicator(true);
+        if (_focusState != WUX::FocusState::Unfocused)
+        {
+            ActivateBellIndicatorTimer();
+        }
     }
 
     // Method Description:
@@ -625,12 +668,22 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
-        _headerControl.MetadataHighlightColor(presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None);
+        const auto highlightColor = presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None;
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
+        _headerControl.MetadataHighlightColor(highlightColor);
+    }
+
+    void Tab::SetUnreadAgentActivity(const bool unread, const bool needsAttention)
+    {
+        ASSERT_UI_THREAD();
+        _unreadAgentActivityNeedsAttention = unread && needsAttention;
+        _headerControl.Presentation().HasUnreadActivity(unread);
+        _UpdateIconVisibility();
+        _UpdateAutomationName();
     }
 
     void Tab::_UpdateRichTabPresentation()
@@ -653,9 +706,8 @@ namespace winrt::TerminalApp::implementation
         const auto hasVisibleMetadata = !text.empty();
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
-        _headerControl.MetadataText(text);
-        _headerControl.MetadataHighlightRanges(highlightRanges);
-        _headerControl.MetadataAutomationName(_richTabAccessibilityText);
+        const auto highlightColor = _richTabPresentation ? TabHeaderControl::AgentStatusHighlightColor(_richTabPresentation->agentStatus) : TerminalApp::TextHighlightColor::None;
+        winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();
@@ -674,6 +726,16 @@ namespace winrt::TerminalApp::implementation
         {
             name += L", ";
             name += _richTabAccessibilityText;
+        }
+        const auto unreadStatus = _unreadAgentActivityNeedsAttention ? "Attention" : "Complete";
+        const auto metadataIncludesUnreadStatus = _isVerticalTabLayout &&
+                                                  !_richTabAccessibilityText.empty() &&
+                                                  _richTabPresentation &&
+                                                  _richTabPresentation->agentStatus == unreadStatus;
+        if (_headerControl.Presentation().HasUnreadActivity() && !metadataIncludesUnreadStatus)
+        {
+            name += L", ";
+            name += _unreadAgentActivityNeedsAttention ? RS_(L"VerticalTabsHistoryStatusAttention") : RS_(L"VerticalTabsHistoryStatusComplete");
         }
         _headerControl.Presentation().AutomationName(name);
         Automation::AutomationProperties::SetName(TabViewItem(), name);
@@ -705,13 +767,18 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     // Return Value:
     // - A vector of commands
-    std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind) const
+    std::vector<ActionAndArgs> Tab::BuildStartupActions(BuildStartupKind kind, const bool persistAgentPanes) const
     {
         ASSERT_UI_THREAD();
 
+        if (kind == BuildStartupKind::Persist && !persistAgentPanes && _rootPane->IsAgentPane())
+        {
+            return {};
+        }
+
         // Give initial ids (0 for the child created with this tab,
         // 1 for the child after the first split.
-        auto state = _rootPane->BuildStartupActions(0, 1, kind);
+        auto state = _rootPane->BuildStartupActions(0, 1, kind, persistAgentPanes);
 
         {
             ActionAndArgs newTabAction{};
@@ -866,7 +933,8 @@ namespace winrt::TerminalApp::implementation
     // - a pair of (the Pane wrapping the original tree, the new Pane)
     std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Tab::SplitPaneAtRoot(SplitDirection splitType,
                                                                                  std::shared_ptr<Pane> pane,
-                                                                                 const float splitSize)
+                                                                                 const float splitSize,
+                                                                                 const bool animate)
     {
         ASSERT_UI_THREAD();
 
@@ -895,7 +963,7 @@ namespace winrt::TerminalApp::implementation
         // _firstChild and the new pane becomes _secondChild. Because _rootPane
         // is modified in-place, Content() (which points to _rootPane->GetRootElement())
         // remains valid without any re-parenting.
-        auto originalTree = _rootPane->AttachPane(pane, splitType, splitSize);
+        auto originalTree = _rootPane->AttachPane(pane, splitType, splitSize, animate);
 
         // The split created a new wrapper pane for the original tree. Attach
         // Tab event handlers so that focus changes are tracked correctly —
@@ -1481,24 +1549,15 @@ namespace winrt::TerminalApp::implementation
                         tab->TabRaiseVisualBell.raise();
                     }
 
-                    // Send a desktop toast notification if requested, but only if
-                    // the pane isn't already in the belled state. This prevents
-                    // sending repeated toasts for repeated BEL characters.
-                    if (bellArgs.SendNotification() && !tab->_tabStatus.BellIndicator())
+                    // Attention can light the indicator without a terminal BEL.
+                    // Only terminal BELs consume notification deduplication.
+                    const auto terminalBellActive = std::exchange(tab->_terminalBellActive, true);
+                    if (bellArgs.SendNotification() && !terminalBellActive)
                     {
                         tab->TabToastNotificationRequested.raise(tab->Title(), L"", sender);
                     }
 
-                    // Show the bell indicator in the tab header
-                    tab->ShowBellIndicator(true);
-
-                    // If this tab is focused, activate the bell indicator timer, which will
-                    // remove the bell indicator once it fires
-                    // (otherwise, the indicator is removed when the tab gets focus)
-                    if (tab->_focusState != WUX::FocusState::Unfocused)
-                    {
-                        tab->ActivateBellIndicatorTimer();
-                    }
+                    tab->RaiseBellIndicator();
                 }
             });
 
@@ -1891,6 +1950,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     tab->ShowBellIndicator(false);
                 }
+                tab->Focused.raise();
             }
         });
 
@@ -2133,6 +2193,7 @@ namespace winrt::TerminalApp::implementation
             _RecalculateAndApplyTabColor();
         }
         _UpdateKeepRunningMenuItem();
+        _UpdatePinMenuItem();
         _UpdateRichTabPresentation();
 
         const auto label = vertical ? RS_(L"TabCloseBelow") : RS_(L"TabCloseAfter");
@@ -2445,7 +2506,7 @@ namespace winrt::TerminalApp::implementation
 
     void Tab::_UpdatePinMenuItem()
     {
-        const auto available = CanKeepRunning();
+        const auto available = _isVerticalTabLayout && CanKeepRunning();
         _pinMenuItem.Visibility(available ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
         _pinMenuItem.IsEnabled(available && !_tabListPositionOperationsRestricted);
         const auto label = IsPinned() ? RS_(L"UnpinTabText") : RS_(L"PinTabText");
@@ -2656,6 +2717,7 @@ namespace winrt::TerminalApp::implementation
         _rootPane->Restore(_zoomedPane);
         _zoomedPane = newFocus;
         _rootPane->Maximize(_zoomedPane);
+        _tabStatus.IsPaneZoomed(true);
         Content(_zoomedPane->GetRootElement());
     }
 
@@ -3275,6 +3337,16 @@ namespace winrt::TerminalApp::implementation
         return Title();
     }
 
+    winrt::hstring Tab::_CreateToolTipPaneCount()
+    {
+        uint32_t paneCount = 0;
+        for (const auto& pane : GetVisiblePaneSnapshot())
+        {
+            paneCount += !pane.IsAgentPane;
+        }
+        return paneCount > 1 ? winrt::hstring{ RS_fmt(L"TabToolTipPaneCount", paneCount) } : winrt::hstring{};
+    }
+
     // Method Description:
     // - Toggle broadcasting input to all the panes in this tab.
     void Tab::ToggleBroadcastInput()
@@ -3383,15 +3455,13 @@ namespace winrt::TerminalApp::implementation
     void Tab::_RecalculateAndApplyTabColor()
     {
         // GetTabColor will return the color set by the color picker, or the
-        // color specified in the profile. Theme-derived backgrounds only apply
-        // to horizontal tabs; the sidebar uses native themed selection states
-        // unless an explicit tab color is set.
+        // color specified in the profile.
         const auto currentColor = GetTabColor();
         if (currentColor.has_value())
         {
             _ApplyTabColorOnUIThread(currentColor.value());
         }
-        else if (!_isVerticalTabLayout && _themeColor != nullptr)
+        else if (_themeColor != nullptr)
         {
             // Safely get the active control's brush.
             const Media::Brush terminalBrush{ _BackgroundBrush() };

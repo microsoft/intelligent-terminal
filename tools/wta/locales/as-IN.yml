@@ -147,7 +147,7 @@ agent.custom.auth_hint: "%{name} ইনষ্টল কৰা হৈছে আ�
 agents.loading: "ল'ড হৈ আছে..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - কী সংমিশ্ৰণ, অনুবাদ নকৰিব
 agents.footer_hint: "(↑ ↓ নেভিগেট কৰক • Enter ছেশ্বন আৰম্ভ কৰক • Esc ওলাই যাওক • F5 ৰিফ্ৰেশ কৰক • / সন্ধান কৰক)"
-agents.status.active: "সক্ৰিয়"
+agents.status.active: "কাম কৰি আছে"
 agents.status.waiting_for_input: "ইনপুটৰ বাবে অপেক্ষা"
 agents.status.error: "ত্ৰুটি"
 agents.status.idle: "নিষ্ক্ৰিয়"

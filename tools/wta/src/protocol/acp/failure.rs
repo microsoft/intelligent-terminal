@@ -42,9 +42,12 @@ impl HandshakeStage {
 /// `message` / `detail` payloads are carried only for display and logging.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentFailure {
+    Startup(crate::agent_lifecycle::StartupFailure),
     /// The agent needs sign-in (`ErrorCode::AuthRequired` / -32000, or the
     /// transitional non-compliant-auth shim). Routes to the sign-in screen.
-    AuthRequired { message: String },
+    AuthRequired {
+        message: String,
+    },
 
     /// The connection never *established*: pipe-connect / `initialize` /
     /// `session/new` / `session/load` failed or timed out at startup.
@@ -56,12 +59,17 @@ pub enum AgentFailure {
     /// A referenced resource is gone (`ErrorCode::ResourceNotFound` / -32002):
     /// e.g. `session/load` of an expired session. The session survives; the
     /// user can start fresh.
-    ResourceGone { message: String },
+    ResourceGone {
+        message: String,
+    },
 
     /// An agent-returned protocol error that does *not* kill the session
     /// (`InvalidParams` / `InvalidRequest` / `MethodNotFound` / `ParseError` /
     /// `InternalError` / any other code). The turn ends; the session stays.
-    Protocol { code: i32, message: String },
+    Protocol {
+        code: i32,
+        message: String,
+    },
 
     /// User-initiated cancel surfaced as an error (`RequestCancelled` /
     /// -32800). Not a failure — the turn just ends, nothing is shown.
@@ -69,6 +77,26 @@ pub enum AgentFailure {
 }
 
 impl AgentFailure {
+    pub(crate) fn from_initialize_error(error: &acp::Error) -> Self {
+        if let Some(failure) = error
+            .data
+            .as_ref()
+            .and_then(|data| data.get("startup"))
+            .and_then(|data| {
+                serde_json::from_value::<crate::agent_lifecycle::StartupFailure>(data.clone()).ok()
+            })
+            .filter(|failure| {
+                failure.max_attempts == crate::agent_lifecycle::MAX_STARTUP_ATTEMPTS
+                    && failure.attempts <= failure.max_attempts
+            })
+        {
+            return Self::Startup(failure);
+        }
+        Self::HandshakeFailed {
+            stage: HandshakeStage::Initialize,
+            detail: super::client::acp_error_detail(error),
+        }
+    }
     /// Classify a typed ACP JSON-RPC error by its `code`.
     ///
     /// Matching is numeric so it is independent of which `unstable_*` Cargo
@@ -95,6 +123,11 @@ impl AgentFailure {
     /// True if this failure should route the user to the sign-in screen.
     pub fn is_auth(&self) -> bool {
         matches!(self, AgentFailure::AuthRequired { .. })
+            || matches!(
+                self,
+                AgentFailure::Startup(failure)
+                    if failure.reason == crate::agent_lifecycle::StartupReason::AuthenticationRequired
+            )
     }
 
     /// True if the user-initiated cancel — the handler shows nothing for it.
@@ -114,6 +147,7 @@ impl AgentFailure {
     /// Short, stable class label for structured logging (`target=failure`).
     pub fn class(&self) -> &'static str {
         match self {
+            AgentFailure::Startup(_) => "startup_failed",
             AgentFailure::AuthRequired { .. } => "auth_required",
             AgentFailure::HandshakeFailed { .. } => "handshake_failed",
             AgentFailure::ResourceGone { .. } => "resource_gone",
@@ -126,6 +160,7 @@ impl AgentFailure {
 impl fmt::Display for AgentFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AgentFailure::Startup(failure) => failure.fmt(f),
             AgentFailure::AuthRequired { message } => {
                 write!(f, "authentication required: {message}")
             }
@@ -190,6 +225,30 @@ pub fn message_looks_like_auth(msg: &str) -> bool {
 mod tests {
     use super::*;
     use agent_client_protocol as acp;
+
+    #[test]
+    fn startup_native_details_survive_helper_display() {
+        let error = acp::Error::new(-32603, "Unable to start the selected agent").data(
+            serde_json::json!({
+                "startup": {
+                    "phase": "initialize",
+                    "reason": "failed",
+                    "attempts": 2,
+                    "max_attempts": 3,
+                    "startup_verified": false,
+                    "diagnostic_id": "3ce3c25f-7982-4240-a46f-3697eec05ca3",
+                    "details": "Failed to load Python DLL 'python310.dll'.\nLoadLibrary: An Application Control policy has blocked this file."
+                }
+            }),
+        );
+        let failure = AgentFailure::from_initialize_error(&error);
+        assert_eq!(failure.class(), "startup_failed");
+        let text = failure.to_string();
+        assert!(text.contains("python310.dll"));
+        assert!(text.contains("An Application Control policy has blocked this file."));
+        assert!(text.contains("Initialize Failed [2/3;"));
+        assert!(!text.contains("OperatingSystemPolicy"));
+    }
 
     #[test]
     fn auth_code_classifies_as_auth_required() {

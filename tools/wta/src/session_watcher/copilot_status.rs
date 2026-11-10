@@ -164,12 +164,12 @@ fn held_lease(path: &Path, created: SystemTime) -> Result<Option<SystemTime>, Pr
     }
 }
 
-fn probe_status(
+fn probe_owner(
     row: &SessionInfo,
     root: &Path,
     lookup: &impl Fn(u32) -> Result<Option<Process>, ProbeError>,
     deadline: Instant,
-) -> Result<Option<AgentStatus>, ProbeError> {
+) -> Result<Option<u32>, ProbeError> {
     if !eligible(row) {
         return Ok(None);
     }
@@ -245,7 +245,35 @@ fn probe_status(
     if Instant::now() >= deadline {
         return Err(ProbeError::Timeout);
     }
-    Ok(owner.map(|_| AgentStatus::InUse))
+    Ok(owner)
+}
+
+fn probe_status(
+    row: &SessionInfo,
+    root: &Path,
+    lookup: &impl Fn(u32) -> Result<Option<Process>, ProbeError>,
+    deadline: Instant,
+) -> Result<Option<AgentStatus>, ProbeError> {
+    probe_owner(row, root, lookup, deadline).map(|owner| owner.map(|_| AgentStatus::InUse))
+}
+
+pub(crate) async fn owned_by_process(row: SessionInfo, pid: u32) -> Result<bool, ProbeError> {
+    if pid == 0 || !row.can_recover_copilot_prompt() {
+        return Ok(false);
+    }
+    let Some(root) = session_root() else {
+        return Ok(false);
+    };
+    run_probe(PROBE_GATE.clone(), move || {
+        probe_owner(
+            &row,
+            &root,
+            &native_process,
+            Instant::now() + Duration::from_secs(2),
+        )
+        .map(|owner| owner == Some(pid))
+    })
+    .await?
 }
 
 async fn run_probe<T: Send + 'static>(

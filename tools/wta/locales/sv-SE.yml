@@ -133,7 +133,7 @@ agent.custom.auth_hint: "Se till att %{name} är installerat och finns i din PAT
 agents.loading: "Laddar..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ för att navigera • Enter för att starta session • Esc för att avsluta • F5 för att uppdatera • / för att söka)"
-agents.status.active: "Aktiv"
+agents.status.active: "Arbetar"
 agents.status.waiting_for_input: "Väntar på inmatning"
 agents.status.error: "Fel"
 agents.status.idle: "Inaktiv"

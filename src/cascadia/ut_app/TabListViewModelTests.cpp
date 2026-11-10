@@ -46,7 +46,104 @@ namespace TerminalAppUnitTests
         TEST_METHOD(MatchingUsesDisplayedFields);
         TEST_METHOD(CriteriaPreservesChromeSemantics);
         TEST_METHOD(HintTargetsRemainStable);
+        TEST_METHOD(DisplayedCycleWrapsAndSkipsHiddenOwners);
+        TEST_METHOD(DisplayedCycleFollowsSearchProjection);
+        TEST_METHOD(DisplayedCycleHandlesEmptySingleAndMissingSelection);
     };
+
+    void TabListViewModelTests::DisplayedCycleWrapsAndSkipsHiddenOwners()
+    {
+        const std::array<int, 5> identities{};
+        std::array<Entry, 5> entries{};
+        for (uint32_t index = 0; index < entries.size(); ++index)
+        {
+            entries[index] = { &identities[index], index, index < 2, index == 1 || index >= 3 };
+        }
+        const ViewModel all{ entries, Criteria{ true, true } };
+        for (uint32_t index = 0; index < entries.size(); ++index)
+        {
+            VERIFY_ARE_EQUAL((index + 1) % 5, all.CycleDisplayedTarget(&identities[index], true)->canonicalIndex);
+            VERIFY_ARE_EQUAL((index + 4) % 5, all.CycleDisplayedTarget(&identities[index], false)->canonicalIndex);
+        }
+        const ViewModel agents{ entries, Criteria{ true, true, false, true } };
+        VERIFY_ARE_EQUAL(3u, agents.CycleDisplayedTarget(&identities[1], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(4u, agents.CycleDisplayedTarget(&identities[3], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(1u, agents.CycleDisplayedTarget(&identities[4], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(4u, agents.CycleDisplayedTarget(&identities[1], false)->canonicalIndex);
+        VERIFY_ARE_EQUAL(1u, agents.CycleDisplayedTarget(&identities[3], false)->canonicalIndex);
+        VERIFY_ARE_EQUAL(3u, agents.CycleDisplayedTarget(&identities[2], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(1u, agents.CycleDisplayedTarget(&identities[2], false)->canonicalIndex);
+        VERIFY_IS_FALSE(agents.MoveTarget(&identities[1], Direction::Next).has_value(), L"Navigation crosses pin partitions without changing the reordering policy.");
+        for (uint32_t index = 0; index < entries.size(); ++index)
+        {
+            VERIFY_IS_TRUE(entries[index].identity == &identities[index]);
+            VERIFY_ARE_EQUAL(index, entries[index].canonicalIndex);
+            VERIFY_ARE_EQUAL(index < 2, entries[index].isPinned);
+        }
+    }
+
+    void TabListViewModelTests::DisplayedCycleFollowsSearchProjection()
+    {
+        const std::array<int, 4> identities{};
+        std::array entries{
+            Entry{ &identities[0], 0, false, false, L"ordinary result" },
+            Entry{ &identities[1], 1, false, true, L"agent first" },
+            Entry{ &identities[2], 2, false, true, L"agent hidden" },
+            Entry{ &identities[3], 3, false, true, L"agent last", L"result", true }
+        };
+        const Criteria search{ true, true, false, true, true, L"result" };
+        const ViewModel filtered{ entries, search };
+        VERIFY_ARE_EQUAL(3u, filtered.CycleDisplayedTarget(&identities[0], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(0u, filtered.CycleDisplayedTarget(&identities[3], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(3u, filtered.CycleDisplayedTarget(&identities[0], false)->canonicalIndex);
+        VERIFY_ARE_EQUAL(0u, filtered.CycleDisplayedTarget(&identities[3], false)->canonicalIndex);
+        VERIFY_ARE_EQUAL(1u, filtered.SwitchTarget(0, true)->target.canonicalIndex, L"Numeric targets remain independent of search.");
+        VERIFY_ARE_EQUAL(2u, filtered.SwitchTarget(1, true)->target.canonicalIndex);
+
+        entries[3].headerMetadataVisible = false;
+        entries[2].children = { { L"result", L"", false } };
+        entries[2].childrenVisible = true;
+        const ViewModel refreshed{ entries, search };
+        VERIFY_ARE_EQUAL(2u, refreshed.CycleDisplayedTarget(&identities[0], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(0u, refreshed.CycleDisplayedTarget(&identities[2], true)->canonicalIndex);
+        entries[2].childrenVisible = false;
+        const ViewModel collapsedChild{ entries, search };
+        VERIFY_ARE_EQUAL(0u, collapsedChild.CycleDisplayedTarget(&identities[0], true)->canonicalIndex);
+
+        auto collapsedCriteria = search;
+        collapsedCriteria.railCollapsed = true;
+        const ViewModel collapsed{ entries, collapsedCriteria };
+        VERIFY_IS_FALSE(collapsed.Policy().searchEffective);
+        VERIFY_ARE_EQUAL(1u, collapsed.CycleDisplayedTarget(&identities[0], true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(3u, collapsed.CycleDisplayedTarget(&identities[0], false)->canonicalIndex);
+    }
+
+    void TabListViewModelTests::DisplayedCycleHandlesEmptySingleAndMissingSelection()
+    {
+        const int first{}, only{}, last{}, missing{};
+        const std::array entries{
+            Entry{ &first, 0, false, false }, Entry{ &only, 1, true, true }, Entry{ &last, 2, false, false }
+        };
+        const Criteria agents{ true, true, false, true };
+        const ViewModel empty{ std::span<const Entry>{}, agents };
+        const ViewModel one{ entries, agents };
+        const ViewModel nobody{ entries, Criteria{ true, true, false, true, true, L"no match" } };
+        for (const auto forward : { false, true })
+        {
+            for (const auto* identity : { &first, &only, &last, &missing, static_cast<const int*>(nullptr) })
+            {
+                VERIFY_IS_FALSE(empty.CycleDisplayedTarget(identity, forward).has_value());
+                VERIFY_IS_FALSE(nobody.CycleDisplayedTarget(identity, forward).has_value());
+                const auto target = one.CycleDisplayedTarget(identity, forward);
+                VERIFY_IS_TRUE(target.has_value());
+                VERIFY_IS_TRUE(target->identity == &only);
+                VERIFY_ARE_EQUAL(1u, target->canonicalIndex);
+            }
+        }
+        const ViewModel all{ entries, Criteria{ true, true } };
+        VERIFY_ARE_EQUAL(0u, all.CycleDisplayedTarget(&missing, true)->canonicalIndex);
+        VERIFY_ARE_EQUAL(2u, all.CycleDisplayedTarget(nullptr, false)->canonicalIndex);
+    }
 
     void TabListViewModelTests::AllOwnersAndFilteredOwners()
     {

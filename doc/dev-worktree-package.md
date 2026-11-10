@@ -109,18 +109,15 @@ Binary location is not package identity. For runner-side session queries, pass
 the selected package's master pipe explicitly:
 
 ```powershell
-$pipeFile = Join-Path $app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
-$masterPipe = (Get-Content -LiteralPath $pipeFile -Raw -ErrorAction Stop).Trim()
-if (-not $masterPipe) { throw 'Sandbox master pipe is missing.' }
+$masterPipe = Get-WtaMasterPipe -App $app
 Invoke-Wta -App $app -Arguments @('sessions', 'list', '--json',
     '--master', $masterPipe, '--include-status', '--origin', 'all')
 ```
 
-Read that file only after the owned app starts; verify the pipe belongs to its
-WTA master. For suites using `Get-WtSessions` / `Get-SessionListJson`, temporarily
-add this `--master` argument to the `sessions list` call in
-`test\e2e\ItE2E\Public\Sessions.ps1`, and restore it afterward. `sessions refresh`
-also accepts `--master`. Other stateful commands need a verified identity-aware
+Resolve the endpoint only after the owned app starts. `Get-WtaMasterPipe`
+verifies the Terminal executable and selects its exact WTA child process;
+`Get-WtSessions` / `Get-SessionListJson` use this targeting automatically.
+`sessions refresh` also requires `--master`. Other stateful commands need a verified identity-aware
 launch; do not claim they work from a direct `$app.WtaPath` invocation.
 C++ already launches its co-located `wta.exe`.
 Do not change user-wide PATH, the registry, or normal executable aliases.

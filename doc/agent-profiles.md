@@ -59,18 +59,16 @@ Agent identity does not depend on the profile's display name. User overrides
 are layered on the generated settings and are retained if a CLI disappears.
 Copy a profile to create multiple project configurations for the same agent.
 
-An empty model or permission mode means no launcher override: the CLI keeps
-its own configured default. Permission choices use provider-specific native
-modes, not a cross-provider promise of read-only access. Approval policies and
-agent sandbox options do not grant or revoke Windows filesystem permissions.
-Unsupported modes and conflicting arguments produce startup errors.
+An empty model or permission mode adds no corresponding managed option. The CLI
+keeps its configured default unless an explicitly provided additional argument
+changes it. Permission choices use provider-specific native modes.
+The native CLI validates its option values and combinations.
 
 The profile editor exposes model and additional startup arguments, but does not
-include a permission-mode selector. Configure approvals through the native CLI;
-existing `agentProfile.permissionMode` JSON values remain supported.
+include a permission-mode selector. Configure approvals through the CLI or set
+`agentProfile.permissionMode` in JSON.
 For Antigravity, `accept-edits` and `plan` map to `agy --mode`; an empty value
-preserves the CLI's configured default. The managed launcher does not accept
-`--dangerously-skip-permissions` as an additional argument.
+preserves the CLI's configured default.
 The agent profile's Advanced page exposes only close-on-exit behavior and
 environment-variable refresh. It omits the separate ACP agent-pane and
 command-palette delegation selectors and the other terminal fine-tuning
@@ -84,21 +82,21 @@ and existing JSON settings are unchanged.
 
 Additional arguments use Windows command-line quoting, for example an argument
 containing a space must be quoted. They are arguments, not PowerShell or command
-prompt script text. Supported extras are conservatively allowlisted per provider;
-see the [native argument contract](../tools/wta/README.md) for the supported arguments.
-Terminal applies the same provider-specific flags and argument allowlist before
-starting a managed profile.
-Managed commands reject `%` environment references to preserve the validated
-arguments. Batch shims additionally reject embedded quotes, `!`, `^`, and line
-breaks; use a custom command line when shell expansion is required.
-Organization policy remains applicable to managed launches.
+prompt script text. Terminal passes them to the selected native CLI.
+Consult the CLI's help for supported options. Structured model and permission-mode
+options precede additional arguments; the CLI decides whether duplicate options
+override earlier values or report an error.
+
+Terminal applies its usual `%NAME%` environment expansion to the assembled
+command line. The command preview displays the unexpanded command.
+Embedded NUL characters cannot
+be transported by Windows process command lines.
+Batch shims reject `%`, `!`,
+`^`, embedded quotes, and line breaks because they pass through `cmd.exe`.
 Do not put credentials in command-line arguments.
 
-`AllowedAgents` is checked again when launching. If `AllowAutomaticApproval` is
-disabled, all managed native launches are blocked, including those using the
-CLI's default mode. Native CLIs can change approvals through their own
-configuration and interactive controls, so a startup-only launcher cannot
-guarantee the policy throughout the session. Settings displays this restriction.
+`AllowedAgents` controls which native profiles are generated and offered.
+The native CLI validates configured options and manages its approval settings.
 
 The command-line field is directly editable, just like a shell profile. Saving
 an explicit `commandline` runs that command unchanged by the agent command
@@ -169,6 +167,10 @@ Discovery checks native CLI files directly during settings loading and Settings
 Extensions enumeration, not each time the new-tab menu opens. It reads the fresh
 Windows environment PATH and retains process-only PATH entries, preferring
 `.exe` over `.cmd` across directories. It does not depend on `wta.exe`.
+Windows app execution aliases, such as those registered in `WindowsApps`, are
+recognized as launchable entries even when ordinary file-status queries cannot
+follow them. The alias path is preserved so Windows can resolve the registered
+application when launching the profile.
 Successful results are cached for 30 seconds. After installing or removing a
 CLI, reload settings after that interval or restart Terminal. There is no
 30-second polling timer. A failed filesystem probe is
@@ -185,9 +187,18 @@ Terminal's generated-profile state; rediscovery does not make it visible again.
 Managed launches resolve the executable again at connection creation, so a stale
 menu entry cannot run an unavailable CLI.
 
-Agent profiles use the ordinary profile menu mechanism and can be reordered
-through the new-tab menu settings or hidden individually. Existing custom menu
-layouts are preserved. Profiles also respect disabled profile sources and the
+The default new-tab menu lists ordinary profiles first and automatically generated
+agent profiles second, with a separator only when both groups have visible,
+available profiles. Each group preserves the existing profile order and shortcuts.
+The default layout means an omitted `newTabMenu` or exactly one
+`{ "type": "remainingProfiles" }` entry. Grouping affects only the displayed menu
+and does not rewrite `settings.json`. User-created copies without the generated
+agent source stay in the ordinary group.
+
+Agent profiles can be reordered through the new-tab menu settings or hidden
+individually. Any other `newTabMenu` layout, including an empty list, folders,
+explicit profiles, or separators, is rendered as configured without automatic
+grouping or separators. Profiles also respect disabled profile sources and the
 agent allowlist.
 
 There is no WTA or hidden PowerShell process beneath a managed agent. The native CLI

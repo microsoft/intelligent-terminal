@@ -780,6 +780,7 @@ async fn run_acp_app(
                         shell_mgr_for_pipe,
                         wt_connected,
                         false, // first connection; first-login authentication is an explicit UI action
+                        false, // initial startup never resets the retry budget
                         None,
                         proposal_channels_for_pipe,
                     )

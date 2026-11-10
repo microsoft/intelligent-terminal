@@ -64,6 +64,9 @@
     <Page Include="TabStrip.xaml">
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="SidebarLayoutResources.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="HighlightedTextControlStyle.xaml">
       <Type>DefaultStyle</Type>
       <SubType>Designer</SubType>
@@ -106,6 +109,7 @@
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
     <ClInclude Include="CommandPaletteTelemetry.h" />
+    <ClInclude Include="SidebarTelemetry.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
     <ClInclude Include="MinMaxCloseControl.h">
@@ -224,6 +228,7 @@
     <ClInclude Include="FreOverlay.h">
       <DependentUpon>FreOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="FreLayoutMetrics.h" />
     <ClInclude Include="WindowsPackageManagerFactory.h" />
   </ItemGroup>
   <!-- ========================= Cpp Files ======================== -->

@@ -42,6 +42,8 @@ pub(crate) fn acp_session_to_agent_session(
         last_error: None,
         current_tool: None,
         attention_reason: None,
+        attention_timestamp_ms: None,
+        attention_cooldown_until_ms: None,
         log_path: None,
         origin: if crate::agent_registry::is_known_id(cli_label(cli))
             && !crate::agent_registry::lookup_profile_by_id(cli_label(cli))

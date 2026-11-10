@@ -122,7 +122,7 @@ Describe 'Feature: Sidebar compact relative time' -Tag @('Feature', 'SidebarRela
             } | Out-Null
             (Get-Content $fixtureLog -Raw) | Should -Match '\|list\|'
             (Get-Content $fixtureLog -Raw) | Should -Not -Match '\|prompt\|'
-            $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+            $pipe = Get-WtaMasterPipe -App $script:app
             $snapshot = Invoke-Wta -App $script:app -TimeoutSec 10 -Arguments @('sessions', 'list', '--master', $pipe, '--json', '--include-status')
             $owned = @($snapshot.sessions | Where-Object { $_.session_id -in $history.sessionId })
             $owned.Count | Should -Be 6

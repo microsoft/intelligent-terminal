@@ -26,13 +26,68 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LiveModelSwitchRequiresKnownSupportedAgent);
         TEST_METHOD(HostCatalogStatusRejectsSameAgentFromWsl);
         TEST_METHOD(RejectsInvalidCatalogShapes);
+        TEST_METHOD(StartupFailurePreservesDiagnosticsWithoutBecomingModelCatalog);
+        TEST_METHOD(StartupFailureRejectsMessageInferredReasons);
+        TEST_METHOD(StartupFailurePreservesNativeDetails);
+        TEST_METHOD(StartupFailureRejectsUnsafeDetailShapes);
+        TEST_METHOD(ProbeCommandsMatchRuntimeLaunchIdentity);
         TEST_METHOD(ParsesAndNormalizesCatalog);
         TEST_METHOD(ParsesCatalogValue);
         TEST_METHOD(ExcludesCustomSelectionIdsOnRequest);
+        TEST_METHOD(ReconcilesStaleModelSelections);
+        TEST_METHOD(PreservesModelSelectionsWithoutAuthority);
+        TEST_METHOD(PreservesConfiguredCustomSelections);
         TEST_METHOD(CustomLaunchIdentityTracksOnlyLaunchFields);
         TEST_METHOD(CustomCatalogSerializationIsCredentialFree);
         TEST_METHOD(LargeCustomCatalogDoesNotExpandHelperBootstrap);
     };
+
+    void AcpModelUtilsTests::ReconcilesStaleModelSelections()
+    {
+        const auto available = [](const std::wstring_view id) { return id == L"current-model"; };
+        const auto missing = [](const std::wstring_view) { return false; };
+
+        const auto native = ReconcileModelSelection(L"obsolete-model", L"", true, true, available, missing);
+        VERIFY_IS_TRUE(native.acpModel);
+        VERIFY_IS_FALSE(native.customModelSelection);
+
+        const auto custom = ReconcileModelSelection(L"current-model", L"custom:missing:old", true, true, available, missing);
+        VERIFY_IS_FALSE(custom.acpModel);
+        VERIFY_IS_TRUE(custom.customModelSelection);
+
+        const auto both = ReconcileModelSelection(L"obsolete-model", L"custom:missing:old", true, true, available, missing);
+        VERIFY_IS_TRUE(both.acpModel);
+        VERIFY_IS_TRUE(both.customModelSelection);
+    }
+
+    void AcpModelUtilsTests::PreservesModelSelectionsWithoutAuthority()
+    {
+        const auto unavailable = [](const std::wstring_view) { return false; };
+        const auto unknown = ReconcileModelSelection(L"future-model", L"custom:future:model", true, false, unavailable, unavailable);
+        VERIFY_IS_FALSE(unknown.acpModel);
+        VERIFY_IS_FALSE(unknown.customModelSelection);
+
+        const auto unsupported = ReconcileModelSelection(L"obsolete-model", L"custom:provider:model", false, true, unavailable, unavailable);
+        VERIFY_IS_TRUE(unsupported.acpModel);
+        VERIFY_IS_FALSE(unsupported.customModelSelection);
+    }
+
+    void AcpModelUtilsTests::PreservesConfiguredCustomSelections()
+    {
+        const auto available = [](const std::wstring_view id) { return id == L"advertised-model"; };
+        const auto configured = [](const std::wstring_view id) { return id == L"custom:provider:model"; };
+        const auto custom = ReconcileModelSelection(L"obsolete-native", L"custom:provider:model", true, true, available, configured);
+        VERIFY_IS_FALSE(custom.acpModel);
+        VERIFY_IS_FALSE(custom.customModelSelection);
+
+        const auto legacy = ReconcileModelSelection(L"custom:provider:model", L"", true, true, available, configured);
+        VERIFY_IS_FALSE(legacy.acpModel);
+        VERIFY_IS_FALSE(legacy.customModelSelection);
+
+        const auto advertised = ReconcileModelSelection(L"advertised-model", L"", true, true, available, configured);
+        VERIFY_IS_FALSE(advertised.acpModel);
+        VERIFY_IS_FALSE(advertised.customModelSelection);
+    }
 
     void AcpModelUtilsTests::AntigravityCliOnlyIsBootstrapCandidate()
     {
@@ -81,6 +136,104 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --acp" }, BuildAgentCommandLine(L"gemini"));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode"));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent"));
+    }
+
+    void AcpModelUtilsTests::ProbeCommandsMatchRuntimeLaunchIdentity()
+    {
+        for (const auto agent : { L"copilot", L"claude", L"codex", L"opencode", L"antigravity" })
+        {
+            VERIFY_ARE_EQUAL(BuildAgentCommandLine(agent), BuildProbeCommandLine(agent, L"selected-model"));
+        }
+        VERIFY_ARE_EQUAL(std::wstring{ L"gemini --acp --model selected-model" }, BuildProbeCommandLine(L"gemini", L"selected-model"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"custom-command --model meaningful" }, BuildProbeCommandLine(L"custom-command --model meaningful"));
+    }
+
+    void AcpModelUtilsTests::StartupFailurePreservesDiagnosticsWithoutBecomingModelCatalog()
+    {
+        const std::string payload = R"({
+            "dependency_present": true,
+            "startup_verified": false,
+            "available_models": [{"id":"must-not-be-used"}],
+            "startup_failure": {
+                "phase":"initialize",
+                "reason":"failed",
+                "attempts":1,
+                "max_attempts":3,
+                "startup_verified":false,
+                "diagnostic_id":"3ce3c25f-7982-4240-a46f-3697eec05ca3",
+                "message":"untrusted provider detail"
+            }
+        })";
+        const auto failure = ParseStartupFailure(payload);
+        VERIFY_IS_TRUE(failure.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "initialize" }, failure->phase);
+        VERIFY_ARE_EQUAL(std::string{ "failed" }, failure->reason);
+        VERIFY_ARE_EQUAL(uint32_t{ 1 }, failure->attempts);
+        VERIFY_ARE_EQUAL(uint32_t{ 3 }, failure->maxAttempts);
+        VERIFY_IS_FALSE(failure->startupVerified);
+        VERIFY_IS_FALSE(ParseModelCatalog(std::string_view{ payload }).has_value());
+        VERIFY_IS_FALSE(ParseStartupFailure(R"({"startup_failure":{"phase":"initialize"}})").has_value());
+        VERIFY_IS_FALSE(ParseStartupFailure(R"({"available_models":[]})").has_value());
+    }
+
+    void AcpModelUtilsTests::StartupFailureRejectsMessageInferredReasons()
+    {
+        VERIFY_IS_FALSE(ParseStartupFailure(R"({
+            "startup_failure": {
+                "phase":"initialize",
+                "reason":"operating_system_policy",
+                "attempts":1,
+                "max_attempts":3,
+                "startup_verified":false,
+                "diagnostic_id":"3ce3c25f-7982-4240-a46f-3697eec05ca3"
+            }
+        })")
+                            .has_value());
+    }
+
+    void AcpModelUtilsTests::StartupFailurePreservesNativeDetails()
+    {
+        const auto failure = ParseStartupFailure(R"({
+            "startup_failure": {
+                "phase":"initialize",
+                "reason":"failed",
+                "attempts":2,
+                "max_attempts":3,
+                "startup_verified":false,
+                "diagnostic_id":"3ce3c25f-7982-4240-a46f-3697eec05ca3",
+                "details":"Failed to load Python DLL 'python310.dll'.\nLoadLibrary: blocked by the operating system."
+            }
+        })");
+        VERIFY_IS_TRUE(failure.has_value());
+        VERIFY_ARE_EQUAL(std::string{ "failed" }, failure->reason);
+        VERIFY_ARE_EQUAL(std::string{ "Failed to load Python DLL 'python310.dll'.\nLoadLibrary: blocked by the operating system." }, failure->details);
+    }
+
+    void AcpModelUtilsTests::StartupFailureRejectsUnsafeDetailShapes()
+    {
+        Json::Value failure{ Json::objectValue };
+        failure["phase"] = "initialize";
+        failure["reason"] = "failed";
+        failure["attempts"] = 1;
+        failure["max_attempts"] = 3;
+        failure["startup_verified"] = false;
+        failure["diagnostic_id"] = "3ce3c25f-7982-4240-a46f-3697eec05ca3";
+        for (const auto& details : {
+                 Json::Value{ std::string(1025, 'x') },
+                 Json::Value{ "unsafe\x1b[31m" },
+                 Json::Value{ 42 } })
+        {
+            failure["details"] = details;
+            Json::Value root{ Json::objectValue };
+            root["startup_failure"] = failure;
+            VERIFY_IS_FALSE(ParseStartupFailure(Json::writeString(Json::StreamWriterBuilder{}, root)).has_value());
+        }
+        failure.removeMember("details");
+        Json::Value legacy{ Json::objectValue };
+        legacy["startup_failure"] = failure;
+        const auto parsed = ParseStartupFailure(Json::writeString(Json::StreamWriterBuilder{}, legacy));
+        VERIFY_IS_TRUE(parsed.has_value());
+        VERIFY_IS_TRUE(parsed->details.empty());
     }
 
     void AcpModelUtilsTests::AppendsSupportedModelFlags()

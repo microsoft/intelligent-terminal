@@ -133,7 +133,7 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 agents.loading: "Ga luchdadh..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
 agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail • F5 gus ùrachadh • / gus lorg)"
-agents.status.active: "Gnìomhach"
+agents.status.active: "Ag obair"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
 agents.status.idle: "Na thàmh"

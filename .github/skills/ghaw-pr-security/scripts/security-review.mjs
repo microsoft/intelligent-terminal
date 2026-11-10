@@ -1218,6 +1218,21 @@ function option(name) {
 
 function main() {
   const command = process.argv[2];
+  if (command === 'check-driver-completion') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const reportBytes = readFileSync(option('--report'));
+    const completionPath = option('--completion');
+    const stat = lstatSync(completionPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(completionPath) !== resolve(completionPath) ||
+        stat.size > 1024) fail('driver completion must be a bounded regular file');
+    const completion = JSON.parse(readFileSync(completionPath, 'utf8'));
+    if (stableJson(completion) !== stableJson({
+      version: 1, headSha: scope.headSha, scopeSha256: scope.scopeSha256,
+      reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
+    })) fail('successful driver completion does not match the report and scope');
+    validateProposal(JSON.parse(reportBytes), scope);
+    return;
+  }
   if (command === 'commit-repairs') {
     const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
     const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
@@ -1333,7 +1348,7 @@ function main() {
     }
     return;
   }
-  fail('expected scope, init-report, check-report, validate-proposal, validate-repair-scope, stage-repair, commit-repairs, validate, validate-output, or enforce command');
+  fail('expected scope, init-report, check-report, check-driver-completion, validate-proposal, validate-repair-scope, stage-repair, commit-repairs, validate, validate-output, or enforce command');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

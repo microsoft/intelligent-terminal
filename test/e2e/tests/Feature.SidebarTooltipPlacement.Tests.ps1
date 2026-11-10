@@ -62,12 +62,6 @@ Describe 'Feature: Sidebar tooltip placement' -Tag @('Feature', 'SidebarTooltipP
                 $buttons = @($peer.FindAll([Windows.Automation.TreeScope]::Descendants,
                     [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)) |
                     Where-Object { $_.Current.ProcessId -eq $app.Pid -and -not $_.Current.IsOffscreen })
-                if ($Layout -eq 'vertical') {
-                    $anchor = @($buttons | Where-Object { $_.Current.AutomationId -eq 'TabCloseButton' })
-                    if ($anchor.Count -ne 1) { throw 'Missing ordinary singleton header activation band.' }
-                    $box = $anchor[0].Current.BoundingRectangle
-                    $band = [Windows.Rect]::new($band.Left, $box.Top, $band.Width, $box.Height)
-                }
                 if ($band.IsEmpty -or $band.Width -le 0 -or $band.Height -le 0 -or
                     -not $list.Current.BoundingRectangle.Contains($band) -or -not $root.Current.BoundingRectangle.Contains($band)) { throw 'Clipped header.' }
                 [pscustomobject]@{ Peer = $peer; Band = $band; Buttons = $buttons; Runtime = ($peer.GetRuntimeId() -join ',')

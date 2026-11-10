@@ -268,18 +268,25 @@
                            TextWrapping="Wrap" />
             </Grid>
             <muxc:InfoBar IsClosable="False"
+                          AutomationProperties.AutomationId="AcpSetupFailure"
                           IsOpen="{x:Bind ViewModel.AcpPreparationFailed, Mode=OneWay}"
+                          Message="{x:Bind ViewModel.AcpPreparationErrorText, Mode=OneWay}"
                           Severity="Error"
                           Visibility="{x:Bind ViewModel.AcpPreparationFailed, Mode=OneWay}">
-                <muxc:InfoBar.Content>
-                    <StackPanel Spacing="8">
-                        <TextBlock x:Uid="AIAgents_AcpPreparationFailed"
-                                   TextWrapping="Wrap" />
-                        <Button x:Uid="AIAgents_RetryAcpPreparation"
-                                Click="{x:Bind ViewModel.RetryAcpPreparation}" />
-                    </StackPanel>
-                </muxc:InfoBar.Content>
+                <muxc:InfoBar.ActionButton>
+                    <Button x:Uid="AIAgents_RetryAcpPreparation"
+                            AutomationProperties.AutomationId="RetryAcpSetup"
+                            Click="{x:Bind ViewModel.RetryAcpPreparation}" />
+                </muxc:InfoBar.ActionButton>
             </muxc:InfoBar>
+            <TextBox x:Uid="AIAgents_AcpErrorDetails"
+                     AutomationProperties.AutomationId="AcpSetupErrorDetails"
+                     HorizontalAlignment="Stretch"
+                     AcceptsReturn="True"
+                     IsReadOnly="True"
+                     Text="{x:Bind ViewModel.AcpPreparationErrorDetails, Mode=OneWay}"
+                     TextWrapping="Wrap"
+                     Visibility="{x:Bind ViewModel.HasAcpPreparationErrorDetails, Mode=OneWay}" />
             <!--  Model picker — shown for every selected agent (built-in
                   or custom) so a stale acpModel value is always visible
                   and clearable. HasAcpModelList picks between the

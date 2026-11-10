@@ -42,6 +42,7 @@ colorbrewer
 commandlines
 consvc
 contextualizing
+cooldown
 copyable
 crossterm
 Crossterm

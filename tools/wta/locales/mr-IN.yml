@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} इंस्टॉल आहे आणि त�
 agents.loading: "लोड होत आहे..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - की संयोजन, भाषांतर करू नका
 agents.footer_hint: "(↑ ↓ नेव्हिगेट करा • Enter सत्र सुरू करा • Esc बाहेर पडा • F5 रिफ्रेश करा • / शोधा)"
-agents.status.active: "सक्रिय"
+agents.status.active: "काम करत आहे"
 agents.status.waiting_for_input: "इनपुटची प्रतीक्षा"
 agents.status.error: "त्रुटी"
 agents.status.idle: "निष्क्रिय"

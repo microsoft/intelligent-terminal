@@ -65,7 +65,27 @@ no new MVVM framework, generic store or conversation-ID migration is required.
 Terminal uses `EffectiveAgentSessionManagementEnabled()` (the user setting
 combined with hooks policy), not listener availability, to enable native
 OSC/BEL observation publishing. WTA remains the authoritative status source.
-With Sessions ON, the existing hook/registry path is unchanged.
+With Sessions ON, observed OSC 9;4 progress takes precedence over hook
+Idle/Working only for the same confirmed pane/provider/session owner: states
+1/3 map to Working and states 0/4 map to Idle. An unobserved default zero is not
+an OSC Idle signal. Attention, Error and terminal liveness states retain hook
+precedence. Terminal retains the parsed progress receipt across same-owner
+admission/mode/routing changes, but clears it when the confirmed provider/session
+or known execution source changes, or the connection lifetime is replaced.
+Unknown identity/source does not erase the last confirmed owner; first-owner
+admission preserves any pre-admission receipt. A per-content confirmed-owner
+generation fences delayed parser writes even when no observation is admitted;
+same-owner routing resets do not advance it. Accepted hook ownership is confirmed
+before receiver readiness without admitting or publishing an observation; stale
+snapshot qualifications and old-owner admissions cannot cross that handoff.
+Receipt storage acquires the current compatible admission under the same lock,
+so first admission before storage can publish the receipt without another OSC,
+while deferred publication still checks its epoch.
+The registry
+retains raw hook activity
+separately from this shared read projection, so clearing progress restores Idle
+without waiting for another Stop. Complete/unread completion is derived only
+after arbitration. This path does not read transcript activity or infer subagents.
 With Sessions OFF, only a native agent provider recorded at pane creation or an
 explicit resume identifies a CLI pane. ACP helper panes keep their direct status;
 ordinary shells do not gain agent status from titles, bells or progress.
@@ -198,8 +218,8 @@ its known binding under the actual connection
 SessionId even without a saved pane ID. Explicit binding ownership transfers with
 the pane between windows and remains until the pane is removed or a later
 authoritative explicit resume replaces that conversation, including after
-command marks or retained Closed/Failed connection states. The existing Sessions
-ON hook/completion policy is unchanged. A reused saved pane GUID cannot
+command marks or retained Closed/Failed connection states. Sessions ON applies
+the hook/OSC arbitration above. A reused saved pane GUID cannot
 inherit the closed pane's explicit ownership marker.
 
 The watcher design below describes registry tracking, not an authority to
@@ -343,12 +363,23 @@ throughout, so no duplicate is ever produced.
 ### Hook-owned Copilot activity
 
 Hook-owned sessions do not supplement hooks with transcript permission events.
-Copilot's `PostToolUse` restores Working after a successful tool return;
-`Stop` owns Idle, and late tool returns do not reactivate an Idle turn.
-This intentionally uses the latest session-level hook,
-not per-request approval correlation: a tool can remain Waiting while it runs,
-and another parallel tool's return may replace an outstanding wait. The original
-born-bound, hookless file-watcher fallback is unchanged.
+Each blocking Copilot notification starts or resets a session-local 30-second
+cooldown measured from registry receipt time, not the provider timestamp.
+Successful tool returns during it leave Waiting and its metadata unchanged,
+regardless of tool name or missing/invalid source timestamps. Informational
+notifications do not reset the deadline, which survives session snapshots.
+
+Expiry does not automatically restore activity. Later successful returns may
+restore Working, but a source timestamp older than the newest waiting
+notification remains ignored. Numeric Unix milliseconds and RFC 3339 source
+timestamps share that comparison. `Stop` immediately owns Idle even during the
+cooldown; prompts, errors, and session/pane closure keep their normal behavior,
+and late returns cannot reactivate Idle or terminal-state rows.
+
+This is a time-window heuristic, not per-request approval correlation: quick
+approvals can remain Waiting until another accepted event or Stop, and unrelated
+parallel completions after the cooldown can still replace an outstanding wait.
+The original born-bound, hookless file-watcher fallback is unchanged.
 
 ### Born-bound activity fallback
 
@@ -396,6 +427,16 @@ hook already bound that exact pane during tab creation, its activity and
 ownership remain authoritative. No helper subscription or hook installation is
 required for this native activity fallback; saved-layout restore routing is
 unchanged.
+
+Connection failure returns a born-bound resume to Historical only with positive
+evidence that its process never launched. ConPTY retains `ProcessStarted` for
+each connection even after process-handle cleanup, and its failed
+`connection_state` event includes `process_started`. Missing fields from older
+or other connection producers mean unknown, not a startup failure; a missed
+Connected broadcast therefore preserves Error and the live pane binding.
+Consumed failed assignments cannot roll back a later retry, including before
+that retry receives its pane. Native OFF Reset uses the resulting actual
+binding rather than assuming assignment succeeded.
 
 Watcher ownership checks and activity updates share that lifecycle gate too.
 Native file records only update a unique row for the matching CLI, never a WSL,

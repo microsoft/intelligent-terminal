@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <objbase.h>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,16 @@ int wmain(int argc, wchar_t** argv)
     const std::wstring log = ITE2E_SHIM_LOG;
     const std::wstring run = ITE2E_SHIM_RUN;
     const std::wstring wtcli = ITE2E_SHIM_WTCLI;
+#ifdef ITE2E_SHIM_GENERATE_SESSION
+    if (session.empty())
+    {
+        GUID id{};
+        wchar_t value[39]{};
+        if (FAILED(CoCreateGuid(&id)) || StringFromGUID2(id, value, ARRAYSIZE(value)) == 0)
+            return 4;
+        session.assign(value + 1, 36);
+    }
+#endif
     if (session.empty() || pwsh.empty() || fixture.empty() || log.empty() || run.empty() || wtcli.empty())
     {
         fwprintf(stderr, L"ITE2E shim missing test prerequisites: session=%d pwsh=%d fixture=%d log=%d run=%d wtcli=%d\n",

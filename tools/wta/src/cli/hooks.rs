@@ -205,7 +205,7 @@ pub(crate) fn run_status(json_mode: bool) -> Result<()> {
                 .unwrap_or_else(|_| serde_json::to_string(&report).unwrap_or_default())
         );
     } else {
-        format_status_human(&report);
+        print!("{}", format_status_human(&report));
     }
     Ok(())
 }
@@ -241,25 +241,8 @@ pub(crate) fn run_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> 
     }
 }
 
-fn format_status_human(r: &crate::agent_hooks_installer::StatusReport) {
-    let path_suffix = r
-        .bundle_source
-        .path
-        .as_deref()
-        .map(|p| format!(" ({})", p))
-        .unwrap_or_default();
-    println!(
-        "{}",
-        t!(
-            "hooks.bundle_source",
-            // The version rides inside the already-interpolated source value
-            // rather than in a placeholder of its own, so surfacing it costs
-            // no re-translation across the locale set.
-            source = format_bundle_source(r.bundle_source.kind, unique_bundle_version(&r.clis)),
-            path_suffix = path_suffix,
-        )
-    );
-    println!();
+fn format_status_human(r: &crate::agent_hooks_installer::StatusReport) -> String {
+    let mut output = String::new();
     for c in &r.clis {
         let summary = if !c.binary_on_path {
             t!("hooks.cli_not_on_path").into_owned()
@@ -282,59 +265,20 @@ fn format_status_human(r: &crate::agent_hooks_installer::StatusReport) {
                 .map(|m| format!(", detection={}", m))
                 .unwrap_or_default(),
         );
-        let version = format_version_column(
-            c.installed_version.as_deref(),
-            c.bundle_version.as_deref(),
-            c.plugin_installed,
-        );
-        println!(
-            "  {:<10} {:<28}  {:<24}  ({})",
+        let version = format_version_column(c.installed_version.as_deref(), c.plugin_installed);
+        output.push_str(&format!(
+            "  {:<10} {:<28}  {:<24}  ({})\n",
             c.name, summary, version, detail
-        );
+        ));
         if let Some(p) = c.marketplace_path.as_deref() {
-            println!("    path: {}", p);
+            output.push_str(&format!("    path: {}\n", p));
         }
     }
-}
-
-/// The single version this wta's bundle ships, or `None` unless every CLI
-/// reports the same one.
-///
-/// Every CLI subtree carries its own manifest, so both a mixed bundle and a
-/// partially-readable one are representable. Summarizing either as a single
-/// number would be a lie — and the more dangerous case is the partial one,
-/// because a CLI whose manifest we couldn't read shows no bundle suffix on its
-/// row, which reads exactly like "matches the bundle". Staying silent on the
-/// header line keeps the per-CLI column the only claim being made.
-fn unique_bundle_version(clis: &[crate::agent_hooks_installer::CliStatus]) -> Option<String> {
-    let mut versions = clis.iter().map(|c| c.bundle_version.as_deref());
-    let first = versions.next()??;
-    versions
-        .all(|v| v == Some(first))
-        .then(|| format!("v{}", first))
-}
-
-fn format_bundle_source(kind: &str, version: Option<String>) -> String {
-    match version {
-        Some(v) => format!("{kind} {v}"),
-        None => kind.to_string(),
-    }
+    output
 }
 
 /// Render the per-CLI version column.
-///
-/// The question this column exists to answer is "is the CLI running the hooks
-/// this wta ships?", so the bundle version only appears when it disagrees with
-/// what's installed; printing both on every row would bury the one row that
-/// needs attention. It is labelled rather than arrowed because the mismatch
-/// runs both ways in practice — a CLI registered against another worktree is
-/// routinely *newer* than the bundle, and an arrow would read as a pending
-/// upgrade. The header line carries the bundle version for the matching case.
-fn format_version_column(
-    installed: Option<&str>,
-    bundle: Option<&str>,
-    plugin_installed: bool,
-) -> String {
+fn format_version_column(installed: Option<&str>, plugin_installed: bool) -> String {
     if !plugin_installed {
         return "-".to_string();
     }
@@ -343,10 +287,7 @@ fn format_version_column(
     let Some(installed) = installed else {
         return "v?".to_string();
     };
-    match bundle {
-        Some(b) if b != installed => format!("v{installed} (bundle v{b})"),
-        _ => format!("v{installed}"),
-    }
+    format!("v{installed}")
 }
 
 fn format_uninstall_human(r: &crate::agent_hooks_installer::UninstallReport) {
@@ -391,7 +332,7 @@ fn yn(b: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_install_report, format_bundle_source, format_install_failure, format_version_column,
+        build_install_report, format_install_failure, format_status_human, format_version_column,
         full_install_plan, missing_installs,
     };
     use crate::agent_hooks_installer::{
@@ -477,21 +418,10 @@ mod tests {
         }
     }
 
-    /// The whole point of the column: a CLI running a different build than the
-    /// bundle must not read as plain "installed". The mismatch is labelled,
-    /// not arrowed, because installed is routinely the *newer* side when the
-    /// marketplace points at another worktree.
     #[test]
-    fn version_column_shows_the_bundle_version_only_when_it_differs() {
-        assert_eq!(
-            format_version_column(Some("0.1.6"), Some("0.1.5"), true),
-            "v0.1.6 (bundle v0.1.5)"
-        );
-        assert_eq!(
-            format_version_column(Some("0.1.5"), Some("0.1.5"), true),
-            "v0.1.5",
-            "matching versions must not carry redundant bundle noise"
-        );
+    fn version_column_shows_only_the_installed_version() {
+        assert_eq!(format_version_column(Some("0.1.6"), true), "v0.1.6");
+        assert_eq!(format_version_column(Some("0.1.6"), false), "-");
     }
 
     /// "Installed but the version is unreadable" and "nothing installed" are
@@ -499,74 +429,42 @@ mod tests {
     /// what the fs-fallback detection path actually produces.
     #[test]
     fn version_column_distinguishes_unknown_from_absent() {
-        assert_eq!(format_version_column(None, Some("0.1.5"), true), "v?");
-        assert_eq!(format_version_column(None, Some("0.1.5"), false), "-");
+        assert_eq!(format_version_column(None, true), "v?");
+        assert_eq!(format_version_column(None, false), "-");
     }
 
-    /// A CLI whose bundle manifest is unreadable still installed a real
-    /// version; the missing half must not erase the known half.
     #[test]
-    fn version_column_survives_an_unknown_bundle_version() {
-        assert_eq!(format_version_column(Some("0.1.5"), None, true), "v0.1.5");
-    }
+    fn status_keeps_bundle_diagnostics_only_in_json() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
 
-    /// The header line may only claim one bundle version when there is one.
-    #[test]
-    fn bundle_version_is_summarized_only_when_every_cli_agrees() {
-        let agreeing = [
-            cli_with_bundle("copilot", Some("0.1.5")),
-            cli_with_bundle("claude", Some("0.1.5")),
-        ];
-        assert_eq!(
-            super::unique_bundle_version(&agreeing).as_deref(),
-            Some("v0.1.5")
+        let mut installed = cli_with_bundle("copilot", Some("0.1.5"));
+        installed.installed_version = Some("0.1.6".to_string());
+        installed.marketplace_path = Some(r"C:\installed\copilot".to_string());
+        let mut report = status_of(vec![installed, absent_cli("claude")]);
+        let bundle_path = r"C:\development\wt-agent-hooks";
+        report.bundle_source.path = Some(bundle_path.to_string());
+
+        let output = format_status_human(&report);
+        let lines: Vec<_> = output.lines().collect();
+        assert_eq!(lines.len(), 3, "{output}");
+        assert!(lines[0].starts_with("  copilot "), "{output}");
+        assert!(lines[0].contains("v0.1.6"), "{output}");
+        assert!(
+            lines[0].contains("marketplace=yes, path_valid=yes, plugin=yes, enabled=yes"),
+            "{output}"
         );
+        assert_eq!(lines[1], r"    path: C:\installed\copilot");
+        assert!(lines[2].starts_with("  claude "), "{output}");
+        assert!(lines[2].contains("CLI not on PATH"), "{output}");
+        assert!(!output.contains("bundle"), "{output}");
+        assert!(!output.contains(report.bundle_source.kind), "{output}");
+        assert!(!output.contains(bundle_path), "{output}");
 
-        let mixed = [
-            cli_with_bundle("copilot", Some("0.1.5")),
-            cli_with_bundle("claude", Some("0.1.4")),
-        ];
-        assert_eq!(
-            super::unique_bundle_version(&mixed),
-            None,
-            "a mixed bundle must not be summarized as a single version"
-        );
-
-        let unknown = [cli_with_bundle("copilot", None)];
-        assert_eq!(super::unique_bundle_version(&unknown), None);
-    }
-
-    /// One unreadable manifest is enough to disqualify the header claim. This
-    /// is the dangerous case: the CLI we know nothing about shows no bundle
-    /// suffix on its row, which reads just like "matches the bundle", so a
-    /// confident header version would compound the error rather than expose it.
-    #[test]
-    fn one_unknown_bundle_version_suppresses_the_header_claim() {
-        let partial = [
-            cli_with_bundle("copilot", Some("0.1.5")),
-            cli_with_bundle("claude", None),
-        ];
-        assert_eq!(super::unique_bundle_version(&partial), None);
-
-        // Order must not matter — the unknown may come first.
-        let partial_reversed = [
-            cli_with_bundle("copilot", None),
-            cli_with_bundle("claude", Some("0.1.5")),
-        ];
-        assert_eq!(super::unique_bundle_version(&partial_reversed), None);
-
-        assert_eq!(super::unique_bundle_version(&[]), None);
-    }
-
-    /// An unresolvable bundle must still print its `kind`, because that is the
-    /// field that explains *why* there's no version to show.
-    #[test]
-    fn bundle_source_label_degrades_to_the_bare_kind() {
-        assert_eq!(
-            format_bundle_source("exe-sibling", Some("v0.1.5".to_string())),
-            "exe-sibling v0.1.5"
-        );
-        assert_eq!(format_bundle_source("none", None), "none");
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["bundle_source"]["kind"], "exe-sibling");
+        assert_eq!(json["bundle_source"]["path"], bundle_path);
+        assert_eq!(json["clis"][0]["bundle_version"], "0.1.5");
     }
 
     // ---- install report (`wta hooks install --json`) --------------------

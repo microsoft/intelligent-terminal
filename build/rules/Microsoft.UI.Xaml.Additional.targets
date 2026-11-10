@@ -13,4 +13,14 @@
   <ItemGroup>
     <Reference Include="$(WebView2PackageRoot)\lib\Microsoft.Web.WebView2.Core.winmd" />
   </ItemGroup>
+  <!-- SDK 26100's hybrid-language detection can inspect an unset x:Class or emit
+       C++/CX metadata. These projects use only C++/WinRT; retain normal local
+       assembly resolution and disable only the hybrid-language input. -->
+  <Target Name="TerminalDisableHybridXamlGeneration"
+          AfterTargets="XamlAddCppWinRTMergedWinmd"
+          Condition="'$(XamlLanguage)' == 'CppWinRT'">
+    <ItemGroup>
+      <XamlCppWinRTLocalAssembly Remove="@(XamlCppWinRTLocalAssembly)" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -30,7 +30,7 @@ pub(crate) fn authentication_result_for_helper<T>(
 
 pub(crate) fn safe_auth_error_message(error: &acp::Error) -> String {
     // Never format Error/its entire data object: providers may attach credentials.
-    let message = safe_auth_reason(&error.message);
+    let message = safe_error_reason(&error.message);
     let detail = error.data.as_ref().and_then(|data| {
         data.as_str()
             .or_else(|| {
@@ -38,7 +38,7 @@ pub(crate) fn safe_auth_error_message(error: &acp::Error) -> String {
                     .into_iter()
                     .find_map(|key| data.get(key).and_then(serde_json::Value::as_str))
             })
-            .and_then(safe_auth_reason)
+            .and_then(safe_error_reason)
     });
     match (message, detail) {
         (Some(message), Some(detail)) if message != detail => format!("{message}: {detail}"),
@@ -48,7 +48,7 @@ pub(crate) fn safe_auth_error_message(error: &acp::Error) -> String {
     }
 }
 
-fn safe_auth_reason(text: &str) -> Option<String> {
+pub(crate) fn safe_error_reason(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     let sensitive_start = [
         "http://",
@@ -59,6 +59,12 @@ fn safe_auth_reason(text: &str) -> Option<String> {
         "refresh_token",
         "id_token",
         "client_secret",
+        "api_key",
+        "api-key",
+        "apikey",
+        "api key",
+        "private_key",
+        "private key",
         "token",
         "secret",
         "password",

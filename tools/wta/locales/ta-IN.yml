@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} நிறுவப்பட்டுள்ள�
 agents.loading: "ஏற்றப்படுகிறது..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - விசைச் சேர்க்கைகள், மொழிபெயர்க்க வேண்டாம்
 agents.footer_hint: "(↑ ↓ வழிசெலுத்து • Enter அமர்வைத் தொடங்கு • Esc வெளியேறு • F5 புதுப்பி • / தேடு)"
-agents.status.active: "செயலில்"
+agents.status.active: "பணியில்"
 agents.status.waiting_for_input: "உள்ளீட்டுக்காகக் காத்திருக்கிறது"
 agents.status.error: "பிழை"
 agents.status.idle: "செயலற்றது"

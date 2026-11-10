@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} орнатылғанына және PATH-те �
 agents.loading: "Жүктелуде..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ шарлау үшін • Enter сеанс ашу үшін • Esc шығу үшін • F5 жаңарту үшін • / іздеу үшін)"
-agents.status.active: "Белсенді"
+agents.status.active: "Жұмыс істеуде"
 agents.status.waiting_for_input: "Енгізу күтілуде"
 agents.status.error: "Қате"
 agents.status.idle: "Бос"

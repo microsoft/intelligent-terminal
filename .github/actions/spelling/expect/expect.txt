@@ -760,6 +760,8 @@ HREDRAW
 hresult
 hscroll
 hstr
+HTBORDER
+HTBOTTOM
 HTBOTTOMLEFT
 HTBOTTOMRIGHT
 HTCAPTION
@@ -1883,6 +1885,7 @@ wapproj
 WAVEFORMATEX
 wbuilder
 wch
+wchan
 wchars
 WCIA
 WCIW

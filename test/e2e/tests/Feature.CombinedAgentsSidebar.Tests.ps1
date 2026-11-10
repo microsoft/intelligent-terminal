@@ -202,8 +202,11 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         . (Join-Path $PSScriptRoot 'helpers\SidebarExpansionEvents.ps1')
         . (Join-Path $PSScriptRoot 'helpers\TabHeaderContext.ps1')
         Initialize-TestSidebarExpansionEvents
-        if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'Combined sidebar validation requires ITE2E_PACKAGE=Dev.' }
-        $script:target = Resolve-ItApp -Package Dev
+        $script:package = Get-ItTestPackage
+        $script:target = Resolve-ItApp -Package $script:package
+        if ($script:package -ne 'Dev' -and -not $script:target.PSObject.Properties['PrivateProtocolClsid']) {
+            throw 'Combined sidebar validation requires Dev or a verified worktree Dev package.'
+        }
         Stop-StaleItInstances -App $script:target
         $script:initialProcessCheckAt = [DateTimeOffset]::UtcNow.ToString('o')
         $script:initialProcesses = @(Get-WtProcessesForApp -App $script:target -IncludePackageExecutables)
@@ -421,11 +424,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             [math]::Abs($iconBounds.Height - $iconBounds.Width) | Should -BeLessOrEqual 1
             $dpiScale | Should -BeGreaterOrEqual 1
             if ($Status) {
-                $statusLabel = if ($Status -eq 'Working') { 'Active' } else { $Status }
-                $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $statusLabel })
+                $statuses = @($textLeaves | Where-Object { $_.Current.Name -eq $Status })
                 $statuses.Count | Should -Be 1 -Because 'the history row must expose one unambiguous meaningful status'
                 $statusPart = $statuses[0]
-                $statusPart.Current.Name | Should -Be $statusLabel
+                $statusPart.Current.Name | Should -Be $Status
                 $detailPart = $statusPart
             } else {
                 @($textLeaves | Where-Object {
@@ -582,7 +584,15 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
             }
         function Get-CombinedFilterState {
-            Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+            $button = Wait-Until -TimeoutSec 10 -Because 'the current owned Display options button is available' -Condition {
+                $peer = Get-CombinedElement FilterTabsButton
+                if ($peer -and -not $peer.Current.IsOffscreen -and $peer.Current.IsEnabled) { $peer }
+            }
+            $button.Current.ProcessId | Should -Be $script:app.Pid
+            $openItem = Get-CombinedElement AgentsOnlyFilterMenuItem
+            if (-not $openItem -or $openItem.Current.IsOffscreen) {
+                $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            }
             try {
                 $state = @{}
                 foreach ($id in @('AgentsOnlyFilterMenuItem', 'RecentAgentSessionsFilterMenuItem')) {
@@ -608,7 +618,10 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             )) {
                 $state = Get-CombinedFilterState
                 if ($state[$entry.Id] -ne $entry.Value) {
-                    Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    $openItem = Get-CombinedElement $entry.Id
+                    if (-not $openItem -or $openItem.Current.IsOffscreen) {
+                        Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                    }
                     $item = Wait-Until -TimeoutSec 30 -Because "$($entry.Id) is visible in the owned filter flyout" -Condition {
                         $peer = Get-CombinedElement $entry.Id
                         if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
@@ -1106,7 +1119,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         foreach ($key in $startupState.Keys) {
             Set-WtState -App $script:target -Key $key -Value $startupState[$key] | Out-Null
         }
-        $script:app = Start-Terminal -Package Dev -PassFre $true -TimeoutSec 60 `
+        $script:app = Start-Terminal -Package $script:package -PassFre $true -TimeoutSec 60 `
             -Backup $false -CleanSettings $false -Settings $startupSettings
         $script:app.Launched | Should -BeTrue -Because 'only a test-owned Dev window may be driven'
         $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true
@@ -1152,7 +1165,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             }
             $tab
         })
-        $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+        $script:pipe = Get-WtaMasterPipe -App $script:app
         Wait-Until -TimeoutSec 90 -Because 'the real master imports deterministic ACP history' -Condition {
             $snapshot = Invoke-Wta -App $script:app -TimeoutSec 10 -Arguments @(
                 'sessions', 'list', '--master', $script:pipe, '--json', '--include-status')
@@ -1324,7 +1337,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         }
         AfterAll {
             $script:scopeClock = $null
-            foreach ($tab in @($script:scopeTabs)) {
+            # Protocol tab IDs are positional; closing a lower index shifts later owners.
+            foreach ($tab in @($script:scopeTabs | Sort-Object { [uint32]$_.tab_id } -Descending)) {
                 $owned = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId -TabId $tab.tab_id |
                     Where-Object session_id -eq $tab.session_id)
                 $owned | Should -HaveCount 1
@@ -1423,13 +1437,26 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 }
             }
         }
-        It 'Sidebar scope choices persist during global search' {
-            Set-CombinedQuery $script:scopeQuery
+        It 'Agent only menu exits global search; Recent scope preserves it' {
+            Set-CombinedFilters -AgentsOnly $false -Recent $false
             foreach ($pair in @(@($false, $false), @($true, $false), @($true, $true),
                 @($false, $true), @($false, $false), @($true, $true))) {
+                Set-CombinedQuery $script:scopeQuery
+                $agentsChanged = (Get-CombinedFilterState).AgentsOnlyFilterMenuItem -ne $pair[0]
                 Set-CombinedFilters -AgentsOnly $pair[0] -Recent $pair[1]
-                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
-                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+                Assert-CombinedSearchState (-not $agentsChanged)
+                if ($agentsChanged) {
+                    $expected = @('agent')
+                    if (-not $pair[0]) { $expected += 'ordinary' }
+                    if ($pair[1]) { $expected += @('history', 'nonmatch') }
+                    Assert-CombinedScopeRows $expected
+                    Open-CombinedSearch
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
+                }
+                else {
+                    Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+                }
             }
             Set-CombinedQuery ''
             Assert-CombinedScopeRows @('agent', 'history', 'nonmatch')
@@ -1456,7 +1483,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             (Get-CombinedElement HistoryHeaderButton).GetCurrentPattern(
                 [Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         }
-        It 'Sidebar scope menus expose standard checked states and preserve keyboard focus' {
+        It 'Sidebar scope menus expose standard checked states and preserve keyboard focus' -Tag 'SidebarDisplayShortcuts' {
             if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
                 Set-ItResult -Skipped -Because 'External desktop restrictions prevent the harness owned-foreground physical-input gate'
                 return
@@ -1465,11 +1492,12 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Set-CombinedQuery $script:scopeQuery
             $capture = @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id })
             foreach ($entry in @(
-                @{ Id = 'AgentsOnlyFilterMenuItem'; Name = 'Agents only'; Key = 0x47 },
-                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Recent agent sessions'; Key = 0x52 }
+                @{ Id = 'RecentAgentSessionsFilterMenuItem'; Name = 'Recent agent sessions'; Key = 0xBF; KeyText = '/' },
+                @{ Id = 'AgentsOnlyFilterMenuItem'; Name = 'Agents only'; Key = 0x47; KeyText = 'G' }
             )) {
                 Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
                 (Get-CombinedFilterState)[$entry.Id] | Should -BeTrue
+                Assert-CombinedSearchState $true
                 Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
                 (Get-CombinedElement SearchTextBox).SetFocus()
                 Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
@@ -1486,18 +1514,77 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
                 $item = Get-CombinedElement $entry.Id
                 $item.Current.Name | Should -Be $entry.Name
                 $item.Current.ControlType | Should -Be ([Windows.Automation.ControlType]::MenuItem)
-                "$($item.Current.AcceleratorKey) $($item.Current.HelpText)" |
-                    Should -Match ('(?i)Ctrl.*Shift.*' + [char]$entry.Key)
                 $item.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
                     Should -Be ([Windows.Automation.ToggleState]::On)
                 $item.Current.HasKeyboardFocus | Should -BeTrue
+                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "display-shortcut-$($entry.Id)-before.png") | Out-Null
+                Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
+                $changed = Test-Until -TimeoutSec 5 -IntervalSec 0.1 -Condition {
+                    $peer = Get-CombinedElement $entry.Id
+                    $peer -and -not $peer.Current.IsOffscreen -and
+                        $peer.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq
+                            [Windows.Automation.ToggleState]::Off
+                }
+                Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidence "display-shortcut-$($entry.Id)-after.png") | Out-Null
+                $changed | Should -BeTrue -Because 'the shortcut must toggle its preference while Display options has keyboard focus'
+                $item = Get-CombinedElement $entry.Id
+                "$($item.Current.AcceleratorKey) $($item.Current.HelpText)" |
+                    Should -Match ('(?i)Ctrl.*Shift.*' + [regex]::Escape($entry.KeyText))
+                $otherId = if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') {
+                    'RecentAgentSessionsFilterMenuItem'
+                } else { 'AgentsOnlyFilterMenuItem' }
+                $other = Get-CombinedElement $otherId
+                $other.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                    Should -Be ([Windows.Automation.ToggleState]::Off)
+                $other.SetFocus()
+                Send-WtWindowKey -App $script:app -Vk $entry.Key -Ctrl -Shift -RequireForeground | Out-Null
+                Wait-Until -TimeoutSec 5 -Because 'the same shortcut also works when the other menu item has focus' -Condition {
+                    $peer = Get-CombinedElement $entry.Id
+                    $peer -and -not $peer.Current.IsOffscreen -and
+                        $peer.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq
+                            [Windows.Automation.ToggleState]::On
+                } | Out-Null
+                $other.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState |
+                    Should -Be ([Windows.Automation.ToggleState]::Off)
+                Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+                Assert-CombinedSearchState $true
+                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern |
+                    Should -Be $script:scopeQuery -Because 'shortcuts preserve active search'
+                Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+                $item = Wait-Until -TimeoutSec 5 -Because 'the menu item is visible for native activation' -Condition {
+                    $peer = Get-CombinedElement $entry.Id
+                    if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+                }
+                $item.SetFocus()
                 $activationKey = if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') { 0x20 } else { 0x0D }
                 Send-WtWindowKey -App $script:app -Vk $activationKey -RequireForeground | Out-Null
                 (Get-CombinedFilterState)[$entry.Id] | Should -BeFalse
-                (Get-CombinedElement FilterTabsButton).Current.HasKeyboardFocus | Should -BeTrue
-                Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                Wait-Until -TimeoutSec 5 -Because 'native menu dismissal restores focus to the current Display options button' -Condition {
+                    $button = Get-CombinedElement FilterTabsButton
+                    $button -and $button.Current.HasKeyboardFocus
+                } | Out-Null
+                Assert-CombinedSearchState ($entry.Id -ne 'AgentsOnlyFilterMenuItem')
+                if ($entry.Id -eq 'AgentsOnlyFilterMenuItem') {
+                    Assert-CombinedScopeRows @('ordinary', 'agent')
+                } else {
+                    Assert-CombinedScopeRows @('ordinary', 'agent', 'history')
+                    Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern |
+                        Should -Be $script:scopeQuery
+                }
             }
-            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $script:scopeQuery
+            Invoke-UiElement -App $script:app -Selector FilterTabsButton | Out-Null
+            $agentsItem = Wait-Until -TimeoutSec 5 -Because 'Display options reopens after native item activation' -Condition {
+                $peer = Get-CombinedElement AgentsOnlyFilterMenuItem
+                if ($peer -and -not $peer.Current.IsOffscreen) { $peer }
+            }
+            $agentsItem.SetFocus()
+            Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+            Wait-Until -TimeoutSec 5 -Because 'Escape restores focus to the current Display options button' -Condition {
+                $button = Get-CombinedElement FilterTabsButton
+                $button -and $button.Current.HasKeyboardFocus
+            } | Out-Null
+            Open-CombinedSearch
+            Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
             @(foreach ($tab in $script:scopeTabs) { Get-WtCapture -App $script:app -SessionId $tab.session_id }) | Should -Be $capture
         }
     }
@@ -2916,6 +3003,7 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
 
     It 'Combined sidebar search filters both sections and preserves the query' {
         Assert-CombinedSearchState $false
+        Set-CombinedView $false
         Open-CombinedSearch
         (Get-CombinedElement VerticalTabsHeader).Current.Name | Should -Be 'Tabs'
         Set-CombinedQuery "$script:marker-open-00"
@@ -2927,8 +3015,9 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
         Assert-CombinedSearchState $true
         (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
         Set-CombinedView $true
-        Assert-CombinedSearchState $true
-        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be "$script:marker-open-00"
+        Assert-CombinedSearchState $false
+        Open-CombinedSearch
+        (Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern) | Should -Be ''
         Set-CombinedQuery "$script:marker-history-00"
         Wait-Until -TimeoutSec 10 -Because 'history-only search leaves Agents active' -Condition {
             @(Get-CombinedRows Live).Count -eq 0 -and @(Get-CombinedRows Recent).Count -eq 1
@@ -3158,7 +3247,8 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
     }
 
         It 'Mixed Sidebar keyboard crosses the Recent Sessions boundary without activation' {
-            Set-CombinedQuery $script:marker
+            Set-CombinedFilters -AgentsOnly $false -Recent $true
+            Set-CombinedQuery ''
             $active = Get-ActivePane -App $script:app
             $heading = Get-CombinedElement HistoryHeaderButton
             $heading.SetFocus()
@@ -3174,28 +3264,43 @@ Describe 'Feature: combined Agents sidebar' -Tag @('Feature', 'CombinedAgentsSid
             Send-WtWindowKey -App $script:app -Vk 0x28 -RequireForeground | Out-Null
             $recent = [Windows.Automation.AutomationElement]::FocusedElement
             $recent.Current.ProcessId | Should -Be $script:app.Pid
-            (Get-CombinedRowText $recent) | Should -Match ([regex]::Escape("$script:marker-history-"))
+            @((Get-CombinedRows Recent) | Where-Object {
+                [Windows.Automation.Automation]::Compare($_, $recent)
+            }).Count | Should -Be 1
             (Get-CombinedElement ItemsList).Current.BoundingRectangle.Contains($recent.Current.BoundingRectangle) | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x26 -RequireForeground | Out-Null
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $heading) | Should -BeTrue
-            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $lastLive.SetFocus()
             [Windows.Automation.Automation]::Compare(
                 [Windows.Automation.AutomationElement]::FocusedElement, $lastLive) | Should -BeTrue
             Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $paneStop = Get-CombinedElement SidebarShellPaneFocusStop
             [Windows.Automation.Automation]::Compare(
-                [Windows.Automation.AutomationElement]::FocusedElement, $heading) | Should -BeTrue
-            $receipts = @()
-            foreach ($key in @(0x20, 0x0D)) {
-                Send-WtWindowKey -App $script:app -Vk $key -RequireForeground | Out-Null
-                $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Collapsed)
-                Send-WtWindowKey -App $script:app -Vk $key -RequireForeground | Out-Null
-                $pattern.Current.ExpandCollapseState | Should -Be ([Windows.Automation.ExpandCollapseState]::Expanded)
-                $receipts += @{ key = $key; active = (Get-ActivePane -App $script:app).session_id
-                    heading_runtime_id = @($heading.GetRuntimeId()) }
-            }
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) |
+                Should -BeTrue -Because 'Tab from the live row outlines its shell pane'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $agentToggle = Get-CombinedElement AgentToggleButton
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) |
+                Should -BeTrue -Because 'Tab from the shell outline visits the agent icon'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
+            $toggle = [Windows.Automation.AutomationElement]::FocusedElement
+            $toggle.Current.ProcessId | Should -Be $script:app.Pid
+            $toggle.Current.Name | Should -Be 'Collapse sidebar' -Because 'Tab from the agent icon wraps to the rail toggle'
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $agentToggle) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            [Windows.Automation.Automation]::Compare(
+                [Windows.Automation.AutomationElement]::FocusedElement, $paneStop) | Should -BeTrue
+            Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
+            $lastRecent = [Windows.Automation.AutomationElement]::FocusedElement
+            $lastRecent.Current.ProcessId | Should -Be $script:app.Pid
+            @((Get-CombinedRows Recent) | Where-Object {
+                [Windows.Automation.Automation]::Compare($_, $lastRecent)
+            }).Count | Should -Be 1
             (Get-ActivePane -App $script:app).session_id | Should -Be $active.session_id
-            $receipts | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $script:evidence 'boundary-keyboard.json')
         }
 
         It 'Sidebar header search and options show their actual action tooltips' {

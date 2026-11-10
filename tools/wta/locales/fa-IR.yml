@@ -146,7 +146,7 @@ agent.custom.auth_hint: "مطمئن شوید که %{name} نصب شده و در 
 agents.loading: "در حال بارگذاری..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - ترکیب کلیدها، ترجمه نکنید
 agents.footer_hint: "(↑ ↓ ناوبری • Enter شروع نشست • Esc خروج • F5 تازه‌سازی • / جستجو)"
-agents.status.active: "فعال"
+agents.status.active: "در حال کار"
 agents.status.waiting_for_input: "در انتظار ورودی"
 agents.status.error: "خطا"
 agents.status.idle: "بیکار"

@@ -313,6 +313,14 @@
   <data name="NextTabCommandKey" xml:space="preserve">
     <value>Наступна вкладка</value>
   </data>
+  <data name="NextSidebarTabCommandKey" xml:space="preserve">
+    <value>Наступна видима вкладка на бічній панелі</value>
+    <comment>Command that activates the next currently displayed open tab in the vertical sidebar, wrapping from last to first. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
+  <data name="PrevSidebarTabCommandKey" xml:space="preserve">
+    <value>Попередня видима вкладка на бічній панелі</value>
+    <comment>Command that activates the previous currently displayed open tab in the vertical sidebar, wrapping from first to last. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
     <value>Відкрити файли налаштувань і типових налаштувань (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>

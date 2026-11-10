@@ -61,6 +61,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t updateSequence{ 0 };
         std::optional<Presentation> presentation;
         std::vector<std::string> diagnostics;
+        uint64_t diagnosticCwdToken{ 0 };
     };
 
     class ProviderBroker
@@ -73,7 +74,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         static ProviderBroker& Instance();
 
-        AttachmentId Attach(SessionContext context, Callback callback);
+        AttachmentId Attach(SessionContext context, Callback callback, VisibleFieldMap visibleFields = {});
         void Detach(AttachmentId attachment);
         void UpdateContext(
             AttachmentId attachment,
@@ -87,6 +88,15 @@ namespace Microsoft::Terminal::RichTab::Provider
             AttachmentId attachment,
             bool agentActive,
             std::optional<std::string> workingDirectory);
+        void TraceCwd(
+            std::string_view sessionId,
+            AttachmentId attachment,
+            CwdDiagnosticStage stage,
+            CwdDiagnosticOutcome outcome,
+            std::optional<std::filesystem::path> observedPath = std::nullopt,
+            uint64_t updateSequence = 0,
+            std::optional<uint64_t> outputCwdToken = std::nullopt,
+            std::optional<uint64_t> contextRevision = std::nullopt);
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
@@ -94,10 +104,12 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::string_view providerId,
             std::unordered_map<std::string, std::string> displayNames);
         void SetVisibleFields(std::string_view providerId, std::vector<std::string> fields);
+        void SetVisibleFields(AttachmentId attachment, std::string_view providerId, std::vector<std::string> fields);
         std::optional<std::vector<std::string>> VisibleFields(std::string_view providerId) const;
 
         uint64_t ProcessEpoch() const noexcept;
         bool GitAvailable() const noexcept;
+        bool DiagnosticsEnabled() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
@@ -134,6 +146,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             uint64_t updateSequence{ 0 };
             std::optional<std::chrono::steady_clock::time_point> detachedAt;
             std::unordered_map<AttachmentId, Callback> callbacks;
+            std::unordered_map<AttachmentId, VisibleFieldMap> visibleFieldsByAttachment;
             std::unordered_map<std::string, ProviderState> providers;
         };
 
@@ -151,10 +164,27 @@ namespace Microsoft::Terminal::RichTab::Provider
             Registration provider,
             Request request,
             uint64_t generation);
+        uint64_t _CwdTokenLocked(const std::filesystem::path& path);
+        void _LogCwdLocked(
+            const SessionState& session,
+            AttachmentId attachment,
+            CwdDiagnosticStage stage,
+            CwdDiagnosticOutcome outcome,
+            std::optional<std::filesystem::path> observedPath = std::nullopt,
+            uint64_t updateSequence = 0,
+            uint64_t requestId = 0,
+            std::optional<uint64_t> outputCwdToken = std::nullopt,
+            std::optional<uint64_t> contextRevision = std::nullopt) noexcept;
         BrokerUpdate _UpdateFor(
             const std::string& sessionId,
             const SessionState& state,
-            std::vector<std::string> diagnostics = {}) const;
+            std::vector<std::string> diagnostics = {},
+            AttachmentId attachment = 0) const;
+        std::vector<std::pair<Callback, BrokerUpdate>> _NotificationsFor(
+            const std::string& sessionId,
+            const SessionState& state,
+            const std::vector<std::string>& diagnostics = {}) const;
+        std::vector<std::string> _VisibleFieldsForSession(const SessionState& state, const Registration& provider) const;
         void _Enqueue(std::function<void()> work);
         void _PruneDetachedSessionsLocked();
         void _InvalidateGitStatusWorkingDirectoryLocked(SessionState& session);
@@ -180,6 +210,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t _nextSessionIncarnation{ 1 };
         uint64_t _nextAttachment{ 1 };
         uint64_t _nextRequest{ 1 };
+        uint64_t _nextCwdToken{ 1 };
+        std::unordered_map<std::filesystem::path, uint64_t> _cwdTokens;
         uint64_t _nextGeneration{ 1 };
     };
 }

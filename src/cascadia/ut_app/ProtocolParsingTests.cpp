@@ -30,6 +30,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(HookCwdPreservesProviderWorkspaceAndExecutionSource);
         TEST_METHOD(OversizedOpenCodeHooksRetainTitle);
         TEST_METHOD(OversizedCopilotHooksRetainNotificationType);
+        TEST_METHOD(OversizedCopilotHooksRetainTimestamp);
         TEST_METHOD(OversizedOpenCodeBindingRetainsRunningState);
         TEST_METHOD(OversizedCwdChangeRetainsNewDirectory);
         TEST_METHOD(HostClsidOverridesStaleEnvironment);
@@ -52,6 +53,28 @@ namespace TerminalAppUnitTests
             VERIFY_IS_TRUE(reduced["_truncated"].asBool());
             VERIFY_ARE_EQUAL("shell_completed", reduced[typeKey].asString());
             VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+        }
+    }
+
+    void ProtocolParsingTests::OversizedCopilotHooksRetainTimestamp()
+    {
+        for (const auto* eventType : { "agent.notification", "agent.tool.finished" })
+        {
+            for (const auto& timestamp : { Json::Value{ Json::UInt64{ 1792473545608 } }, Json::Value{ "2026-10-20T05:19:05.580Z" } })
+            {
+                Json::Value payload;
+                payload["session_id"] = "copilot-session";
+                payload["timestamp"] = timestamp;
+                payload["message"] = std::string(wtcli::kMaxHookEventChars, 'x');
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                Json::Value event;
+                VERIFY_IS_TRUE(wtcli::BuildAgentHookEventJson(eventType, "copilot", Json::writeString(writer, payload), "pane-a", "", event));
+                const auto& reduced = event["params"]["payload"];
+                VERIFY_IS_TRUE(reduced["_truncated"].asBool());
+                VERIFY_ARE_EQUAL(Json::writeString(writer, timestamp), Json::writeString(writer, reduced["timestamp"]));
+                VERIFY_IS_TRUE(Json::writeString(writer, event).size() <= wtcli::kMaxHookEventChars);
+            }
         }
     }
 

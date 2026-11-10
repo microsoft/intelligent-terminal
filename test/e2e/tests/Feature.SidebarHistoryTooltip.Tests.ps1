@@ -365,7 +365,7 @@ Describe 'Feature: Sidebar history hover' -Tag @('Feature', 'SidebarHistoryToolt
             } | Out-Null
             @(Get-HoverRows | Where-Object { @(Get-HoverParts $_ | Where-Object { $_.Current.Name -ceq $history[1].title }).Count }) |
                 Should -HaveCount 0 -Because 'search filters out other fixture rows'
-            $pipe = (Get-Content (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+            $pipe = Get-WtaMasterPipe -App $script:app
             $oldTitle = $history[0].title
             $history[0].title = "$marker row-0 REFRESHED " + ('changed long complete title ' * 8) + 'NEW-END'
             @{ sessions = $history } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $historyPath -Encoding utf8

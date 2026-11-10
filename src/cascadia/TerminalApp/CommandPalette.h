@@ -49,6 +49,7 @@ namespace winrt::TerminalApp::implementation
         void EnableCommandPaletteMode(Microsoft::Terminal::Settings::Model::CommandPaletteLaunchMode const launchMode);
         void EnableTabSwitcherMode(const uint32_t startIdx, Microsoft::Terminal::Settings::Model::TabSwitcherMode tabSwitcherMode);
         void EnableTabSearchMode();
+        bool DismissedByFocusLoss() const noexcept { return _dismissedByFocusLoss; }
 
         til::property_changed_event PropertyChanged;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::TerminalApp::Tab> SwitchToTabRequested;
@@ -86,6 +87,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::DispatcherTimer _pointerExitTimer{ nullptr }; // timer to debounce pointer exit events (used to smooth preview transitions)
 
         bool _lastFilterTextWasEmpty{ true };
+        bool _dismissedByFocusLoss{ false };
 
         void _populateCommands();
 

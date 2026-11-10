@@ -48,12 +48,17 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(ProviderDiagnosticVersionRejectsUntrustedText);
         TEST_METHOD(ProviderDiagnosticLogWritesContentMinimizedRecord);
+        TEST_METHOD(ProviderDiagnosticLogCorrelatesCwdStagesWithoutPaths);
+        TEST_METHOD(ProviderDiagnosticLogDistinguishesMissingCwdFromContext);
         TEST_METHOD(ProviderDiagnosticLogCleanupSkipsUnrelatedFiles);
         TEST_METHOD(ProviderDiagnosticLogDropsOnContention);
         TEST_METHOD(CommandRunnerMarksLaunchFailureObservations);
         TEST_METHOD(BrokerClearsSuccessfulSnapshotAfterProviderFailure);
         TEST_METHOD(BrokerKeepsAgentStatusPairedWithSnapshotDuringRefresh);
+        TEST_METHOD(BrokerKeepsBuiltInStatusWhileMetadataRefreshes);
         TEST_METHOD(BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected);
+        TEST_METHOD(BrokerKeepsVisibleFieldsIndependentAcrossWindows);
+        TEST_METHOD(BrokerCollectsSharedSessionFieldsForBothWindows);
         TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderUsesDisplayedDirectoryForGit);
@@ -151,6 +156,100 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("repository-value-canary"));
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("stderr-value-canary"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogCorrelatesCwdStagesWithoutPaths()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabCwdLog-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        {
+            auto logger = ProviderDiagnosticLog::CreateForTests(42, logRoot);
+            VERIFY_IS_NOT_NULL(logger.get());
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Cwd;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = 42;
+            record.sessionToken = 17;
+            record.attachmentId = 23;
+            record.cwdToken = 31;
+            record.shellCwdToken = 31;
+            record.agentCwdToken = 37;
+            record.hostRequestId = 41;
+            record.contextRevision = 43;
+            record.updateSequence = 47;
+            record.cwdStage = CwdDiagnosticStage::OscReceived;
+            record.cwdSource = CwdDiagnosticSource::Shell;
+            record.cwdOutcome = CwdDiagnosticOutcome::Changed;
+            record.workingDirectoryAuthoritative = true;
+            logger->TryLog(record);
+            record.cwdStage = CwdDiagnosticStage::UiResult;
+            record.cwdOutcome = CwdDiagnosticOutcome::Stale;
+            logger->TryLog(record);
+        }
+
+        const auto logs = std::filesystem::directory_iterator{ logRoot };
+        std::ifstream stream{ logs->path(), std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        const std::string contents{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("event":"cwd","stage":"osc-received")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("session":17,"attachment":23)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("cwd":31,"shellCwd":31,"agentCwd":37)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("request":41,"contextRevision":43,"updateSequence":47)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("source":"shell","outcome":"changed","authoritative":true)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("stage":"ui-result")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("outcome":"stale")"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("/home/secret/cwd-canary"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogDistinguishesMissingCwdFromContext()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabMissingCwd-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        ProviderBroker broker{ std::nullopt, false };
+        auto logger = ProviderDiagnosticLog::CreateForTests(42, logRoot);
+        VERIFY_IS_NOT_NULL(logger.get());
+        broker._diagnosticLog = logger.get();
+        ProviderBroker::SessionState session;
+        session.context.workingDirectory = L"C:\\secret\\cwd-canary";
+        session.context.workingDirectoryAuthoritative = true;
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::ContextObserved, CwdDiagnosticOutcome::Observed);
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::OscReceived, CwdDiagnosticOutcome::Unmatched);
+        broker._LogCwdLocked(session, 0, CwdDiagnosticStage::ProviderResult, CwdDiagnosticOutcome::Accepted);
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::OscReceived, CwdDiagnosticOutcome::Matched, session.context.workingDirectory);
+        broker._diagnosticLog = nullptr;
+        logger.reset();
+
+        const auto logs = std::filesystem::directory_iterator{ logRoot };
+        std::ifstream stream{ logs->path(), std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        const std::string contents{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        const auto lineFor = [&](const std::string_view stage, const size_t from = 0) {
+            const auto begin = contents.find(stage, from);
+            VERIFY_ARE_NOT_EQUAL(std::string::npos, begin);
+            return contents.substr(begin, contents.find('\n', begin) - begin);
+        };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"context-observed")").find(R"("cwd":1,"shellCwd":1)"));
+        const auto missingOsc = lineFor(R"("stage":"osc-received")");
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, missingOsc.find(R"("cwd":0,"shellCwd":1)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"provider-result")").find(R"("cwd":0,"shellCwd":1)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"osc-received")", contents.find(missingOsc) + missingOsc.size()).find(R"("cwd":1,"shellCwd":1)"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
     }
 
     void RichTabProviderTests::ProviderDiagnosticLogCleanupSkipsUnrelatedFiles()
@@ -376,6 +475,7 @@ namespace TerminalAppUnitTests
         auto& session = broker._sessions["detached-git"];
         session.context.sessionId = "detached-git";
         session.context.workingDirectory = L"C:\\shell";
+        session.context.firstPartyFields = { { "agentStatus", "Idle" }, { "agentStatusId", "Idle" } };
         session.sessionIncarnation = 1;
         session.callbacks.emplace(1, [](const auto&) {});
         broker._attachmentSessions.emplace(1, session.context.sessionId);
@@ -590,6 +690,116 @@ namespace TerminalAppUnitTests
             presentation->accessibilityText);
     }
 
+    void RichTabProviderTests::BrokerKeepsVisibleFieldsIndependentAcrossWindows()
+    {
+        Registration provider;
+        provider.manifest.id = "test.window-fields";
+        provider.manifest.fields = {
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+        };
+        provider.enabled = true;
+
+        ProviderBroker broker{ std::nullopt };
+        broker._providers = { provider };
+        std::vector<std::wstring> firstWindow;
+        std::vector<std::wstring> secondWindow;
+        for (const auto& [attachment, sessionId, updates] :
+             { std::tuple<ProviderBroker::AttachmentId, std::string, std::vector<std::wstring>*>{
+                   1, "window-one", &firstWindow },
+               { 2, "window-two", &secondWindow } })
+        {
+            auto& session = broker._sessions[sessionId];
+            session.context.sessionId = sessionId;
+            session.sessionIncarnation = attachment;
+            Snapshot snapshot;
+            snapshot.fields.emplace("repository", std::string{ "project" });
+            snapshot.fields.emplace("branch", std::string{ "main" });
+            session.providers[provider.manifest.id].snapshot = std::move(snapshot);
+            session.callbacks.emplace(attachment, [updates](const BrokerUpdate& update) {
+                updates->emplace_back(update.presentation ? update.presentation->text : L"");
+            });
+            broker._attachmentSessions.emplace(attachment, sessionId);
+        }
+        broker._nextAttachment = 3;
+
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "branch" });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, firstWindow.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+
+        broker.SetVisibleFields(1, provider.manifest.id, {});
+        VERIFY_IS_TRUE(firstWindow.back().empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+
+        std::vector<std::wstring> newTab;
+        const auto newAttachment = broker.Attach(
+            { "window-one-new-tab" },
+            [&](const BrokerUpdate& update) {
+                newTab.emplace_back(update.presentation ? update.presentation->text : L"");
+            },
+            { { provider.manifest.id, { "repository" } } });
+        VERIFY_ARE_EQUAL(ProviderBroker::AttachmentId{ 3 }, newAttachment);
+        Snapshot newSnapshot;
+        newSnapshot.fields.emplace("repository", std::string{ "project" });
+        newSnapshot.fields.emplace("branch", std::string{ "main" });
+        broker._sessions.at("window-one-new-tab").providers[provider.manifest.id].snapshot = std::move(newSnapshot);
+        broker.SetFieldDisplayNames(provider.manifest.id, { { "repository", "Repository" } });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, newTab.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+        broker.Detach(newAttachment);
+        VERIFY_IS_TRUE(broker._attachmentSessions.contains(1));
+        VERIFY_IS_FALSE(broker._attachmentSessions.contains(newAttachment));
+        VERIFY_IS_TRUE(broker._sessions.at("window-one").callbacks.contains(1));
+    }
+
+    void RichTabProviderTests::BrokerCollectsSharedSessionFieldsForBothWindows()
+    {
+        Registration provider;
+        provider.manifest.id = "test.shared-session";
+        provider.manifest.fields = {
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+        };
+        provider.enabled = true;
+
+        ProviderBroker broker{ std::nullopt };
+        broker._providers = { provider };
+        auto& session = broker._sessions["shared-session"];
+        session.context.sessionId = "shared-session";
+        session.sessionIncarnation = 1;
+        Snapshot snapshot;
+        snapshot.fields.emplace("repository", std::string{ "project" });
+        snapshot.fields.emplace("branch", std::string{ "main" });
+        session.providers[provider.manifest.id].snapshot = std::move(snapshot);
+        std::vector<std::wstring> firstWindow;
+        std::vector<std::wstring> secondWindow;
+        session.callbacks.emplace(1, [&](const BrokerUpdate& update) {
+            firstWindow.emplace_back(update.presentation ? update.presentation->text : L"");
+        });
+        session.callbacks.emplace(2, [&](const BrokerUpdate& update) {
+            secondWindow.emplace_back(update.presentation ? update.presentation->text : L"");
+        });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        broker._attachmentSessions.emplace(2, session.context.sessionId);
+
+        broker.SetVisibleFields(1, provider.manifest.id, {});
+        VERIFY_IS_TRUE(firstWindow.back().empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" } + L'\n' + L"main", secondWindow.back());
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "branch" });
+        VERIFY_ARE_EQUAL(std::wstring{ L"project" }, firstWindow.back());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+        const auto bothFields = broker._VisibleFieldsForSession(session, provider);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, bothFields.size());
+
+        broker.Detach(1);
+        const auto remainingFields = broker._VisibleFieldsForSession(session, provider);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, remainingFields.size());
+        VERIFY_ARE_EQUAL(std::string{ "branch" }, remainingFields.front());
+        VERIFY_ARE_EQUAL(std::wstring{ L"main" }, secondWindow.back());
+    }
+
     void RichTabProviderTests::BrokerClearsSuccessfulSnapshotAfterProviderFailure()
     {
         const auto providerRoot = std::filesystem::temp_directory_path() /
@@ -792,6 +1002,96 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(updates.back().presentation.has_value());
         VERIFY_IS_FALSE(state.snapshot.has_value());
         VERIFY_IS_FALSE(updates.back().diagnostics.empty());
+    }
+
+    void RichTabProviderTests::BrokerKeepsBuiltInStatusWhileMetadataRefreshes()
+    {
+        ProviderBroker broker{ std::nullopt };
+        Registration provider;
+        provider.manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        provider.manifest.activationEvents = { ActivationEvent::ManualRefresh };
+        provider.manifest.fields = { { "agentStatus", "Status", FieldType::String, true },
+                                     { "workingDirectory", "Directory", FieldType::String, true },
+                                     { "repository", "Repository", FieldType::String, false } };
+        provider.kind = RegistrationKind::Managed;
+        provider.origin = RegistrationOrigin::BuiltInCatalog;
+        provider.root = BuiltInProviderCatalog::PackageRoot() / L"RichTabProviders" / L"GitStatus";
+        provider.enabled = true;
+        provider.integrityValid = true;
+        broker._providers = { provider };
+
+        auto& session = broker._sessions["metadata-refresh"];
+        session.context.sessionId = "metadata-refresh";
+        session.context.firstPartyFields = { { "agentStatus", "Active" }, { "agentStatusId", "Working" } };
+        session.sessionIncarnation = 1;
+        std::vector<BrokerUpdate> updates;
+        session.callbacks.emplace(1, [&](const auto& update) { updates.emplace_back(update); });
+        broker._attachmentSessions.emplace(1, session.context.sessionId);
+        auto& state = session.providers[provider.manifest.id];
+        state.snapshot.emplace();
+        state.snapshot->fields = { { "agentStatus", std::string{ "Active" } },
+                                   { "workingDirectory", std::string{ "C:\\src" } } };
+        state.snapshot->agentStatus = "Working";
+        // Hold provider execution so assertions cover the interval before Git returns.
+        state.running = true;
+
+        broker.SetVisibleFields(provider.manifest.id, { "agentStatus", "repository" });
+        VERIFY_IS_TRUE(state.pending.has_value());
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active" }, updates.back().presentation->text);
+
+        // A failed Git invocation must not remove the independently known status.
+        state.snapshot.reset();
+        const auto withoutGit = broker._UpdateFor(session.context.sessionId, session);
+        VERIFY_IS_TRUE(withoutGit.presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active" }, withoutGit.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Working" }, withoutGit.presentation->agentStatus);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, withoutGit.presentation->agentStatusRanges.size());
+
+        broker.UpdateFirstPartyFields(1, { { "agentStatus", "Failed" }, { "agentStatusId", "Error" } });
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Failed" }, updates.back().presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Error" }, updates.back().presentation->agentStatus);
+
+        broker.SetVisibleFields(provider.manifest.id, {});
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        broker.SetVisibleFields(provider.manifest.id, { "repository" });
+        VERIFY_IS_FALSE(updates.back().presentation.has_value());
+        broker.SetVisibleFields(provider.manifest.id, { "agentStatus", "repository" });
+
+        state.snapshot.emplace();
+        state.snapshot->fields = { { "agentStatus", std::string{ "Active" } },
+                                   { "repository", std::string{ "terminal" } } };
+        state.snapshot->agentStatus = "Working";
+        const auto refreshed = broker._UpdateFor(session.context.sessionId, session);
+        VERIFY_IS_TRUE(refreshed.presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Failed\n"
+                                       L"terminal" },
+                         refreshed.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Error" }, refreshed.presentation->agentStatus);
+
+        broker.UpdateFirstPartyFields(1, {});
+        VERIFY_IS_TRUE(updates.back().presentation.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"terminal" }, updates.back().presentation->text);
+        VERIFY_IS_TRUE(updates.back().presentation->agentStatus.empty());
+        VERIFY_IS_TRUE(updates.back().presentation->agentStatusRanges.empty());
+
+        session.callbacks.emplace(2, [](const auto&) {});
+        broker._attachmentSessions.emplace(2, session.context.sessionId);
+        session.context.firstPartyFields = { { "agentStatus", "Restored" }, { "agentStatusId", "Working" } };
+        broker.SetVisibleFields(1, provider.manifest.id, { "repository" });
+        broker.SetVisibleFields(2, provider.manifest.id, { "agentStatus" });
+        const auto firstWindow = broker._UpdateFor(session.context.sessionId, session, {}, 1);
+        const auto secondWindow = broker._UpdateFor(session.context.sessionId, session, {}, 2);
+        VERIFY_ARE_EQUAL(std::wstring{ L"terminal" }, firstWindow.presentation->text);
+        VERIFY_IS_TRUE(firstWindow.presentation->agentStatus.empty());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Restored" }, secondWindow.presentation->text);
+        VERIFY_ARE_EQUAL(std::string{ "Working" }, secondWindow.presentation->agentStatus);
+
+        state.snapshot.reset();
+        VERIFY_IS_FALSE(broker._UpdateFor(session.context.sessionId, session, {}, 1).presentation.has_value());
+        const auto statusWithoutGit = broker._UpdateFor(session.context.sessionId, session, {}, 2);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Restored" }, statusWithoutGit.presentation->text);
     }
 
     void RichTabProviderTests::BrokerClearsSnapshotAndSkipsExecutionWhenAllFieldsDeselected()

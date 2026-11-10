@@ -82,7 +82,7 @@ wta capture-pane -t 3 -l 50               # read the last 50 lines from pane 3
 wta new-tab -c "pwsh.exe" -n "Build"      # create a new tab
 wta split-pane -H                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
-wta sessions list                         # inspect sessions known to master
+wta sessions list --master <pipe>         # inspect sessions known to this master
 wta hooks install                         # ensure the agent-hook bridge is current
 wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
@@ -228,7 +228,7 @@ hand. For ad-hoc inspection, the CLI helpers work standalone inside a WT pane:
 wta pipe-id            # show the inherited WT_COM_CLSID
 wta list-windows       # talk to WT over COM
 wta capture-pane -l 5
-wta sessions list      # ask master for the session registry
+wta sessions list --master <pipe>  # ask the owning master for its session registry
 ```
 
 ---

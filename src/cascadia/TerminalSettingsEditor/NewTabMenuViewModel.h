@@ -53,7 +53,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CurrentFolderIconPath(const winrt::hstring& path);
         bool CurrentFolderUsingNoIcon() const noexcept;
 
-        Windows::Foundation::Collections::IObservableVector<Model::Profile> AvailableProfiles() const { return _Settings.AllProfiles(); }
+        Windows::Foundation::Collections::IObservableVector<Model::Profile> AvailableProfiles() const;
         Windows::Foundation::Collections::IObservableVector<Editor::FolderTreeViewEntry> FolderTree() const;
         Windows::Foundation::Collections::IObservableVector<Editor::FolderEntryViewModel> FolderTreeFlatList() const;
         Windows::Foundation::Collections::IObservableVector<Editor::NewTabMenuEntryViewModel> CurrentView() const;
@@ -69,6 +69,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::CascadiaSettings _Settings{ nullptr };
+        Windows::Foundation::Collections::IObservableVector<Model::Profile>::VectorChanged_revoker _profilesChangedRevoker;
         Windows::Foundation::Collections::IObservableVector<Editor::NewTabMenuEntryViewModel> _rootEntries;
         Windows::Foundation::Collections::IObservableVector<Editor::FolderTreeViewEntry> _folderTreeCache;
         Windows::Foundation::Collections::IObservableVector<Editor::NewTabMenuEntryViewModel>::VectorChanged_revoker _rootEntriesChangedRevoker;

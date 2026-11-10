@@ -410,6 +410,14 @@
     <value>PowerShell ఎగ్జిక్యూషన్ విధానం స్క్రిప్ట్‌లను నిరోధిస్తోంది.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>షెల్ పేన్</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>షెల్‌పై దృష్టి పెట్టడానికి Enter నొక్కండి.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>వినియోగం</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>టోకెన్‌లు</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>సందర్భ విండో</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -462,7 +470,8 @@
     <value>ట్యాబ్‌లను శోధించండి</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>ట్యాబ్‌లను శోధించండి</value>
+    <value>శోధన</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ట్యాబ్‌లను శోధించండి</value>
@@ -548,6 +557,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>సరిపోలే ఏజెంట్ సెషన్‌లు లేవు.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>మీ శోధనకు సరిపోలే తెరిచిన ట్యాబ్‌లు లేదా ఏజెంట్‌ల గత సెషన్‌లు లేవు.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ఏజెంట్ సెషన్‌లను లోడ్ చేయడం సాధ్యం కాలేదు.</value>
@@ -643,6 +656,10 @@
     <value>నిష్క్రియం</value>
     <comment>Agent History session status: the session is live but has no active work.</comment>
   </data>
+  <data name="VerticalTabsHistoryStatusComplete" xml:space="preserve">
+    <value>పూర్తయింది</value>
+    <comment>Status for an agent turn that finished while its tab was not focused. This unread completion marker is cleared when the tab receives focus.</comment>
+  </data>
   <data name="VerticalTabsHistoryStatusInUse" xml:space="preserve">
     <value>వినియోగంలో</value>
     <comment>Agent History session status: another application is using the session, which is not registered as live in Intelligent Terminal. Its detailed activity is not shown.</comment>
@@ -652,7 +669,7 @@
     <comment>Tooltip for a recent AI-agent session currently in use without a live Intelligent Terminal registration. Another application, rather than this terminal, has the session open.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusWorking" xml:space="preserve">
-    <value>సక్రియం</value>
+    <value>పని చేస్తోంది</value>
     <comment>Agent History session status: the agent is actively processing a request.</comment>
   </data>
   <data name="VerticalTabsHistoryStatusAttention" xml:space="preserve">
@@ -704,7 +721,7 @@
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
-    <value>నేపథ్యంలో అమలవుతున్న అన్ని ట్యాబ్‌లను మూసివేయి</value>
+    <value>హెడ్‌లెస్ మోడ్‌లో ఉన్న అన్ని ట్యాబ్‌లను మూసివేయి</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
@@ -725,7 +742,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>ట్యాబ్‌లు మరియు ఇటీవలి ఏజెంట్ సెషన్‌లను శోధించండి</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · మరో విండోలో</value>
@@ -739,6 +756,7 @@
   <data name="ExportTabText"><value>పాఠ్యాన్ని ఎగుమతి చేయండి</value></data>
   <data name="FindText"><value>శోధన</value></data>
   <data name="RestartConnectionText"><value>సెషన్‌ను పునఃప్రారంభించండి</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} పేన్‌లు</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>మూసివేయండి</value></data>
   <data name="TabClose"><value>ట్యాబ్‌ను మూసివేయండి</value></data>
   <data name="MoveTabToNewWindowText"><value>ట్యాబ్‌ను కొత్త విండోకు తరలించండి</value></data>
@@ -767,10 +785,22 @@
   </data>
   <data name="SidebarIntroductionTitle" xml:space="preserve">
     <value>ట్యాబ్‌లను నిర్వహించడానికి మరింత తెలివైన మార్గం</value>
-    <comment>Title of the once-only sidebar introduction teaching tip shown after the new default layout is available.</comment>
+    <comment>Title of the once-only sidebar introduction teaching tip: a smarter way to manage tabs.</comment>
   </data>
   <data name="SidebarIntroductionDescription" xml:space="preserve">
-    <value>మీ ట్యాబ్‌లు మరియు ఏజెంట్ సెషన్‌లు ఇప్పుడు సైడ్‌బార్‌లో ఉన్నాయి. ట్యాబ్ వివరాలను ఎంచుకోవడానికి సైడ్‌బార్ ప్రదర్శన ఎంపికలు ఉపయోగించండి. అడ్డంగా ఉండే ట్యాబ్‌లకు తిరిగి వెళ్లడానికి ట్యాబ్‌పై కుడి-క్లిక్ చేయండి.</value>
-    <comment>Body of the once-only sidebar introduction teaching tip. Sidebar display options refers to the sidebar toolbar button with that tooltip. Explain where to customize visible tab details and how to return to the horizontal tab layout using a tab's context menu. Agents means AI agents, not people.</comment>
+    <value>ట్యాబ్‌లు, ఏజెంట్ల కోసం మరిన్ని సౌకర్యాలు అందించే కొత్త సైడ్‌బార్‌ను పరిచయం చేసుకోండి. ట్యాబ్ మరియు ఏజెంట్ వీక్షణల మధ్య మారండి. అడ్డంగా ఉండే ట్యాబ్‌లకు తిరిగి వెళ్లడానికి ట్యాబ్‌పై కుడి-క్లిక్ చేయండి.</value>
+    <comment>Body of the once-only sidebar introduction teaching tip. Agents means AI agents, not people. Tab and agent views refer to the sidebar filters; right-click a tab to return to the horizontal layout.</comment>
+  </data>
+  <data name="SidebarIntroductionNewBadge" xml:space="preserve">
+    <value>కొత్త</value>
+    <comment>Short badge shown beside the sidebar introduction title to indicate the new sidebar.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionTitle" xml:space="preserve">
+    <value>ట్యాబ్‌లను నిర్వహించడానికి మరింత తెలివైన మార్గాలను ప్రయత్నించండి</value>
+    <comment>Title of the introduction tooltip shown in the horizontal tab layout. Invites the user to try the vertical tab layout for managing terminal tabs.</comment>
+  </data>
+  <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
+    <value>మీ ఏజెంట్ల కార్యకలాపాన్ని ఒక్క చూపులో చూడటానికి నిలువు ట్యాబ్‌లకు మారండి. ట్యాబ్‌పై కుడి-క్లిక్ చేసి, {0} ఎంచుకోండి.</value>
+    <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
 </root>

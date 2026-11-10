@@ -2218,7 +2218,9 @@ namespace SettingsModelUnitTests
         const auto actionMap = winrt::get_self<implementation::ActionMap>(settings->GlobalSettings().ActionMap());
         const auto actionsByName = actionMap->NameMap();
         VERIFY_IS_NOT_NULL(actionsByName.TryLookup(L"Test Action"));
-        VERIFY_IS_NULL(actionMap->GetActionByKeyChord({ VirtualKeyModifiers::Control, static_cast<int32_t>('F'), 0 }));
+        const auto binding = actionMap->GetActionByKeyChord({ VirtualKeyModifiers::Control, static_cast<int32_t>('F'), 0 });
+        VERIFY_IS_NOT_NULL(binding);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.TabSearch" }, binding.ID(), L"Fragments must not replace the default search shortcut");
     }
 
     void DeserializationTests::FragmentActionNested()

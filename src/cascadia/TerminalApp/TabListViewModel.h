@@ -134,7 +134,7 @@ namespace TerminalApp
                     return OwnerState{
                         owner.isAgent,
                         searchMatched,
-                        (!policy.displayAgentScopeEffective || owner.isAgent) && searchMatched,
+                        _IsDisplayed(owner, searchMatched),
                         navigable ? std::optional{ ordinal } : std::nullopt,
                         MoveTarget(identity, MoveDirection::Previous).has_value(),
                         MoveTarget(identity, MoveDirection::Next).has_value()
@@ -168,6 +168,34 @@ namespace TerminalApp
                 }
             }
             return last ? std::optional{ SwitchResult{ *last, true } } : std::nullopt;
+        }
+
+        [[nodiscard]] std::optional<Target> CycleDisplayedTarget(const void* identity, const bool forward) const noexcept
+        {
+            if (_owners.empty())
+            {
+                return std::nullopt;
+            }
+            auto index = forward ? _owners.size() - 1 : std::size_t{ 0 };
+            for (std::size_t candidate = 0; candidate < _owners.size(); ++candidate)
+            {
+                if (_owners[candidate].identity == identity)
+                {
+                    index = candidate;
+                    break;
+                }
+            }
+            for (std::size_t visited = 0; visited < _owners.size(); ++visited)
+            {
+                index = forward ? (index + 1 == _owners.size() ? 0 : index + 1) :
+                                  (index == 0 ? _owners.size() - 1 : index - 1);
+                const auto& owner = _owners[index];
+                if (_IsDisplayed(owner, _MatchesSearch(owner)))
+                {
+                    return Target{ owner.identity, owner.canonicalIndex };
+                }
+            }
+            return std::nullopt;
         }
 
         [[nodiscard]] std::optional<Target> MoveTarget(const void* identity, MoveDirection direction) const noexcept
@@ -254,6 +282,11 @@ namespace TerminalApp
         }
 
     private:
+        [[nodiscard]] bool _IsDisplayed(const OwnerEntry& owner, const bool searchMatched) const noexcept
+        {
+            return (!Policy().displayAgentScopeEffective || owner.isAgent) && searchMatched;
+        }
+
         [[nodiscard]] bool _MatchesSearch(const OwnerEntry& owner) const noexcept
         {
             if (!Policy().searchEffective || _criteria.query.empty())

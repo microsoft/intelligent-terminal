@@ -182,6 +182,18 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_HandleNextSidebarTab(const IInspectable& /*sender*/,
+                                             const ActionEventArgs& args)
+    {
+        args.Handled(_SelectAdjacentSidebarTab(true));
+    }
+
+    void TerminalPage::_HandlePrevSidebarTab(const IInspectable& /*sender*/,
+                                             const ActionEventArgs& args)
+    {
+        args.Handled(_SelectAdjacentSidebarTab(false));
+    }
+
     void TerminalPage::_HandleSendInput(const IInspectable& sender,
                                         const ActionEventArgs& args)
     {
@@ -338,11 +350,16 @@ namespace winrt::TerminalApp::implementation
             }
 
             contentArgs = _PrepareSplitDirectory(activeTab, contentArgs, duplicateFromTab != nullptr);
+            const auto previousSource = std::exchange(_sidebarLaunchSource,
+                                                      _isVerticalLayout && _isVerticalRailVisible && _startupActionReplayDepth == 0 ? "split" : "other");
+            auto restoreSource = wil::scope_exit([&]() noexcept { _sidebarLaunchSource = previousSource; });
+            const auto pane = _MakePane(contentArgs, duplicateFromTab);
+            restoreSource.reset();
             args.Handled(_SplitPane(activeTab,
-                                   realArgs.SplitDirection(),
-                                   // This is safe, we're already filtering so the value is (0, 1)
-                                   realArgs.SplitSize(),
-                                   _MakePane(contentArgs, duplicateFromTab)));
+                                    realArgs.SplitDirection(),
+                                    // This is safe, we're already filtering so the value is (0, 1)
+                                    realArgs.SplitSize(),
+                                    pane));
         }
     }
 
@@ -705,17 +722,10 @@ namespace winrt::TerminalApp::implementation
         args.Handled(res);
     }
 
-    void TerminalPage::_HandleToggleSidebar(const IInspectable& sender,
+    void TerminalPage::_HandleToggleSidebar(const IInspectable& /*sender*/,
                                             const ActionEventArgs& args)
     {
-        if (sender.try_as<KeyChord>())
-        {
-            _ToggleSidebarHotkey();
-        }
-        else
-        {
-            _OnVerticalRailCollapseRequested(nullptr, nullptr);
-        }
+        _OnVerticalRailCollapseRequested(nullptr, nullptr);
         args.Handled(true);
     }
 
@@ -985,13 +995,29 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_HandleTabSearch(const IInspectable& /*sender*/,
+    void TerminalPage::_HandleTabSearch(const IInspectable& sender,
                                         const ActionEventArgs& args)
     {
-        const auto p = LoadCommandPalette();
-        p.SetTabs(_tabs, _mruTabs);
-        p.EnableTabSearchMode();
-        p.Visibility(Visibility::Visible);
+        const auto previousKeyboardAction = std::exchange(_sidebarKeyboardAction, sender.try_as<KeyChord>() != nullptr);
+        const auto restoreKeyboardAction = wil::scope_exit([&]() noexcept { _sidebarKeyboardAction = previousKeyboardAction; });
+        if (_isVerticalLayout && _isVerticalRailVisible)
+        {
+            if (_isVerticalRailCollapsed)
+            {
+                _OnVerticalRailCollapseRequested(nullptr, nullptr);
+            }
+            if (!winrt::get_self<implementation::TabStrip>(_tabStrip)->FocusTabSearch())
+            {
+                LOG_HR(E_FAIL);
+            }
+        }
+        else
+        {
+            const auto p = LoadCommandPalette();
+            p.SetTabs(_tabs, _mruTabs);
+            p.EnableTabSearchMode();
+            p.Visibility(Visibility::Visible);
+        }
 
         args.Handled(true);
     }
@@ -1808,13 +1834,15 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleToggleSidebarAgentsOnly(const IInspectable&, const ActionEventArgs& args)
+    void TerminalPage::_HandleToggleSidebarAgentsOnly(const IInspectable& sender, const ActionEventArgs& args)
     {
         if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
         {
             args.Handled(false);
             return;
         }
+        const auto previousMethod = std::exchange(_sidebarViewMethod, sender.try_as<KeyChord>() ? "keyboard" : "action");
+        const auto restoreMethod = wil::scope_exit([&]() noexcept { _sidebarViewMethod = previousMethod; });
         const auto filters = _tabStrip.SidebarFilters();
         filters.ShowAgentsOnly(!filters.ShowAgentsOnly());
         if (filters.ShowAgentsOnly() && _isVerticalRailCollapsed)
@@ -1824,13 +1852,15 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleToggleSidebarRecentAgentSessions(const IInspectable&, const ActionEventArgs& args)
+    void TerminalPage::_HandleToggleSidebarRecentAgentSessions(const IInspectable& sender, const ActionEventArgs& args)
     {
         if (!_isVerticalLayout || !_isVerticalRailVisible || !_tabStrip)
         {
             args.Handled(false);
             return;
         }
+        const auto previousMethod = std::exchange(_sidebarViewMethod, sender.try_as<KeyChord>() ? "keyboard" : "action");
+        const auto restoreMethod = wil::scope_exit([&]() noexcept { _sidebarViewMethod = previousMethod; });
         const auto filters = _tabStrip.SidebarFilters();
         filters.ShowRecentAgentSessions(!filters.ShowRecentAgentSessions());
         if (filters.ShowRecentAgentSessions() && _isVerticalRailCollapsed)

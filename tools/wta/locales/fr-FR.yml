@@ -133,7 +133,7 @@ agent.custom.auth_hint: "Assurez-vous que %{name} est installé et se trouve dan
 agents.loading: "Chargement..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - combinaisons de touches, ne pas traduire
 agents.footer_hint: "(↑ ↓ naviguer • Enter lancer la session • Esc quitter • F5 actualiser • / rechercher)"
-agents.status.active: "Actif"
+agents.status.active: "En cours"
 agents.status.waiting_for_input: "En attente de saisie"
 agents.status.error: "Erreur"
 agents.status.idle: "Inactif"

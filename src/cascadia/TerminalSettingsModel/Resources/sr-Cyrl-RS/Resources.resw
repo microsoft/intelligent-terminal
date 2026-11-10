@@ -313,6 +313,14 @@
   <data name="NextTabCommandKey" xml:space="preserve">
     <value>Наредна картица</value>
   </data>
+  <data name="NextSidebarTabCommandKey" xml:space="preserve">
+    <value>Наредна видљива картица на бочној траци</value>
+    <comment>Command that activates the next currently displayed open tab in the vertical sidebar, wrapping from last to first. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
+  <data name="PrevSidebarTabCommandKey" xml:space="preserve">
+    <value>Претходна видљива картица на бочној траци</value>
+    <comment>Command that activates the previous currently displayed open tab in the vertical sidebar, wrapping from first to last. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
     <value>Отвори датотеке подешавања и подразумеваних подешавања (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>

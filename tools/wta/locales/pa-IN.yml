@@ -146,7 +146,7 @@ agent.custom.auth_hint: "ਯਕੀਨੀ ਬਣਾਓ ਕਿ %{name} ਇੰਸ�
 agents.loading: "ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - ਕੀ ਸੰਯੋਜਨ, ਅਨੁਵਾਦ ਨਾ ਕਰੋ
 agents.footer_hint: "(↑ ↓ ਨੈਵੀਗੇਟ ਕਰੋ • Enter ਸੈਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ • Esc ਬਾਹਰ ਨਿਕਲੋ • F5 ਤਾਜ਼ਾ ਕਰੋ • / ਖੋਜੋ)"
-agents.status.active: "ਸਰਗਰਮ"
+agents.status.active: "ਕੰਮ ਕਰ ਰਿਹਾ ਹੈ"
 agents.status.waiting_for_input: "ਇਨਪੁਟ ਦੀ ਉਡੀਕ"
 agents.status.error: "ਗਲਤੀ"
 agents.status.idle: "ਵਿਹਲਾ"

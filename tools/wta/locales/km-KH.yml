@@ -143,7 +143,7 @@ agents.loading: "កំពុងផ្ទុក..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គ • Esc ដើម្បីចាកចេញ • F5 ដើម្បីផ្ទុកឡើងវិញ • / ដើម្បីស្វែងរក)"
 # Status badge when agent session is actively processing
-agents.status.active: "សកម្ម"
+agents.status.active: "កំពុងធ្វើការ"
 agents.status.waiting_for_input: "រង់ចាំការបញ្ចូល"
 # Status badge when agent session encountered an error
 agents.status.error: "កំហុស"

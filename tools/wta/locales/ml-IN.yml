@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} ഇന്‍സ്റ്റാള്‍ ചെ�
 agents.loading: "ലോഡ് ചെയ്യുന്നു..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - കീ കോമ്പിനേഷനുകള്‍, വിവര്‍ത്തനം ചെയ്യരുത്
 agents.footer_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യുക • Enter സെഷന്‍ ആരംഭിക്കുക • Esc പുറത്തുകടക്കുക • F5 പുതുക്കുക • / തിരയുക)"
-agents.status.active: "സജീവം"
+agents.status.active: "പ്രവർത്തിക്കുന്നു"
 agents.status.waiting_for_input: "ഇന്‍പുട്ടിനായി കാത്തിരിക്കുന്നു"
 agents.status.error: "പിശക്"
 agents.status.idle: "നിഷ്ക്രിയം"

@@ -146,7 +146,7 @@ namespace ItE2E {
         $script:pane = $panes[0].session_id
         $script:app | Add-Member -NotePropertyName WindowId -NotePropertyValue $panes[0].window_id
         $script:app.OwnedPaneIds.Add($script:pane)
-        $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw -ErrorAction Stop).Trim()
+        $script:pipe = Get-WtaMasterPipe -App $script:app
         $script:liveId = "$script:marker-current"
         $script:historyId = "$script:marker-ended"
         $script:hookFixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Emit-SidebarSessionHooks.ps1')).Path

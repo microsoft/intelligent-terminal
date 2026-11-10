@@ -52,7 +52,9 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, bool, SidebarIntroductionShown, "sidebarIntroductionShown", false)                                                                              \
     X(FileSource::Shared, winrt::guid, FeatureRolloutId, "featureRolloutId")                                                                                              \
     X(FileSource::Shared, uint32_t, SidebarRolloutVersion, "sidebarRolloutVersion", 0)                                                                                    \
-    X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")
+    X(FileSource::Shared, winrt::hstring, SidebarRolloutAssignment, "sidebarRolloutAssignment")                                                                           \
+    X(FileSource::Shared, bool, AgentProfilesIntroductionShown, "agentProfilesIntroductionShown", false)                                                                  \
+    X(FileSource::Shared, bool, SidebarRecentSessionsExpanded, "sidebarRecentSessionsExpanded", false)
 
     struct WindowLayout : WindowLayoutT<WindowLayout>
     {
@@ -95,6 +97,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
         uint64_t TryBeginSidebarIntroduction();
         void EndSidebarIntroduction(uint64_t claim, bool shown);
+        uint64_t TryBeginAgentProfilesIntroduction();
+        void EndAgentProfilesIntroduction(uint64_t claim, bool dismissed);
 
         // Hold this lock across reading settings, migration, and recording completion.
         wil::unique_handle LockSidebarState(bool wait = true) const;
@@ -114,13 +118,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     void name(const type& value) noexcept;
         MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)
 #undef MTSM_APPLICATION_STATE_GEN
-
     private:
         struct state_t
         {
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) std::optional<type> name{ __VA_ARGS__ };
             MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)
 #undef MTSM_APPLICATION_STATE_GEN
+            std::optional<bool> PendingSidebarRecentSessionsExpanded;
+            uint64_t SidebarRecentSessionsExpansionRevision{ 0 };
         };
         til::shared_mutex<state_t> _state;
         std::filesystem::path _sharedPath;
@@ -130,13 +135,17 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         wil::unique_handle _sidebarIntroductionLock;
         uint64_t _sidebarIntroductionClaim{ 0 };
         bool _sidebarIntroductionPresented{ false };
+        wil::unique_handle _agentProfilesIntroductionLock;
+        uint64_t _agentProfilesIntroductionClaim{ 0 };
+        bool _agentProfilesIntroductionDismissed{ false };
 
         void _write() noexcept;
         void _read() const noexcept;
         Json::Value _readSharedJson() const;
         bool _hasValidSidebarRollout() const noexcept;
+        wil::unique_handle _lockSidebarFile(std::wstring_view suffix, bool wait) const;
         void _persistSidebarFlag(std::string_view key) const;
-        static void _preserveSidebarFlags(Json::Value& root, const Json::Value& previous);
+        static void _preserveSidebarFlags(Json::Value& root, const Json::Value& previous, std::optional<bool> expanded);
 
         Json::Value _toJsonWithBlob(Json::Value& root, FileSource parseSource) const noexcept;
 

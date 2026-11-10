@@ -45,7 +45,7 @@ Author(s):
     X(Model::TabLayout, TabLayout, "tabLayout", Model::TabLayout::Vertical)                                                                                                                           \
     X(int32_t, TabLayoutVerticalWidth, "tabLayoutVerticalWidth", 220)                                                                                                                                 \
     X(bool, SidebarShowAgentsOnly, "sidebarShowAgentsOnly", false)                                                                                                                                   \
-    X(bool, SidebarShowRecentAgentSessions, "sidebarShowRecentAgentSessions", false)                                                                                                                  \
+    X(bool, SidebarShowRecentAgentSessions, "sidebarShowRecentAgentSessions", true)                                                                                                                   \
     X(bool, UseAcrylicInTabRow, "useAcrylicInTabRow", false)                                                                                                                                          \
     X(bool, ShowTabsInTitlebar, "showTabsInTitlebar", true)                                                                                                                                           \
     X(bool, InputServiceWarning, "warning.inputService", true)                                                                                                                                        \

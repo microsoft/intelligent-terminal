@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <json/json.h>
 
 namespace TerminalApp::AgentSessionTelemetry
@@ -45,7 +46,25 @@ namespace TerminalApp::AgentSessionTelemetry
         const char* automaticYolo;
         bool yoloPolicyBlocked;
         const char* yoloControlOwner;
+        std::string telemetrySessionId;
     };
+
+    inline std::string ParseTelemetrySessionId(const Json::Value& value)
+    {
+        if (!value.isString())
+        {
+            return {};
+        }
+        const auto candidate = value.asString();
+        bool valid = candidate.size() == 36;
+        for (size_t i = 0; valid && i < candidate.size(); ++i)
+        {
+            const auto c = candidate[i];
+            valid = (i == 8 || i == 13 || i == 18 || i == 23) ? c == '-' :
+                                                                ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+        }
+        return valid ? candidate : std::string{};
+    }
 
     inline std::optional<Start> Parse(const Json::Value& value)
     {
@@ -83,6 +102,7 @@ namespace TerminalApp::AgentSessionTelemetry
             value["automatic_yolo"].isNull() ? "provider" : (value["automatic_yolo"].asBool() ? "enabled" : "disabled"),
             value["yolo_policy_blocked"].asBool(),
             Bucket<char>(value["yolo_control_owner"].asString(), { "automatic", "manual", "provider-restored" }, "unknown"),
+            ParseTelemetrySessionId(value["telemetry_session_id"]),
         };
     }
 }

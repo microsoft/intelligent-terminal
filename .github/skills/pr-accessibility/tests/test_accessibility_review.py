@@ -1591,6 +1591,37 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not match immutable"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
+    def test_detailed_review_reports_exact_uncovered_and_uncited_files(self):
+        relative = "src/cascadia/TerminalApp/Test2.xaml"
+        prepared = json.loads(self.prepared.read_text())
+        prepared["changed_files"].append(relative)
+        self.prepared.write_text(json.dumps(prepared))
+        report = self.report([self.finding(disposition="remaining")])
+        data = json.loads(report.read_text())
+        for check in data["review_checks"]:
+            check["files"].remove(relative)
+            check["evidence"] = [citation for citation in check["evidence"] if citation["file"] != relative]
+        report.write_text(json.dumps(data))
+        with self.assertRaises(ValueError) as raised:
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+        self.assertIn("uncovered classified files: " + relative, str(raised.exception))
+        self.assertIn("uncited classified files: " + relative, str(raised.exception))
+
+    def test_file_coverage_does_not_replace_exact_changed_file_citations(self):
+        relative = "src/cascadia/TerminalApp/Test2.xaml"
+        prepared = json.loads(self.prepared.read_text())
+        prepared["changed_files"].append(relative)
+        self.prepared.write_text(json.dumps(prepared))
+        report = self.report([self.finding(disposition="remaining")])
+        data = json.loads(report.read_text())
+        for check in data["review_checks"]:
+            check["evidence"] = [citation for citation in check["evidence"] if citation["file"] != relative]
+        report.write_text(json.dumps(data))
+        with self.assertRaises(ValueError) as raised:
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+        self.assertNotIn("uncovered classified files:", str(raised.exception))
+        self.assertIn("uncited classified files: " + relative, str(raised.exception))
+
     def test_model_cannot_mark_a_review_dimension_as_runtime_pass(self):
         report = self.report([self.finding(disposition="remaining")])
         data = json.loads(report.read_text())
@@ -1602,6 +1633,16 @@ class ValidationTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("node"), "Node required for trusted report scenarios")
 class WorkflowContractTests(unittest.TestCase):
+    def test_exact_citation_prompt_preserves_compact_no_finding_exception(self):
+        root = Path(__file__).parents[4]
+        workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("When detailed `review_checks` are included or actual findings exist", workflow)
+        self.assertIn("it does not need per-file citation records", workflow)
+        self.assertIn("Check all changed locales", workflow)
+        self.assertIn("Companion citations do not replace", workflow)
+        self.assertIn("prepared-signal coverage, reviewed-source identity", workflow)
+        self.assertNotIn("Before requesting completion or publication, check every", workflow)
+
     def test_agent_summary_is_written_from_template_and_displayed_unchanged(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
@@ -1772,7 +1813,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("$dependency.MinVersion", harness)
         self.assertIn("[version]$_.Version -ge [version]$dependency.MinVersion", harness)
         self.assertIn("Wait-VisibleElement", scan)
-        self.assertIn("'TabModeComboBox'", scan)
+        self.assertIn("'AgentComboBox'", scan)
         self.assertIn("'uia-tree.json'", scan)
 
 

@@ -50,6 +50,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentActionsParse);
         TEST_METHOD(SidebarActionRoundTrip);
         TEST_METHOD(SidebarKeybindingsRespectOverrides);
+        TEST_METHOD(SidebarNavigationKeybindingsRespectOverrides);
     };
 
     void KeyBindingsTests::KeyChords()
@@ -920,8 +921,13 @@ namespace SettingsModelUnitTests
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
         verifyBinding(L"ctrl+shift+s", L"Terminal.ToggleSidebar");
+        verifyBinding(L"ctrl+f", L"Terminal.TabSearch");
+        verifyBinding(L"ctrl+shift+f", L"Terminal.FindText");
         verifyBinding(L"ctrl+shift+g", L"Terminal.ToggleSidebarAgentsOnly");
-        verifyBinding(L"ctrl+shift+r", L"Terminal.ToggleSidebarRecentAgentSessions");
+        verifyBinding(L"ctrl+alt+down", L"Terminal.NextSidebarTab");
+        verifyBinding(L"ctrl+alt+up", L"Terminal.PrevSidebarTab");
+        verifyBinding(L"ctrl+tab", L"Terminal.NextTab");
+        verifyBinding(L"ctrl+shift+tab", L"Terminal.PrevTab");
     }
 
     void KeyBindingsTests::AgentActionsParse()
@@ -969,6 +975,7 @@ namespace SettingsModelUnitTests
     void KeyBindingsTests::SidebarActionRoundTrip()
     {
         VERIFY_ARE_EQUAL(101, static_cast<int32_t>(ShortcutAction::SaveSnippet), L"Existing action ABI values must not move");
+        VERIFY_ARE_EQUAL(104, static_cast<int32_t>(ShortcutAction::ToggleSidebarRecentAgentSessions), L"New navigation actions must follow existing public actions");
         struct testCase
         {
             const char* command;
@@ -979,6 +986,8 @@ namespace SettingsModelUnitTests
             testCase{ "toggleSidebar", ShortcutAction::ToggleSidebar, L"User.toggleSidebar" },
             testCase{ "toggleSidebarAgentsOnly", ShortcutAction::ToggleSidebarAgentsOnly, L"User.toggleSidebarAgentsOnly" },
             testCase{ "toggleSidebarRecentAgentSessions", ShortcutAction::ToggleSidebarRecentAgentSessions, L"User.toggleSidebarRecentAgentSessions" },
+            testCase{ "nextSidebarTab", ShortcutAction::NextSidebarTab, L"User.nextSidebarTab" },
+            testCase{ "prevSidebarTab", ShortcutAction::PrevSidebarTab, L"User.prevSidebarTab" },
         };
         for (const auto& test : cases)
         {
@@ -1050,6 +1059,51 @@ namespace SettingsModelUnitTests
                 VERIFY_IS_NOT_NULL(command);
                 VERIFY_ARE_EQUAL(test.expectedAction, command.ActionAndArgs().Action());
             }
+        }
+    }
+
+    void KeyBindingsTests::SidebarNavigationKeybindingsRespectOverrides()
+    {
+        struct testCase
+        {
+            const wchar_t* chord;
+            const char* commandId;
+            ShortcutAction action;
+        };
+        const std::array cases{
+            testCase{ L"ctrl+alt+down", "Terminal.NextSidebarTab", ShortcutAction::NextSidebarTab },
+            testCase{ L"ctrl+alt+up", "Terminal.PrevSidebarTab", ShortcutAction::PrevSidebarTab },
+        };
+        for (const auto& test : cases)
+        {
+            const auto settings = CascadiaSettings::LoadDefaults();
+            const auto map = winrt::get_self<implementation::ActionMap>(settings.ActionMap());
+            const auto chord = KeyChordSerialization::FromString(test.chord);
+            VERIFY_ARE_EQUAL(test.action, map->GetActionByKeyChord(chord).ActionAndArgs().Action());
+
+            Json::Value bindings{ Json::arrayValue };
+            Json::Value alias{ Json::objectValue };
+            alias["id"] = test.commandId;
+            alias["keys"] = "ctrl+shift+y";
+            bindings.append(alias);
+            map->LayerJson(bindings, OriginTag::User);
+            const auto custom = KeyChordSerialization::FromString(L"ctrl+shift+y");
+            VERIFY_ARE_EQUAL(test.action, map->GetActionByKeyChord(custom).ActionAndArgs().Action());
+            map->DeleteKeyBinding(chord);
+            VERIFY_IS_NULL(map->GetActionByKeyChord(chord));
+            VERIFY_IS_TRUE(map->IsKeyChordExplicitlyUnbound(chord));
+            VERIFY_ARE_EQUAL(test.action, map->GetActionByKeyChord(custom).ActionAndArgs().Action());
+
+            bindings.clear();
+            Json::Value replacement{ Json::objectValue };
+            replacement["id"] = test.commandId;
+            replacement["command"] = "copy";
+            bindings.append(replacement);
+            map->LayerJson(bindings, OriginTag::User);
+            VERIFY_ARE_EQUAL(ShortcutAction::CopyText, map->GetActionByKeyChord(custom).ActionAndArgs().Action());
+            VERIFY_IS_NULL(map->GetActionByKeyChord(chord));
+            map->RegisterKeyBinding(chord, { ShortcutAction::PasteText, nullptr });
+            VERIFY_ARE_EQUAL(ShortcutAction::PasteText, map->GetActionByKeyChord(chord).ActionAndArgs().Action());
         }
     }
 

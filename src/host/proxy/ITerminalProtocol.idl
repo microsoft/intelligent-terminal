@@ -110,4 +110,7 @@ import "unknwn.idl";
                            [in] long maxLines,
                            [in] long maxCharacters,
                            [out, retval] BSTR* json);
+
+    // Appended in protocol 2.4. Query capability support before calling.
+    HRESULT ListProfiles([out, retval] BSTR* json);
 };

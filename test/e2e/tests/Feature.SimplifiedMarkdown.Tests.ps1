@@ -7,8 +7,11 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-        if ((Get-ItTestPackage) -ne 'Dev') { throw 'Select the intended Dev package explicitly.' }
-        $script:target = Resolve-ItApp -Package Dev
+        $package = Get-ItTestPackage
+        if ($package -ne 'Dev' -and $package -notmatch '^IntelligentTerminal\.Worktree\.[A-Za-z][A-Za-z0-9]{0,20}_rd9vj3e6a2mbr$') {
+            throw 'Select the intended Dev or isolated worktree package explicitly.'
+        }
+        $script:target = Resolve-ItApp -Package $package
         foreach ($pair in @(@('WtaPath', 'ITE2E_EXPECTED_WTA_SHA256'), @('App', 'ITE2E_EXPECTED_APP_SHA256'))) {
             $expected = [Environment]::GetEnvironmentVariable($pair[1])
             if (-not $expected) { throw "An exact-build receipt is required: $($pair[1])" }
@@ -190,7 +193,7 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
                     }
                 )
             }
-            $script:app = Start-Terminal -Package Dev -Settings $settings -ShowFre:$Fre -State $state
+            $script:app = Start-Terminal -Package $script:target.Package -Settings $settings -ShowFre:$Fre -State $state
             $script:app | Add-Member -NotePropertyName RequireOwnedForeground -NotePropertyValue $true -Force
             if (-not $Fre) { Bind-MarkdownPane -SavedHistory:$SavedHistory }
         }
@@ -200,17 +203,7 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
             $script:app.OwnedProcess.HasExited | Should -BeFalse
             $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]$script:app.Hwnd)
             $root.Current.ProcessId | Should -Be $script:app.Pid
-            $button = $root.FindFirst(
-                [Windows.Automation.TreeScope]::Descendants,
-                [Windows.Automation.PropertyCondition]::new(
-                    [Windows.Automation.AutomationElement]::AutomationIdProperty, 'NewTabButton'))
-            $button | Should -Not -BeNullOrEmpty
-            $button.Current.ProcessId | Should -Be $script:app.Pid
-            $button.Current.IsOffscreen | Should -BeFalse
-            $pattern = $button.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
-            $pattern.Expand()
-            Invoke-UiElement -App $script:app -Selector Settings | Out-Null
-            Wait-UiElement -App $script:app -Selector SettingsNav | Should -Not -BeNullOrEmpty
+            Open-WtSettings -App $script:app | Out-Null
         }
 
         function Start-MarkdownReply {
@@ -470,29 +463,26 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
         (Get-FileHash -LiteralPath $script:historyPath).Hash | Should -Be $historyHash
     }
 
-    It 'FRE and Settings share a live Markdown preference without restarting the session' {
+    It 'FRE preserves Markdown and Settings changes it without restarting the session' {
         Start-MarkdownScenario -Enabled $false -Fre
         Invoke-UiElement -App $script:app -Selector NextButton -TimeoutSec 15 | Out-Null
-        $toggle = Get-UiElement -App $script:app -Selector RenderAgentMarkdownToggle
-        $toggle | Should -Not -BeNullOrEmpty
-        $toggle.name | Should -Be 'Markdown formatting'
-        $toggle.toggleState | Should -Be 'off' -Because 'FRE must load the saved preference'
+        Test-UiElementExists -App $script:app -Selector RenderAgentMarkdownToggle -TimeoutSec 1 |
+            Should -BeFalse -Because 'FRE must not offer the Markdown display preference'
         Save-UiScreenshot -App $script:app -Path (Join-Path $script:evidenceDirectory 'fre.png') | Out-Null
-        Invoke-UiElement -App $script:app -Selector RenderAgentMarkdownToggle | Out-Null
         Invoke-UiElement -App $script:app -Selector SaveButton | Out-Null
         Wait-Until -TimeoutSec 60 -Because 'FRE to save the preference and finish setup' -Condition {
             -not (Test-FreShowing -App $script:app) -and (Get-FreCompleted -App $script:app)
         } | Out-Null
-        Assert-Setting -App $script:app -Key renderAgentMarkdown -Value $true
+        Assert-Setting -App $script:app -Key renderAgentMarkdown -Value $false
         Bind-MarkdownPane
         $marker = 'QUEUE_HOLD_MD_SETTINGS_' + $script:runId.Substring(0, 6).ToUpperInvariant()
         $null = Start-MarkdownReply -Marker $marker
         Wait-MarkdownText -Literal '**MD_BOLD**'
         Open-MarkdownGate "$marker.release"
         $null = Wait-MarkdownRecord -Kind completion -Marker $marker
-        Wait-MarkdownText -Literal MD_BOLD -Formatted
+        Wait-MarkdownText -Literal '**MD_BOLD**'
         $identity = Get-MarkdownIdentity
-        foreach ($enabled in @($false, $true)) {
+        foreach ($enabled in @($true, $false)) {
             Open-MarkdownSettings
             Invoke-SettingsNav -App $script:app -NavItem AIAgentsNavItem | Out-Null
             $toggle = Get-UiElement -App $script:app -Selector RenderAgentMarkdownToggle

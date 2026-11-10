@@ -43,17 +43,8 @@ Describe 'Feature: packaged OpenCode hook lifecycle' -Tag 'Feature', 'OpenCodeHo
             tabMode = 'horizontal'
         }
         $script:pane = (Get-ActivePane -App $script:app).session_id
-        $pipeFile = Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
         $script:pipe = Wait-Until -TimeoutSec 45 -Because 'the owned package master pipe' -Condition {
-            if (-not (Test-Path -LiteralPath $pipeFile)) { return $null }
-            $candidate = (Get-Content -LiteralPath $pipeFile -Raw).Trim()
-            if ([string]::IsNullOrWhiteSpace($candidate)) { return $null }
-            $masters = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($script:app.Pid) AND Name='wta.exe'" |
-                Where-Object {
-                    $_.ExecutablePath -eq $script:app.WtaPath -and $_.CommandLine -match '\s--master\s' -and
-                    $_.CommandLine.Contains($candidate)
-                })
-            if ($masters.Count -ne 1) { return $null }
+            $candidate = Get-WtaMasterPipe -App $script:app -TimeoutSec 0
             $probe = Invoke-Wta -App $script:app -Arguments @(
                 'sessions', 'list', '--master', $candidate, '--json', '--include-status'
             ) -Raw

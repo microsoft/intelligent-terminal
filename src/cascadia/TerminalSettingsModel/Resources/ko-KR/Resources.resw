@@ -313,6 +313,14 @@
   <data name="NextTabCommandKey" xml:space="preserve">
     <value>다음 탭</value>
   </data>
+  <data name="NextSidebarTabCommandKey" xml:space="preserve">
+    <value>사이드바에 표시된 다음 탭</value>
+    <comment>Command that activates the next currently displayed open tab in the vertical sidebar, wrapping from last to first. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
+  <data name="PrevSidebarTabCommandKey" xml:space="preserve">
+    <value>사이드바에 표시된 이전 탭</value>
+    <comment>Command that activates the previous currently displayed open tab in the vertical sidebar, wrapping from first to last. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
     <value>설정 및 기본 설정 파일 모두 열기(JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>

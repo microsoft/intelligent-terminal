@@ -147,7 +147,7 @@ agent.custom.auth_hint: "নিশ্চিত করুন যে %{name} ই�
 agents.loading: "লোড হচ্ছে..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - কী সংমিশ্রণ, অনুবাদ করবেন না
 agents.footer_hint: "(↑ ↓ নেভিগেট করুন • Enter সেশন চালু করুন • Esc প্রস্থান • F5 রিফ্রেশ করুন • / অনুসন্ধান করুন)"
-agents.status.active: "সক্রিয়"
+agents.status.active: "কাজ করছে"
 agents.status.waiting_for_input: "ইনপুটের জন্য অপেক্ষা"
 agents.status.error: "ত্রুটি"
 agents.status.idle: "নিষ্ক্রিয়"

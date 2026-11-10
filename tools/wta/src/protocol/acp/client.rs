@@ -660,7 +660,7 @@ fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
 
-fn acp_error_detail(error: &acp::Error) -> String {
+pub(crate) fn acp_error_detail(error: &acp::Error) -> String {
     error
         .data
         .as_ref()
@@ -2974,6 +2974,12 @@ async fn handle_load_failure(
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&resp);
             record_native_yolo(&resp, &client_state);
+            publish_session_telemetry_binding(
+                &event_tx,
+                &client_state.prompt_timing,
+                &current_tab_id,
+                new_sid.0.as_ref(),
+            );
             let _ = event_tx.send(AppEvent::SessionAttached {
                 tab_id: current_tab_id,
                 session_id: new_sid.to_string(),
@@ -3040,6 +3046,7 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
+    retry_startup: bool,
     requested_authentication: Option<
         crate::protocol::acp::authentication::AcpAuthenticationAttempt,
     >,
@@ -3371,13 +3378,16 @@ pub async fn run_acp_client_over_pipe(
                 },
                 cloud_models_source: (!supplied_cloud_models.is_empty())
                     .then(|| "helper".to_string()),
+                startup_intent: (retry_startup || post_login_reconnect)
+                    .then(|| "retry".to_string()),
                 ..Default::default()
             },
         );
         req
     };
     let init_future = conn.initialize(init_request);
-    let init_result = tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
+    let init_result =
+        tokio::time::timeout(crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT, init_future).await;
     log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);
     let mut init_resp = init_result
         .map_err(|_| {
@@ -3385,11 +3395,12 @@ pub async fn run_acp_client_over_pipe(
                 target: "helper",
                 step = "acp_initialize",
                 pipe = %pipe_name,
-                "ACP initialize over master pipe timed out after 60s — wta-master did not respond"
+                timeout_secs = crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT.as_secs(),
+                "ACP startup over master pipe exceeded its overall deadline"
             );
             anyhow::anyhow!(
-                "ACP initialize over master pipe timed out after 60s — \
-             wta-master did not respond"
+                "ACP startup over master pipe timed out after {}s — wta-master did not respond",
+                crate::agent_lifecycle::HELPER_STARTUP_TIMEOUT.as_secs()
             )
         })?
         .map_err(|e| {
@@ -3400,11 +3411,8 @@ pub async fn run_acp_client_over_pipe(
                 error = %e,
                 "ACP initialize over master pipe failed"
             );
-            anyhow::Error::new(AgentFailure::HandshakeFailed {
-                stage: HandshakeStage::Initialize,
-                detail: acp_error_detail(&e),
-            })
-            .context("initialize over master pipe failed")
+            anyhow::Error::new(AgentFailure::from_initialize_error(&e))
+                .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
     if let Some(scope) = wta_meta
@@ -3868,6 +3876,15 @@ pub async fn run_acp_client_over_pipe(
         "Agent capabilities (over pipe): loadSession={} image={}",
         load_session_supported, image_supported
     ));
+    let initial_tab_key = owner_tab_id.clone().unwrap_or_else(|| "0".to_string());
+    if has_bootstrap {
+        publish_session_telemetry_binding(
+            &event_tx,
+            &prompt_timing,
+            &initial_tab_key,
+            session_id.0.as_ref(),
+        );
+    }
     let _ = event_tx.send(AppEvent::AgentConnected {
         name: agent_name,
         // We have no `--agent` cmdline to mine a model identifier
@@ -3902,7 +3919,6 @@ pub async fn run_acp_client_over_pipe(
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     if has_bootstrap {
         let mut g = tab_to_session.lock().await;
-        let initial_tab_key = owner_tab_id.clone().unwrap_or_else(|| "0".to_string());
         g.insert(initial_tab_key, session_id.clone());
     }
 
@@ -4807,6 +4823,12 @@ fn dispatch_load_session_with_aliases(
                 // restored conversation speaks for itself, and the in-pane
                 // resuming indicator ends when this event clears
                 // `loading_session`.
+                publish_session_telemetry_binding(
+                    &event_tx,
+                    &client_state.prompt_timing,
+                    &current_tab_id,
+                    session_id.0.as_ref(),
+                );
                 let _ = event_tx.send(AppEvent::SessionAttached {
                     tab_id: current_tab_id,
                     session_id: session_id.to_string(),
@@ -5082,6 +5104,12 @@ fn dispatch_new_session_with_aliases(
             .await
             .insert(current_tab_id.clone(), new_sid.clone());
 
+        publish_session_telemetry_binding(
+            &event_tx,
+            &client_state.prompt_timing,
+            &current_tab_id,
+            new_sid.0.as_ref(),
+        );
         let _ = event_tx.send(AppEvent::SessionAttached {
             tab_id: current_tab_id,
             session_id: new_sid.to_string(),
@@ -5445,6 +5473,19 @@ async fn complete_transport_shutdown(
     exit
 }
 
+fn publish_session_telemetry_binding(
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    timing: &PromptTimingState,
+    tab_id: &str,
+    session_id: &str,
+) {
+    let _ = event_tx.send(AppEvent::SessionTelemetryBound {
+        tab_id: tab_id.to_string(),
+        session_id: session_id.to_string(),
+        observation_id: timing.observation_id(session_id),
+    });
+}
+
 fn publish_prompt_cancellation_settled(
     cleanup: &mut PromptDispatchCleanup,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
@@ -5740,6 +5781,12 @@ async fn dispatch_prompt_body(
                 .lock()
                 .await
                 .insert(current_tab_key.clone(), new_sid.clone());
+            publish_session_telemetry_binding(
+                &event_tx_task,
+                &prompt_timing_task,
+                &current_tab_key,
+                new_sid.0.as_ref(),
+            );
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: current_tab_key.clone(),
                 session_id: new_sid.to_string(),
@@ -6068,6 +6115,7 @@ async fn dispatch_prompt_body(
                 if should_send {
                     prompt_started.store(true, Ordering::Release);
                     if telemetry_is_agent_command {
+                        crate::telemetry::log_agent_provided_slash_command_used();
                         tracing::info!(
                             target: "acp",
                             prompt_id = telemetry_prompt_id,
@@ -6109,11 +6157,6 @@ async fn dispatch_prompt_body(
             // session and keep its future alive until the producer resolves.
             let started = prompt_started.load(Ordering::Acquire);
             tracing::info!(target: "acp_cancel", session_id = %prompt_session_id_str, "waiting for cancelled prompt to quiesce");
-            let _ = prompt_timing_task.complete(
-                &prompt_session_id_str,
-                false,
-                Some("cancelled"),
-            );
             if started {
                 if let Err(e) = conn_task
                     .cancel(acp::schema::v1::CancelNotification::new(prompt_session_id.clone()))
@@ -6125,11 +6168,24 @@ async fn dispatch_prompt_body(
                 // not synthesize completion on a timeout unless master can
                 // atomically retire this exact session; otherwise late output
                 // can be attached to the next turn on the same session.
-                let _ = (&mut prompt_fut).await;
+                let result = (&mut prompt_fut).await;
+                let success = result.is_ok();
+                let error = result.err().map(|error| error.to_string());
+                let _ = prompt_timing_task.complete(
+                    &prompt_session_id_str,
+                    success,
+                    error.as_deref(),
+                );
                 // Some providers flush trailing chunks just after returning
                 // PromptResponse, so a scheduler yield is not a sufficient
                 // compatibility drain here.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            } else {
+                let _ = prompt_timing_task.complete(
+                    &prompt_session_id_str,
+                    false,
+                    Some("cancelled"),
+                );
             }
             publish_prompt_cancellation_settled(
                 &mut cleanup,

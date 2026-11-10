@@ -53,6 +53,7 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
             vec![SessionEvent::Notification {
                 key: key.clone(),
                 message: reason,
+                timestamp_ms: None,
             }]
         }
         "tool.execution_start" => {
@@ -69,6 +70,7 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 vec![SessionEvent::Notification {
                     key: key.clone(),
                     message: tool,
+                    timestamp_ms: None,
                 }]
             } else {
                 vec![SessionEvent::ToolStarting {
@@ -129,7 +131,8 @@ mod tests {
             out,
             vec![SessionEvent::Notification {
                 key: "sess-1".to_string(),
-                message: "run git log".to_string()
+                message: "run git log".to_string(),
+                timestamp_ms: None,
             }]
         );
     }

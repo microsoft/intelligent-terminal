@@ -317,7 +317,7 @@ namespace SettingsModelUnitTests
     {
         const auto defaults = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded(R"({})"));
         VERIFY_IS_FALSE(defaults->SidebarShowAgentsOnly());
-        VERIFY_IS_FALSE(defaults->SidebarShowRecentAgentSessions());
+        VERIFY_IS_TRUE(defaults->SidebarShowRecentAgentSessions());
         VERIFY_IS_FALSE(defaults->ToJson().isMember("sidebarShowAgentsOnly"));
         VERIFY_IS_FALSE(defaults->ToJson().isMember("sidebarShowRecentAgentSessions"));
 

@@ -133,7 +133,7 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 agents.loading: "Á luchtú..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - teaglamaí eochracha, ná haistrigh
 agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor • F5 chun athnuachan • / chun cuardach)"
-agents.status.active: "Gníomhach"
+agents.status.active: "Ag obair"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
 agents.status.error: "Earráid"
 agents.status.idle: "Díomhaoin"

@@ -13,6 +13,8 @@
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
+#include <tuple>
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     struct AgentEntry : AgentEntryT<AgentEntry>
@@ -97,9 +99,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     public:
         AIAgentsViewModel(Model::GlobalAppSettings globalSettings);
         ~AIAgentsViewModel();
+        bool TryUpdateSettings(const Model::GlobalAppSettings& globalSettings);
         bool IsAcpPreparing() const noexcept { return _acpPreparing; }
         bool AcpPreparationFailed() const noexcept { return _acpPreparationFailed; }
-        void RetryAcpPreparation() { _TriggerAcpModelProbe(); }
+        winrt::hstring AcpPreparationErrorText() const { return _acpPreparationErrorText; }
+        winrt::hstring AcpPreparationErrorDetails() const { return _acpPreparationErrorDetails; }
+        bool HasAcpPreparationErrorDetails() const noexcept { return _acpPreparationFailed && !_acpPreparationErrorDetails.empty(); }
+        void RetryAcpPreparation() { _TriggerAcpModelProbe(true); }
 
         using ViewModelHelper<AIAgentsViewModel>::PropertyChanged;
 
@@ -193,6 +199,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
+        std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> _agentPolicySnapshot;
+        std::tuple<bool, bool, bool, bool, bool, winrt::hstring, winrt::hstring> _agentPolicyState;
+        const std::tuple<winrt::hstring, bool, winrt::hstring, bool> _sourceModelSettings;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
@@ -217,6 +226,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();
+        void _ReconcileAcpModelSelection(const Model::GlobalAppSettings& settings) const;
         void _LoadCustomModelProviders();
         void _CommitCustomModelProviders();
         void _RemoveCustomModelProvider(const winrt::hstring& id);
@@ -231,14 +241,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _acpProbing{ false };
         bool _acpPreparing{ false };
         bool _acpPreparationFailed{ false };
+        winrt::hstring _acpPreparationErrorText;
+        winrt::hstring _acpPreparationErrorDetails;
         // Generation counter: bumped each time _TriggerAcpModelProbe
         // fires. An in-flight probe checks this before publishing its
         // result and bails if a newer trigger has superseded it (user
         // picked a different agent while we were still talking to the
         // previous one).
         uint64_t _acpProbeGeneration{ 0 };
-        void _TriggerAcpModelProbe();
-        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision);
+        void _TriggerAcpModelProbe(bool retryStartup = false);
+        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision, bool retryStartup);
         // Mirror of TerminalPage::_ResolveEffectiveAgentCliPath. Kept
         // here (rather than in inc/) because the Settings UI sits in
         // a separate project and can't include TerminalApp headers.
@@ -286,7 +298,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             bool isAcpAgent);
-
+        void _NormalizeCustomAcpSettings(
+            const Model::GlobalAppSettings& settings,
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
+        void _NormalizeCustomDelegateSettings(
+            const Model::GlobalAppSettings& settings,
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
     };
 };
 

@@ -43,6 +43,7 @@ namespace winrt::TerminalApp::implementation
             _recordAgentPromptEntry();
             if (Visibility() == Visibility::Visible)
             {
+                _dismissedByFocusLoss = false;
                 // Force immediate binding update so we can select an item
                 Bindings->Update();
 
@@ -499,6 +500,10 @@ namespace winrt::TerminalApp::implementation
 
         // We got to the root (the element with no parent) and didn't meet this palette on the path.
         // It means that it lost the focus and needs to be dismissed.
+        if (Visibility() == Visibility::Visible)
+        {
+            _dismissedByFocusLoss = true;
+        }
         _dismissPalette();
     }
 
@@ -1427,7 +1432,15 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::EnableTabSearchMode()
     {
-        _switchToMode(CommandPaletteMode::TabSearchMode);
+        _searchBox().Visibility(Visibility::Visible);
+        if (_currentMode != CommandPaletteMode::TabSearchMode || Visibility() != Visibility::Visible)
+        {
+            _switchToMode(CommandPaletteMode::TabSearchMode);
+        }
+        if (Visibility() == Visibility::Visible)
+        {
+            _searchBox().Focus(FocusState::Programmatic);
+        }
     }
 
     // Method Description:

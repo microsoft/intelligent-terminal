@@ -229,14 +229,39 @@ leave the existing status unchanged, including an unanswered approval/question.
 Both `notificationType` and `notification_type` are recognised. Its permission
 and question notifications still mark the session Attention (Waiting for input).
 
-**Copilot activity is hook-only once hooks own the session.** `PostToolUse`
-resumes Working (Active) after a tool succeeds; only `Stop` ends the turn as
-Idle. Late tool returns do not reactivate an Idle turn, and failed tools do not
-restore activity. This is deliberately session-level,
-latest-hook behavior, not per-request approval matching. Waiting can persist for
-the whole tool run, and a parallel tool's successful return may replace another
-unanswered wait. No transcript permission events are mixed into a hook-owned
-session. The original hookless file-watcher fallback remains unchanged.
+**Hooks and OSC activity share one read projection.** Observed OSC 9;4 progress
+in the same confirmed agent pane takes precedence over hook Idle/Working:
+states 1/3 display Working and states 0/4 display Idle. An unobserved default zero
+does not override hooks. OSC never replaces hook Attention, Error, or
+ended/historical status. The shared
+registry applies this rule to pane metadata, session lists and status deltas
+without changing the underlying hook state or reading transcript activity.
+Complete is a UI projection of Idle, so it is withheld while OSC reports Working.
+
+A notification
+that enters Attention (Waiting for input) starts a 10-second receipt-time
+cooldown for that session. All successful `PostToolUse` returns during that
+window are ignored, regardless of tool name or provider timestamp. Another
+blocking notification restarts the window; informational notifications do not.
+Ignored returns do not extend it or change the waiting reason, current tool,
+binding, or activity time. The deadline is retained in session snapshots.
+
+Only `Stop` ends the hook turn as Idle, including during the cooldown; the
+OSC arbitration above determines effective Idle/Working activity. A new prompt,
+errors, and session/pane closure retain their normal transitions. Expiry alone
+does not change status: a subsequent successful tool return can restore Working
+(Active), but a source timestamp older than the newest waiting notification is
+still ignored. Numeric Unix milliseconds and RFC 3339 source timestamps are
+supported through `9999-12-31T23:59:59.999Z` (`253402300799999` Unix milliseconds).
+Out-of-range source times are treated as invalid, including RFC 3339 offsets
+that cross that UTC boundary. Missing/invalid source timestamps do not bypass
+the receipt-time cooldown. Late returns do not reactivate Idle, Error, or closed sessions.
+This is deliberately session-level,
+time-window behavior, not per-request approval matching. A quick approval can
+remain Waiting until a later accepted event or Stop, and an unrelated parallel
+tool returning after the cooldown can still replace an unanswered wait. No
+transcript permission events are mixed into a hook-owned session. The original
+hookless file-watcher fallback remains unchanged.
 
 Two topics keep a routing arm in `app.rs` that outlives their subscription in
 the Claude and Copilot bundles: `agent.subagent.stop`, which no shipped manifest

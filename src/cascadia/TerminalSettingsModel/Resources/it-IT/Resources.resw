@@ -313,6 +313,14 @@
   <data name="NextTabCommandKey" xml:space="preserve">
     <value>Scheda successiva</value>
   </data>
+  <data name="NextSidebarTabCommandKey" xml:space="preserve">
+    <value>Scheda visibile successiva nella barra laterale</value>
+    <comment>Command that activates the next currently displayed open tab in the vertical sidebar, wrapping from last to first. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
+  <data name="PrevSidebarTabCommandKey" xml:space="preserve">
+    <value>Scheda visibile precedente nella barra laterale</value>
+    <comment>Command that activates the previous currently displayed open tab in the vertical sidebar, wrapping from first to last. Filtered-out tabs and recent-session history rows are skipped.</comment>
+  </data>
   <data name="OpenBothSettingsFilesCommandKey" xml:space="preserve">
     <value>Apri sia le impostazioni che i file delle impostazioni predefinite (JSON)</value>
     <comment>{Locked="JSON"}. "JSON" is the extension of the file that will be opened.</comment>

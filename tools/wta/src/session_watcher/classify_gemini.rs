@@ -91,6 +91,7 @@ pub fn classify_record(record: &serde_json::Value, key: &AgentKey) -> Vec<Sessio
                 out.push(SessionEvent::Notification {
                     key: key.clone(),
                     message: tool,
+                    timestamp_ms: None,
                 });
             } else if out.is_empty() {
                 // Text-only (phase 1 / final answer) or an empty toolCalls array
@@ -199,7 +200,8 @@ mod tests {
             classify_record(&r, &"k".to_string()),
             vec![SessionEvent::Notification {
                 key: "k".to_string(),
-                message: "ask_user".to_string()
+                message: "ask_user".to_string(),
+                timestamp_ms: None,
             }]
         );
     }
@@ -221,7 +223,8 @@ mod tests {
                 },
                 SessionEvent::Notification {
                     key: "k".to_string(),
-                    message: "ask_user".to_string()
+                    message: "ask_user".to_string(),
+                    timestamp_ms: None,
                 },
             ]
         );

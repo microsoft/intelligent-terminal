@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -508,6 +508,12 @@ export function runSecurityReviewDriver({
     mkdirSync(publicLogs, { recursive: true, mode: 0o700 });
     if (realpathSync(publicLogs) !== publicLogs) fail('public metadata directory has symlink ancestors');
     writeFileSync(resolve(publicLogs, 'events.jsonl'), metadata, { flag: 'wx', mode: 0o600 });
+    writeFileSync(resolve(dirname(reportPath), 'security-driver-completion.json'), JSON.stringify({
+      version: 1,
+      headSha: scope.headSha,
+      scopeSha256: scope.scopeSha256,
+      reportSha256: createHash('sha256').update(readFileSync(reportPath)).digest('hex'),
+    }), { flag: 'wx', mode: 0o600 });
   };
   if (scope.mode === 'guide') {
     const entries = candidateStatus(root).filter(entry => !guidanceBaseline.records.includes(entry));
@@ -562,6 +568,7 @@ export function runSecurityReviewDriver({
 
 if (process.argv[1] && resolve(process.argv[1]) === SOURCE) {
   try {
+    rmSync('/tmp/gh-aw/agent/security-driver-completion.json', { force: true });
     runSecurityReviewDriver({ binary: process.argv[2], argv: process.argv.slice(3) });
   } catch (error) {
     // Native/JSON/process errors can contain source bytes or secret-bearing paths.

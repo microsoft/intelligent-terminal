@@ -91,12 +91,14 @@ namespace Microsoft::Terminal::RichTab::Provider
         std::optional<std::string> accessibilityText;
         // Broker-owned semantic status from the request that produced these fields.
         std::string agentStatus;
+        uint64_t diagnosticCwdToken{ 0 };
     };
 
     struct Request
     {
         std::string requestId;
         uint64_t hostRequestId{ 0 };
+        uint64_t diagnosticSessionToken{ 0 };
         std::string providerId;
         uint64_t processEpoch{ 0 };
         std::string sessionId;

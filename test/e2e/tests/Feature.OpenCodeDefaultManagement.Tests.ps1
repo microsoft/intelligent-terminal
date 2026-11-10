@@ -32,8 +32,7 @@ Describe 'Feature: default OpenCode session management' -Tag 'Feature', 'OpenCod
             Get-WtPanes -App $script:app -TabId $_.tab_id -WindowId $_.window_id
         })
         $script:app | Add-Member WindowId ([string](Get-WtWindows -App $script:app | Select-Object -First 1).window_id)
-        $pipeFile = Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt'
-        $script:masterPipe = (Get-Content -LiteralPath $pipeFile -Raw).Trim()
+        $script:masterPipe = Get-WtaMasterPipe -App $script:app
         $masters = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($script:app.Pid) AND Name='wta.exe'" |
             Where-Object {
                 $_.ExecutablePath -eq $script:app.WtaPath -and $_.CommandLine -match '\s--master\s' -and
@@ -124,7 +123,8 @@ Describe 'Feature: default OpenCode session management' -Tag 'Feature', 'OpenCod
             $aliasNames | Should -HaveCount 1
             $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($script:app.Package)\$($aliasNames[0])"
             $activated = Invoke-Native -FilePath $alias -Arguments @(
-                'sessions', 'activate', '--session-id', $history.session_id, '--provider', 'opencode',
+                'sessions', 'activate', '--master', $script:masterPipe,
+                '--session-id', $history.session_id, '--provider', 'opencode',
                 '--location', 'host', '--window-id', $script:app.WindowId, '--activation-id', $activationId, '--json'
             ) -TimeoutSec 45
             $activated.ExitCode | Should -Be 0 -Because $activated.StdErr

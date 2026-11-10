@@ -4,6 +4,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+        & (Get-Module ItE2E) { Initialize-WtWin32Input }
         . (Join-Path $PSScriptRoot 'helpers\SidebarPersistenceFault.ps1')
         if ($env:ITE2E_PACKAGE -ne 'Dev') { throw 'Sidebar upgrade requires explicit Dev.' }
         $script:target = Resolve-ItApp -Package Dev
@@ -29,20 +30,29 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
             })
         }
         function Start-UpgradeFixture {
-            param([bool]$Migration, [bool]$Shown, [string]$Layout = 'horizontal')
+            param(
+                [bool]$Migration,
+                [bool]$Shown,
+                [string]$Layout = 'horizontal',
+                [ValidateSet('Sidebar', 'Horizontal')][string]$Cohort = 'Sidebar',
+                [bool]$TabsInTitlebar = $true,
+                [switch]$HideTabs
+            )
             Assert-UpgradeInactive
             Backup-WtConfig -App $script:target
             $script:ownsConfig = $true
             Clear-WtConfig -App $script:target
             Invoke-FrePass -App $script:target | Out-Null
             Set-WtState -App $script:target -Key sidebarLayoutMigrationCompleted -Value $Migration | Out-Null
-            Set-WtState -App $script:target -Key featureRolloutId -Value '{00000000-0000-0000-0000-000000000001}' | Out-Null
+            $rolloutId = if ($Cohort -eq 'Sidebar') { '{00000000-0000-0000-0000-000000000001}' } else { '{00000000-0000-0000-0000-000000000002}' }
+            Set-WtState -App $script:target -Key featureRolloutId -Value $rolloutId | Out-Null
             Set-WtState -App $script:target -Key sidebarRolloutVersion -Value $(if ($Migration) { 1 } else { 0 }) | Out-Null
-            Set-WtState -App $script:target -Key sidebarRolloutAssignment -Value $(if ($Migration) { 'Sidebar' } else { '' }) | Out-Null
+            Set-WtState -App $script:target -Key sidebarRolloutAssignment -Value $(if ($Migration) { $Cohort } else { '' }) | Out-Null
             Set-WtState -App $script:target -Key sidebarIntroductionShown -Value $Shown | Out-Null
             Set-WtSettings -App $script:target -Settings @{
                 language = 'en-US'; tabLayout = $Layout; startupActions = ''
                 firstWindowPreference = 'defaultProfile'; windowingBehavior = 'useNew'
+                showTabsInTitlebar = $TabsInTitlebar; alwaysShowTabs = -not $HideTabs
                 autoErrorDetectionEnabled = $false; 'warning.confirmOnClose' = 'never'
                 acpAgent = 'custom:sidebar-upgrade'; acpCustomCommand = 'cmd.exe /c exit'
             } | Out-Null
@@ -52,6 +62,21 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
             Stop-Terminal -App $script:app -RestoreSettings $false
             Assert-UpgradeInactive
             $script:app = Start-Terminal -Package Dev -Backup $false -CleanSettings $false -PassFre $false
+        }
+        function Close-UpgradeIntroduction {
+            $tips = @(Get-UpgradeVisiblePeer SidebarIntroductionTip)
+            $tips | Should -HaveCount 1
+            $buttons = @($tips[0].FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+                    $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and
+                        $_.Current.ProcessId -eq $script:app.Pid -and -not $_.Current.IsOffscreen -and
+                        $_.Current.IsEnabled
+                })
+            $buttons | Should -HaveCount 1
+            $buttons[0].GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            Wait-Until -TimeoutSec 5 -Condition {
+                @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 0
+            } | Out-Null
         }
         function Invoke-UpgradePaletteAction {
             param([string]$Action)
@@ -100,19 +125,161 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
     }
     It 'Sidebar introduction is independent of completed migration' {
-        Start-UpgradeFixture -Migration $true -Shown $false
-        (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
-        (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeFalse
-        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
-        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
-        Wait-Until -TimeoutSec 10 -Because 'only actual visible Sidebar presentation consumes the pending tip' -Condition {
+        Start-UpgradeFixture -Migration $true -Shown $false -Layout vertical
+        Wait-Until -TimeoutSec 10 -Because 'the visible Sidebar introduction remains pending until dismissed' -Condition {
             @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
-                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
         } | Out-Null
         Restart-UpgradeFixture
         (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be vertical
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 } | Out-Null
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Condition { (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true } | Out-Null
+        Restart-UpgradeFixture
         (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
         @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        Set-WtSetting -App $script:app -Key tabLayout -Value horizontal | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer TabView).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        }
+    }
+    It 'Close-button dismissal survives timer ticks and restart' {
+        Start-UpgradeFixture -Migration $true -Shown $false -Layout vertical
+        Wait-Until -TimeoutSec 10 -Condition {
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
+        } | Out-Null
+        Close-UpgradeIntroduction
+        Start-Sleep -Seconds 3
+        (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
+        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        Restart-UpgradeFixture
+        (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
+        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+    }
+    It 'Settings reload does not block while the introduction is open' {
+        Start-UpgradeFixture -Migration $true -Shown $false -Layout vertical
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 } | Out-Null
+        Set-WtSetting -App $script:app -Key tabLayout -Value horizontal | Out-Null
+        Wait-Until -TimeoutSec 5 -Because 'settings reloads promptly while the introduction is still pending' -Condition {
+            @(Get-UpgradeVisiblePeer TabView).Count -eq 1 -and
+                @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
+        } | Out-Null
+        Start-Sleep -Seconds 2
+        $messages = @(Get-WtReswTextValues -Key FailedToWriteToSettings)
+        $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$script:app.Hwnd)
+        $warnings = @($root.FindAll([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+                $name = $_.Current.Name
+                $_.Current.ProcessId -eq $script:app.Pid -and -not $_.Current.IsOffscreen -and
+                    @($messages | Where-Object { $name.Contains($_) }).Count -gt 0
+            })
+        $warnings | Should -HaveCount 0
+        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 1
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Condition { (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true } | Out-Null
+    }
+    It 'Introduction survives window movement, maximize and restore until dismissed (<Layout>)' -ForEach @(
+        @{ Layout = 'vertical'; TabId = 'ItemsList' }
+        @{ Layout = 'horizontal'; TabId = 'TabView' }
+    ) {
+        Start-UpgradeFixture -Migration $true -Shown $false -Layout $Layout -TabsInTitlebar $true
+        Set-WtWindowForeground -App $script:app | Should -BeTrue
+        $hwnd = [IntPtr][long]$script:app.Hwnd
+        $getFrame = {
+            $frame = [Windows.Automation.AutomationElement]::FromHandle($hwnd)
+            $frame.Current.ProcessId | Should -Be $script:app.Pid
+            $frame.Current.BoundingRectangle
+        }
+        $visible = {
+            $tips = @(Get-UpgradeVisiblePeer SidebarIntroductionTip)
+            $tabs = @(Get-UpgradeVisiblePeer $TabId)
+            if ($tips.Count -ne 1 -or $tabs.Count -ne 1 -or
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -ne $false) { return $false }
+            $tip = $tips[0]; $bounds = $tip.Current.BoundingRectangle; $frame = & $getFrame
+            $names = @($tip.FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+                    $_.Current.ProcessId -eq $script:app.Pid -and -not $_.Current.IsOffscreen
+                } | ForEach-Object { $_.Current.Name })
+            $title = if ($Layout -eq 'vertical') { 'Smarter way to manage tabs' } else { 'Try smarter ways to manage tabs' }
+            $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
+                $bounds.Left -ge $frame.Left -and $bounds.Top -ge $frame.Top -and
+                $bounds.Right -le $frame.Right -and $bounds.Bottom -le $frame.Bottom -and
+                $names -contains $title -and $names -contains 'New'
+        }
+        Wait-Until -TimeoutSec 10 -Because 'the first-run popup is rendered inside its own window' -Condition $visible | Out-Null
+        [ItE2E.ItWtWin32Input]::ShowWindow($hwnd, 9) | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the introduction survives an initial restore' -Condition $visible | Out-Null
+        $initial = & $getFrame
+        [ItE2E.ItWtWin32Input]::SetWindowPos($hwnd, [IntPtr]::Zero,
+            [int]$initial.Left, [int]$initial.Top,
+            [int]($initial.Width * 0.75), [int]($initial.Height * 0.75), 0x0014) | Should -BeTrue
+        Wait-Until -TimeoutSec 10 -Because 'the owned window starts from a nonmaximized size' -Condition {
+            (& $getFrame).Width -lt $initial.Width * 0.85
+        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the introduction remains visible after resizing' -Condition $visible | Out-Null
+        $before = & $getFrame
+        [ItE2E.ItWtWin32Input]::SetWindowPos($hwnd, [IntPtr]::Zero,
+            [int]($before.Left + 24), [int]($before.Top + 24), 0, 0, 0x0015) | Should -BeTrue
+        Wait-Until -TimeoutSec 10 -Because 'the owned window actually moved' -Condition {
+            (& $getFrame).Left -ge $before.Left + 16
+        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the introduction remains visible after moving' -Condition $visible | Out-Null
+        foreach ($i in 1..10) {
+            Start-Sleep -Milliseconds 200
+            (& $visible) | Should -BeTrue -Because 'the popup must stay rendered after the move settles'
+        }
+        [ItE2E.ItWtWin32Input]::ShowWindow($hwnd, 3) | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the owned window maximized' -Condition {
+            (& $getFrame).Width -gt $before.Width
+        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the introduction remains visible after maximizing' -Condition $visible | Out-Null
+        [ItE2E.ItWtWin32Input]::ShowWindow($hwnd, 9) | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the owned window restored' -Condition {
+            (& $getFrame).Width -lt $before.Width + 20
+        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Because 'the introduction remains visible after restoring' -Condition $visible | Out-Null
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Because 'only the close button completes the introduction' -Condition {
+            (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
+        } | Out-Null
+        [ItE2E.ItWtWin32Input]::ShowWindow($hwnd, 3) | Out-Null
+        Start-Sleep -Seconds 2
+        @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+    }
+    It 'Horizontal rollout introduces vertical tabs only once (<Scenario>)' -ForEach @(
+        @{ Scenario = 'new rollout with titlebar tabs'; Migration = $false; TabsInTitlebar = $true }
+        @{ Scenario = 'completed rollout with separate tab row'; Migration = $true; TabsInTitlebar = $false }
+    ) {
+        Start-UpgradeFixture -Migration $Migration -Shown $false -Cohort Horizontal -TabsInTitlebar $TabsInTitlebar
+        Wait-Until -TimeoutSec 10 -Because 'the Horizontal cohort presents its pending layout-specific introduction' -Condition {
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
+        } | Out-Null
+        (Get-WtSetting -App $script:app -Key tabLayout) | Should -Be horizontal
+        (Get-WtStateObject -App $script:app).sidebarRolloutAssignment | Should -Be Horizontal
+        $tip = @(Get-UpgradeVisiblePeer SidebarIntroductionTip)[0]
+        $names = @($tip.FindAll([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name })
+        $names | Should -Contain 'Try smarter ways to manage tabs'
+        $names | Should -Contain 'Switch to vertical tabs to see your agent activity at a glance. Right-click a tab and choose Switch to sidebar.'
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Condition { (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true } | Out-Null
+        Restart-UpgradeFixture
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+            (Get-WtStateObject -App $script:app).sidebarIntroductionShown | Should -BeTrue
+        }
+        Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+        }
     }
     It 'Sidebar migration persistence failure warns and retries without false completion' {
         Backup-WtConfig -App $script:target
@@ -223,7 +390,7 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
     }
 
     It 'Collapsed Sidebar defers its pending introduction until visible' {
-        Start-UpgradeFixture -Migration $true -Shown $false
+        Start-UpgradeFixture -Migration $true -Shown $false -TabsInTitlebar $false -HideTabs
         Set-WtWindowForeground -App $script:app | Should -BeTrue
         Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
         Wait-Until -TimeoutSec 5 -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
@@ -248,12 +415,20 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         Wait-Until -TimeoutSec 10 -Condition {
             @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 -and
                 @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
-                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
         } | Out-Null
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Condition { (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true } | Out-Null
     }
 
     It 'Owned windows share the durable Sidebar introduction without duplicates' {
         Start-UpgradeFixture -Migration $true -Shown $false
+        Wait-Until -TimeoutSec 10 -Condition {
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
+                (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $false
+        } | Out-Null
+        Close-UpgradeIntroduction
+        Wait-Until -TimeoutSec 10 -Condition { (Get-WtStateObject -App $script:app).sidebarIntroductionShown -eq $true } | Out-Null
         $first = $script:app
         $before = @(Get-WtWindows -App $first).window_id
         $beforeHwnds = @(Get-WtWindowHwnds -App $first | Where-Object pid -eq $first.Pid).hwnd
@@ -276,10 +451,12 @@ Describe 'Feature: Sidebar upgrade' -Tag @('Feature', 'SidebarUpgrade') {
         $script:app = $second
         Set-WtWindowForeground -App $second | Should -BeTrue
         Set-WtSetting -App $second -Key tabLayout -Value vertical | Out-Null
-        Wait-Until -TimeoutSec 10 -Condition {
-            @(Get-UpgradeVisiblePeer SidebarIntroductionTip).Count -eq 1 -and
-                (Get-WtStateObject -App $second).sidebarIntroductionShown -eq $true
-        } | Out-Null
+        Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null
+        foreach ($i in 1..4) {
+            Start-Sleep -Milliseconds 500
+            @(Get-UpgradeVisiblePeer SidebarIntroductionTip) | Should -HaveCount 0
+            (Get-WtStateObject -App $second).sidebarIntroductionShown | Should -BeTrue
+        }
         $script:app = $first
         Set-WtWindowForeground -App $first | Should -BeTrue
         Wait-Until -TimeoutSec 10 -Condition { @(Get-UpgradeVisiblePeer VerticalTabsHeader).Count -eq 1 } | Out-Null

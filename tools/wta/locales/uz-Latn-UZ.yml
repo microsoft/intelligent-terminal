@@ -146,7 +146,7 @@ agent.custom.auth_hint: "%{name} oʻrnatilganligiga va PATH-da ekanligiga ishonc
 agents.loading: "Yuklanmoqda..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigatsiya uchun • Enter seansni ochish uchun • Esc chiqish uchun • F5 yangilash uchun • / qidirish uchun)"
-agents.status.active: "Faol"
+agents.status.active: "Ishlayapti"
 agents.status.waiting_for_input: "Kiritish kutilmoqda"
 agents.status.error: "Xatolik"
 agents.status.idle: "Boʻsh"

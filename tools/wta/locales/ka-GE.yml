@@ -146,7 +146,7 @@ agent.custom.auth_hint: "დარწმუნდით, რომ %{name} დ�
 agents.loading: "იტვირთება..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - ღილაკების კომბინაციები, არ ითარგმნება
 agents.footer_hint: "(↑ ↓ ნავიგაციისთვის • Enter სესიის გასახსნელად • Esc გასასვლელად • F5 განახლებისთვის • / ძიებისთვის)"
-agents.status.active: "აქტიური"
+agents.status.active: "მუშაობს"
 agents.status.waiting_for_input: "შეყვანის მოლოდინში"
 agents.status.error: "შეცდომა"
 agents.status.idle: "უმოქმედო"

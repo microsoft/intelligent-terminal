@@ -228,7 +228,7 @@ Describe 'Feature: master-owned session refresh' -Tag @('Feature', 'SessionRefre
         }
         $script:logApp = $script:app.PSObject.Copy()
         $script:logApp.LogStartOffset = $script:app.PreLaunchLogStartOffset
-        $script:pipe = (Get-Content -LiteralPath (Join-Path $script:app.LocalStateDir 'IntelligentTerminal\master-pipe.txt') -Raw).Trim()
+        $script:pipe = Get-WtaMasterPipe -App $script:app
         (Wait-AgentReady -App $script:app -TimeoutSec 90) | Should -BeTrue
         $script:pane = Get-AgentPaneSession -App $script:app
         $script:pane.AcpSessionId | Should -Match '^chat-fixture-'
