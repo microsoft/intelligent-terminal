@@ -70,8 +70,7 @@
             "padding": "8, 8, 8, 8",
             "snapOnInput": true,
             "altGrAliasing": true,
-            "startingDirectory": "%USERPROFILE%",
-            "useAcrylic": false
+            "startingDirectory": "%USERPROFILE%"
         },
         {
             "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
@@ -89,8 +88,7 @@
             "padding": "8, 8, 8, 8",
             "snapOnInput": true,
             "altGrAliasing": true,
-            "startingDirectory": "%USERPROFILE%",
-            "useAcrylic": false
+            "startingDirectory": "%USERPROFILE%"
         }
     ],
     "schemes":
