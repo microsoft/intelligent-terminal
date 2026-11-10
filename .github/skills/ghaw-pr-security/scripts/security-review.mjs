@@ -1330,8 +1330,9 @@ export function preparePublication({ environment = process.env, request, paths =
   if (ciWarningBytes !== undefined) writeFileSync(resolve(output, 'security-ci-warning-dispositions.json'), ciWarningBytes, { flag: 'wx' });
   writeFileSync(resolve(output, 'security-summary.md'), validateSummaryMarkdown(report), { flag: 'wx' });
   writeFileSync(resolve(output, 'security-repair.patch'), patch, { flag: 'wx' });
-  writeFileSync(resolve(output, 'security-status.txt'), report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'proposed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
-  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\ndetector_attested=true\n`);
+  const blocking = report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'proposed');
+  writeFileSync(resolve(output, 'security-status.txt'), blocking ? 'blocking\n' : 'pass\n', { flag: 'wx' });
+  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\ndetector_attested=true\nreview_blocking=${blocking}\n`);
 }
 
 function option(name) {

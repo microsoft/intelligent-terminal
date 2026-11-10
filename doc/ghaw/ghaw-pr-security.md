@@ -47,9 +47,12 @@ better vulnerability detection.
    enter repair.
    Controller concurrency is isolated by CI run and attempt, so another run
    rejected by admission cannot cancel a valid review.
-   After admission, a pending commit status is attached to the reviewed PR
-   head, not the `workflow_run` default-branch SHA. Completion or failure is
-   reported there too; build success alone is not a successful review.
+   After admission, each controller creates its own check run on the reviewed
+   PR head, not the `workflow_run` default-branch SHA. Final updates address
+   only that check ID, so an older controller cannot replace a newer outcome.
+   Canonically completed reviews with unresolved HIGH findings report
+   "Changes required"; interrupted or invalid reviews report execution failure.
+   Build success alone is not a successful review.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
    narrowly allowed HIGH/high-confidence source fix, but cannot execute

@@ -124,32 +124,91 @@ test('controller reports execution status on the admitted PR commit, not the wor
     ?.split('          script: |')[1];
   assert(pending && final, 'Both pending and final PR statuses are required.');
   const execute = script => new (Object.getPrototypeOf(async function () {}).constructor)(
-    'github', 'context', 'process', script);
+    'github', 'context', 'process', 'core', script);
   const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 456,
     sha: BASE, serverUrl: 'https://github.com' };
-  for (const [analysis, applicable, repair, report, expected] of [
-    ['success', 'true', 'skipped', 'success', 'success'],
-    ['success', 'true', 'success', 'success', 'success'],
-    ['success', 'false', 'skipped', 'skipped', 'success'],
-    ['failure', 'true', 'skipped', 'skipped', 'error'],
-    ['cancelled', 'true', 'skipped', 'skipped', 'error'],
-    ['success', 'true', 'failure', 'skipped', 'error'],
-    ['success', 'true', 'success', 'failure', 'error'],
+  for (const [analysis, applicable, repair, report, blocking, expected] of [
+    ['success', 'true', 'skipped', 'success', 'false', 'success'],
+    ['success', 'true', 'success', 'success', 'false', 'success'],
+    ['success', 'false', 'skipped', 'skipped', '', 'success'],
+    ['failure', 'true', 'skipped', 'success', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', '', 'failure'],
+    ['cancelled', 'true', 'skipped', 'skipped', '', 'cancelled'],
+    ['success', 'true', 'failure', 'skipped', 'false', 'failure'],
+    ['success', 'true', 'success', 'failure', 'false', 'failure'],
   ]) {
-    const statuses = [];
-    const github = { rest: { repos: { createCommitStatus: async value => statuses.push(value) } } };
+    const calls = [], outputs = {};
+    const github = { rest: { checks: {
+      create: async value => { calls.push(value); return { data: { id: 1234 } }; },
+      update: async value => calls.push(value),
+    } } };
+    const core = { setOutput: (key, value) => { outputs[key] = value; } };
     const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
-      SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report } };
-    await execute(pending)(github, context, process);
-    await execute(final)(github, context, process);
-    assert.deepEqual(statuses.map(value => value.state), ['pending', expected]);
-    assert(statuses.every(value => value.sha === HEAD && value.target_url.endsWith('/actions/runs/456')));
+      SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report,
+      REVIEW_BLOCKING: blocking, CANONICAL_RESULT: blocking ? 'success' : 'failure',
+      GITHUB_RUN_ATTEMPT: '1' } };
+    await execute(pending)(github, context, process, core);
+    process.env.REVIEW_CHECK_ID = outputs.review_check_id;
+    await execute(final)(github, context, process, core);
+    assert.deepEqual(calls.map(value => value.status), ['in_progress', 'completed']);
+    assert.equal(calls[0].head_sha, HEAD);
+    assert.equal(calls[1].check_run_id, 1234);
+    assert.equal(calls[1].conclusion, expected);
+    assert(calls.every(value => value.details_url.endsWith('/actions/runs/456')));
+    if (blocking === 'true') assert.equal(calls[1].output.title, 'Changes required');
+    else if (!['success', 'cancelled'].includes(expected)) assert.equal(calls[1].output.title, 'Review did not complete');
   }
-  const github = { rest: { repos: { createCommitStatus: async () => assert.fail('No admitted head; no status write.') } } };
+  const github = { rest: { checks: {
+    create: async () => assert.fail('No admitted head; no check write.'),
+    update: async () => assert.fail('No admitted head; no check write.'),
+  } } };
   for (const script of [pending, final]) {
     await assert.rejects(execute(script)(github, context, { env: { REVIEWED_HEAD_SHA: '', PR_NUMBER: '17' } }),
       /Invalid admitted review identity/);
   }
+});
+
+test('a late older review outcome cannot replace a newer completed check on the same head', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const pending = controller.split('      - name: Mark admitted PR review pending')[1]
+    .split('          script: |')[1].split('\n      - name:')[0];
+  const final = controller.split('      - name: Publish admitted PR review outcome')[1]
+    .split('          script: |')[1];
+  const execute = script => new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'process', 'core', script);
+  let sharedStatus;
+  const checks = new Map();
+  const github = { rest: {
+    repos: { createCommitStatus: async value => { sharedStatus = value.state; } },
+    checks: {
+      create: async value => {
+        const id = checks.size + 1;
+        checks.set(id, value);
+        return { data: { id } };
+      },
+      update: async value => checks.set(value.check_run_id, { ...checks.get(value.check_run_id), ...value }),
+    },
+  } };
+  const make = runId => {
+    const outputs = {};
+    return { outputs, context: { repo: { owner: 'owner', repo: 'repo' }, runId },
+      process: { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', GITHUB_RUN_ATTEMPT: '1' } },
+      core: { setOutput: (key, value) => { outputs[key] = value; } } };
+  };
+  const older = make(456), newer = make(457);
+  for (const run of [older, newer]) {
+    await execute(pending)(github, run.context, run.process, run.core);
+    run.process.env.REVIEW_CHECK_ID = String(run.outputs.review_check_id ?? '');
+  }
+  Object.assign(newer.process.env, { ANALYSIS_RESULT: 'success', SCOPE_APPLICABLE: 'true',
+    CANONICAL_RESULT: 'success', REVIEW_BLOCKING: 'false', REPAIR_RESULT: 'skipped', REPORT_RESULT: 'success' });
+  Object.assign(older.process.env, { ANALYSIS_RESULT: 'failure', SCOPE_APPLICABLE: 'true',
+    CANONICAL_RESULT: 'failure', REPAIR_RESULT: 'skipped', REPORT_RESULT: 'skipped' });
+  await execute(final)(github, newer.context, newer.process, newer.core);
+  await execute(final)(github, older.context, older.process, older.core);
+  const newerResult = checks.get(Number(newer.outputs.review_check_id))?.conclusion ?? sharedStatus;
+  assert.equal(newerResult, 'success');
+  assert.equal(checks.size, 2);
 });
 
 test('controller separates repair writes from PR reporting after canonical validation', () => {
@@ -1117,7 +1176,7 @@ test('canonical handoff rematerializes no-patch reports and fails closed before 
       assert.equal(readFileSync(join(output, 'security-status.txt'), 'utf8'), sameRepo ? 'pass\n' : 'blocking\n');
       assert.deepEqual(JSON.parse(readFileSync(join(output, 'security-scope.json'), 'utf8')), current);
       assert.deepEqual(JSON.parse(readFileSync(join(output, 'security-findings.json'), 'utf8')), validateReport(candidate, current));
-      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\ndetector_attested=true\\n$`));
+      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\ndetector_attested=true\\nreview_blocking=${!sameRepo}\\n$`));
       if (sameRepo) {
         output = join(directory, 'unreported-patch');
         mkdirSync(output);
