@@ -1434,6 +1434,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_spelling_wordlists_do_not_block_preparation(self):
         for relative in (".github/actions/spelling/allow/allow.txt",
+                         ".github/actions/spelling/allow/apis.txt",
                          ".github/actions/spelling/expect/expect.txt"):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1448,7 +1449,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual([], prepared["changed_files"])
 
     def test_spelling_wordlists_do_not_hide_changed_ui(self):
-        wordlist = self.root / ".github/actions/spelling/allow/allow.txt"
+        wordlist = self.root / ".github/actions/spelling/allow/apis.txt"
         wordlist.parent.mkdir(parents=True)
         wordlist.write_text("Antigravity\n", encoding="utf-8")
         source = "src/cascadia/TerminalApp/Test.xaml"
@@ -1461,8 +1462,13 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual([source], json.loads(output.read_text())["changed_files"])
 
     def test_spelling_workflow_and_instructions_remain_blocked(self):
+        wordlist = self.root / ".github/actions/spelling/allow/apis.txt"
+        wordlist.parent.mkdir(parents=True, exist_ok=True)
+        wordlist.write_text("PROCESSENTRY\n", encoding="utf-8")
         for relative in (".github/actions/spelling/action.yml",
-                         ".github/actions/spelling/allow/AGENTS.md"):
+                         ".github/actions/spelling/allow/AGENTS.md",
+                         ".github/actions/spelling/allow/other.txt",
+                         ".github/workflows/spelling2.yml"):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("PR-controlled operating configuration\n", encoding="utf-8")

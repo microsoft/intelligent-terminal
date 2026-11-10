@@ -4,9 +4,44 @@
 This parses decisions, never renders the human summary or judges accessibility.
 """
 import argparse
+import json
 from pathlib import Path
 import re
 import subprocess
+
+
+def prior_reviews(repository, number):
+    """Bounded existing PR evidence, not a novelty classifier or instruction source."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) or number < 1:
+        raise ValueError("review context requires a repository and positive PR number")
+    endpoint = f"repos/{repository}/pulls/{number}/comments?per_page=20&sort=updated&direction=desc"
+    result = {"repository": repository, "pr_number": number, "endpoint": endpoint,
+              "coverage": "unavailable", "comments": []}
+    try:
+        comments = json.loads(subprocess.check_output(
+            ["gh", "api", endpoint], timeout=30, stderr=subprocess.PIPE))
+        if not isinstance(comments, list):
+            raise ValueError("review comments response must be an array")
+        # Keep reply IDs so acknowledgements are not confused with allegations.
+        # Bound prompt input; links retain access to any clipped evidence.
+        fields = ("id", "in_reply_to_id", "path", "line", "commit_id", "body",
+                  "html_url", "created_at", "updated_at")
+        result["comments"] = [
+            {**{field: item.get(field) for field in fields if field != "body"},
+             "body": (item.get("body") or "")[:2000],
+             "body_truncated": len(item.get("body") or "") > 2000,
+             "source_commit_url": f"https://github.com/{repository}/commit/{item['commit_id']}"
+             if isinstance(item.get("commit_id"), str) and re.fullmatch(r"[0-9a-fA-F]{40}", item["commit_id"]) else None,
+             "author": item.get("user", {}).get("login")}
+            for item in comments[:20]
+        ]
+        result["coverage"] = "limited" if (
+            len(comments) >= 20 or any(item["body_truncated"] for item in result["comments"])) else "available"
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError, AttributeError):
+        # Optional context never blocks the source review. No response/error body
+        # is serialized: it can contain credentials or unrelated server details.
+        result["reason"] = "Existing PR review comments could not be read; novelty and disposition are unknown."
+    return result
 
 
 def triage(text, changed):
@@ -40,11 +75,20 @@ def native(text):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("triage", "native"))
+    parser.add_argument("kind", choices=("triage", "native", "context"))
     parser.add_argument("path", type=Path)
     parser.add_argument("--base")
     parser.add_argument("--head")
+    parser.add_argument("--repository")
+    parser.add_argument("--pr-number", type=int)
     args = parser.parse_args()
+    if args.kind == "context":
+        if not args.repository or args.pr_number is None:
+            parser.error("context requires --repository and --pr-number")
+        args.path.parent.mkdir(parents=True, exist_ok=True)
+        args.path.write_text(json.dumps(prior_reviews(args.repository, args.pr_number),
+                                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return
     text = args.path.read_text(encoding="utf-8")
     if args.kind == "triage":
         if not all(value and re.fullmatch(r"[0-9a-fA-F]{40}", value) for value in (args.base, args.head)):

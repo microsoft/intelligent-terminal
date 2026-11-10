@@ -1,7 +1,12 @@
 """Markdown boundary and compiled-graph regression tests, not model evaluation."""
 import importlib.util
+import json
+import os
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -15,6 +20,60 @@ CHANGED = {"src/cascadia/TerminalApp/Test.xaml", "src/cascadia/TerminalApp/en-GB
 
 
 class MarkdownHandoffTests(unittest.TestCase):
+    def test_existing_review_context_preserves_reply_disposition_and_source_identity(self):
+        comments = [
+            {"id": 2, "in_reply_to_id": 1, "body": "Fixed in exact-sha; no-results now announces.",
+             "commit_id": "b" * 40, "path": "TabStrip.cpp", "html_url": "https://example.invalid/reply",
+             "user": {"login": "maintainer"}},
+            {"id": 1, "body": "Search gives no no-results announcement.",
+             "commit_id": "a" * 40, "path": "TabStrip.cpp", "user": {"login": "reviewer"}},
+        ]
+        with patch.object(handoff.subprocess, "check_output",
+                          return_value=json.dumps(comments).encode()) as fetch:
+            context = handoff.prior_reviews("microsoft/intelligent-terminal", 1288)
+        self.assertEqual("available", context["coverage"])
+        self.assertEqual(1, context["comments"][0]["in_reply_to_id"])
+        self.assertEqual(comments[0]["body"], context["comments"][0]["body"])
+        self.assertEqual("b" * 40, context["comments"][0]["commit_id"])
+        self.assertEqual("https://github.com/microsoft/intelligent-terminal/commit/" + "b" * 40,
+                         context["comments"][0]["source_commit_url"])
+        self.assertEqual(comments[0]["html_url"], context["comments"][0]["html_url"])
+        self.assertIn("per_page=20&sort=updated&direction=desc", fetch.call_args.args[0][-1])
+        self.assertNotIn("novel", context)  # evidence, never automatic adjudication
+
+    def test_context_api_failure_and_truncation_cannot_mean_no_prior_findings(self):
+        for error in (subprocess.TimeoutExpired("gh", 30), OSError("unavailable"),
+                      ValueError("invalid JSON")):
+            with self.subTest(error=type(error).__name__), patch.object(
+                    handoff.subprocess, "check_output", side_effect=error):
+                context = handoff.prior_reviews("microsoft/intelligent-terminal", 1213)
+                self.assertEqual("unavailable", context["coverage"])
+                self.assertIn("unknown", context["reason"])
+                self.assertEqual([], context["comments"])
+        for response in ({}, [None], [{"body": 1}], [{"user": None}]):
+            with self.subTest(response=response), patch.object(
+                    handoff.subprocess, "check_output", return_value=json.dumps(response).encode()):
+                self.assertEqual("unavailable", handoff.prior_reviews("owner/repo", 1)["coverage"])
+        with patch.object(handoff.subprocess, "check_output", return_value=b'[]'):
+            self.assertEqual("available", handoff.prior_reviews("owner/repo", 1)["coverage"])
+        with patch.object(handoff.subprocess, "check_output",
+                          return_value=b'[{"commit_id": "not-an-immutable-sha"}]'):
+            self.assertIsNone(handoff.prior_reviews("owner/repo", 1)["comments"][0]["source_commit_url"])
+        with patch.object(handoff.subprocess, "check_output",
+                          return_value=json.dumps([{}] * 21).encode()):
+            context = handoff.prior_reviews("owner/repo", 1)
+            self.assertEqual("limited", context["coverage"])
+            self.assertEqual(20, len(context["comments"]))
+        with patch.object(handoff.subprocess, "check_output",
+                          return_value=json.dumps([{"body": "x" * 3000}]).encode()):
+            context = handoff.prior_reviews("owner/repo", 1)
+            self.assertEqual("limited", context["coverage"])
+            self.assertEqual(2000, len(context["comments"][0]["body"]))
+            self.assertTrue(context["comments"][0]["body_truncated"])
+        for repository, number in (("bad/repo/path", 1), ("owner/repo", 0)):
+            with self.assertRaises(ValueError):
+                handoff.prior_reviews(repository, number)
+
     def test_three_routes_preserve_original_uncertainty(self):
         for route in ("Related", "None", "Uncertain"):
             original = f"# {route}\n\nCannot establish runtime impact from the diff.\n\n- `src/cascadia/TerminalApp/Test.xaml`\n"
@@ -143,6 +202,64 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("including uncertainty", summary)
         self.assertIn("review incomplete", summary)
         self.assertIn("never \"No issues\"", summary)
+
+    def test_review_context_is_fetched_and_preserved_by_deep_and_final(self):
+        step = next(s for s in self.jobs["agent"]["steps"]
+                    if s.get("name") == "Read existing PR review context")
+        self.assertIn("accessibility_handoff.py context", step["run"])
+        self.assertIn("prior-reviews.json", step["run"])
+        self.assertEqual("${{ github.token }}", step["env"]["GH_TOKEN"])
+        deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        summary = (ROOT / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
+        self.assertIn("known/repeated", deep)
+        self.assertIn("do not suppress a still-present real defect", deep)
+        self.assertIn("latest 20 comments and first 2,000 characters", deep)
+        self.assertIn("not evidence that the", deep)
+        self.assertIn("known review dispositions and coverage limits", summary)
+        self.assertIn("missing context means novelty", summary)
+
+    def test_native_prerequisite_failure_retains_incomplete_receipt_before_upload(self):
+        native = yaml.safe_load((ROOT / ".github/workflows/native-accessibility.yml").read_text())
+        steps = native["jobs"]["native-smoke"]["steps"]
+        record = next(s for s in steps if s.get("name") == "Record native discovery outcomes")
+        self.assertEqual("always()", record["if"])
+        names = [s.get("name") for s in steps]
+        self.assertLess(names.index(record["name"]), names.index("Upload native accessibility evidence"))
+        for stage, identifier in (("Build accessibility test host", "build"),
+                                  ("Acquire pinned Axe.Windows CLI", "axe"),
+                                  ("Install test host framework dependencies", "dependencies")):
+            self.assertEqual(identifier, next(s for s in steps if s.get("name") == stage)["id"])
+        defaults = {"BUILD_OUTCOME": "success", "AXE_OUTCOME": "success",
+                    "DEPENDENCIES_OUTCOME": "success", "FRE_OUTCOME": "success",
+                    "AGENTS_OUTCOME": "success", "FRE_SETTINGS_OUTCOME": "success"}
+        cases = [({}, "scan-results-available")]
+        cases.append(({"BUILD_OUTCOME": "failure", "AXE_OUTCOME": "skipped",
+                       "DEPENDENCIES_OUTCOME": "skipped", "FRE_OUTCOME": "skipped",
+                       "AGENTS_OUTCOME": "skipped", "FRE_SETTINGS_OUTCOME": "skipped"}, "incomplete"))
+        for key in defaults:
+            for outcome in ("failure", "skipped", "cancelled", ""):
+                cases.append(({key: outcome}, "incomplete"))
+        for overrides, expected in cases:
+            with self.subTest(overrides=overrides), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                result = subprocess.run(
+                    ["pwsh", "-NoProfile", "-NonInteractive", "-Command", record["run"]],
+                    capture_output=True, text=True, timeout=30,
+                    env={**os.environ, **defaults, **overrides,
+                         "ACCESSIBILITY_RESULTS": str(root), "SOURCE_SHA": "a" * 40,
+                         "TRUSTED_SHA": "b" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"})
+                self.assertEqual(0, result.returncode, result.stderr)
+                receipt = json.loads((root / "native-outcome.json").read_text(encoding="utf-8-sig"))
+                self.assertEqual(expected, receipt["status"])
+                for key, outcome in overrides.items():
+                    stage = key.removesuffix("_OUTCOME").lower().replace("_", "-")
+                    self.assertEqual(outcome, {**receipt["stages"], **receipt["scans"]}[stage])
+                self.assertEqual(["fre", "agents", "fre-settings"], receipt["selected_surfaces"])
+                self.assertIn("Caller-selected Axe.Windows", receipt["selection"])
+                self.assertEqual("a" * 40, receipt["source_sha"])
+                self.assertEqual("b" * 40, receipt["trusted_sha"])
+                self.assertEqual("2", receipt["attempt"])
+                self.assertNotEqual("PASS", receipt["status"])
 
     def test_domain_outputs_are_generated_and_not_publication_paths(self):
         deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
