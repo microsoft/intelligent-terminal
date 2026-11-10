@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
   buildScope, createReportTemplate, submitSecurityReport, validateCandidate, validateProposal, validateReport,
@@ -482,6 +482,61 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
   };
 }
 
+test('a submitted report and noop cannot authorize publication after driver coverage failure', () => {
+  withFixture(fixture => {
+    const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', summaryMarkdown: SUMMARY_MD };
+    const options = driverOptions(fixture, [], { candidate: () => report });
+    const primary = options.runChild;
+    options.runChild = (...args) => {
+      const result = primary(...args);
+      result.stdout = output(result.stdout.trim().split('\n').map(line => JSON.parse(line))
+        .filter(event => event.data?.toolCallId !== 'mcpscripts-read_security_diff'));
+      return result;
+    };
+    assert.throws(() => runSecurityReviewDriver(options), /complete immutable original diff/);
+    assert.equal(validateProposal(JSON.parse(readFileSync(fixture.reportPath, 'utf8')), scope).patch.length, 0);
+    const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
+    assert.equal(existsSync(completion), false);
+    assert.throws(() => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', completion,
+    ], { encoding: 'utf8', stdio: 'pipe' }));
+  });
+});
+
+test('successful no-patch driver completion binds the exact report and scope before publication', () => {
+  withFixture(fixture => {
+    const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', summaryMarkdown: SUMMARY_MD };
+    const options = driverOptions(fixture, [], { candidate: () => report });
+    options.inspect = () => ({
+      headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
+    });
+    assert.equal(runSecurityReviewDriver(options).reviewed, false);
+    const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
+    const bytes = readFileSync(fixture.reportPath);
+    const binding = JSON.parse(readFileSync(completion, 'utf8'));
+    assert.deepEqual(binding, {
+      version: 1, headSha: HEAD, scopeSha256: scope.scopeSha256,
+      reportSha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    const check = () => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', completion,
+    ], { encoding: 'utf8', stdio: 'pipe' });
+    assert.doesNotThrow(check);
+    writeFileSync(fixture.reportPath, Buffer.concat([bytes, Buffer.from('\n')]));
+    assert.throws(check);
+    writeFileSync(fixture.reportPath, bytes);
+    for (const extra of [{ headSha: BASE }, { scopeSha256: '0'.repeat(64) }, { version: 2 },
+      { reportSha256: '0'.repeat(64) }, { status: 'failed' }]) {
+      writeFileSync(completion, JSON.stringify({ ...binding, ...extra }));
+      assert.throws(check);
+    }
+  });
+});
+
 test('pending candidates are accepted only at native repair submission, never proposal/final', () => {
   const report = candidate();
   assert.equal(validateCandidate(report, scope).review.status, 'pending');
@@ -559,6 +614,11 @@ test('deterministic fake children prove sequential fixed routing, exact native e
     assert.equal(report.findings[0].fixDisposition.state, 'proposed');
     assert(!report.checks.some(check => check.name === 'wta-tests' && check.status === 'pass'));
     assert(!report.checks.some(check => check.name !== 'deterministic-scope' && check.status === 'pass'));
+    assert.doesNotThrow(() => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', join(fixture.reportPath, '..', 'security-driver-completion.json'),
+    ], { encoding: 'utf8', stdio: 'pipe' }));
   });
 });
 
@@ -1198,17 +1258,28 @@ test('source-bearing transcripts stay in memory across repair, guide, no-patch, 
         }
         return { ...result, stderr: sentinel };
       };
+      let completed = false;
       if (scenario.includes('failure') || scenario.includes('rejection') || scenario.endsWith('-timeout') ||
           ['malformed-primary', 'source-mismatch'].includes(scenario)) {
         assert.throws(() => runSecurityReviewDriver(options));
       } else {
         assert.equal(runSecurityReviewDriver(options).reviewed, !noPatch);
+        completed = true;
       }
       assert(launches <= 2);
       assert(!emitted.includes(sentinel));
       assert(!diagnostics.join('\n').includes(sentinel));
       const files = readdirSync(resolve(fixture.reportPath, '..'));
-      assert(!files.some(path => path.startsWith('security-driver-')));
+      assert(!files.some(path => path.startsWith('security-driver-') && path !== 'security-driver-completion.json'));
+      const completionPath = join(fixture.reportPath, '..', 'security-driver-completion.json');
+      assert.equal(existsSync(completionPath), completed);
+      if (completed) {
+        const completionBytes = readFileSync(completionPath, 'utf8');
+        const completion = JSON.parse(completionBytes);
+        assert.deepEqual(Object.keys(completion).sort(), ['headSha', 'reportSha256', 'scopeSha256', 'version']);
+        assert.equal(completion.reportSha256, createHash('sha256').update(readFileSync(fixture.reportPath)).digest('hex'));
+        assert(!completionBytes.includes(sentinel));
+      }
       assert(!readFileSync(fixture.reportPath, 'utf8').includes(sentinel));
       if (emitted) {
         const messages = emitted.trim().split('\n').map(line => JSON.parse(line));

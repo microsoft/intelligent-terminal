@@ -44,6 +44,10 @@ better vulnerability detection.
    regression and inspects the complete original and candidate diffs with
    native reads. `SOURCE_PASS` binds the immutable head and exact patch digest;
    it is source approval, not build/test validation.
+   The driver writes a completion record only after its own checks finish.
+   Native post-processing requires that record to match the exact report and
+   immutable scope before reconstruction. A primary `noop` or green harness
+   result cannot substitute for successful driver completion.
 4. Trusted reconstruction and proposal/final contract checks verify unchanged
    identity, source approval, allowed paths, changed-line authority, and exact
    patch bytes. The driver records sanitized trusted guidance before the agent
