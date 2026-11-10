@@ -87,6 +87,25 @@ immutable revisions and same-repository status before preparing a proposal.
 The shared performance-review agent and skill retain their read-only review
 capabilities for use outside this automated same-repository flow.
 
+## Review coverage and recovery
+
+Review coverage includes relevant C++, XAML and Rust changes; the Rust-only
+proposal allowlist restricts edits, not investigation. Findings require an
+introduced, unintended cost in an affected scenario. Negligible or intentional
+work belongs in checks/exclusions, not filler finding rows.
+
+The controller retries transient 502/503/504 responses from read operations at
+most twice and briefly re-reads delayed completed agent-step metadata. It does
+not retry uncertain worker dispatches. A cancellation conflict is accepted only
+after confirming that the worker completed; failed execution still fails.
+Worker preparation also retries its metadata read before applying the unchanged
+immutable PR-identity checks.
+
+This workflow still performs source review, not automatic native C++/Rust
+analysis. The documented analysis profiles are opt-in. Native Windows analysis
+is a separate integration; these recovery changes do not claim that coverage,
+artifact-upload recovery or inference-result reuse.
+
 ## Reporting
 
 The controller updates only its own marked `github-actions[bot]` comment.
