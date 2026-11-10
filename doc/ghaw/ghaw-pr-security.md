@@ -65,9 +65,9 @@ better vulnerability detection.
    differences are not agent repairs; actual WTA edits remain head-bound, and
    unrelated changes are rejected. The detector must attest the exact
    report/patch inputs.
-   There is no additional dependency-fetch or Windows Docker validation job,
-   native build/test executor, test attestation, or promotion to Fixed. The
-   standard gh-aw agent sandbox remains separate from product validation.
+   PR CI validates the original reviewed head, not newly proposed fix commits.
+   Reconstruction does not build/test repairs or promote them to Fixed.
+   The standard gh-aw agent sandbox remains separate from product validation.
 5. Automation creates **one dedicated fix commit per HIGH problem**, containing
    only that problem's proposed source changes. The first parent is the reviewed
    head; subsequent commits form a linear chain. Ambiguous or inseparable edits
@@ -92,8 +92,14 @@ build-specific preprocessor settings. PR-diff filtering is disabled so existing
 and unrelated warnings remain available for the agent to classify.
 Real compilation and all unit tests
 remain required for CI success. Ordinary C++ units have a 30-second per-test
-timeout and 15-minute per-process session budget; packaged tests retain a
-five-minute per-test timeout. Timeouts fail CI, rather than becoming passes.
+timeout and 15-minute per-process session budget. Timeouts fail CI, rather than
+becoming passes.
+
+The unit scope uses the existing pipeline's `*unit.test*.dll` selector.
+Packaged `LocalTests` and feature/UI suites are separate categories in
+`build\pipelines\templates-v2\job-test-project.yml` and are not run by this
+unit-only CI. TestHost is still built for later UI/accessibility work, without
+installing or deploying an application.
 
 The native reader exposes matching CodeQL warnings in bounded pages, without
 raw SARIF messages or source snippets. Evidence retains the tool version and

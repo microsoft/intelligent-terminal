@@ -110,7 +110,7 @@ jobs:
           if errorlevel 1 exit /b 1
           nuget restore dep\nuget\packages.config -Verbosity quiet -NonInteractive
           if errorlevel 1 exit /b 1
-          rem Explicit targets include the unit-test host, but not CascadiaPackage or UI/feature suites.
+          rem Build TestHost for later UI checks, but run only ordinary unit DLLs below.
           "%MSBUILD%" OpenConsole.slnx /m /p:Configuration=Debug /p:Platform=x64 /p:AppxPackageSigningEnabled=false /p:GenerateAppxPackageOnBuild=false /p:AppxBundle=Never ^
             "/t:Terminal\Window\WindowsTerminal;Terminal\Window\WindowsTerminalShellExt;wtcli;Conhost\Host_EXE;Conhost\Host_UnitTests;Conhost\Interactivity_Win32_UnitTests;Shared\til_unit_tests;Shared\Types_Unit_Tests;Shared\Buffer\TextBuffer_Unit_Tests;Shared\Virtual Terminal\Adapter_UnitTests;Shared\Virtual Terminal\Parser_UnitTests;Terminal\Tests\Control_UnitTests;Terminal\Tests\SettingsModel_UnitTests;Terminal\Tests\UnitTests;Terminal\Tests\TerminalApp_UnitTests;Terminal\Tests\TerminalApp_LocalTests;Terminal\Tests\TestHostApp"
           if errorlevel 1 exit /b 1
@@ -133,47 +133,6 @@ jobs:
             -Platform x64 -Configuration Debug -Root bin\x64\Debug `
             -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'
           exit $LASTEXITCODE
-
-      - name: Install unit-test host framework dependencies
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $recipe = 'bin\x64\Debug\TestHostApp\TestHostApp.build.appxrecipe'
-          foreach ($name in @('TerminalApp.LocalTests.dll', 'TestHostAppXManifest.xml')) {
-            if (-not (Test-Path -LiteralPath (Join-Path 'bin\x64\Debug\TestHostApp' $name))) {
-              throw "Missing packaged unit-test host input: $name"
-            }
-          }
-          $dependencies = @(& .\build\scripts\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)
-          if ($dependencies.Count -eq 0) { throw 'No unit-test host framework dependencies were resolved.' }
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          foreach ($dependency in $dependencies) {
-            $archive = [IO.Compression.ZipFile]::OpenRead($dependency.FullName)
-            try {
-              $reader = [IO.StreamReader]::new($archive.GetEntry('AppxManifest.xml').Open())
-              try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
-            } finally { $archive.Dispose() }
-            $identity = $manifest.Package.Identity
-            $installed = @(Get-AppxPackage -Name $identity.Name | Where-Object {
-              $_.Publisher -eq $identity.Publisher -and
-              $_.Architecture -eq $identity.ProcessorArchitecture -and
-              [version]$_.Version -ge [version]$identity.Version
-            })
-            if ($installed.Count -gt 0) { continue }
-            Add-AppxPackage -Path $dependency.FullName -ErrorAction Stop
-          }
-
-      - name: Test packaged TerminalApp units
-        shell: cmd
-        run: |
-          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          call tools\razzle.cmd
-          if errorlevel 1 exit /b 1
-          cd bin\x64\Debug\TestHostApp
-          if errorlevel 1 exit /b 1
-          rem As in runut.cmd, TAEF uses RunAs=UAP and UAP:AppXManifest metadata to deploy only the test host.
-          "%TAEF%" TerminalApp.LocalTests.dll /testTimeout:0:05
-          exit /b %errorlevel%
 
   rust:
     name: Rust build and unit tests
