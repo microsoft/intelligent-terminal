@@ -191,6 +191,8 @@ warnings.
    justified. For uncertainty, state the missing proof and what the owner
    must verify; do not claim a confirmed issue. The warning's analyzer
    priority remains distinct from your finding severity.
+   Submit batches sequentially. If another batch is in progress, retry after
+   it completes; a rejected concurrent batch is not recorded.
 4. Require acceptance for all reported warning IDs before completing the
    security report. Never silently omit a warning or add a blanket suppression
    to make CI look clean. Proposals can be revised through the same tool.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stableJson, validatePublicReportText } from './security-review.mjs';
@@ -257,13 +257,26 @@ export function proposeWarningDecisions(directory, scope, input) {
     return { id: item.id, decision: item.decision, relatedToPr: item.relatedToPr,
       reason: text(item.reason, 500), proposal: text(item.proposal, 600) };
   });
-  const saved = new Map(existingDecisions(directory).map(item => [item.id, item]));
-  for (const item of proposals) saved.set(item.id, item);
   const destination = decisionsPath(directory);
-  const staging = `${destination}.next`;
-  writeFileSync(staging, `${JSON.stringify([...saved.values()], null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-  renameSync(staging, destination);
-  return { accepted: true, reviewed: saved.size, total: known.size, remaining: known.size - saved.size };
+  const lockPath = `${destination}.lock`;
+  let lock;
+  try {
+    lock = openSync(lockPath, 'wx', 0o600);
+  } catch (error) {
+    if (error.code === 'EEXIST') fail('another proposal batch is in progress; retry this batch');
+    throw error;
+  }
+  try {
+    const saved = new Map(existingDecisions(directory).map(item => [item.id, item]));
+    for (const item of proposals) saved.set(item.id, item);
+    const staging = `${destination}.next`;
+    writeFileSync(staging, `${JSON.stringify([...saved.values()], null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    renameSync(staging, destination);
+    return { accepted: true, reviewed: saved.size, total: known.size, remaining: known.size - saved.size };
+  } finally {
+    closeSync(lock);
+    unlinkSync(lockPath);
+  }
 }
 
 export function completedWarningReview(directory, scope) {

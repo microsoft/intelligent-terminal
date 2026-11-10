@@ -47,6 +47,9 @@ better vulnerability detection.
    enter repair.
    Controller concurrency is isolated by CI run and attempt, so another run
    rejected by admission cannot cancel a valid review.
+   After admission, a pending commit status is attached to the reviewed PR
+   head, not the `workflow_run` default-branch SHA. Completion or failure is
+   reported there too; build success alone is not a successful review.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
    narrowly allowed HIGH/high-confidence source fix, but cannot execute
@@ -108,6 +111,8 @@ raw SARIF messages or source snippets. Evidence retains the tool version and
 rule metadata count, so zero findings is not confused with an empty rule set.
 Warning IDs bind columns and a canonical result digest; raw diagnostic text
 and code flows are not forwarded. Only identical instances are deduplicated.
+Proposal batches use a cross-process writer lock. A competing writer gets
+an explicit retry response rather than silently overwriting accepted decisions.
 Every reported high/medium warning needs
 an explicit proposed `fix` or `ignore`, a reason, PR relevance and a suggested
 owner action. A changed-line flag is only a navigation hint: a changed caller

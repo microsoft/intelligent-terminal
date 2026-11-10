@@ -25,6 +25,7 @@ jobs:
       actions: write
       contents: read
       pull-requests: read
+      statuses: write
     outputs:
       pr_number: ${{ steps.admission.outputs.pr_number }}
       head_sha: ${{ steps.admission.outputs.head_sha }}
@@ -34,6 +35,7 @@ jobs:
       base_ref: ${{ steps.admission.outputs.base_ref }}
       ci_run_id: ${{ steps.admission.outputs.ci_run_id }}
       ci_run_attempt: ${{ steps.admission.outputs.ci_run_attempt }}
+      scope_applicable: ${{ steps.scope.outputs.applicable }}
       expected_workflow_sha: ${{ steps.worker.outputs.expected_workflow_sha }}
       publication: ${{ steps.canonical.outputs.publication }}
       patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
@@ -80,6 +82,23 @@ jobs:
               head_ref: pr.head.ref, head_repo: pr.head.repo.full_name, base_ref: pr.base.ref,
               ci_run_id: run.id, ci_run_attempt: run.run_attempt,
             })) core.setOutput(key, String(value));
+
+      - name: Mark admitted PR review pending
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          REVIEWED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+        with:
+          retries: 3
+          script: |
+            const sha = process.env.REVIEWED_HEAD_SHA;
+            if (!/^[0-9a-f]{40}$/.test(sha || '') ||
+                !/^[1-9][0-9]*$/.test(process.env.PR_NUMBER || '')) throw Error('Invalid admitted review identity.');
+            await github.rest.repos.createCommitStatus({
+              ...context.repo, sha, state: 'pending', context: 'Intelligent Terminal security review',
+              description: 'Reviewing the validated PR commit.',
+              target_url: `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
 
       - name: Resolve immutable review scope
         id: scope
@@ -504,3 +523,38 @@ jobs:
             } else {
               await github.rest.issues.createComment({ ...context.repo, issue_number: pull_number, body });
             }
+
+  review-status:
+    name: Publish security review execution status
+    needs: [security-review, publish-repair, publish-report]
+    if: always() && needs.security-review.outputs.head_sha != '' && needs.security-review.outputs.pr_number != ''
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Publish admitted PR review outcome
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          REVIEWED_HEAD_SHA: ${{ needs.security-review.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.security-review.outputs.pr_number }}
+          SCOPE_APPLICABLE: ${{ needs.security-review.outputs.scope_applicable }}
+          ANALYSIS_RESULT: ${{ needs.security-review.result }}
+          REPAIR_RESULT: ${{ needs.publish-repair.result }}
+          REPORT_RESULT: ${{ needs.publish-report.result }}
+        with:
+          retries: 3
+          script: |
+            const sha = process.env.REVIEWED_HEAD_SHA;
+            if (!/^[0-9a-f]{40}$/.test(sha || '') ||
+                !/^[1-9][0-9]*$/.test(process.env.PR_NUMBER || '')) throw Error('Invalid admitted review identity.');
+            const notRequired = process.env.ANALYSIS_RESULT === 'success' && process.env.SCOPE_APPLICABLE === 'false';
+            const completed = process.env.ANALYSIS_RESULT === 'success' && process.env.SCOPE_APPLICABLE === 'true' &&
+              process.env.REPORT_RESULT === 'success' && ['success', 'skipped'].includes(process.env.REPAIR_RESULT);
+            await github.rest.repos.createCommitStatus({
+              ...context.repo, sha, state: notRequired || completed ? 'success' : 'error',
+              context: 'Intelligent Terminal security review',
+              description: notRequired ? 'No security-relevant surface; AI review not required.' :
+                completed ? 'Review completed; see the report for findings and proposals.' :
+                'Security review did not complete; build success is not a review result.',
+              target_url: `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });

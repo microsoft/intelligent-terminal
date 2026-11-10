@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -214,6 +214,70 @@ test('each reported warning requires an explicit fix-or-ignore proposal for owne
     assert.match(complete.ownerAction, /owner or their coding agent decides/);
     assert.match(complete.ownerAction, /does not suppress/);
     assert.equal(complete.findings[0].priority, 'high');
+  });
+});
+
+test('parallel native proposal processes cannot silently overwrite an accepted batch', () => {
+  fixture(directory => {
+    const findings = readWarningPage(directory, scope).findings;
+    const decision = item => [{ id: item.id, decision: 'ignore', relatedToPr: 'unrelated',
+      reason: 'Existing fixture reviewed.', proposal: 'Owner decides whether to accept the ignore.' }];
+    const ready = resolve(directory, 'writer-ready');
+    const release = resolve(directory, 'writer-release');
+    const done = resolve(directory, 'writer-done');
+    const moduleUrl = new URL('./ci-security.mjs', import.meta.url).href;
+    const waitFor = path => {
+      const deadline = Date.now() + 10000;
+      while (!existsSync(path) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      assert(existsSync(path), `Timed out waiting for fixture writer: ${path}`);
+    };
+    const first = spawn(process.execPath, ['--input-type=module', '-e', `
+      import fs from 'node:fs';
+      import { syncBuiltinESMExports } from 'node:module';
+      const originalWrite = fs.writeFileSync;
+      fs.writeFileSync = (path, ...args) => {
+        if (String(path).endsWith('warning-dispositions.json.next')) {
+          originalWrite(${JSON.stringify(ready)}, '');
+          const deadline = Date.now() + 15000;
+          while (!fs.existsSync(${JSON.stringify(release)}) && Date.now() < deadline) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          }
+        }
+        return originalWrite(path, ...args);
+      };
+      syncBuiltinESMExports();
+      const { proposeWarningDecisions } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        const result = proposeWarningDecisions(${JSON.stringify(directory)}, ${JSON.stringify(scope)},
+          ${JSON.stringify(JSON.stringify(decision(findings[0])))});
+        originalWrite(${JSON.stringify(done)}, JSON.stringify(result));
+      } catch {
+        originalWrite(${JSON.stringify(done)}, '{"accepted":false}');
+        process.exitCode = 1;
+      }
+    `], { stdio: 'ignore' });
+    try {
+      waitFor(ready);
+      const second = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        const { proposeWarningDecisions } = await import(${JSON.stringify(moduleUrl)});
+        try {
+          proposeWarningDecisions(${JSON.stringify(directory)}, ${JSON.stringify(scope)},
+            ${JSON.stringify(JSON.stringify(decision(findings[1])))});
+        } catch (error) {
+          if (!error.message.includes('another proposal batch')) throw error;
+          process.exitCode = 2;
+        }
+      `], { encoding: 'utf8', timeout: 10000 });
+      assert([0, 2].includes(second.status), second.stderr);
+      writeFileSync(release, '');
+      waitFor(done);
+      assert.equal(JSON.parse(readFileSync(done, 'utf8')).accepted, true);
+      if (second.status === 2) proposeWarningDecisions(directory, scope, JSON.stringify(decision(findings[1])));
+      assert.equal(completedWarningReview(directory, scope).findings.length, findings.length);
+    } finally {
+      writeFileSync(release, '');
+      if (!existsSync(done)) first.kill();
+    }
   });
 });
 

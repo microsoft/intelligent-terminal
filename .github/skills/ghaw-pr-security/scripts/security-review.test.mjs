@@ -116,6 +116,42 @@ test('controller concurrency isolates rejected CI completions and stale attempts
   assert.equal(groupFor(valid), groupFor(structuredClone(valid)));
 });
 
+test('controller reports execution status on the admitted PR commit, not the workflow_run default branch', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const pending = controller.split('      - name: Mark admitted PR review pending')[1]
+    ?.split('          script: |')[1]?.split('\n      - name:')[0];
+  const final = controller.split('      - name: Publish admitted PR review outcome')[1]
+    ?.split('          script: |')[1];
+  assert(pending && final, 'Both pending and final PR statuses are required.');
+  const execute = script => new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'process', script);
+  const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 456,
+    sha: BASE, serverUrl: 'https://github.com' };
+  for (const [analysis, applicable, repair, report, expected] of [
+    ['success', 'true', 'skipped', 'success', 'success'],
+    ['success', 'true', 'success', 'success', 'success'],
+    ['success', 'false', 'skipped', 'skipped', 'success'],
+    ['failure', 'true', 'skipped', 'skipped', 'error'],
+    ['cancelled', 'true', 'skipped', 'skipped', 'error'],
+    ['success', 'true', 'failure', 'skipped', 'error'],
+    ['success', 'true', 'success', 'failure', 'error'],
+  ]) {
+    const statuses = [];
+    const github = { rest: { repos: { createCommitStatus: async value => statuses.push(value) } } };
+    const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
+      SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report } };
+    await execute(pending)(github, context, process);
+    await execute(final)(github, context, process);
+    assert.deepEqual(statuses.map(value => value.state), ['pending', expected]);
+    assert(statuses.every(value => value.sha === HEAD && value.target_url.endsWith('/actions/runs/456')));
+  }
+  const github = { rest: { repos: { createCommitStatus: async () => assert.fail('No admitted head; no status write.') } } };
+  for (const script of [pending, final]) {
+    await assert.rejects(execute(script)(github, context, { env: { REVIEWED_HEAD_SHA: '', PR_NUMBER: '17' } }),
+      /Invalid admitted review identity/);
+  }
+});
+
 test('controller separates repair writes from PR reporting after canonical validation', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   assert(controller.includes('permissions: {}'));
@@ -421,7 +457,8 @@ test('typed detector proof rejects warning, cancelled, missing and self-reported
 
 test('actual PR report publisher verifies per-finding parent chains, idempotence and immutable identities', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  const script = "const fs = require('node:fs');" + controller.split("            const fs = require('node:fs');")[1];
+  const script = "const fs = require('node:fs');" + controller.split("            const fs = require('node:fs');")[1]
+    .split('\n  review-status:')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)('require', 'github', 'context', 'process', script);
   for (const mode of ['fork', 'same-no-patch', 'same-unpublished', 'same-repair']) {
   for (const existing of [false, true]) {
@@ -883,7 +920,7 @@ test('native CI verification rechecks live PR and trusted workflow before return
 test('actual controller admission uses trusted commit association when workflow_run pull_requests is empty', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   const script = controller.split('      - name: Admit only successful matching current PR build CI')[1]
-    .split('          script: |')[1].split('\n      - name: Resolve immutable review scope')[0];
+    .split('          script: |')[1].split('\n      - name:')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', 'require', script);
   for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork']) {
