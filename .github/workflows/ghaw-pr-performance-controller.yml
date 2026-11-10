@@ -106,6 +106,17 @@ jobs:
               })
             };
             const startedAt = Date.now() - 5000;
+            const readWithRetry = async operation => {
+              for (let attempt = 0; ; attempt++) {
+                try {
+                  return await operation();
+                } catch (error) {
+                  if (attempt === 2 || ![502, 503, 504].includes(error.status)) throw error;
+                  core.warning(`Transient GitHub read failed (${error.status}); retry ${attempt + 1}/2.`);
+                  await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                }
+              }
+            };
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -116,14 +127,14 @@ jobs:
             let run;
             for (let attempt = 0; attempt < 20 && !run; attempt++) {
               await new Promise(resolve => setTimeout(resolve, 3000));
-              const runs = await github.rest.actions.listWorkflowRuns({
+              const runs = await readWithRetry(() => github.rest.actions.listWorkflowRuns({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: worker,
                 event: "workflow_dispatch",
                 branch: process.env.BASE_REF,
                 per_page: 50
-              });
+              }));
               run = runs.data.workflow_runs.find(candidate =>
                 Date.parse(candidate.created_at) >= startedAt &&
                 candidate.display_title.includes(dispatchId));
@@ -134,39 +145,53 @@ jobs:
               `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}`);
             const deadline = Date.now() + 150 * 60 * 1000;
             const phaseTimeoutMinutes = { activation: 5, conclusion: 3 };
+            let completedReads = 0;
             const cancelWorker = async () => {
               const target = { owner: context.repo.owner, repo: context.repo.repo, run_id: run.id };
-              await github.rest.actions.cancelWorkflowRun(target);
+              try {
+                await github.rest.actions.cancelWorkflowRun(target);
+              } catch (error) {
+                if (error.status !== 409) throw error;
+                const completed = (await readWithRetry(() => github.rest.actions.getWorkflowRun(target))).data;
+                if (completed.status !== "completed") throw error;
+                core.warning(`Worker ${run.id} completed before cancellation.`);
+                return completed;
+              }
               for (let attempt = 0; attempt < 2; attempt++) {
                 await new Promise(resolve => setTimeout(resolve, 10000));
-                const stopped = (await github.rest.actions.getWorkflowRun(target)).data;
-                if (stopped.status === "completed") return;
+                const stopped = (await readWithRetry(() => github.rest.actions.getWorkflowRun(target))).data;
+                if (stopped.status === "completed") return stopped;
               }
               await github.request("POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel", target);
             };
             while (Date.now() < deadline) {
-              run = (await github.rest.actions.getWorkflowRun({
+              run = (await readWithRetry(() => github.rest.actions.getWorkflowRun({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 run_id: run.id
-              })).data;
-              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              }))).data;
+              const jobs = await readWithRetry(() => github.paginate(github.rest.actions.listJobsForWorkflowRun, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 run_id: run.id,
                 per_page: 100
-              });
-              for (const job of jobs) {
+              }));
+              for (const job of run.status === "completed" ? [] : jobs) {
                 const limit = phaseTimeoutMinutes[job.name];
                 if (!limit || job.status !== "in_progress") continue;
                 const phaseStarted = Date.parse(job.started_at);
-                if (!Number.isFinite(phaseStarted)) {
-                  await cancelWorker();
-                  throw new Error(`Worker ${job.name} has no valid start time.`);
-                }
-                if (Date.now() - phaseStarted > limit * 60 * 1000) {
-                  await cancelWorker();
-                  throw new Error(`Worker ${job.name} exceeded its ${limit}-minute controller phase deadline.`);
+                const phaseError = !Number.isFinite(phaseStarted)
+                  ? `Worker ${job.name} has no valid start time.`
+                  : Date.now() - phaseStarted > limit * 60 * 1000
+                    ? `Worker ${job.name} exceeded its ${limit}-minute controller phase deadline.`
+                    : null;
+                if (phaseError) {
+                  const stopped = await cancelWorker();
+                  if (stopped?.status === "completed" && stopped.conclusion === "success") {
+                    run = stopped;
+                    break;
+                  }
+                  throw new Error(phaseError);
                 }
               }
               if (run.status === "completed") {
@@ -180,6 +205,11 @@ jobs:
                 if (agentJob?.conclusion !== "success" ||
                     !agentJob.steps?.some(step =>
                       step.name === "Execute GitHub Copilot CLI" && step.conclusion === "success")) {
+                  if (++completedReads < 3) {
+                    core.warning(`Worker ${run.id} completed, but agent-step results are not yet visible; re-reading.`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    continue;
+                  }
                   throw new Error(`Worker ${run.id} did not complete the agent execution step.`);
                 }
                 return;

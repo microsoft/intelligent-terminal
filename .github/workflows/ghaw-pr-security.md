@@ -360,6 +360,7 @@ steps:
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
       rm -f /tmp/gh-aw/security-scope.json /tmp/gh-aw/agent/security-findings.json
+      rm -f /tmp/gh-aw/agent/security-driver-completion.json
       trusted_validator="$RUNNER_TEMP/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
       cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
@@ -441,6 +442,10 @@ post-steps:
       }
       trusted_validator="$RUNNER_TEMP/security-review-final.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
+      node "$trusted_validator" check-driver-completion \
+        --scope "$RUNNER_TEMP/gh-aw/security-report-scope.json" \
+        --report /tmp/gh-aw/agent/security-findings.json \
+        --completion /tmp/gh-aw/agent/security-driver-completion.json
       source_workspace="$GITHUB_WORKSPACE"
       trusted_workspace="$RUNNER_TEMP/security-repair-workspace"
       trusted_scope="$RUNNER_TEMP/security-scope.final.json"
