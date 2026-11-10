@@ -261,8 +261,13 @@ try {
                         if (-not [string]::IsNullOrWhiteSpace($gitBinary) -and
                             [IO.Path]::GetPathRoot($gitBinary).Length -gt 2 -and
                             (Test-Path -LiteralPath $gitBinary -PathType Leaf)) {
-                            # The call operator also expands wildcard characters in command paths.
-                            [System.Management.Automation.WildcardPattern]::Escape($gitBinary)
+                            # Windows PowerShell expands command-path wildcards; PowerShell 7 uses the literal path.
+                            if ($PSVersionTable.PSEdition -eq 'Desktop') {
+                                [System.Management.Automation.WildcardPattern]::Escape($gitBinary)
+                            }
+                            else {
+                                $gitBinary
+                            }
                         }
                     }
                     else {
