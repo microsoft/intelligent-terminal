@@ -6,6 +6,7 @@ import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, read
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import {
   createReportTemplate, inspectSecurityRepair, readSecurityDiff, readSecuritySource, validateCandidate,
   SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, normalizePath, validatePatch, validateProposal, validateReport,
@@ -437,6 +438,7 @@ export function runSecurityReviewDriver({
   privateRoot = resolve(dirname(reportPath), '..', '..', 'gh-aw-security-private'),
   profileSource = dirname(process.env.GH_AW_MCP_CONFIG ?? resolve(process.env.HOME ?? homedir(), '.copilot', 'mcp-config.json')),
 } = {}) {
+  logger('[security-review-driver] stage=setup');
   const root = realpathSync(resolve(workspace));
   const executable = protectedPath(binary, root);
   protectedPath(SOURCE, root);
@@ -494,18 +496,21 @@ export function runSecurityReviewDriver({
   };
   const guidanceBaseline = protectedBaseline(root);
   const primary = launch('primary');
+  logger('[security-review-driver] stage=protected-inputs');
   verifyProtectedBaseline(root, guidanceBaseline);
   const transcript = parseTranscript(primary, PRIMARY_TOOLS);
+  logger('[security-review-driver] stage=diff-coverage');
   validateCompleteDiffCoverage(transcript.calls, scope, paths => readDiff(scope, paths, root));
   if (ciWarnings) {
+    logger('[security-review-driver] stage=ci-warning-reads');
     const readIds = new Set();
     let pages = 0;
     for (const call of transcript.calls.filter(call => call.toolName === 'mcpscripts-read_ci_security_findings')) {
       const data = nativeResult(call);
       const expected = readWarningPage(ciSecurityDirectory, scope,
         call.arguments?.offset ?? 0, call.arguments?.limit ?? 20);
-      if (JSON.stringify(data?.ci) !== JSON.stringify(expected.ci) ||
-          JSON.stringify(data?.findings) !== JSON.stringify(expected.findings)) {
+      if (!isDeepStrictEqual(data?.ci, expected.ci) ||
+          !isDeepStrictEqual(data?.findings, expected.findings)) {
         fail('CI warning reads do not match the protected evidence');
       }
       pages++;
@@ -520,6 +525,7 @@ export function runSecurityReviewDriver({
   if (transcript.calls.filter(call => call.toolName === 'safeoutputs-noop').length !== 1) {
     fail('primary must emit exactly one successful noop');
   }
+  logger('[security-review-driver] stage=report-contract');
   const candidateInput = readReport(reportPath);
   const candidateBytes = readFileSync(reportPath, 'utf8');
   const candidate = scope.mode === 'repair'
@@ -529,12 +535,14 @@ export function runSecurityReviewDriver({
   if (readFileSync(scopePath, 'utf8') !== scopeBytes) fail('protected scope changed during primary');
   const emitReport = report => {
     if (ciWarnings) {
+      logger('[security-review-driver] stage=ci-warning-proposals');
       const warningReview = `${JSON.stringify(completedWarningReview(ciSecurityDirectory, scope), null, 2)}\n`;
       writeFileSync(resolve(dirname(reportPath), 'security-ci-warning-dispositions.json'),
         warningReview, { flag: 'wx', mode: 0o600 });
       report = { ...report, ciWarningDispositionsSha256: createHash('sha256').update(warningReview).digest('hex') };
       writeReport(reportPath, report);
     }
+    logger('[security-review-driver] stage=report-output');
     const metadata = projectSecurityReviewOutput(transcript, report);
     emitPrimary(metadata);
     const publicLogs = resolve(dirname(reportPath), '..', 'sandbox', 'agent', 'logs');
@@ -554,6 +562,7 @@ export function runSecurityReviewDriver({
     emitReport(candidate);
     return { mode: scope.mode, reviewed: false };
   }
+  logger('[security-review-driver] stage=candidate-patch');
   const before = inspect(scope, root, guidanceBaseline);
   const patchReport = { ...candidate, review: { ...candidate.review, patchSha256: before.patchSha256 } };
   validatePatch(patchReport, before.paths, before.patch, scope);
@@ -575,6 +584,7 @@ export function runSecurityReviewDriver({
   })}`;
   verifyProtectedBaseline(root, guidanceBaseline);
   const reviewer = launch('reviewer', prompt);
+  logger('[security-review-driver] stage=reviewer-proof');
   verifyProtectedBaseline(root, guidanceBaseline);
   const response = validateReviewerTranscript(reviewer, scope, before, originalDiff, before.paths,
     diffForPaths, candidate.findings, sourceForRange);

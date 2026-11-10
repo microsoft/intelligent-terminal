@@ -155,8 +155,10 @@ jobs:
                 pr.base.sha !== process.env.EXPECTED_BASE_SHA || pr.base.ref !== process.env.BASE_REF ||
                 pr.head.ref !== process.env.HEAD_REF || pr.head.repo.full_name !== process.env.HEAD_REPO ||
                 pr.head.repo.id !== context.payload.repository.id) throw Error('Stale PR before worker dispatch.');
-            const baseRef = await github.rest.git.getRef({ ...context.repo, ref: `heads/${pr.base.ref}` });
-            if (baseRef.data.ref !== `refs/heads/${pr.base.ref}` ||
+            const workerRef = context.payload.repository.default_branch;
+            if (typeof workerRef !== 'string' || !workerRef) throw Error('Invalid trusted worker reference.');
+            const baseRef = await github.rest.git.getRef({ ...context.repo, ref: `heads/${workerRef}` });
+            if (baseRef.data.ref !== `refs/heads/${workerRef}` ||
                 baseRef.data.object.type !== "commit" || !/^[0-9a-f]{40}$/.test(baseRef.data.object.sha)) {
               throw Error('Invalid trusted worker branch revision.');
             }
@@ -189,9 +191,9 @@ jobs:
               })
             };
             const dispatchRef = await github.rest.git.getRef({
-              ...context.repo, ref: `heads/${pr.base.ref}`
+              ...context.repo, ref: `heads/${workerRef}`
             });
-            if (dispatchRef.data.ref !== `refs/heads/${pr.base.ref}` ||
+            if (dispatchRef.data.ref !== `refs/heads/${workerRef}` ||
                 dispatchRef.data.object.type !== "commit" ||
                 dispatchRef.data.object.sha !== expectedWorkflowSha) {
               throw new Error("Trusted workflow branch changed before dispatch.");
@@ -199,7 +201,7 @@ jobs:
             const startedAt = Date.now() - 5000;
             const response = await github.request(
               "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
-              { ...context.repo, workflow_id: process.env.WORKER, ref: pr.base.ref, inputs }
+              { ...context.repo, workflow_id: process.env.WORKER, ref: workerRef, inputs }
             );
             let runId = response.data?.workflow_run_id;
             let run;
@@ -209,7 +211,7 @@ jobs:
                 ...context.repo,
                 workflow_id: process.env.WORKER,
                 event: "workflow_dispatch",
-                branch: pr.base.ref,
+                branch: workerRef,
                 created: `>=${new Date(startedAt).toISOString()}`,
                 per_page: 100
               });

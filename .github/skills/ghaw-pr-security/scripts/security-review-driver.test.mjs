@@ -484,7 +484,7 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
 }
 
 test('CI warning proposals require complete reads and owner-action proposals before trusted completion', () => {
-  for (const variant of ['complete', 'unread', 'missing-proposal']) {
+  for (const variant of ['complete', 'reordered-data', 'unread', 'missing-proposal']) {
     withFixture(fixture => {
       const directory = resolve(fixture.scopePath, '..', 'ci-security');
       mkdirSync(directory);
@@ -493,7 +493,7 @@ test('CI warning proposals require complete reads and owner-action proposals bef
       }));
       const sarif = {
         version: '2.1.0', runs: [{
-          tool: { driver: { name: 'CodeQL', rules: [{
+          tool: { driver: { name: 'CodeQL', semanticVersion: '2.27.4', rules: [{
             id: 'rust/example', shortDescription: { text: 'Example warning' },
             properties: { 'security-severity': '7.5' },
           }] } }, invocations: [{ executionSuccessful: true }],
@@ -521,7 +521,12 @@ test('CI warning proposals require complete reads and owner-action proposals bef
       options.runChild = (...args) => {
         const result = primary(...args);
         const page = readWarningPage(directory, scope);
-        const events = variant === 'unread' ? [] : call('mcpscripts-read_ci_security_findings', page);
+        const readResult = variant === 'reordered-data' ? {
+          ...page,
+          ci: Object.fromEntries(Object.entries(page.ci).reverse()),
+          findings: page.findings.map(item => Object.fromEntries(Object.entries(item).reverse())),
+        } : page;
+        const events = variant === 'unread' ? [] : call('mcpscripts-read_ci_security_findings', readResult);
         if (variant !== 'missing-proposal') {
           const decisions = JSON.stringify(page.findings.map(item => ({
             id: item.id, decision: 'fix', relatedToPr: 'uncertain',
@@ -534,7 +539,7 @@ test('CI warning proposals require complete reads and owner-action proposals bef
         result.stdout = output([...events, ...result.stdout.trim().split('\n').map(line => JSON.parse(line))]);
         return result;
       };
-      if (variant === 'complete') {
+      if (['complete', 'reordered-data'].includes(variant)) {
         assert.equal(runSecurityReviewDriver(options).reviewed, false);
         const finalReport = JSON.parse(readFileSync(fixture.reportPath, 'utf8'));
         const warningBytes = readFileSync(resolve(fixture.reportPath, '..', 'security-ci-warning-dispositions.json'));
@@ -554,6 +559,8 @@ test('a submitted report and noop cannot authorize publication after driver cove
   withFixture(fixture => {
     const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', summaryMarkdown: SUMMARY_MD };
     const options = driverOptions(fixture, [], { candidate: () => report });
+    const stages = [];
+    options.logger = message => stages.push(message);
     const primary = options.runChild;
     options.runChild = (...args) => {
       const result = primary(...args);
@@ -562,6 +569,7 @@ test('a submitted report and noop cannot authorize publication after driver cove
       return result;
     };
     assert.throws(() => runSecurityReviewDriver(options), /complete immutable original diff/);
+    assert.equal(stages.at(-1), '[security-review-driver] stage=diff-coverage');
     assert.equal(validateProposal(JSON.parse(readFileSync(fixture.reportPath, 'utf8')), scope).patch.length, 0);
     const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
     assert.equal(existsSync(completion), false);
@@ -757,7 +765,7 @@ test('fixed transition diagnostics precede each bounded child without exposing m
       return runChild(...args);
     };
     assert.equal(runSecurityReviewDriver(options).reviewed, true);
-    assert.deepEqual(observed.filter(message => !message.includes('output bytes=')), [
+    assert.deepEqual(observed.filter(message => message === 'child-start' || message.includes('starting ')), [
       '[security-review-driver] starting primary', 'child-start',
       '[security-review-driver] starting fixed independent reviewer', 'child-start',
     ]);

@@ -18,7 +18,7 @@ function sarif() {
   return {
     version: '2.1.0',
     runs: [{
-      tool: { driver: { name: 'CodeQL', rules: [3, 5, 8].map(score => ({
+      tool: { driver: { name: 'CodeQL', semanticVersion: '2.27.4', rules: [3, 5, 8].map(score => ({
         id: `rust/example-${score}`, shortDescription: { text: 'Example analyzer diagnostic' },
         helpUri: 'https://codeql.github.com/codeql-query-help/rust/example/',
         properties: { 'security-severity': String(score) },
@@ -59,6 +59,7 @@ test('security analysis keeps high/medium warnings without source snippets or un
   const report = collectSarif(sarif(), { ...CI, language: 'rust' });
   assert.deepEqual(report.counts, { total: 3, high: 1, medium: 1, low: 1, unclassified: 0, outsideWorkspace: 0, duplicates: 0 });
   assert.deepEqual(report.findings.map(item => item.priority), ['high', 'medium']);
+  assert.deepEqual(report.analysis, { toolVersion: '2.27.4', rulesInSarif: 3 });
   assert(!JSON.stringify(report).includes('Untrusted source detail'));
   const duplicate = sarif();
   duplicate.runs[0].results.push(duplicate.runs[0].results[2]);
@@ -71,6 +72,10 @@ test('analyzer crashes, unknown formats and traversal do not become clean analys
   failed.runs[0].invocations[0].executionSuccessful = false;
   assert.throws(() => collectSarif(failed, { ...CI, language: 'rust' }), /complete successfully/);
   assert.throws(() => collectSarif({}, { ...CI, language: 'rust' }));
+  const noRules = sarif();
+  noRules.runs[0].tool.driver.rules = [];
+  noRules.runs[0].results = [];
+  assert.throws(() => collectSarif(noRules, { ...CI, language: 'rust' }), /no analysis rules/);
   const outside = sarif();
   outside.runs[0].results[2].locations[0].physicalLocation.artifactLocation.uri = '../outside.rs';
   const result = collectSarif(outside, { ...CI, language: 'rust' });

@@ -68,9 +68,34 @@ jobs:
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
         with:
           languages: c-cpp
-          build-mode: manual
+          # Keep the regular build and unit-test processes outside CodeQL tracing.
+          build-mode: none
           queries: security-extended
           dependency-caching: false
+
+      - name: Analyze C++ sources without code-scanning upload
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
+        with:
+          # In this action version, false means failure-only, not never.
+          upload: never
+          upload-database: false
+          output: ci-security\cpp\sarif
+
+      - name: Collect advisory C++ findings
+        run: |
+          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
+            --sarif ci-security\cpp\sarif\cpp.sarif `
+            --language cpp --head $env:EXPECTED_HEAD_SHA `
+            --output ci-security\cpp\findings.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload C++ security evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-security-cpp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-security\cpp\findings.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Build production Terminal and C++ tests
         shell: cmd
@@ -103,7 +128,8 @@ jobs:
             if ($name -notin $tests.Name) { throw "Missing C++ unit test binary: $name" }
           }
           & .\build\scripts\Run-Tests.ps1 -MatchPattern '*unit.test*.dll' `
-            -Platform x64 -Configuration Debug -Root bin\x64\Debug
+            -Platform x64 -Configuration Debug -Root bin\x64\Debug `
+            -AdditionalTaefArguments '/testTimeout:0:05'
           exit $LASTEXITCODE
 
       - name: Install unit-test host framework dependencies
@@ -144,32 +170,8 @@ jobs:
           cd bin\x64\Debug\TestHostApp
           if errorlevel 1 exit /b 1
           rem As in runut.cmd, TAEF uses RunAs=UAP and UAP:AppXManifest metadata to deploy only the test host.
-          "%TAEF%" TerminalApp.LocalTests.dll
+          "%TAEF%" TerminalApp.LocalTests.dll /testTimeout:0:05
           exit /b %errorlevel%
-
-      - name: Analyze C++ without code-scanning upload
-        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
-        with:
-          # In this action version, false means failure-only, not never.
-          upload: never
-          upload-database: false
-          output: ci-security\cpp\sarif
-
-      - name: Collect advisory C++ findings
-        run: |
-          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
-            --sarif ci-security\cpp\sarif\cpp.sarif `
-            --language cpp --head $env:EXPECTED_HEAD_SHA `
-            --output ci-security\cpp\findings.json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Upload C++ security evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: ci-security-cpp-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ci-security\cpp\findings.json
-          if-no-files-found: error
-          retention-days: 30
 
   rust:
     name: Rust build and unit tests
@@ -220,15 +222,19 @@ jobs:
           rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build x64 WTA
+      - name: Build x64 Rust binaries
         run: |
-          cargo +1.93.0 build --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($manifest in @('tools\wta\Cargo.toml', 'installer\bootstrap\Cargo.toml')) {
+            cargo +1.93.0 build --locked --target x86_64-pc-windows-msvc --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
-      - name: Test all x64 WTA units
+      - name: Test all x64 Rust units
         run: |
-          cargo +1.93.0 test --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($manifest in @('tools\wta\Cargo.toml', 'installer\bootstrap\Cargo.toml')) {
+            cargo +1.93.0 test --locked --bins --target x86_64-pc-windows-msvc --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Initialize Rust security analysis
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066

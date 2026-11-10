@@ -433,7 +433,10 @@ steps:
             stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw Error('Invalid CI findings artifact layout.');
       }
       const confirmed = verifyCiSecurity();
-      if (JSON.stringify(confirmed) !== JSON.stringify(verified)) throw Error('CI identity changed during artifact download.');
+      if (JSON.stringify(confirmed.identity) !== JSON.stringify(verified.identity) ||
+          JSON.stringify(confirmed.artifacts) !== JSON.stringify(verified.artifacts)) {
+        throw Error('CI identity changed during artifact download.');
+      }
       writeFileSync(join(root, 'identity.json'), JSON.stringify(verified.identity), { flag: 'wx', mode: 0o600 });
       NODE
       driver_dir="$RUNNER_TEMP/gh-aw/security-review-native"

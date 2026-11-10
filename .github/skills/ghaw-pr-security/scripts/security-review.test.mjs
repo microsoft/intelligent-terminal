@@ -237,11 +237,12 @@ test('controller separates cached PR base from new worker SHA and rejects dispat
     .split('          script: |')[1].split('\n      - name: Canonicalize worker')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', script);
-  for (const variant of ['current', 'new-worker', 'stale-pr', 'dispatch-race', 'wrong-ref', 'wrong-type', 'api-failure', 'post-read-race']) {
+  for (const variant of ['current', 'new-worker', 'stale-pr', 'dispatch-race', 'wrong-ref', 'wrong-type',
+    'missing-worker-ref', 'api-failure', 'post-read-race']) {
     let dispatched = false;
     const outputs = {};
     const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
-      payload: { repository: { id: 42 } } };
+      payload: { repository: { id: 42, default_branch: variant === 'missing-worker-ref' ? undefined : 'main' } } };
     const env = { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
       WORKER: 'ghaw-pr-security.lock.yml', PR_NUMBER: '17', BASE_REF: 'release/nested',
       HEAD_REF: 'topic', HEAD_REPO: 'owner/repo', CI_RUN_ID: '99', CI_RUN_ATTEMPT: '2', GITHUB_RUN_ATTEMPT: '1' };
@@ -254,9 +255,9 @@ test('controller separates cached PR base from new worker SHA and rejects dispat
           base: { sha: BASE, ref: 'release/nested' } } }) },
         git: { getRef: async args => {
           refReads++;
-          assert.equal(args.ref, 'heads/release/nested');
+          assert.equal(args.ref, 'heads/main');
           if (variant === 'api-failure') throw new Error('API unavailable');
-          return { data: { ref: variant === 'wrong-ref' ? 'refs/heads/other' : 'refs/heads/release/nested',
+          return { data: { ref: variant === 'wrong-ref' ? 'refs/heads/other' : 'refs/heads/main',
             object: { type: variant === 'wrong-type' ? 'tag' : 'commit',
               sha: variant === 'dispatch-race' && refReads === 2 ? HEAD : workerSha } } };
         } },
@@ -265,7 +266,7 @@ test('controller separates cached PR base from new worker SHA and rejects dispat
       },
       request: async (route, args) => {
         dispatched = true;
-        assert.equal(args.ref, 'release/nested');
+        assert.equal(args.ref, 'main');
         assert.equal(args.inputs.expected_base_sha, BASE);
         assert.equal(args.inputs.expected_workflow_sha, workerSha);
         assert.equal(args.inputs.ci_run_id, '99');
@@ -295,7 +296,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', 'setTimeout', script);
   const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
-    payload: { repository: { id: 42 } } };
+    payload: { repository: { id: 42, default_branch: 'main' } } };
   const outputs = {};
   let listed = false;
   const github = {
@@ -303,7 +304,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
       pulls: { get: async () => ({ data: { number: 17, state: 'open',
         head: { sha: HEAD, ref: 'topic', repo: { id: 42, full_name: 'owner/repo' } },
         base: { sha: BASE, ref: 'release/nested' } } }) },
-      git: { getRef: async () => ({ data: { ref: 'refs/heads/release/nested', object: { type: 'commit', sha: BASE } } }) },
+      git: { getRef: async () => ({ data: { ref: 'refs/heads/main', object: { type: 'commit', sha: BASE } } }) },
       actions: {
         listWorkflowRuns: () => { throw new Error('Unpaginated listing must not be used'); },
         getWorkflowRun: async args => {
@@ -316,7 +317,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
     paginate: async (endpoint, args) => {
       assert.equal(endpoint, github.rest.actions.listWorkflowRuns);
       assert.equal(args.workflow_id, 'ghaw-pr-security.lock.yml');
-      assert.equal(args.branch, 'release/nested');
+      assert.equal(args.branch, 'main');
       assert.equal(args.event, 'workflow_dispatch');
       assert.equal(args.per_page, 100);
       assert.match(args.created, /^>=\d{4}-\d{2}-\d{2}T/);

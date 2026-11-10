@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validatePublicReportText } from './security-review.mjs';
 
@@ -58,12 +58,17 @@ export function collectSarif(sarif, { language, headSha, ciRunId, ciRunAttempt, 
       !Array.isArray(sarif.runs) || !sarif.runs.length) fail('invalid CodeQL SARIF');
   const counts = { total: 0, high: 0, medium: 0, low: 0, unclassified: 0, outsideWorkspace: 0, duplicates: 0 };
   const findings = new Map();
+  const ruleIds = new Set();
+  const versions = new Set();
   for (const run of sarif.runs) {
     if (run.tool?.driver?.name !== 'CodeQL' || !Array.isArray(run.results) ||
         !Array.isArray(run.tool.driver.rules) || !Array.isArray(run.invocations) ||
         !run.invocations.length || run.invocations.some(item => item.executionSuccessful !== true)) {
       fail('CodeQL did not complete successfully');
     }
+    if (!run.tool.driver.rules.length) fail('CodeQL returned no analysis rules');
+    versions.add(text(run.tool.driver.semanticVersion ?? run.tool.driver.version, 100));
+    for (const rule of run.tool.driver.rules) ruleIds.add(text(rule.id, 200));
     for (const result of run.results) {
       counts.total++;
       const rule = run.tool.driver.rules.find(item => item.id === result.ruleId);
@@ -106,13 +111,16 @@ export function collectSarif(sarif, { language, headSha, ciRunId, ciRunAttempt, 
   const selected = [...findings.values()].sort((a, b) =>
     b.securitySeverity - a.securitySeverity || a.file.localeCompare(b.file) || a.startLine - b.startLine);
   for (const item of selected) counts[item.priority]++;
-  return { version: 1, headSha, ciRunId, ciRunAttempt, language, tool: 'CodeQL', counts, findings: selected };
+  if (versions.size !== 1) fail('mixed CodeQL versions in one language artifact');
+  return { version: 1, headSha, ciRunId, ciRunAttempt, language, tool: 'CodeQL',
+    analysis: { toolVersion: [...versions][0], rulesInSarif: ruleIds.size }, counts, findings: selected };
 }
 
 export function readCiWarnings(directory, scope) {
   const ci = identity(readJson(resolve(directory, 'identity.json'), 4096));
   if (ci.headSha !== scope.headSha) fail('CI evidence does not match the reviewed head');
   const findings = [];
+  const analyzers = [];
   const counts = { total: 0, high: 0, medium: 0, low: 0, unclassified: 0, outsideWorkspace: 0, duplicates: 0 };
   for (const language of LANGUAGES) {
     const report = readJson(resolve(directory, language, 'findings.json'));
@@ -120,6 +128,11 @@ export function readCiWarnings(directory, scope) {
         report.headSha !== ci.headSha || report.ciRunId !== ci.runId ||
         report.ciRunAttempt !== ci.runAttempt || !Array.isArray(report.findings) ||
         report.findings.length > 10000) fail('mismatched analyzer artifact');
+    text(report.analysis?.toolVersion, 100);
+    if (!Number.isSafeInteger(report.analysis?.rulesInSarif) || report.analysis.rulesInSarif < 1) {
+      fail('missing analyzer rule coverage');
+    }
+    analyzers.push({ language, toolVersion: report.analysis.toolVersion, rulesInSarif: report.analysis.rulesInSarif });
     const ids = new Set();
     for (const item of report.findings) {
       const file = repositoryPath(item.file, process.cwd());
@@ -160,7 +173,7 @@ export function readCiWarnings(directory, scope) {
   }
   findings.sort((a, b) => b.securitySeverity - a.securitySeverity ||
     a.file.localeCompare(b.file) || a.startLine - b.startLine);
-  return { ci, counts, findings };
+  return { ci, analyzers, counts, findings };
 }
 
 function decisionsPath(directory) {
@@ -181,9 +194,9 @@ function existingDecisions(directory) {
 export function readWarningPage(directory, scope, offset = 0, limit = 20) {
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) ||
       limit < 1 || limit > 20) fail('invalid warning page');
-  const { ci, counts, findings } = readCiWarnings(directory, scope);
+  const { ci, analyzers, counts, findings } = readCiWarnings(directory, scope);
   return {
-    ci, counts, total: findings.length, findings: findings.slice(offset, offset + limit),
+    ci, analyzers, counts, total: findings.length, findings: findings.slice(offset, offset + limit),
     nextOffset: offset + limit < findings.length ? offset + limit : null,
     reviewed: existingDecisions(directory).length,
     caution: 'A warning outside changed lines is not necessarily unrelated. Compare immutable base/head source; all decisions remain proposals for the PR owner or coding agent.',
@@ -216,7 +229,7 @@ export function proposeWarningDecisions(directory, scope, input) {
 }
 
 export function completedWarningReview(directory, scope) {
-  const { ci, counts, findings } = readCiWarnings(directory, scope);
+  const { ci, analyzers, counts, findings } = readCiWarnings(directory, scope);
   const decisions = existingDecisions(directory);
   const byId = new Map(decisions.map(item => [item.id, item]));
   if (decisions.length !== findings.length || byId.size !== findings.length ||
@@ -230,7 +243,7 @@ export function completedWarningReview(directory, scope) {
     text(item.reason, 500);
     text(item.proposal, 600);
   }
-  return { version: 1, ci, counts, findings: findings.map(item => ({ ...item, ...byId.get(item.id) })),
+  return { version: 1, ci, analyzers, counts, findings: findings.map(item => ({ ...item, ...byId.get(item.id) })),
     ownerAction: 'Proposals only. The PR owner or their coding agent decides whether to apply a fix or accept an ignore; this file does not suppress future checks.' };
 }
 

@@ -41,7 +41,9 @@ better vulnerability detection.
    CI event, workflow, job outcomes, run attempt and current PR head are checked
    through GitHub APIs before inference. Fork AI reviews are skipped. The
    worker-code revision is separate from the PR's comparison base, so an older
-   PR base need not contain the worker. Only authorized WTA-source scopes may
+   PR base need not contain the worker. Workers are dispatched from the
+   repository's default branch even when the PR targets an older feature
+   branch. Only authorized WTA-source scopes may
    enter repair.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
@@ -82,8 +84,18 @@ better vulnerability detection.
 
 ## Warning proposals and owner decisions
 
+C++ and Rust CodeQL use source-only (`none`) analysis. The regular C++ build
+and unit tests run outside compiler tracing: the first traced build took
+101 minutes and its following unit run hung until the job timeout.
+Source-only analysis does not cover build-generated code or reproduce all
+build-specific preprocessor settings. Real compilation and all unit tests
+remain required for CI success. C++ tests have a five-minute per-test timeout;
+a timeout is a failure, not a skipped or passing test.
+
 The native reader exposes matching CodeQL warnings in bounded pages, without
-raw SARIF messages or source snippets. Every reported high/medium warning needs
+raw SARIF messages or source snippets. Evidence retains the tool version and
+rule metadata count, so zero findings is not confused with an empty rule set.
+Every reported high/medium warning needs
 an explicit proposed `fix` or `ignore`, a reason, PR relevance and a suggested
 owner action. A changed-line flag is only a navigation hint: a changed caller
 can affect an unchanged sink, and an existing warning may still matter.
@@ -242,6 +254,8 @@ validated report metadata and numeric usage. Public log roots must contain
 zero payload files; empty regular directories alone are not exposure.
 Historical diagnostics are preserved, not deleted. This is not a universal
 secret scanner or confidentiality boundary against the same process.
+Fixed review-stage markers identify which gate failed without printing source,
+tool transcripts or private exception details.
 
 ## Local contract checks
 
