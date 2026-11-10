@@ -40,13 +40,17 @@
 #include <ScopedResourceLoader.h>
 
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <icu.h>
 #include <map>
 #include <set>
 #include <til/io.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.Data.Xml.Dom.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.UI.Xaml.Markup.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Automation.Peers.h>
 #include <winrt/Windows.UI.Xaml.Automation.Provider.h>
@@ -659,6 +663,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SharedWtaTrackingOnlyLaunchHasNoDefaultAgent);
         TEST_METHOD(AgentSnapshotSelectionIsIndependentOfRowOrder);
         TEST_METHOD(BottomBarSessionsButtonFollowsLayout);
+        TEST_METHOD(BottomBarColorsMeetContrastInLightAndDarkThemes);
         TEST_METHOD(BottomBarSessionsButtonDispatchesExistingAction);
         TEST_METHOD(BottomBarSessionsButtonTracksVisibleView);
         TEST_METHOD(VerticalTabHistoryRelativeAge);
@@ -1028,6 +1033,112 @@ namespace TerminalAppLocalTests
         const auto result = RunOnUIThread(function);
         VERIFY_SUCCEEDED(result);
     }
+
+    class ProductionThemeResources
+    {
+    public:
+        ProductionThemeResources()
+        {
+            TestOnUIThread([&]() {
+                const auto resourcesPath = std::filesystem::path{
+                    winrt::Windows::ApplicationModel::Package::Current().InstalledLocation().Path().c_str()
+                } / L"TerminalApp" / L"App.xaml";
+                std::ifstream resourcesFile{ resourcesPath };
+                if (!resourcesFile)
+                {
+                    throw winrt::hresult_error{ HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) };
+                }
+
+                const std::string resourcesBytes{ std::istreambuf_iterator<char>{ resourcesFile }, {} };
+                auto resourcesXml = std::string_view{ resourcesBytes };
+                if (resourcesXml.starts_with("\xEF\xBB\xBF"))
+                {
+                    resourcesXml.remove_prefix(3);
+                }
+
+                winrt::Windows::Data::Xml::Dom::XmlDocument document;
+                document.LoadXml(winrt::to_hstring(resourcesXml));
+                const auto dictionary = document.SelectSingleNode(
+                                                    L"/*[local-name()='Application']/*[local-name()='Application.Resources']/*[local-name()='ResourceDictionary']")
+                                            .as<winrt::Windows::Data::Xml::Dom::XmlElement>();
+                dictionary.SetAttribute(L"xmlns", L"http://schemas.microsoft.com/winfx/2006/xaml/presentation");
+                dictionary.SetAttribute(L"xmlns:x", L"http://schemas.microsoft.com/winfx/2006/xaml");
+                dictionary.SetAttribute(L"xmlns:primitives", L"using:Microsoft.UI.Xaml.Controls.Primitives");
+
+                const auto productionResources = winrt::Windows::UI::Xaml::Markup::XamlReader::Load(dictionary.GetXml())
+                                                     .as<winrt::Windows::UI::Xaml::ResourceDictionary>();
+                _applicationResources = Application::Current().Resources();
+                const auto applicationDictionaries = _applicationResources.MergedDictionaries();
+                _originalDictionaryCount = applicationDictionaries.Size();
+                try
+                {
+                    const auto productionDictionaries = productionResources.MergedDictionaries();
+                    while (productionDictionaries.Size())
+                    {
+                        const auto child = productionDictionaries.GetAt(0);
+                        productionDictionaries.RemoveAt(0);
+                        if (!child.Source())
+                        {
+                            for (const auto& [key, value] : child.ThemeDictionaries())
+                            {
+                                const auto name = winrt::unbox_value<winrt::hstring>(key);
+                                const auto themeDictionary = value.as<ResourceDictionary>();
+                                const auto backgroundKey = winrt::box_value(L"TabViewBackground");
+                                if ((name == L"Light" || name == L"Dark") && themeDictionary.HasKey(backgroundKey))
+                                {
+                                    const auto theme = name == L"Light" ? ElementTheme::Light : ElementTheme::Dark;
+                                    _tabViewBackgrounds.emplace(theme,
+                                                                themeDictionary.Lookup(backgroundKey)
+                                                                    .as<winrt::Windows::UI::Xaml::Media::SolidColorBrush>()
+                                                                    .Color());
+                                }
+                            }
+                            applicationDictionaries.Append(child);
+                        }
+                    }
+                    if (_tabViewBackgrounds.size() != 2)
+                    {
+                        throw winrt::hresult_error{ E_UNEXPECTED, L"Production Light/Dark TabViewBackground resources were not found." };
+                    }
+                    applicationDictionaries.Append(productionResources);
+                }
+                catch (...)
+                {
+                    while (applicationDictionaries.Size() > _originalDictionaryCount)
+                    {
+                        applicationDictionaries.RemoveAt(applicationDictionaries.Size() - 1);
+                    }
+                    _applicationResources = nullptr;
+                    throw;
+                }
+            });
+        }
+
+        winrt::Windows::UI::Color TabViewBackground(const ElementTheme theme) const
+        {
+            return _tabViewBackgrounds.at(theme);
+        }
+
+        ~ProductionThemeResources()
+        {
+            if (_applicationResources)
+            {
+                const auto result = RunOnUIThread([&]() {
+                    const auto dictionaries = _applicationResources.MergedDictionaries();
+                    while (dictionaries.Size() > _originalDictionaryCount)
+                    {
+                        dictionaries.RemoveAt(dictionaries.Size() - 1);
+                    }
+                });
+                LOG_IF_FAILED(result);
+            }
+        }
+
+    private:
+        ResourceDictionary _applicationResources{ nullptr };
+        uint32_t _originalDictionaryCount{};
+        std::map<ElementTheme, winrt::Windows::UI::Color> _tabViewBackgrounds;
+    };
 
     void TabTests::_createContentManager()
     {
@@ -11538,6 +11649,129 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void TabTests::BottomBarColorsMeetContrastInLightAndDarkThemes()
+    {
+        ProductionThemeResources productionThemeResources;
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto luminance = [](const winrt::Windows::UI::Color& color) {
+                const auto linearize = [](const uint8_t channel) {
+                    const auto value = channel / 255.0;
+                    return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+                };
+                return 0.2126 * linearize(color.R) + 0.7152 * linearize(color.G) + 0.0722 * linearize(color.B);
+            };
+            const auto composite = [](const winrt::Windows::UI::Color& overlay,
+                                      const winrt::Windows::UI::Color& background) {
+                const auto alpha = overlay.A / 255.0;
+                const auto channel = [&](const uint8_t foreground, const uint8_t behind) {
+                    return static_cast<uint8_t>(std::round(foreground * alpha + behind * (1.0 - alpha)));
+                };
+                return winrt::Windows::UI::ColorHelper::FromArgb(255,
+                                                                 channel(overlay.R, background.R),
+                                                                 channel(overlay.G, background.G),
+                                                                 channel(overlay.B, background.B));
+            };
+            const auto contrastRatio = [&](const winrt::Windows::UI::Color& foreground,
+                                           const winrt::Windows::UI::Color& background) {
+                const auto renderedForeground = composite(foreground, background);
+                const auto foregroundLuminance = luminance(renderedForeground);
+                const auto backgroundLuminance = luminance(background);
+                return (std::max(foregroundLuminance, backgroundLuminance) + 0.05) /
+                       (std::min(foregroundLuminance, backgroundLuminance) + 0.05);
+            };
+
+            const auto tab = page->_GetFocusedTabImpl();
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            agentPane->IsAgentPane(true);
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
+            const auto agentContent = tab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto agentContentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            using AutofixState = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
+            page->_settings.GlobalSettings().AutoErrorDetectionEnabled(true);
+            agentContent.SetSessionsView(false);
+            agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
+            page->_UpdateBottomBarState();
+
+            for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
+            {
+                page->RequestedTheme(theme);
+                page->UpdateLayout();
+                const auto activeFill = page->AgentToggleButton().Background()
+                                            .as<Media::SolidColorBrush>()
+                                            .Color();
+                const auto expectedActiveChannel = theme == ElementTheme::Light ? uint8_t{ 0 } : uint8_t{ 255 };
+                VERIFY_ARE_EQUAL(uint8_t{ 64 }, activeFill.A);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.R);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.G);
+                VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.B);
+
+                agentContent.SetSessionsView(false);
+                agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
+
+                const auto background = page->BottomBarRoot().Background()
+                                            .as<Media::SolidColorBrush>()
+                                            .Color();
+                const auto border = page->BottomBarRoot().BorderBrush()
+                                        .as<Media::SolidColorBrush>()
+                                        .Color();
+                const auto sessionsForeground = page->SessionToggleIcon().Foreground()
+                                                    .as<Media::SolidColorBrush>()
+                                                    .Color();
+                const auto diagnosticsIconForeground = page->DiagnosticsIcon().Foreground()
+                                                           .as<Media::SolidColorBrush>()
+                                                           .Color();
+                const auto diagnosticsForeground = page->DiagnosticsLabel().Foreground()
+                                                      .as<Media::SolidColorBrush>()
+                                                      .Color();
+
+                VERIFY_ARE_EQUAL(productionThemeResources.TabViewBackground(theme), background);
+                VERIFY_ARE_EQUAL(border, background);
+                VERIFY_IS_TRUE(contrastRatio(sessionsForeground, background) >= 3.0);
+                VERIFY_IS_TRUE(contrastRatio(diagnosticsIconForeground, background) >= 3.0);
+                VERIFY_IS_TRUE(contrastRatio(diagnosticsForeground, background) >= 4.5);
+
+                const auto verifyActiveFillContrast = [&](const Button& button) {
+                    const auto overlay = button.Background().as<Media::SolidColorBrush>().Color();
+                    VERIFY_IS_TRUE(contrastRatio(composite(overlay, background), background) >= 1.5);
+                };
+                verifyActiveFillContrast(page->AgentToggleButton());
+
+                agentContent.SetSessionsView(true);
+                page->_UpdateBottomBarState();
+                verifyActiveFillContrast(page->SessionToggleButton());
+                agentContent.SetSessionsView(false);
+
+                for (const auto state : { AutofixState::Pending,
+                                          AutofixState::Detected,
+                                          AutofixState::Review })
+                {
+                    agentContentImpl->ApplyAutofixState(state,
+                                                        L"test-pane",
+                                                        L"test summary",
+                                                        L"test fix",
+                                                        L"Ctrl+Alt+.",
+                                                        L"Review fix");
+                    page->_UpdateBottomBarState();
+                    VERIFY_ARE_EQUAL(Visibility::Visible, page->DiagnosticsGroup().Visibility());
+                    VERIFY_ARE_EQUAL(Visibility::Visible, page->DiagnosticsLabel().Visibility());
+                    const auto activeBackground = page->BottomBarRoot().Background()
+                                                      .as<Media::SolidColorBrush>()
+                                                      .Color();
+                    const auto activeIcon = page->DiagnosticsIcon().Foreground()
+                                                .as<Media::SolidColorBrush>()
+                                                .Color();
+                    const auto activeLabel = page->DiagnosticsLabel().Foreground()
+                                                 .as<Media::SolidColorBrush>()
+                                                 .Color();
+                    VERIFY_IS_TRUE(contrastRatio(activeIcon, activeBackground) >= 3.0);
+                    VERIFY_IS_TRUE(contrastRatio(activeLabel, activeBackground) >= 4.5);
+                }
+            }
+        });
+    }
+
     void TabTests::BottomBarSessionsButtonDispatchesExistingAction()
     {
         auto page = _commonSetup();
@@ -11575,13 +11809,13 @@ namespace TerminalAppLocalTests
 
             content.SetSessionsView(true);
             page->_UpdateBottomBarState();
-            VERIFY_ARE_EQUAL(uint8_t{ 30 }, alpha(page->SessionToggleButton()));
+            VERIFY_ARE_EQUAL(uint8_t{ 64 }, alpha(page->SessionToggleButton()));
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->AgentToggleButton()));
 
             content.SetSessionsView(false);
             page->_UpdateBottomBarState();
             VERIFY_ARE_EQUAL(uint8_t{ 0 }, alpha(page->SessionToggleButton()));
-            VERIFY_ARE_EQUAL(uint8_t{ 30 }, alpha(page->AgentToggleButton()));
+            VERIFY_ARE_EQUAL(uint8_t{ 64 }, alpha(page->AgentToggleButton()));
 
             content.SetSessionsView(true);
             tab->StashAgentPane();
