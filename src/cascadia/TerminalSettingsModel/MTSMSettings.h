@@ -44,6 +44,7 @@ Author(s):
     X(winrt::Microsoft::UI::Xaml::Controls::TabViewWidthMode, TabWidthMode, "tabWidthMode", winrt::Microsoft::UI::Xaml::Controls::TabViewWidthMode::Equal)                                            \
     X(Model::TabLayout, TabLayout, "tabLayout", Model::TabLayout::Vertical)                                                                                                                           \
     X(int32_t, TabLayoutVerticalWidth, "tabLayoutVerticalWidth", 220)                                                                                                                                 \
+    X(bool, SidebarCollapsed, "sidebarCollapsed", false)                                                                                                                                              \
     X(bool, SidebarShowAgentsOnly, "sidebarShowAgentsOnly", false)                                                                                                                                   \
     X(bool, SidebarShowRecentAgentSessions, "sidebarShowRecentAgentSessions", true)                                                                                                                   \
     X(bool, UseAcrylicInTabRow, "useAcrylicInTabRow", false)                                                                                                                                          \

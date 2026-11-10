@@ -661,10 +661,16 @@ namespace winrt::TerminalApp::implementation
         // Cache the layout mode so the routing helpers (_tabItems /
         // _selectedTabItem) don't have to reach into _tabRow on every call.
         _isVerticalLayout = _tabRow.IsVerticalLayout();
+        _isVerticalRailCollapsed = _startupSidebarCollapsed.value_or(_settings.GlobalSettings().SidebarCollapsed());
         // SetSettings captures the runtime baseline before Create applies the layout.
         _lastAgentRuntimeConfig.sessionsInSidebar = _isVerticalLayout;
 
         _ApplyVerticalLayoutReshape(true);
+        if (_isVerticalLayout)
+        {
+            _tabStrip.IsRailCollapsed(_isVerticalRailCollapsed);
+            _SetVerticalRailColumnWidth(_isVerticalRailCollapsed ? railCollapsedWidth : _verticalRailWidth);
+        }
 
         const auto canDragDrop = CanDragDrop();
 
@@ -7269,6 +7275,28 @@ namespace winrt::TerminalApp::implementation
         _isVerticalRailCollapsed = collapsing;
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
+        const auto globals = _settings.GlobalSettings();
+        const auto previous = globals.SidebarCollapsed();
+        if (previous != collapsing)
+        {
+            const auto hadValue = globals.HasSidebarCollapsed();
+            globals.SidebarCollapsed(collapsing);
+            if (!_settings.WriteSettingsToDisk())
+            {
+                if (hadValue)
+                {
+                    globals.SidebarCollapsed(previous);
+                }
+                else
+                {
+                    globals.ClearSidebarCollapsed();
+                }
+
+                auto warnings = winrt::single_threaded_vector<SettingsLoadWarnings>();
+                warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+                ShowLoadWarningsDialog.raise(*this, warnings.GetView());
+            }
+        }
         if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
             _FocusSidebarTerminalFallback();
@@ -15351,6 +15379,7 @@ namespace winrt::TerminalApp::implementation
 
         WindowLayout layout;
         layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+        layout.SidebarCollapsed({ _isVerticalRailCollapsed });
 
         auto mode = LaunchMode::DefaultMode;
         WI_SetFlagIf(mode, LaunchMode::FullscreenMode, _isFullscreen);
@@ -15415,6 +15444,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         WindowLayout layout;
+        layout.SidebarCollapsed({ _isVerticalRailCollapsed });
         std::vector<ActionAndArgs> actions;
         uint32_t visibleTabCount = 0;
         std::optional<uint32_t> focusedTabIndex;
@@ -18624,6 +18654,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::SetStartupActions(std::vector<ActionAndArgs> actions)
     {
         _startupActions = std::move(actions);
+        _startupSidebarCollapsed.reset();
     }
 
     void TerminalPage::SetStartupConnection(ITerminalConnection connection)

@@ -178,6 +178,11 @@ namespace winrt::TerminalApp::implementation
             // layout will only ever be non-null if there were >0 tabs persisted in
             // .TabLayout(). We can re-evaluate that as a part of TODO: GH#12633
             _root->SetStartupActions(wil::to_vector(layout.TabLayout()));
+            const auto collapsed = layout.SidebarCollapsed();
+            if (collapsed)
+            {
+                _root->SetStartupSidebarCollapsed(collapsed.Value());
+            }
         }
         else if (_appArgs)
         {
