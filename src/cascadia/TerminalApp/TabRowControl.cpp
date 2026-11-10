@@ -127,7 +127,7 @@ namespace winrt::TerminalApp::implementation
         railToggle.Width(actionExtent);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
-        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
         railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
         railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         railToggle.BorderThickness(WUX::Thickness{});

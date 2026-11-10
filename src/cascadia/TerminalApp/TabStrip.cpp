@@ -546,7 +546,7 @@ namespace winrt::TerminalApp::implementation
         const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
         IconVisibility(ShowStatusIcon() || (isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
         PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
-        HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
+        HeaderMinHeight(40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
         LeadingContentColumnSpan(railCollapsed ? 3 : 1);
         ChevronGlyph(IsExpanded() ? L"\xE70D" : L"\xE76C");
@@ -1523,6 +1523,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     hoverBackground.Opacity(0.0);
                 }
+                if (const auto hoverBackground = grid.FindName(L"TabCollapsedHoverBackground").try_as<WUX::Controls::Border>())
+                {
+                    hoverBackground.Opacity(0.0);
+                }
                 return;
             }
             const auto toggle = grid.FindName(L"TabGroupToggleButton").try_as<WUX::Controls::Control>();
@@ -1536,7 +1540,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             const auto isGroup = display.IsGroup();
-            const auto hoverBrush = !_highContrast ? _tabHoverBrush(display.Tab()) : nullptr;
+            const auto hoverBrush = !_highContrast && !_isRailCollapsed ? _tabHoverBrush(display.Tab()) : nullptr;
             const auto hovered = hoverBrush && winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
             bool selectedPaneVisible = false;
             if (isGroup && display.ChildrenVisibility() == Visibility::Visible)
@@ -1554,11 +1558,26 @@ namespace winrt::TerminalApp::implementation
             const auto customHover = !_highContrast || searchFocused;
             const auto selected = display.SelectionVisibility() == Visibility::Visible && !selectedPaneVisible && !searchFocused;
             const auto pointerOver = winrt::get_self<TabStripDisplayItem>(display)->IsPointerOver();
-            const auto hoverMargin = _isRailCollapsed ? WUX::Thickness{} : WUX::Thickness{ 5, 3, 5, 3 };
+            // Move the row inset inside the collapsed cell so hover can fill it without moving the icon or selection.
+            const auto rowMargin = unbox_value<Thickness>(Resources().Lookup(box_value(L"SidebarLiveRowMargin")));
+            const auto compactInset = _isRailCollapsed ? rowMargin : Thickness{};
+            const auto hoverMargin = _isRailCollapsed ? rowMargin : WUX::Thickness{ 5, 3, 5, 3 };
+            for (const auto name : { L"TabSelectionBackground", L"TabColorSelectionBackground", L"TabHeaderPresenter" })
+            {
+                const auto element = grid.FindName(name).as<FrameworkElement>();
+                if (element.Margin() != compactInset)
+                {
+                    element.Margin(compactInset);
+                }
+            }
+            if (const auto hoverBackground = grid.FindName(L"TabCollapsedHoverBackground").try_as<WUX::Controls::Border>())
+            {
+                hoverBackground.Opacity(customHover && _isRailCollapsed && !selected && pointerOver ? 1.0 : 0.0);
+            }
             if (const auto hoverBackground = grid.FindName(L"TabHoverBackground").try_as<WUX::Controls::Border>())
             {
                 hoverBackground.Margin(hoverMargin);
-                hoverBackground.Opacity(customHover && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
+                hoverBackground.Opacity(customHover && !_isRailCollapsed && !selected && pointerOver && !hoverBrush ? 1.0 : 0.0);
             }
             if (const auto colorHover = grid.FindName(L"TabColorHoverBackground").try_as<WUX::Controls::Border>())
             {
@@ -1570,6 +1589,12 @@ namespace winrt::TerminalApp::implementation
             if (const auto container = ItemsList().ContainerFromItem(display);
                 container)
             {
+                const auto element = container.as<FrameworkElement>();
+                const auto margin = _isRailCollapsed ? Thickness{} : rowMargin;
+                if (element.Margin() != margin)
+                {
+                    element.Margin(margin);
+                }
                 if (const auto presenter = _findNamedElement(container, L"SidebarItemPresenter").try_as<Primitives::ListViewItemPresenter>())
                 {
                     if (Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
@@ -1607,7 +1632,7 @@ namespace winrt::TerminalApp::implementation
             }
             if (selectionBackground)
             {
-                const auto showColor = tabColor && (selected || !_highContrast) && !(!selected && hovered);
+                const auto showColor = tabColor && (selected || !_highContrast) && !(!selected && (hovered || (_isRailCollapsed && pointerOver)));
                 WUX::Media::SolidColorBrush brush{ showColor ? tabColor.Color() : Windows::UI::Colors::Transparent() };
                 if (showColor && !selected)
                 {
