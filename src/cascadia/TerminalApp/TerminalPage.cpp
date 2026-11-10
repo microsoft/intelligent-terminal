@@ -7276,10 +7276,26 @@ namespace winrt::TerminalApp::implementation
         _SetVerticalRailVisibility(true);
         _UpdateRecentAgentSessionsVisibility();
         const auto globals = _settings.GlobalSettings();
-        if (globals.SidebarCollapsed() != collapsing)
+        const auto previous = globals.SidebarCollapsed();
+        if (previous != collapsing)
         {
+            const auto hadValue = globals.HasSidebarCollapsed();
             globals.SidebarCollapsed(collapsing);
-            _settings.WriteSettingsToDisk();
+            if (!_settings.WriteSettingsToDisk())
+            {
+                if (hadValue)
+                {
+                    globals.SidebarCollapsed(previous);
+                }
+                else
+                {
+                    globals.ClearSidebarCollapsed();
+                }
+
+                auto warnings = winrt::single_threaded_vector<SettingsLoadWarnings>();
+                warnings.Append(SettingsLoadWarnings::FailedToWriteToSettings);
+                ShowLoadWarningsDialog.raise(*this, warnings.GetView());
+            }
         }
         if (sidebarFocus && !_IsVisibleSidebarControl(sidebarFocus))
         {
@@ -18638,6 +18654,7 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::SetStartupActions(std::vector<ActionAndArgs> actions)
     {
         _startupActions = std::move(actions);
+        _startupSidebarCollapsed.reset();
     }
 
     void TerminalPage::SetStartupConnection(ITerminalConnection connection)

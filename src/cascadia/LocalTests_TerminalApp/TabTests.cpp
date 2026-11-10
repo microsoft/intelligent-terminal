@@ -494,6 +494,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarCollapsedRestoresFromSettingsOrWindowLayout);
+        TEST_METHOD(SidebarCollapsedSaveFailureRollsBack);
         TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
         TEST_METHOD(SidebarToggleFillsFollowEffectiveChromeBackground);
         TEST_METHOD(SidebarToggleUsesChromeFallbackWithoutPaneBackground);
@@ -969,7 +970,8 @@ namespace TerminalAppLocalTests
         static winrt::TerminalApp::implementation::SharedWtaLease _acquireIsolatedAgentLease();
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _createStartupRestorePeer(
             const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source,
-            std::optional<bool> sidebarCollapsed = std::nullopt);
+            std::optional<bool> sidebarCollapsed = std::nullopt,
+            bool settingsStartupActions = false);
         std::unique_ptr<ContentTransferFixture> _createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver = false, bool twoLeaves = false, std::optional<int32_t> historySize = std::nullopt);
         VerticalProgressProjectionFixture _createVerticalProgressProjectionFixture(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                                                                   const winrt::com_ptr<TestConnection>& first,
@@ -3343,7 +3345,8 @@ namespace TerminalAppLocalTests
 
     winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_createStartupRestorePeer(
         const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source,
-        std::optional<bool> sidebarCollapsed)
+        std::optional<bool> sidebarCollapsed,
+        bool settingsStartupActions)
     {
         const auto properties = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
         const winrt::TerminalApp::TerminalPage projected{ properties, source->_manager };
@@ -3352,6 +3355,10 @@ namespace TerminalAppLocalTests
         page->_settings = source->_settings.Copy();
         page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(page->_settings);
         page->SetStartupSidebarCollapsed(sidebarCollapsed);
+        if (settingsStartupActions)
+        {
+            page->SetStartupActions({ ActionAndArgs{ ShortcutAction::NewTab, nullptr } });
+        }
         page->Create();
         page->_layoutUpdatedRevoker.revoke();
         page->_startupState = winrt::TerminalApp::implementation::StartupState::Initialized;
@@ -7335,6 +7342,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(ordinary->_isVerticalRailCollapsed);
             const auto expandedWindow = _createStartupRestorePeer(page, false);
             VERIFY_IS_FALSE(expandedWindow->_isVerticalRailCollapsed);
+            const auto settingsWindow = _createStartupRestorePeer(page, false, true);
+            VERIFY_IS_TRUE(settingsWindow->_isVerticalRailCollapsed);
 
             page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             VERIFY_IS_FALSE(page->_settings.GlobalSettings().SidebarCollapsed());
@@ -7345,6 +7354,65 @@ namespace TerminalAppLocalTests
 
             const auto legacy = _createStartupRestorePeer(page);
             VERIFY_IS_FALSE(legacy->_isVerticalRailCollapsed);
+        });
+    }
+
+    void TabTests::SidebarCollapsedSaveFailureRollsBack()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto settingsPath = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsPath() } };
+            VERIFY_IS_TRUE(settingsPath.native().find(L"WindowsTerminal.TestHost_") != std::wstring::npos);
+            const auto globals = page->_settings.GlobalSettings();
+            globals.ClearSidebarCollapsed();
+            VERIFY_IS_TRUE(page->_settings.WriteSettingsToDisk());
+            const auto before = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+            uint32_t warnings = 0;
+            const auto token = page->ShowLoadWarningsDialog([&](auto&&, const auto& values) {
+                VERIFY_ARE_EQUAL(1u, values.Size());
+                VERIFY_ARE_EQUAL(SettingsLoadWarnings::FailedToWriteToSettings, values.GetAt(0));
+                ++warnings;
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ShowLoadWarningsDialog(token); });
+            auto temporaryPath = settingsPath;
+            temporaryPath += L".tmp";
+            const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove(temporaryPath); });
+
+            {
+                wil::unique_hfile lock{ CreateFileW(settingsPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                VERIFY_IS_TRUE(static_cast<bool>(lock));
+                page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+                VERIFY_IS_TRUE(page->_isVerticalRailCollapsed);
+                VERIFY_IS_FALSE(globals.SidebarCollapsed());
+                VERIFY_IS_FALSE(globals.HasSidebarCollapsed());
+                VERIFY_ARE_EQUAL(before, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+            }
+            VERIFY_ARE_EQUAL(1u, warnings);
+
+            const auto retry = _createStartupRestorePeer(page);
+            retry->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(retry->_settings.GlobalSettings().SidebarCollapsed());
+            {
+                std::ifstream saved{ settingsPath };
+                Json::Value json;
+                std::string errors;
+                VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, saved, &json, &errors));
+                VERIFY_IS_TRUE(json["sidebarCollapsed"].asBool());
+            }
+
+            globals.SidebarCollapsed(true);
+            VERIFY_IS_TRUE(page->_settings.WriteSettingsToDisk());
+            const auto savedExplicit = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+            {
+                wil::unique_hfile lock{ CreateFileW(settingsPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                VERIFY_IS_TRUE(static_cast<bool>(lock));
+                page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+                VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+                VERIFY_IS_TRUE(globals.SidebarCollapsed());
+                VERIFY_IS_TRUE(globals.HasSidebarCollapsed());
+                VERIFY_ARE_EQUAL(savedExplicit, til::io::read_file_as_utf8_string_if_exists(settingsPath));
+            }
+            VERIFY_ARE_EQUAL(2u, warnings);
         });
     }
 
