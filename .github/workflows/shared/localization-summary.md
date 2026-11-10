@@ -50,6 +50,8 @@ your final Markdown, including when execution is blocked. Do not generate the
 prose with a script, render it from checker JSON, or ask another agent to write
 it. The workflow publishes this file verbatim; it does not compose a summary.
 Keep it under 64 KiB and replace every placeholder with observed evidence.
+Keep each verdict line to the status token alone; put qualifications and
+execution evidence in the Verification section, not after `PASS`.
 
 ```markdown
 ## Localization review

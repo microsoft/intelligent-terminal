@@ -349,6 +349,7 @@ jobs:
               run = current.data;
               if (run.status === "completed") {
                 let inferenceSkipped = false;
+                let completionPassed = false;
                 if ((run.conclusion || "failure") === "success") {
                   const jobs = await github.paginate(
                     github.rest.actions.listJobsForWorkflowRun,
@@ -361,6 +362,13 @@ jobs:
                   );
                   const agentJob = jobs.find(job => job.name === "agent");
                   const detectionJob = jobs.find(job => job.name === "detection");
+                  completionPassed = Boolean(
+                    agentJob?.conclusion === "success" &&
+                    agentJob.steps?.some(step =>
+                      step.name === "Require complete localization outcome before publication" &&
+                      step.status === "completed" &&
+                      step.conclusion === "success")
+                  );
                   inferenceSkipped = Boolean(
                     agentJob &&
                     detectionJob &&
@@ -369,10 +377,13 @@ jobs:
                     detectionJob.status === "completed" &&
                     detectionJob.conclusion === "skipped"
                   );
+                  if (!completionPassed) {
+                    core.warning("The worker did not pass its native localization completion gate; skipped inference or missing validation is not success.");
+                  }
                 }
                 core.setOutput("run_id", String(runId));
                 core.setOutput("run_url", run.html_url);
-                core.setOutput("conclusion", run.conclusion || "failure");
+                core.setOutput("conclusion", run.conclusion === "success" && completionPassed ? "success" : "failure");
                 core.setOutput("worker", worker);
                 core.setOutput("inference_skipped", inferenceSkipped ? "true" : "false");
                 return;

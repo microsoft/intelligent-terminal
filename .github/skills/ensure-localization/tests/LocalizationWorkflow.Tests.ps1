@@ -138,7 +138,10 @@ run(github, context, { warning: () => {} }).then(() => {
         $repair | Should -Match 'appropriate native incomplete outcome'
         $repair | Should -Match 'shared/localization-summary\.md'
         $repair | Should -Match 'independent review'
-        $repair | Should -Match 'explicit `PASS` before requesting any branch write'
+        $repair | Should -Match 'actual returned `PASS` before requesting any branch write'
+        $repair | Should -Match 'agent_type: "Localization Reviewer"'
+        $repair | Should -Match '## agent: `localization-reviewer`'
+        $repair | Should -Not -Match 'localization-review-gate'
         $repair | Should -Match '(?s)allowed-files:.*src/cascadia/\*\*/Resources/\*\.resw.*tools/wta/locales/\*\.yml'
         $repair | Should -Match 'protected-files: blocked'
         $repair | Should -Match 'fallback-as-pull-request: false'
@@ -218,5 +221,48 @@ run(github, context, { warning: () => {} }).then(() => {
         (Invoke-WorkerCancellation -CancelError 409 -CompletesDuringCancel).ExitCode | Should -Be 0
         (Invoke-WorkerCancellation -CancelError 409).ExitCode | Should -Be 1
         (Invoke-WorkerCancellation -CancelError 403).ExitCode | Should -Be 1
+    }
+
+    It 'does not promote successful jobs or skipped inference without the native completion gate to controller success' {
+        $controller = Get-Content -LiteralPath (Join-Path $script:workflowRoot 'ensure-localization-controller.yml') -Raw
+        $match = [regex]::Match($controller, '(?ms)^      - name: Dispatch and wait for internal GHAW\r?\n.*?^          script: \|\r?\n(?<script>.*?)(?=^      - name:)')
+        $match.Success | Should -BeTrue
+        $bodyLiteral = ConvertTo-Json -InputObject ($match.Groups['script'].Value -replace '(?m)^            ', '') -Compress
+        foreach ($case in @(
+            @{ Agent = 'success'; Gate = 'success'; Run = 'success'; Expected = 'success' }
+            @{ Agent = 'success'; Gate = ''; Run = 'success'; Expected = 'failure' }
+            @{ Agent = 'success'; Gate = 'failure'; Run = 'success'; Expected = 'failure' }
+            @{ Agent = 'skipped'; Gate = ''; Run = 'success'; Expected = 'failure' }
+            @{ Agent = 'failure'; Gate = 'success'; Run = 'failure'; Expected = 'failure' }
+        )) {
+            $caseLiteral = ConvertTo-Json -InputObject $case -Compress
+            $nodeScript = @"
+const assert = require('node:assert/strict');
+const fixture = $caseLiteral;
+const run = new (Object.getPrototypeOf(async function() {}).constructor)('github', 'context', 'core', $bodyLiteral);
+const context = { repo: { owner: 'test', repo: 'repo' }, runId: 10, runAttempt: 1,
+  payload: { pull_request: { number: 1 } } };
+const github = {
+  request: async () => ({ data: { workflow_run_id: 20 } }),
+  rest: { actions: {
+    getWorkflowRun: async () => ({ data: { status: 'completed', conclusion: fixture.Run, html_url: 'https://example.test/20' } }),
+    listJobsForWorkflowRun: () => {}
+  } },
+  paginate: async () => [
+    { name: 'agent', status: 'completed', conclusion: fixture.Agent,
+      steps: fixture.Gate ? [{ name: 'Require complete localization outcome before publication', status: 'completed', conclusion: fixture.Gate }] : [] },
+    { name: 'detection', status: 'completed', conclusion: fixture.Agent === 'skipped' ? 'skipped' : 'success' }
+  ]
+};
+const outputs = {};
+run(github, context, { setOutput: (key, value) => outputs[key] = value, warning: () => {} })
+  .then(() => assert.equal(outputs.conclusion, fixture.Expected))
+  .catch(error => { console.error(error.message); process.exitCode = 1; });
+"@
+            $path = Join-Path $TestDrive 'worker-outcome.js'
+            [IO.File]::WriteAllText($path, $nodeScript)
+            $output = & node $path 2>&1
+            $LASTEXITCODE | Should -Be 0 -Because ($output | Out-String)
+        }
     }
 }
