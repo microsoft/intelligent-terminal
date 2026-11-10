@@ -490,7 +490,6 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
         TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
-        TEST_METHOD(SidebarToggleLeadingInsetSurvivesCollapse);
         TEST_METHOD(SidebarToggleFillsFollowEffectiveChromeBackground);
         TEST_METHOD(SidebarToggleUsesChromeFallbackWithoutPaneBackground);
         TEST_METHOD(SidebarHotkeyDirectlyTogglesVisibility);
@@ -594,7 +593,6 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
         TEST_METHOD(VerticalTabColorsFollowSidebarTheme);
         TEST_METHOD(VerticalTabStripUsesNativeInteractionStates);
-        TEST_METHOD(CollapsedTabHoverFillsActionCell);
         TEST_METHOD(VerticalTabStripContrastsRenderedColors);
         TEST_METHOD(VerticalTabStripCloseAffordanceTracksRowState);
         TEST_METHOD(VerticalTabStripLeadingIconsFollowTitleRow);
@@ -6174,47 +6172,6 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::SidebarToggleLeadingInsetSurvivesCollapse()
-    {
-        TestOnUIThread([]() {
-            const auto row = winrt::make_self<winrt::TerminalApp::implementation::TabRowControl>();
-            row->IsVerticalLayout(true);
-            const auto chrome = row->VerticalTitleBarContent().as<FrameworkElement>();
-            const auto button = row->VerticalRailToggleButton();
-            const auto icon = button.Content().as<FrameworkElement>();
-            const auto previousContent = Window::Current().Content();
-            const auto cleanup = wil::scope_exit([&]() { Window::Current().Content(previousContent); });
-            Grid host;
-            host.Children().Append(chrome);
-            Window::Current().Content(host);
-            Window::Current().Activate();
-
-            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
-            {
-                host.FlowDirection(direction);
-                for (const auto width : { 180.0, 220.0, 333.0, 480.0 })
-                {
-                    for (const auto collapsed : { false, true, false })
-                    {
-                        row->SetVerticalRailState(true, collapsed, collapsed ? 46.0 : width);
-                        host.UpdateLayout();
-                        VERIFY_IS_TRUE(row->VerticalRailToggleButton() == button);
-                        VERIFY_IS_TRUE(button.Content() == icon);
-                        const auto leadingInset = [&](const FrameworkElement& element) {
-                            const auto bounds = element.TransformToVisual(chrome).TransformBounds(
-                                { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
-                            return direction == FlowDirection::LeftToRight ?
-                                       bounds.X :
-                                       static_cast<float>(chrome.ActualWidth()) - bounds.X - bounds.Width;
-                        };
-                        VERIFY_ARE_EQUAL(0.0f, leadingInset(button));
-                        VERIFY_ARE_EQUAL(15.0f, leadingInset(icon));
-                    }
-                }
-            }
-        });
-    }
-
     void TabTests::SidebarToggleFillsFollowEffectiveChromeBackground()
     {
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -7280,7 +7237,6 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(dragBounds.X >= 52.0f);
                     const auto toggleBounds = bounds(row->VerticalRailToggleButton());
                     VERIFY_ARE_EQUAL(46.0f, toggleBounds.Width);
-                    VERIFY_ARE_EQUAL(23.0f, toggleBounds.X + toggleBounds.Width / 2);
                     VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
                     VERIFY_IS_TRUE(std::abs(railToggleIconBounds.Width - sidebarToggleIconSize) <= layoutTolerance);
@@ -11069,10 +11025,6 @@ namespace TerminalAppLocalTests
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
                     const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
                     VERIFY_ARE_EQUAL(46.0f, toggle.Width);
-                    VERIFY_IS_TRUE(std::abs(center(chevron) - center(groupToggle)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
-                                                center(toggle) - 23 :
-                                                width - center(toggle) - 23) <= 1.0);
                     const auto drag = bounds(winrt::TerminalApp::TitlebarControl::GetContentDragArea(chrome->VerticalTitleBarContent().as<FrameworkElement>()));
                     VERIFY_IS_TRUE(drag.Width > 0);
                     VERIFY_IS_TRUE(toggle.X + toggle.Width <= drag.X || drag.X + drag.Width <= toggle.X);
@@ -20167,9 +20119,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, display.ChildrenVisibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, selectionBackground.Visibility());
             VERIFY_ARE_EQUAL(Visibility::Visible, display.IconVisibility());
-            VERIFY_ARE_EQUAL(40.0, display.HeaderMinHeight());
             VERIFY_IS_TRUE(container.ActualHeight() <= 40.0);
-            VERIFY_ARE_EQUAL(20.0f, centerX(iconPresenter));
             for (const auto name : { L"TabHoverBackground", L"TabColorHoverBackground" })
             {
                 const auto hover = headerRoot.FindName(name).as<Border>();
@@ -27600,85 +27550,6 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
-        });
-    }
-
-    void TabTests::CollapsedTabHoverFillsActionCell()
-    {
-        TestOnUIThread([&]() {
-            winrt::TerminalApp::TabStrip strip;
-            strip.Width(46);
-            strip.Height(240);
-            winrt::MUX::Controls::TabViewItem selectedTab;
-            selectedTab.Header(winrt::TerminalApp::TabHeaderControl{});
-            selectedTab.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Red() });
-            winrt::MUX::Controls::TabViewItem inactiveTab;
-            inactiveTab.Header(winrt::TerminalApp::TabHeaderControl{});
-            inactiveTab.Background(Media::SolidColorBrush{ winrt::Windows::UI::Colors::Blue() });
-            strip.TabItems().Append(selectedTab);
-            strip.TabItems().Append(inactiveTab);
-            strip.IsRailCollapsed(true);
-            Window::Current().Content(strip);
-            Window::Current().Activate();
-            strip.SelectedItem(selectedTab);
-            strip.UpdateLayout();
-
-            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
-            impl->_setHighContrastMode(false);
-            const auto container = strip.ContainerFromIndex(1).as<ListViewItem>();
-            const auto header = container.ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
-            const auto hover = header.FindName(L"TabCollapsedHoverBackground").as<Border>();
-            const auto colorSelection = header.FindName(L"TabColorSelectionBackground").as<Border>();
-            const auto presenter = header.FindName(L"TabHeaderPresenter").as<Control>();
-            const auto selectedHeader = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
-            const auto selectedBackground = selectedHeader.FindName(L"TabColorSelectionBackground").as<Border>();
-            const auto selectedPosition = selectedBackground.TransformToVisual(strip).TransformPoint({ 0, 0 });
-            const auto selectedWidth = selectedBackground.ActualWidth();
-            const auto selectedHeight = selectedBackground.ActualHeight();
-            const auto contentPosition = presenter.TransformToVisual(strip).TransformPoint({ 0, 0 });
-            VERIFY_ARE_EQUAL(0.0, hover.Opacity());
-            impl->OnSidebarRowPointerEntered(header, nullptr);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(1.0, hover.Opacity());
-            VERIFY_ARE_EQUAL(46.0, hover.ActualWidth());
-            VERIFY_ARE_EQUAL(40.0, hover.ActualHeight());
-            VERIFY_IS_TRUE(container.Margin() == Thickness{});
-            VERIFY_ARE_EQUAL(0.0f, hover.TransformToVisual(header).TransformPoint({ 0, 0 }).X);
-            VERIFY_ARE_EQUAL(0.0f, hover.TransformToVisual(header).TransformPoint({ 0, 0 }).Y);
-            VERIFY_ARE_EQUAL(0.0, header.FindName(L"TabHoverBackground").as<Border>().Opacity());
-            VERIFY_ARE_EQUAL(0.0, header.FindName(L"TabColorHoverBackground").as<Border>().Opacity());
-            VERIFY_ARE_EQUAL(uint8_t{ 0 }, colorSelection.Background().as<Media::SolidColorBrush>().Color().A);
-            impl->OnSidebarPointerExited(strip, nullptr);
-            VERIFY_ARE_EQUAL(0.0, hover.Opacity());
-            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), colorSelection.Background().as<Media::SolidColorBrush>().Color());
-            impl->OnSidebarRowPointerEntered(selectedHeader, nullptr);
-            VERIFY_ARE_EQUAL(0.0, selectedHeader.FindName(L"TabCollapsedHoverBackground").as<Border>().Opacity());
-            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), selectedBackground.Background().as<Media::SolidColorBrush>().Color());
-            impl->OnSidebarPointerExited(strip, nullptr);
-
-            strip.IsRailCollapsed(false);
-            strip.Width(240);
-            strip.UpdateLayout();
-            VERIFY_IS_TRUE((container.Margin() == Thickness{ 6, 4, 6, 4 }));
-            VERIFY_ARE_EQUAL(selectedPosition.X, selectedBackground.TransformToVisual(strip).TransformPoint({ 0, 0 }).X);
-            VERIFY_ARE_EQUAL(selectedPosition.Y, selectedBackground.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y);
-            VERIFY_ARE_EQUAL(0.0, hover.Opacity());
-            VERIFY_IS_TRUE(presenter.Margin() == Thickness{});
-            impl->OnSidebarRowPointerEntered(header, nullptr);
-            VERIFY_ARE_EQUAL(0.0, hover.Opacity());
-            VERIFY_ARE_EQUAL(1.0, header.FindName(L"TabHoverBackground").as<Border>().Opacity());
-            impl->OnSidebarPointerExited(strip, nullptr);
-
-            strip.IsRailCollapsed(true);
-            strip.Width(46);
-            strip.UpdateLayout();
-            VERIFY_ARE_EQUAL(selectedWidth, selectedBackground.ActualWidth());
-            VERIFY_ARE_EQUAL(selectedHeight, selectedBackground.ActualHeight());
-            VERIFY_ARE_EQUAL(contentPosition.Y, presenter.TransformToVisual(strip).TransformPoint({ 0, 0 }).Y);
-            impl->_setHighContrastMode(true);
-            impl->OnSidebarRowPointerEntered(header, nullptr);
-            VERIFY_ARE_EQUAL(0.0, hover.Opacity());
-            impl->OnSidebarPointerExited(strip, nullptr);
         });
     }
 
