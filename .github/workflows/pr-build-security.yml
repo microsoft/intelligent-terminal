@@ -131,7 +131,7 @@ jobs:
           }
           & .\build\scripts\Run-Tests.ps1 -MatchPattern '*unit.test*.dll' `
             -Platform x64 -Configuration Debug -Root bin\x64\Debug `
-            -AdditionalTaefArguments '/testTimeout:0:05'
+            -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'
           exit $LASTEXITCODE
 
       - name: Install unit-test host framework dependencies
