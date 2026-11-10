@@ -20,6 +20,7 @@ static constexpr std::string_view TabLayoutKey{ "tabLayout" };
 static constexpr std::string_view InitialPositionKey{ "initialPosition" };
 static constexpr std::string_view InitialSizeKey{ "initialSize" };
 static constexpr std::string_view LaunchModeKey{ "launchMode" };
+static constexpr std::string_view SidebarCollapsedKey{ "sidebarCollapsed" };
 
 namespace Microsoft::Terminal::Settings::Model::JsonUtils
 {
@@ -36,6 +37,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, InitialPositionKey, layout->_InitialPosition);
             GetValueForKey(json, LaunchModeKey, layout->_LaunchMode);
             GetValueForKey(json, InitialSizeKey, layout->_InitialSize);
+            GetValueForKey(json, SidebarCollapsedKey, layout->_SidebarCollapsed);
 
             return *layout;
         }
@@ -53,6 +55,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, InitialPositionKey, val.InitialPosition());
             SetValueForKey(json, LaunchModeKey, val.LaunchMode());
             SetValueForKey(json, InitialSizeKey, val.InitialSize());
+            SetValueForKey(json, SidebarCollapsedKey, val.SidebarCollapsed());
 
             return json;
         }

@@ -493,6 +493,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentChromeMirrorsWithoutChangingTerminalFlowDirection);
         TEST_METHOD(VerticalRailVisibilityRestoresWidth);
         TEST_METHOD(VerticalRailCollapseRestoresWidth);
+        TEST_METHOD(SidebarCollapsedRestoresFromSettingsOrWindowLayout);
         TEST_METHOD(SidebarToggleBackgroundTracksCollapseAndPointerStates);
         TEST_METHOD(SidebarToggleFillsFollowEffectiveChromeBackground);
         TEST_METHOD(SidebarToggleUsesChromeFallbackWithoutPaneBackground);
@@ -966,7 +967,9 @@ namespace TerminalAppLocalTests
             uint32_t thirdContentId{};
         };
         static winrt::TerminalApp::implementation::SharedWtaLease _acquireIsolatedAgentLease();
-        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _createStartupRestorePeer(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _createStartupRestorePeer(
+            const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source,
+            std::optional<bool> sidebarCollapsed = std::nullopt);
         std::unique_ptr<ContentTransferFixture> _createContentTransferFixture(bool agentFirst, bool hidden, bool freshReceiver = false, bool twoLeaves = false, std::optional<int32_t> historySize = std::nullopt);
         VerticalProgressProjectionFixture _createVerticalProgressProjectionFixture(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                                                                   const winrt::com_ptr<TestConnection>& first,
@@ -3338,7 +3341,9 @@ namespace TerminalAppLocalTests
         });
     }
 
-    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_createStartupRestorePeer(const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source)
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_createStartupRestorePeer(
+        const winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& source,
+        std::optional<bool> sidebarCollapsed)
     {
         const auto properties = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
         const winrt::TerminalApp::TerminalPage projected{ properties, source->_manager };
@@ -3346,6 +3351,7 @@ namespace TerminalAppLocalTests
         page.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected));
         page->_settings = source->_settings.Copy();
         page->_terminalSettingsCache = std::make_shared<winrt::TerminalApp::implementation::TerminalSettingsCache>(page->_settings);
+        page->SetStartupSidebarCollapsed(sidebarCollapsed);
         page->Create();
         page->_layoutUpdatedRevoker.revoke();
         page->_startupState = winrt::TerminalApp::implementation::StartupState::Initialized;
@@ -3404,10 +3410,13 @@ namespace TerminalAppLocalTests
             source->CloseWindow();
             source->ShutdownPanes();
             VERIFY_ARE_EQUAL(1u, source->_manager.KeptGroups().Size());
+            last->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(last->_isVerticalRailCollapsed);
             const auto preview = last->GetStartupRestoreLayout();
             VERIFY_IS_NOT_NULL(preview);
             last->CloseWindow();
             const auto layout = last->GetStartupRestoreLayout();
+            VERIFY_IS_TRUE(layout.SidebarCollapsed().Value());
             const auto expected = WindowLayout::ToJson(layout);
             VERIFY_ARE_EQUAL(WindowLayout::ToJson(preview), expected);
             uint32_t tabs = 0;
@@ -3447,6 +3456,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, file, &saved, &errors));
             const auto restored = WindowLayout::FromJson(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, saved["persistedWindowLayouts"][0])));
             VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(restored));
+            VERIFY_IS_TRUE(restored.SidebarCollapsed().Value());
         });
     }
 
@@ -3660,20 +3670,26 @@ namespace TerminalAppLocalTests
         const Persistence::Snapshot closed{ layout(L"last closed"), {} };
         const Persistence::Snapshot first{ layout(L"current first"), {} };
         const Persistence::Snapshot second{ layout(L"current second"), {} };
+        first.Layout.SidebarCollapsed({ true });
+        second.Layout.SidebarCollapsed({ false });
         Persistence::PersistLayouts(state, { first, second }, closed, true);
         VERIFY_ARE_EQUAL(2u, state.PersistedWindowLayouts().Size());
         VERIFY_IS_TRUE(first.Layout == state.PersistedWindowLayouts().GetAt(0));
         VERIFY_IS_TRUE(second.Layout == state.PersistedWindowLayouts().GetAt(1));
+        VERIFY_IS_TRUE(state.PersistedWindowLayouts().GetAt(0).SidebarCollapsed().Value());
+        VERIFY_IS_FALSE(state.PersistedWindowLayouts().GetAt(1).SidebarCollapsed().Value());
         Persistence::PersistLayouts(state, {}, closed, true);
         VERIFY_ARE_EQUAL(1u, state.PersistedWindowLayouts().Size());
         VERIFY_IS_TRUE(closed.Layout == state.PersistedWindowLayouts().GetAt(0));
 
         const Persistence::Snapshot named{ layout(L"named window"), L"saved workspace" };
+        named.Layout.SidebarCollapsed({ true });
         Persistence::PersistLayouts(state, {}, named, true);
         const auto action = state.PersistedWindowLayouts().GetAt(0).TabLayout().GetAt(0);
         VERIFY_ARE_EQUAL(ShortcutAction::OpenWorkspace, action.Action());
         VERIFY_ARE_EQUAL(named.Name, action.Args().as<OpenWorkspaceArgs>().Name());
         VERIFY_IS_TRUE(named.Layout == state.TakeWorkspace(named.Name));
+        VERIFY_IS_TRUE(named.Layout.SidebarCollapsed().Value());
         Persistence::PersistLayouts(state, {}, closed, false);
         VERIFY_IS_NULL(state.PersistedWindowLayouts());
         Persistence::PersistLayouts(state, {}, {}, true);
@@ -7293,6 +7309,42 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanDragItems());
             VERIFY_IS_FALSE(tabStrip->ItemsList().CanReorderItems());
+        });
+    }
+
+    void TabTests::SidebarCollapsedRestoresFromSettingsOrWindowLayout()
+    {
+        const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        TestOnUIThread([&]() {
+            const auto savedCollapsed = []() {
+                const auto path = std::filesystem::path{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } } / L"settings.json";
+                std::ifstream file{ path };
+                Json::Value json;
+                std::string errors;
+                VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, file, &json, &errors));
+                return json["sidebarCollapsed"].asBool();
+            };
+            VERIFY_IS_FALSE(page->_isVerticalRailCollapsed);
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_TRUE(page->_settings.GlobalSettings().SidebarCollapsed());
+            VERIFY_IS_TRUE(savedCollapsed());
+            const auto snapshot = page->GetWindowLayout();
+            VERIFY_IS_TRUE(snapshot.SidebarCollapsed().Value());
+
+            const auto ordinary = _createStartupRestorePeer(page);
+            VERIFY_IS_TRUE(ordinary->_isVerticalRailCollapsed);
+            const auto expandedWindow = _createStartupRestorePeer(page, false);
+            VERIFY_IS_FALSE(expandedWindow->_isVerticalRailCollapsed);
+
+            page->_OnVerticalRailCollapseRequested(nullptr, nullptr);
+            VERIFY_IS_FALSE(page->_settings.GlobalSettings().SidebarCollapsed());
+            VERIFY_IS_FALSE(savedCollapsed());
+            const auto restored = _createStartupRestorePeer(page, snapshot.SidebarCollapsed().Value());
+            VERIFY_IS_TRUE(restored->_isVerticalRailCollapsed);
+            VERIFY_IS_TRUE(restored->_tabStrip.IsRailCollapsed());
+
+            const auto legacy = _createStartupRestorePeer(page);
+            VERIFY_IS_FALSE(legacy->_isVerticalRailCollapsed);
         });
     }
 
