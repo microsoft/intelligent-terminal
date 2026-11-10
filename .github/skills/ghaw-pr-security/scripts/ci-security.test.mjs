@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   collectSarif, completedWarningReview, proposeWarningDecisions, readCiWarnings, readWarningPage,
 } from './ci-security.mjs';
@@ -65,6 +67,48 @@ test('security analysis keeps high/medium warnings without source snippets or un
   duplicate.runs[0].results.push(duplicate.runs[0].results[2]);
   assert.equal(collectSarif(duplicate, { ...CI, language: 'rust' }).findings.length, 2);
   assert.equal(collectSarif(duplicate, { ...CI, language: 'rust' }).counts.duplicates, 1);
+});
+
+test('pack-grouped action SARIF preserves warnings and accepts a clean scan with rule metadata', () => {
+  const grouped = sarif();
+  const run = grouped.runs[0];
+  const rules = run.tool.driver.rules;
+  run.tool.driver.rules = [];
+  run.tool.extensions = [
+    { name: 'codeql/rust-queries', rules: rules.slice(0, 2) },
+    { name: 'codeql/extra-queries', rules: rules.slice(2) },
+  ];
+  assert.deepEqual(collectSarif(grouped, { ...CI, language: 'rust' }),
+    collectSarif(sarif(), { ...CI, language: 'rust' }));
+  delete run.tool.driver.rules;
+  run.results = [];
+  const clean = collectSarif(grouped, { ...CI, language: 'rust' });
+  assert.equal(clean.findings.length, 0);
+  assert.equal(clean.analysis.rulesInSarif, 3);
+  run.tool.extensions.push({ rules: [rules[0]] });
+  assert.throws(() => collectSarif(grouped, { ...CI, language: 'rust' }), /ambiguous.*rule metadata/);
+  run.tool.extensions = {};
+  assert.throws(() => collectSarif(grouped, { ...CI, language: 'rust' }), /invalid.*rule metadata/);
+});
+
+test('collector diagnostics expose contract failures but not raw malformed evidence', () => {
+  fixture(directory => {
+    const input = resolve(directory, 'input.sarif');
+    for (const [body, expected] of [
+      ['{}', /invalid CodeQL SARIF/],
+      ['never-publish-this-input', /inspect the analyzer execution and evidence format/],
+    ]) {
+      writeFileSync(input, body);
+      const child = spawnSync(process.execPath, [
+        fileURLToPath(new URL('./ci-security.mjs', import.meta.url)), 'collect',
+        '--sarif', input, '--language', 'rust', '--head', HEAD,
+        '--output', resolve(directory, 'output.json'),
+      ], { encoding: 'utf8', env: { ...process.env, GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2' } });
+      assert.equal(child.status, 1);
+      assert.match(child.stderr, expected);
+      assert(!child.stderr.includes('never-publish-this-input'));
+    }
+  });
 });
 
 test('analyzer crashes, unknown formats and traversal do not become clean analysis', () => {

@@ -88,7 +88,9 @@ C++ and Rust CodeQL use source-only (`none`) analysis. The regular C++ build
 and unit tests run outside compiler tracing: the first traced build took
 101 minutes and its following unit run hung until the job timeout.
 Source-only analysis does not cover build-generated code or reproduce all
-build-specific preprocessor settings. Real compilation and all unit tests
+build-specific preprocessor settings. PR-diff filtering is disabled so existing
+and unrelated warnings remain available for the agent to classify.
+Real compilation and all unit tests
 remain required for CI success. C++ tests have a five-minute per-test timeout;
 a timeout is a failure, not a skipped or passing test.
 

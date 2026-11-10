@@ -16,6 +16,8 @@ concurrency:
 
 env:
   EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  # Retain existing/unrelated warnings so the reviewer can classify them.
+  CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
 
 # Action commits resolved through the read-only GitHub Git API:
 # checkout v7.0.1 -> 3d3c42e5aac5ba805825da76410c181273ba90b1

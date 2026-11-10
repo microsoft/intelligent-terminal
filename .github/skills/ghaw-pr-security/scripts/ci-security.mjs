@@ -11,8 +11,10 @@ const ID = /^CISEC-[0-9A-F]{16}$/;
 const POSITIVE = /^[1-9][0-9]*$/;
 const LANGUAGES = ['cpp', 'rust'];
 
+class CiSecurityContractError extends Error {}
+
 function fail(message) {
-  throw new Error(`CI security: ${message}`);
+  throw new CiSecurityContractError(`CI security: ${message}`);
 }
 
 function readJson(path, limit = 16 * 1024 * 1024) {
@@ -62,16 +64,29 @@ export function collectSarif(sarif, { language, headSha, ciRunId, ciRunAttempt, 
   const versions = new Set();
   for (const run of sarif.runs) {
     if (run.tool?.driver?.name !== 'CodeQL' || !Array.isArray(run.results) ||
-        !Array.isArray(run.tool.driver.rules) || !Array.isArray(run.invocations) ||
+        !Array.isArray(run.invocations) ||
         !run.invocations.length || run.invocations.some(item => item.executionSuccessful !== true)) {
       fail('CodeQL did not complete successfully');
     }
-    if (!run.tool.driver.rules.length) fail('CodeQL returned no analysis rules');
+    const extensions = run.tool.extensions === undefined ? [] : run.tool.extensions;
+    if (!Array.isArray(extensions)) fail('invalid CodeQL rule metadata');
+    const rules = new Map();
+    for (const component of [run.tool.driver, ...extensions]) {
+      if (!component || (component.rules !== undefined && !Array.isArray(component.rules))) {
+        fail('invalid CodeQL rule metadata');
+      }
+      for (const rule of component.rules ?? []) {
+        const id = text(rule?.id, 200);
+        if (rules.has(id)) fail('ambiguous CodeQL rule metadata');
+        rules.set(id, rule);
+        ruleIds.add(id);
+      }
+    }
+    if (!rules.size) fail('CodeQL returned no analysis rules');
     versions.add(text(run.tool.driver.semanticVersion ?? run.tool.driver.version, 100));
-    for (const rule of run.tool.driver.rules) ruleIds.add(text(rule.id, 200));
     for (const result of run.results) {
       counts.total++;
-      const rule = run.tool.driver.rules.find(item => item.id === result.ruleId);
+      const rule = rules.get(result.ruleId);
       if (!rule) fail('missing CodeQL rule metadata');
       const rawScore = rule.properties?.['security-severity'];
       const score = typeof rawScore === 'string' && rawScore.trim() !== '' ? Number(rawScore) : rawScore;
@@ -267,8 +282,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.log(`::warning file=${escape(item.file)},line=${item.startLine}::${escape(item.priority)} ${escape(item.ruleId)}: ${escape(item.title)}`);
     }
     console.log(`CodeQL: ${result.counts.high} high, ${result.counts.medium} medium; lower/unclassified/outside-workspace counts retained in findings.json.`);
-  } catch {
-    console.error('CI security analysis failed: inspect the analyzer execution and evidence format.');
+  } catch (error) {
+    console.error(error instanceof CiSecurityContractError ? error.message :
+      'CI security analysis failed: inspect the analyzer execution and evidence format.');
     process.exitCode = 1;
   }
 }
