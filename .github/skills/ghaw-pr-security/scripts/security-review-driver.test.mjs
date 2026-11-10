@@ -11,6 +11,7 @@ import {
   readImmutableHunks, inspectSecurityRepair, writeSecurityRepair,
 } from './security-review.mjs';
 import { restoreTrustedInputs } from './restore-security-review-trusted-inputs.mjs';
+import { collectSarif, proposeWarningDecisions, readWarningPage } from './ci-security.mjs';
 import {
   buildPhaseArguments, parseTranscript, runSecurityReviewDriver, validateCompleteDiffCoverage,
   validateReviewerTranscript as validateTranscript,
@@ -481,6 +482,73 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
     },
   };
 }
+
+test('CI warning proposals require complete reads and owner-action proposals before trusted completion', () => {
+  for (const variant of ['complete', 'unread', 'missing-proposal']) {
+    withFixture(fixture => {
+      const directory = resolve(fixture.scopePath, '..', 'ci-security');
+      mkdirSync(directory);
+      writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
+        runId: '123', runAttempt: 1, headSha: HEAD,
+      }));
+      const sarif = {
+        version: '2.1.0', runs: [{
+          tool: { driver: { name: 'CodeQL', rules: [{
+            id: 'rust/example', shortDescription: { text: 'Example warning' },
+            properties: { 'security-severity': '7.5' },
+          }] } }, invocations: [{ executionSuccessful: true }],
+          results: [{ ruleId: 'rust/example', locations: [{ physicalLocation: {
+            artifactLocation: { uri: PATH }, region: { startLine: 1 },
+          } }] }],
+        }],
+      };
+      for (const language of ['cpp', 'rust']) {
+        mkdirSync(resolve(directory, language));
+        const input = structuredClone(sarif);
+        if (language === 'cpp') input.runs[0].results = [];
+        writeFileSync(resolve(directory, language, 'findings.json'), JSON.stringify(collectSarif(input, {
+          language, headSha: HEAD, ciRunId: '123', ciRunAttempt: 1,
+        })));
+      }
+      const report = { ...createReportTemplate(scope), summary: 'No independently established finding.',
+        summaryMarkdown: `${SUMMARY_MD}\nCI warning: proposed fix; owner or coding agent must decide.\n` };
+      const options = driverOptions(fixture, [], { candidate: () => report });
+      options.ciSecurityDirectory = directory;
+      options.inspect = () => ({
+        headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
+      });
+      const primary = options.runChild;
+      options.runChild = (...args) => {
+        const result = primary(...args);
+        const page = readWarningPage(directory, scope);
+        const events = variant === 'unread' ? [] : call('mcpscripts-read_ci_security_findings', page);
+        if (variant !== 'missing-proposal') {
+          const decisions = JSON.stringify(page.findings.map(item => ({
+            id: item.id, decision: 'fix', relatedToPr: 'uncertain',
+            reason: 'Confirm ownership at the changed caller before applying a fix.',
+            proposal: 'The PR owner or their coding agent should inspect and decide whether to add the guard.',
+          })));
+          events.push(...call('mcpscripts-propose_ci_warning_decisions',
+            proposeWarningDecisions(directory, scope, decisions), { decisions_json: decisions }));
+        }
+        result.stdout = output([...events, ...result.stdout.trim().split('\n').map(line => JSON.parse(line))]);
+        return result;
+      };
+      if (variant === 'complete') {
+        assert.equal(runSecurityReviewDriver(options).reviewed, false);
+        const finalReport = JSON.parse(readFileSync(fixture.reportPath, 'utf8'));
+        const warningBytes = readFileSync(resolve(fixture.reportPath, '..', 'security-ci-warning-dispositions.json'));
+        assert.equal(finalReport.ciWarningDispositionsSha256, createHash('sha256').update(warningBytes).digest('hex'));
+        assert.equal(JSON.parse(warningBytes).findings[0].decision, 'fix');
+        assert.match(JSON.parse(warningBytes).ownerAction, /decides/);
+      } else {
+        assert.throws(() => runSecurityReviewDriver(options),
+          variant === 'unread' ? /must be read/ : /fix-or-ignore proposal/);
+        assert.equal(existsSync(resolve(fixture.reportPath, '..', 'security-driver-completion.json')), false);
+      }
+    });
+  }
+});
 
 test('a submitted report and noop cannot authorize publication after driver coverage failure', () => {
   withFixture(fixture => {

@@ -1,0 +1,262 @@
+name: PR build and security analysis
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+# Action commits resolved through the read-only GitHub Git API:
+# checkout v7.0.1 -> 3d3c42e5aac5ba805825da76410c181273ba90b1
+# upload-artifact v7.0.1 -> 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+# codeql-action v4 tag 5895b2c9be147bc7f1c75ce72c5cb577febb1907
+#   -> commit 33d7b85da1a04171e211befe2c739303b9a4c066
+jobs:
+  cpp:
+    name: C++ build and unit tests
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout workflow-revision analysis helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: ci-analysis-tools
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/skills/ghaw-pr-security/scripts/ci-security.mjs
+            .github/skills/ghaw-pr-security/scripts/security-review.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Verify built commit
+        env:
+          EXPECTED_TOOLS_SHA: ${{ github.workflow_sha }}
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_HEAD_SHA) {
+            throw 'Checkout does not match the exact requested head.'
+          }
+          $tools = git -C ci-analysis-tools rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $tools -ne $env:EXPECTED_TOOLS_SHA) {
+            throw 'Analysis helpers do not match the workflow revision.'
+          }
+          "Built commit: $actual" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Initialize C++ security analysis
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+          dependency-caching: false
+
+      - name: Build production Terminal and C++ tests
+        shell: cmd
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          call tools\razzle.cmd
+          if errorlevel 1 exit /b 1
+          rem Razzle restores dependencies, but does not propagate all restore failures.
+          nuget restore OpenConsole.slnx -Verbosity quiet -NonInteractive
+          if errorlevel 1 exit /b 1
+          nuget restore dep\nuget\packages.config -Verbosity quiet -NonInteractive
+          if errorlevel 1 exit /b 1
+          rem Explicit targets include the unit-test host, but not CascadiaPackage or UI/feature suites.
+          "%MSBUILD%" OpenConsole.slnx /m /p:Configuration=Debug /p:Platform=x64 /p:AppxPackageSigningEnabled=false /p:GenerateAppxPackageOnBuild=false /p:AppxBundle=Never ^
+            "/t:Terminal\Window\WindowsTerminal;Terminal\Window\WindowsTerminalShellExt;wtcli;Conhost\Host_EXE;Conhost\Host_UnitTests;Conhost\Interactivity_Win32_UnitTests;Shared\til_unit_tests;Shared\Types_Unit_Tests;Shared\Buffer\TextBuffer_Unit_Tests;Shared\Virtual Terminal\Adapter_UnitTests;Shared\Virtual Terminal\Parser_UnitTests;Terminal\Tests\Control_UnitTests;Terminal\Tests\SettingsModel_UnitTests;Terminal\Tests\UnitTests;Terminal\Tests\TerminalApp_UnitTests;Terminal\Tests\TerminalApp_LocalTests;Terminal\Tests\TestHostApp"
+          if errorlevel 1 exit /b 1
+
+      - name: Test all C++ units
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @(
+            'Conhost.Unit.Tests.dll', 'Conhost.Interactivity.Win32.Unit.Tests.dll',
+            'til.unit.tests.dll', 'Types.Unit.Tests.dll', 'TextBuffer.Unit.Tests.dll',
+            'ConAdapter.Unit.Tests.dll', 'ConParser.Unit.Tests.dll',
+            'Control.Unit.Tests.dll', 'SettingsModel.Unit.Tests.dll',
+            'Terminal.Core.Unit.Tests.dll', 'Terminal.App.Unit.Tests.dll'
+          )
+          $tests = @(Get-ChildItem bin\x64\Debug -Recurse -File -Filter '*unit.test*.dll')
+          foreach ($name in $expected) {
+            if ($name -notin $tests.Name) { throw "Missing C++ unit test binary: $name" }
+          }
+          & .\build\scripts\Run-Tests.ps1 -MatchPattern '*unit.test*.dll' `
+            -Platform x64 -Configuration Debug -Root bin\x64\Debug
+          exit $LASTEXITCODE
+
+      - name: Install unit-test host framework dependencies
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $recipe = 'bin\x64\Debug\TestHostApp\TestHostApp.build.appxrecipe'
+          foreach ($name in @('TerminalApp.LocalTests.dll', 'TestHostAppXManifest.xml')) {
+            if (-not (Test-Path -LiteralPath (Join-Path 'bin\x64\Debug\TestHostApp' $name))) {
+              throw "Missing packaged unit-test host input: $name"
+            }
+          }
+          $dependencies = @(& .\build\scripts\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)
+          if ($dependencies.Count -eq 0) { throw 'No unit-test host framework dependencies were resolved.' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach ($dependency in $dependencies) {
+            $archive = [IO.Compression.ZipFile]::OpenRead($dependency.FullName)
+            try {
+              $reader = [IO.StreamReader]::new($archive.GetEntry('AppxManifest.xml').Open())
+              try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } finally { $archive.Dispose() }
+            $identity = $manifest.Package.Identity
+            $installed = @(Get-AppxPackage -Name $identity.Name | Where-Object {
+              $_.Publisher -eq $identity.Publisher -and
+              $_.Architecture -eq $identity.ProcessorArchitecture -and
+              [version]$_.Version -ge [version]$identity.Version
+            })
+            if ($installed.Count -gt 0) { continue }
+            Add-AppxPackage -Path $dependency.FullName -ErrorAction Stop
+          }
+
+      - name: Test packaged TerminalApp units
+        shell: cmd
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          call tools\razzle.cmd
+          if errorlevel 1 exit /b 1
+          cd bin\x64\Debug\TestHostApp
+          if errorlevel 1 exit /b 1
+          rem As in runut.cmd, TAEF uses RunAs=UAP and UAP:AppXManifest metadata to deploy only the test host.
+          "%TAEF%" TerminalApp.LocalTests.dll
+          exit /b %errorlevel%
+
+      - name: Analyze C++ without code-scanning upload
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
+        with:
+          # In this action version, false means failure-only, not never.
+          upload: never
+          upload-database: false
+          output: ci-security\cpp\sarif
+
+      - name: Collect advisory C++ findings
+        run: |
+          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
+            --sarif ci-security\cpp\sarif\cpp.sarif `
+            --language cpp --head $env:EXPECTED_HEAD_SHA `
+            --output ci-security\cpp\findings.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload C++ security evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-security-cpp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-security\cpp\findings.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rust:
+    name: Rust build and unit tests
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    env:
+      # CodeQL's rust-analyzer also invokes Cargo inside tools\wta.
+      RUSTUP_TOOLCHAIN: 1.93.0
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout workflow-revision analysis helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: ci-analysis-tools
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/skills/ghaw-pr-security/scripts/ci-security.mjs
+            .github/skills/ghaw-pr-security/scripts/security-review.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Verify analyzed commit
+        env:
+          EXPECTED_TOOLS_SHA: ${{ github.workflow_sha }}
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_HEAD_SHA) {
+            throw 'Checkout does not match the exact requested head.'
+          }
+          $tools = git -C ci-analysis-tools rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $tools -ne $env:EXPECTED_TOOLS_SHA) {
+            throw 'Analysis helpers do not match the workflow revision.'
+          }
+
+      - name: Install public Rust toolchain
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build x64 WTA
+        run: |
+          cargo +1.93.0 build --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test all x64 WTA units
+        run: |
+          cargo +1.93.0 test --locked --target x86_64-pc-windows-msvc --manifest-path tools\wta\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Initialize Rust security analysis
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
+        with:
+          languages: rust
+          build-mode: none
+          queries: security-extended
+          dependency-caching: false
+
+      - name: Analyze Rust without code-scanning upload
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
+        with:
+          upload: never
+          upload-database: false
+          output: ci-security\rust\sarif
+
+      - name: Collect advisory Rust findings
+        run: |
+          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
+            --sarif ci-security\rust\sarif\rust.sarif `
+            --language rust --head $env:EXPECTED_HEAD_SHA `
+            --output ci-security\rust\findings.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Rust security evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-security-rust-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-security\rust\findings.json
+          if-no-files-found: error
+          retention-days: 30

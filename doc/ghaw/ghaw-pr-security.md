@@ -6,15 +6,15 @@ WTA, build/package logic, or GitHub automation. Its public check name is
 
 ## What this adds over ordinary Copilot review
 
-**Better security-defect detection is not yet demonstrated: zero paired
-real-PR comparisons and zero newly enabled static-analyzer rules.** The added
-value is required repository-specific investigation and stricter finding triage,
-not demonstrated detection superiority.
+**Better security-defect detection is not yet demonstrated: there are no paired
+real-PR comparisons.** PR CI runs CodeQL security-extended suites for C++ and
+Rust; the agent reviews their warning evidence and performs its own source
+investigation. More enabled checks are not proof of better detection.
 
 | Added capability | Quantified scope or evidence | What the number does not prove |
 | --- | --- | --- |
 | Scoped security handbook | **8 required review areas:** C++/WinRT lifetime; COM identity/ABI; WTA/ACP routing; session-MCP ownership; confirmation/mutation; filesystem/package provenance; sensitive diagnostics; Actions credentials. Apply relevant areas and trace immutable base/head source. | These are investigations, not 8 new analyzer diagnostics. Ordinary Copilot review can find the same bugs; additional real-PR recall is unmeasured. |
-| Additional static analysis | **0 new analyzer rules enabled.** Existing matching-head analyzer results are evidence when available. | No claimed advantage from expanded CodeQL, Clippy, or C++ analysis. |
+| Additional static analysis | **2 language suites:** CodeQL security-extended for C++ and Rust in PR CI. High/medium warning evidence is bound to the exact built head and CI attempt. | Rule counts depend on the pinned query packs; no percentage recall or credit-saving claim is made. |
 | Finding and repair triage | **3 severity levels; 1 automatic-repair language (Rust); 2 source-review phases (primary and independent reviewer), plus 1 threat detector.** Only HIGH/high-confidence minimal existing modified WTA-source fixes can be committed as proposals before build/test. | Reviewer agreement is not runtime validation. Medium/low remain advice; unsupported repairs remain manual. |
 | Historical repair execution | Hosted [R6](https://github.com/microsoft/intelligent-terminal/actions/runs/37648989612), source `338f5bfe714663711cbf7ddfb7da98118ea9d762`: **1 compiling synthetic capability-binding bypass repaired; 2444 Windows tests passed, 0 failed, 1 ignored; 11/11 jobs succeeded; 3.902574 AI credits**. The preserved patch replaces `.values().next()` with the hash-keyed lookup. | This exercised the former build/test-gated architecture, not the current commit-before-build/test contract. One synthetic success is not real-PR detection superiority; no ordinary-review cost baseline exists. |
 | Historical negative triage | Local Auto review of a separate non-compiling `.get(secret)` fixture, source `929d37a9de5d23b26622e73e6af4b0a1fe6a5083`: **48.692 seconds, 0 repairs, 0 independent reviewers started, 1 canonical noop**. | It declined a type/build defect as non-security. One negative fixture is not a precision benchmark and differs from the compiling R6 seed. |
@@ -27,14 +27,22 @@ better vulnerability detection.
 
 ## Current flow and ownership
 
-1. The trusted controller binds PR identity, trusted workflow revision,
+1. `PR build and security analysis` runs on GitHub Windows runners. Its C++ and
+   Rust jobs build and run unit tests in parallel; the C++ test host is included,
+   but Dev-package build, signing and deployment are not. Analyzer findings are
+   warnings, not build failures; analyzer execution errors remain failures.
+   The security controller starts only after successful matching PR CI.
+   It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from
    GitHub's automatic `github.workflow_sha`, never the PR's potentially older
    base. The recorded PR base/head still govern comparison and live identity;
    no commit ID is hardcoded.
-   It runs only for ordinary same-repository pull requests; fork pull requests
-   are skipped. Only authorized same-repository WTA-source scopes may enter repair.
+   CI event, workflow, job outcomes, run attempt and current PR head are checked
+   through GitHub APIs before inference. Fork AI reviews are skipped. The
+   worker-code revision is separate from the PR's comparison base, so an older
+   PR base need not contain the worker. Only authorized WTA-source scopes may
+   enter repair.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
    narrowly allowed HIGH/high-confidence source fix, but cannot execute
@@ -72,16 +80,36 @@ better vulnerability detection.
    unbuilt/untested, links the published commits, and assigns validation and
    any per-finding rollback to the original PR reviewer (human or agent).
 
+## Warning proposals and owner decisions
+
+The native reader exposes matching CodeQL warnings in bounded pages, without
+raw SARIF messages or source snippets. Every reported high/medium warning needs
+an explicit proposed `fix` or `ignore`, a reason, PR relevance and a suggested
+owner action. A changed-line flag is only a navigation hint: a changed caller
+can affect an unchanged sink, and an existing warning may still matter.
+
+The agent must read and propose a decision for every reported warning before
+its completion record is accepted. The complete decisions are retained as
+`security-ci-warning-dispositions.json`, bound by digest to the security report.
+The Markdown groups priorities and asks the PR owner or their coding agent to
+review and apply or reject the proposals. No script builds that summary.
+
+An `ignore` proposal does not suppress a rule. Existing debt and justified
+false positives can be addressed in separate owner-approved fix or narrowly
+scoped baseline changes. Warning counts, including lower/unclassified results,
+remain visible. Warnings are not automatically promoted to security findings;
+the independent immutable-diff source review remains required.
+
 The original PR reviewer owns subsequent validation and the decision to retain
 each fix or use `git revert <fix-commit>` after review. Automation does not
-auto-revert. Normal CI may run after push; it is not a pre-publication gate.
-There is no requirement for a passing native build/test before source approval,
-commit, or push.
+auto-revert. The original PR head must pass CI before this review starts.
+CI does not build/test an automatic proposed-fix commit before publication;
+the original reviewer owns that subsequent validation.
 
 **Acceptance status:** the historical results above are source-bound receipts
 for the older gated architecture or its components, not proof of the current
-proposal-publication contract. This documentation change adds no live E2E run,
-publication, or build/test result. Historical session evidence, logs, artifacts,
+proposal-publication contract. Workflow configuration and local contract checks
+are not a hosted CI build or live AI-review proof. Historical evidence, artifacts,
 and conversations remain intact; obsolete source procedures are not retained
 as current instructions.
 
@@ -128,6 +156,14 @@ invalidate the snapshot. The head lease rejects both concurrent advance and
 rewind; it never authorizes rewriting history.
 
 ## Native review capabilities
+
+The worker prompt supplies PR identity and points to the skill as the single
+owner of model-facing review and report rules. It does not repeat those rules.
+Runtime logging, detector hooks and publication implementation stay in this
+maintainer guide and the trusted scripts, rather than routine model context.
+The model still inspects those files if they are changed or needed for a source
+trace. This reduces repeated instructions; it does not skip changed hunks,
+relax evidence requirements, change models, or lower review budgets.
 
 The retained repair worker uses `.github/agents/ghaw-pr-security.agent.md` and the shared
 `.github/skills/ghaw-pr-security/SKILL.md`. The primary has bounded immutable

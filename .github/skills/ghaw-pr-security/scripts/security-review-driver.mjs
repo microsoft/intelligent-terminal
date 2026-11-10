@@ -12,6 +12,7 @@ import {
   validateSummaryMarkdown,
   TRUSTED_GUIDANCE_ROOTS, isTrustedGuidancePath,
 } from './security-review.mjs';
+import { completedWarningReview, readCiWarnings, readWarningPage } from './ci-security.mjs';
 
 const SOURCE = fileURLToPath(import.meta.url);
 const MAX_OUTPUT = 16 * 1024 * 1024;
@@ -20,7 +21,8 @@ const READ_TOOLS = [
   'mcpscripts-read_security_diff', 'mcpscripts-read_security_source', 'mcpscripts-inspect_security_repair',
 ];
 const PRIMARY_TOOLS = ['view', 'skill', ...READ_TOOLS,
-  'mcpscripts-write_security_repair', 'mcpscripts-submit_security_report', 'safeoutputs-noop'];
+  'mcpscripts-write_security_repair', 'mcpscripts-submit_security_report',
+  'mcpscripts-read_ci_security_findings', 'mcpscripts-propose_ci_warning_decisions', 'safeoutputs-noop'];
 const EXCLUDED = ['task', 'read_agent', 'write_agent', 'list_agents',
   'bash', 'powershell', 'create', 'edit', 'apply_patch', 'str_replace_editor'];
 
@@ -427,6 +429,8 @@ export function runSecurityReviewDriver({
   binary, argv = [], workspace = process.env.GITHUB_WORKSPACE ?? process.cwd(),
   scopePath = resolve(process.env.RUNNER_TEMP ?? '', 'gh-aw', 'security-report-scope.json'),
   reportPath = '/tmp/gh-aw/agent/security-findings.json',
+  ciSecurityDirectory = process.env.SECURITY_CI_REQUIRED === 'true'
+    ? resolve(dirname(scopePath), 'ci-security') : undefined,
   runChild = spawnSync, inspect = inspectCandidate, readDiff = readSecurityDiff, readSource = readSecuritySource,
   emitPrimary = output => process.stdout.write(output),
   logger = message => writeSync(process.stderr.fd, `${message}\n`), timeout = 540_000,
@@ -442,6 +446,10 @@ export function runSecurityReviewDriver({
   const scopeBytes = readFileSync(scopePath, 'utf8');
   const scope = JSON.parse(scopeBytes);
   createReportTemplate(scope);
+  const ciWarnings = ciSecurityDirectory === undefined ? undefined : (() => {
+    protectedPath(resolve(ciSecurityDirectory, 'identity.json'), root);
+    return readCiWarnings(ciSecurityDirectory, scope);
+  })();
   regularPath(reportPath);
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 540_000) fail('phase timeout exceeds trusted bound');
   const privateDirectory = resolve(privateRoot);
@@ -489,6 +497,24 @@ export function runSecurityReviewDriver({
   verifyProtectedBaseline(root, guidanceBaseline);
   const transcript = parseTranscript(primary, PRIMARY_TOOLS);
   validateCompleteDiffCoverage(transcript.calls, scope, paths => readDiff(scope, paths, root));
+  if (ciWarnings) {
+    const readIds = new Set();
+    let pages = 0;
+    for (const call of transcript.calls.filter(call => call.toolName === 'mcpscripts-read_ci_security_findings')) {
+      const data = nativeResult(call);
+      const expected = readWarningPage(ciSecurityDirectory, scope,
+        call.arguments?.offset ?? 0, call.arguments?.limit ?? 20);
+      if (JSON.stringify(data?.ci) !== JSON.stringify(expected.ci) ||
+          JSON.stringify(data?.findings) !== JSON.stringify(expected.findings)) {
+        fail('CI warning reads do not match the protected evidence');
+      }
+      pages++;
+      for (const item of expected.findings) readIds.add(item.id);
+    }
+    if (!pages || ciWarnings.findings.some(item => !readIds.has(item.id))) {
+      fail('every reported CI warning must be read before report completion');
+    }
+  }
   if (!transcript.calls.some(call => call.toolName === 'mcpscripts-submit_security_report' &&
       nativeResult(call)?.accepted === true)) fail('primary did not successfully submit a native report');
   if (transcript.calls.filter(call => call.toolName === 'safeoutputs-noop').length !== 1) {
@@ -502,6 +528,13 @@ export function runSecurityReviewDriver({
   validateSummaryMarkdown(candidate);
   if (readFileSync(scopePath, 'utf8') !== scopeBytes) fail('protected scope changed during primary');
   const emitReport = report => {
+    if (ciWarnings) {
+      const warningReview = `${JSON.stringify(completedWarningReview(ciSecurityDirectory, scope), null, 2)}\n`;
+      writeFileSync(resolve(dirname(reportPath), 'security-ci-warning-dispositions.json'),
+        warningReview, { flag: 'wx', mode: 0o600 });
+      report = { ...report, ciWarningDispositionsSha256: createHash('sha256').update(warningReview).digest('hex') };
+      writeReport(reportPath, report);
+    }
     const metadata = projectSecurityReviewOutput(transcript, report);
     emitPrimary(metadata);
     const publicLogs = resolve(dirname(reportPath), '..', 'sandbox', 'agent', 'logs');

@@ -165,6 +165,51 @@ review reasoning and the structured report.
    contract below. In repair mode, list exact modified paths in `patch`; in guide
    mode use an empty array. Correct rejected JSON and resubmit before `noop`.
 
+## CI warning proposals
+
+The caller runs this review only after matching C++ and Rust CI jobs succeed.
+CI analyzer findings are warnings, not confirmed vulnerabilities or permission
+to edit code. Continue the independent source review above even if CI has no
+warnings.
+
+1. Call `read-ci-security-findings` and follow `nextOffset` until every reported
+   warning is read. The native evidence must match the immutable head and CI
+   run/attempt. It reports high/medium analyzer warnings; counts of lower or
+   unclassified results remain visible, not asserted clean.
+2. For each warning, compare immutable base/head code and relevant product
+   contracts. Trace the input, ownership/policy check and affected operation.
+   `onChangedLines` is only a navigation hint: unchanged lines can be affected
+   by a changed caller, and an existing warning can still be relevant.
+3. Use `propose-ci-warning-decisions` in batches of at most 20. Each entry has
+   exactly `id`, `decision` (`fix` or `ignore`), `relatedToPr`
+   (`introduced`, `existing-related`, `unrelated`, or `uncertain`), `reason`,
+   and `proposal`. Explain the specific proposed fix or why ignoring is
+   justified. For uncertainty, state the missing proof and what the owner
+   must verify; do not claim a confirmed issue. The warning's analyzer
+   priority remains distinct from your finding severity.
+4. Require acceptance for all reported warning IDs before completing the
+   security report. Never silently omit a warning or add a blanket suppression
+   to make CI look clean. Proposals can be revised through the same tool.
+
+Do not edit source to apply these warning proposals. The PR owner or their
+coding agent decides whether to apply the suggested fix or accept the ignore.
+An analyzer score alone never qualifies for the independent HIGH-repair
+procedure. Keep only source-proven introduced security regressions in the
+normal `findings` array; ignored or unrelated warnings are not discoveries.
+
+Add a **CI warning proposals** section to the agent-authored Markdown: group
+by priority and PR relevance, state fix/ignore with reasons and owner actions,
+and clearly distinguish these from your own security findings. Include a
+handoff asking the owner/coding agent to review the proposals before acting.
+Link the native `ciRunUrl` and name the built head and CI attempt; those tests
+covered the original PR revision, not any subsequently proposed fix.
+The complete per-warning proposals are retained as
+`security-ci-warning-dispositions.json` in the review run's artifacts; use the
+native tool's `reviewRunUrl` when linking them. If the warning list exceeds
+the Markdown limit, summarize groups and highest-priority actions there while
+retaining every individual decision in that artifact. No script builds the
+summary.
+
 ## Severity and confidence
 
 - `high`: materially exploitable or severe trust-boundary failure. HIGH is
@@ -278,65 +323,16 @@ strict JSON result, and unchanged candidate bindings:
 Bindings are separate native fields, attested by the reviewer, not hashes only
 in `evidence` or primary-authored approval.
 
-### Transcript privacy
+### Privacy and runtime ownership
 
-The trusted driver checks complete primary/reviewer JSONL and immutable native
-source results in memory; it does not write raw driver transcripts. Phase
-diagnostics contain only output byte counts and SHA-256 digests. After validating
-the native report and exactly one successful primary `noop`, it forwards a
-report-derived summary/finding/check metadata message and successful terminal
-result with a hashed session identifier and allowlisted numeric usage fields.
-The same projection is written as public `events.jsonl` for the native summary
-collector. Native safe-output transport remains authoritative; no raw tool
-arguments/results or model analysis messages are forwarded to harness stdout.
-Entrypoint failures emit a fixed diagnostic, not native exception text.
-Native Git and GitHub subprocesses explicitly capture output; command failures
-retain raw diagnostics only in their in-memory exception cause, with a fixed
-public error message. Both worker routes use the same driver; guide mode runs
-only the primary and cannot initiate independent repair review.
+Never include raw source, tool transcripts, suspected secrets, or private
+diagnostics in completion text. The caller operates runtime logging, detector
+setup, artifact collection, and publication; do not reimplement that machinery.
+Inspect its source when it is changed by the PR or needed for a source trace,
+not as routine background for every review.
 
-Before native MCP/gateway startup or inference, both workers run the trusted
-`prepare-security-review-private-logs.mjs` helper. It verifies both pinned shell
-asset SHA-256 values, exact replacement counts, and regular paths before writes.
-It replaces raw session copying with a constant notice and redirects the native
-MCP server's complete log/stderr sink outside collected roots. Existing known
-diagnostic sinks are retained by moving them into private evidence storage,
-never deleted. The helper creates owner-only host directories and write probes.
-Strict-supported `sandbox.mcp.env` transports a literal private MCPG log directory
-into Docker; `sandbox.mcp.args` is rejected by strict compilation.
-The separate generated `safeoutputs` stdio service also inherits a supported
-`GH_AW_MCP_LOG_DIR` override through that gateway environment transport. Its
-owner-only sink is `${RUNNER_TEMP}/gh-aw/safeoutputs/private-security-logs`,
-inside the service's existing read-write mount but outside collector roots.
-The helper validates and creates this sink before services start; quarantining
-an earlier public `mcp-logs` directory alone does not prevent its recreation.
-No safe-output handler, canonical JSONL, report, patch, or collector is replaced.
-The generated `Prepare Safe Outputs Directories` step and pinned gateway startup
-recreate regular empty public log directories after preparation. Privacy
-acceptance must recursively require **zero public payload files**, rejecting
-every file (including zero-byte files), symlink/reparse escape, or irregular node;
-directory existence alone is not evidence of exported raw logs. The test-only
-`assertNoPublicRawLogPayloads` guard exercises that threshold without deleting
-or quarantining evidence after inference.
-
-The driver separately creates owner-only phase homes/configuration/log directories
-inside the agent container, copies only trusted settings/MCP configuration, and
-overrides compiler CLI log/config paths. These private sibling paths are outside
-the `/tmp/gh-aw` artifact and summary roots. The host MCP private root and the
-AWF inner CLI private root are separate filesystem namespaces.
-
-This is **not** a source-secret scanner or a universal diagnostic privacy claim.
-Report-derived summary prose remains an explicitly permitted validated output.
-The pinned threat detector receives the exact finalized report as its native
-`agent_output.json`, workflow context, and the exact applicable
-`aw-security-repair.patch`/memory inputs, not CLI session JSONL or
-the private native source logs. It does not independently inspect the raw source
-transcript. Public raw conversational/tool diagnostics are intentionally replaced
-with metadata; native token-usage telemetry and proposal integrity checks remain
-separate. Real AWF mount/persistence and detector execution require hosted proof;
-local projection/collector fixtures are not that proof.
-Noop normalization precedes public persistence; private logger routing alone
-does not sanitize output. Never include raw source or secrets in completion text.
+Maintainer implementation reference:
+[`doc/ghaw/ghaw-pr-security.md`](../../../doc/ghaw/ghaw-pr-security.md#report-detector-and-publication).
 
 ### Required public report presentation
 
@@ -442,51 +438,17 @@ authorize automatic repair.
 
 ## Publication constraint
 
-The generated detector must consume the exact finalized structured report and
-repair bytes, not the fixed noop. Trusted native hooks stage the report as
-`agent_output.json` and the repair as `aw-security-repair.patch`, the pinned
-v0.5.1 consumer names, and attest unchanged inputs only after successful
-execution. Trusted native detector post-steps require original runner execution
-and host-conclusion outcomes plus an actually evaluated successful native verdict.
-The host invocation enables detection and strict failure handling; a skipped
-exit-zero conclusion cannot produce a checkpoint. They then write the run/attempt/source-bound completion
-outside sandbox mounts and upload its unique host artifact. The publication gate
-verifies that artifact and a clean redacted verdict
-with no structured inspection warnings. Green jobs and generated success
-outputs alone are not detector authority. Detector transcripts stay private.
-
 gh-aw PR safe output cannot combine branch commit/push and PR comment output in
-one worker, and generated safe-output jobs are not ordered after trusted
-contract checks. Both analysis workers therefore emit exactly one `noop`. The
-trusted controller publishes only after a successful worker and validated
-artifact:
+one worker. Emit exactly one `noop` after accepted report submission; never
+push commits or post comments yourself. A model report, green job, or `noop`
+does not authorize publication.
 
-- Both workers run a credential-read-only native `publication_gate` after the
-  generated `detection` job. Exact `needs.detection.outputs` values
-  `detection_success == 'true'` and `detection_conclusion == 'success'` are
-  necessary but insufficient: original execution/host-conclusion outcomes,
-  a protected host input-binding attestation, and no structured inspection warnings also authorize
-  the typed detector proof. A green detector job is insufficient: warning,
-  cancellation, skipped, failed, or absent outcomes never authorize publication.
-  The proof binds repository, worker run/attempt, trusted workflow revision,
-  PR/head/comparison scope, and exact report/patch digests. The controller checks
-  matching API source jobs, successful native attestation/upload steps and the
-  unique same-run artifact before emitting any publication authorization.
-  Fork post-step reports produced before detection are evidence only; report
-  fields and model stdout cannot attest detector success.
-- same-repository repair: one dedicated index-only proposed-fix commit per HIGH
-  finding, containing only that finding's approved source changes. The first
-  commit is based on the reviewed head; subsequent commits form a linear chain.
-  The published tip uses a
-  push with an explicit expected-head lease and independently enforced
-  fast-forward candidate; branch rewinds and advances are rejected atomically;
-- PR report: a separate comment-only controller job publishes the trusted
-  result tables for repair, no-patch and fork reviews. It validates the
-  unchanged reviewed head or the successfully published per-finding commit
-  chain rooted at that head, checks the live base, and updates one bot-owned
-  SHA-labelled comment with a commit link for each published finding.
-- no patch/findings: no repository mutation, but the validated empty result
-  table is still reported on the PR.
+The controller separately checks source approval, exact report/patch inputs,
+actual detector execution and live PR identity. It publishes only eligible
+same-repository proposals, one commit per HIGH finding, using the reviewed
+head and an expected-head lease. A separate comment-only job posts the
+agent-authored report, including no-finding results. Runtime implementation
+details belong to the maintainer reference above, not the model's task.
 
 ## Local validation
 
