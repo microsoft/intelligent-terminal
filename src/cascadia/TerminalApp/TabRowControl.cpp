@@ -241,6 +241,11 @@ namespace winrt::TerminalApp::implementation
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
             {
+                if (const auto touchPlacement = root.FindName(L"SecondaryButtonSpan").template try_as<WUX::VisualState>())
+                {
+                    // Keep the new-tab and menu actions independently hit-testable for touch.
+                    touchPlacement.Setters().Clear();
+                }
                 for (const auto name : { L"PrimaryBackgroundGrid", L"SecondaryBackgroundGrid" })
                 {
                     if (const auto background = root.FindName(name).template try_as<WUX::Controls::Grid>())
