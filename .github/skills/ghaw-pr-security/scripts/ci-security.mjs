@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validatePublicReportText } from './security-review.mjs';
+import { stableJson, validatePublicReportText } from './security-review.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const ID = /^CISEC-[0-9A-F]{16}$/;
@@ -35,9 +35,16 @@ function identity(value) {
   return value;
 }
 
-function warningId(language, ruleId, file, startLine, endLine) {
+function warningId(language, { ruleId, file, startLine, endLine, startColumn, endColumn, instanceSha256 }) {
   return `CISEC-${createHash('sha256').update(
-    [language, ruleId, file, startLine, endLine].join('\0')).digest('hex').slice(0, 16).toUpperCase()}`;
+    stableJson([language, ruleId, file, startLine, endLine, startColumn, endColumn, instanceSha256]))
+    .digest('hex').slice(0, 16).toUpperCase()}`;
+}
+
+function column(value) {
+  if (value === undefined || value === null) return null;
+  if (!Number.isSafeInteger(value) || value < 1) fail('invalid SARIF column');
+  return value;
 }
 
 function repositoryPath(uri, workspace) {
@@ -113,18 +120,29 @@ export function collectSarif(sarif, { language, headSha, ciRunId, ciRunAttempt, 
           !/^[A-Za-z0-9_./-]{1,200}$/.test(rule.id)) fail('invalid warning location or rule');
       const priority = score >= 7 ? 'high' : 'medium';
       const item = {
-        id: warningId(language, rule.id, file, startLine, endLine),
         ruleId: rule.id, priority, securitySeverity: score, file, startLine, endLine,
+        startColumn: column(location.region.startColumn),
+        endColumn: column(location.region.endColumn),
+        instanceSha256: createHash('sha256').update(stableJson(result)).digest('hex'),
         title: text(rule.shortDescription?.text ?? rule.name ?? rule.id),
         helpUri: typeof rule.helpUri === 'string' && /^https:\/\/codeql\.github\.com\//.test(rule.helpUri)
           ? rule.helpUri : '',
       };
-      if (findings.has(item.id)) counts.duplicates++;
-      findings.set(item.id, item);
+      if (startLine === endLine && item.startColumn !== null && item.endColumn !== null &&
+          item.endColumn < item.startColumn) fail('invalid SARIF column range');
+      item.id = warningId(language, item);
+      const previous = findings.get(item.id);
+      if (previous) {
+        if (stableJson(previous) !== stableJson(item)) fail('warning identity collision');
+        counts.duplicates++;
+      } else {
+        findings.set(item.id, item);
+      }
     }
   }
   const selected = [...findings.values()].sort((a, b) =>
-    b.securitySeverity - a.securitySeverity || a.file.localeCompare(b.file) || a.startLine - b.startLine);
+    b.securitySeverity - a.securitySeverity || a.file.localeCompare(b.file) || a.startLine - b.startLine ||
+    (a.startColumn ?? 0) - (b.startColumn ?? 0) || a.id.localeCompare(b.id));
   for (const item of selected) counts[item.priority]++;
   if (versions.size !== 1) fail('mixed CodeQL versions in one language artifact');
   return { version: 1, headSha, ciRunId, ciRunAttempt, language, tool: 'CodeQL',
@@ -152,10 +170,14 @@ export function readCiWarnings(directory, scope) {
     for (const item of report.findings) {
       const file = repositoryPath(item.file, process.cwd());
       if (Object.keys(item).sort().join(',') !==
-          'endLine,file,helpUri,id,priority,ruleId,securitySeverity,startLine,title' ||
+          'endColumn,endLine,file,helpUri,id,instanceSha256,priority,ruleId,securitySeverity,startColumn,startLine,title' ||
           typeof item.ruleId !== 'string' || !/^[A-Za-z0-9_./-]{1,200}$/.test(item.ruleId) ||
           file !== item.file || !ID.test(item.id ?? '') ||
-          item.id !== warningId(language, item.ruleId, item.file, item.startLine, item.endLine) ||
+          !/^[0-9a-f]{64}$/.test(item.instanceSha256 ?? '') ||
+          column(item.startColumn) !== item.startColumn || column(item.endColumn) !== item.endColumn ||
+          (item.startLine === item.endLine && item.startColumn !== null && item.endColumn !== null &&
+            item.endColumn < item.startColumn) ||
+          item.id !== warningId(language, item) ||
           ids.has(item.id) || !Number.isFinite(item.securitySeverity) ||
           item.securitySeverity < 4 || item.securitySeverity > 10 ||
           item.priority !== (item.securitySeverity >= 7 ? 'high' : 'medium') ||
@@ -187,7 +209,8 @@ export function readCiWarnings(directory, scope) {
     }
   }
   findings.sort((a, b) => b.securitySeverity - a.securitySeverity ||
-    a.file.localeCompare(b.file) || a.startLine - b.startLine);
+    a.file.localeCompare(b.file) || a.startLine - b.startLine ||
+    (a.startColumn ?? 0) - (b.startColumn ?? 0) || a.id.localeCompare(b.id));
   return { ci, analyzers, counts, findings };
 }
 

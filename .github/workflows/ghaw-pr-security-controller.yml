@@ -9,7 +9,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ghaw-pr-security-${{ github.event.workflow_run.head_branch }}
+  group: ghaw-pr-security-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: true
 
 env:

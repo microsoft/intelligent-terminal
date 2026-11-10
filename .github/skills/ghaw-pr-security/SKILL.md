@@ -176,7 +176,9 @@ warnings.
 
 1. Call `read-ci-security-findings` and follow `nextOffset` until every reported
    warning is read. The native evidence must match the immutable head and CI
-   run/attempt. It reports high/medium analyzer warnings; counts of lower or
+   run/attempt. Distinct IDs remain separate even at the same line; use the
+   reported columns to distinguish them.
+   It reports high/medium analyzer warnings; counts of lower or
    unclassified results remain visible, not asserted clean.
 2. For each warning, compare immutable base/head code and relevant product
    contracts. Trace the input, ownership/policy check and affected operation.

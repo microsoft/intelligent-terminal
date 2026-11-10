@@ -91,6 +91,31 @@ test('queued noop rejects model content, missing message, unknown and prototype 
   }
 });
 
+test('controller concurrency isolates rejected CI completions and stale attempts', () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const template = controller.match(/^  group: (.+)$/m)?.[1];
+  assert(template);
+  const groupFor = source => {
+    const group = template.replace(/\$\{\{\s*github\.event\.workflow_run\.(\w+)\s*\}\}/g,
+      (_, field) => {
+        assert(Object.hasOwn(source, field));
+        return String(source[field]);
+      });
+    assert(!group.includes('${{'));
+    return group;
+  };
+  const valid = { id: 99, run_attempt: 2, head_branch: 'topic', event: 'pull_request',
+    conclusion: 'success', head_repository: { id: 42 }, head_sha: HEAD };
+  for (const rejected of [
+    { ...valid, id: 100, event: 'workflow_dispatch' },
+    { ...valid, id: 101, conclusion: 'failure' },
+    { ...valid, id: 102, head_repository: { id: 84 } },
+    { ...valid, id: 98, head_sha: BASE },
+    { ...valid, run_attempt: 1 },
+  ]) assert.notEqual(groupFor(valid), groupFor(rejected));
+  assert.equal(groupFor(valid), groupFor(structuredClone(valid)));
+});
+
 test('controller separates repair writes from PR reporting after canonical validation', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   assert(controller.includes('permissions: {}'));

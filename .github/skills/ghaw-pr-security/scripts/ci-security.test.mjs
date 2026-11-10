@@ -91,6 +91,45 @@ test('pack-grouped action SARIF preserves warnings and accepts a clean scan with
   assert.throws(() => collectSarif(grouped, { ...CI, language: 'rust' }), /invalid.*rule metadata/);
 });
 
+test('distinct columns and same-span result instances each require their own proposal', () => {
+  fixture(directory => {
+    const input = sarif();
+    const first = structuredClone(input.runs[0].results[2]);
+    Object.assign(first.locations[0].physicalLocation.region, { startColumn: 3, endColumn: 6 });
+    const second = structuredClone(first);
+    Object.assign(second.locations[0].physicalLocation.region, { startColumn: 12, endColumn: 15 });
+    const differentFlow = structuredClone(first);
+    differentFlow.codeFlows = [{ threadFlows: [{ locations: [{
+      location: { message: { text: 'Private flow detail must not be forwarded.' },
+        physicalLocation: { artifactLocation: { uri: 'tools/wta/src/example.rs' },
+          region: { startLine: 42 } } },
+    }] }] }];
+    const duplicate = Object.fromEntries(Object.entries(first).reverse());
+    input.runs[0].results = [first, second, differentFlow, duplicate];
+    const report = collectSarif(input, { ...CI, language: 'rust' });
+    assert.equal(report.findings.length, 3);
+    assert.equal(report.counts.duplicates, 1);
+    assert.equal(new Set(report.findings.map(item => item.id)).size, 3);
+    assert.deepEqual(report.findings.map(item => item.startColumn).sort((a, b) => a - b), [3, 3, 12]);
+    assert(!JSON.stringify(report).includes('Private flow detail'));
+    const reordered = collectSarif({ ...input, runs: [{ ...input.runs[0],
+      results: [duplicate, differentFlow, second, first] }] }, { ...CI, language: 'rust' });
+    assert.deepEqual(reordered, report);
+    writeFileSync(resolve(directory, 'rust', 'findings.json'), JSON.stringify(report));
+    const page = readWarningPage(directory, scope);
+    const decision = item => ({ id: item.id, decision: 'ignore', relatedToPr: 'unrelated',
+      reason: 'Existing fixture result reviewed.', proposal: 'Owner decides this instance separately.' });
+    proposeWarningDecisions(directory, scope, JSON.stringify([decision(page.findings[0])]));
+    assert.throws(() => completedWarningReview(directory, scope), /every reported warning/);
+    proposeWarningDecisions(directory, scope, JSON.stringify(page.findings.slice(1).map(decision)));
+    assert.equal(completedWarningReview(directory, scope).findings.length, 3);
+    const changed = JSON.parse(readFileSync(resolve(directory, 'rust', 'findings.json'), 'utf8'));
+    changed.findings[0].startColumn++;
+    writeFileSync(resolve(directory, 'rust', 'findings.json'), JSON.stringify(changed));
+    assert.throws(() => readCiWarnings(directory, scope), /invalid analyzer warning/);
+  });
+});
+
 test('collector diagnostics expose contract failures but not raw malformed evidence', () => {
   fixture(directory => {
     const input = resolve(directory, 'input.sarif');
