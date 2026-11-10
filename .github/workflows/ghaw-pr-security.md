@@ -561,53 +561,15 @@ Read `/tmp/gh-aw/security-scope.json`, then follow
 base `${{ github.event.inputs.comparison_base_sha }}` and immutable head
 `${{ github.event.inputs.expected_head_sha }}`.
 
-Review every applicable changed trust boundary. Only a HIGH/high-confidence
-finding with strong repository evidence, a minimal patch to an existing
-`tools/wta/src/**/*.rs` file may be submitted as a candidate marked `proposed`,
-with `review.status: pending`. Never claim `SOURCE_PASS` or mark an
-agent-authored result `fixed`. The trusted driver must obtain independent source
-approval before native post-validation can accept a proposal, and the trusted
-post-step checks the exact final patch against the approved digest without
-building or testing it. It remains `proposed`, never `fixed`. All other repairs
-remain blocked with guidance.
-Write proposed source changes only with `write-security-repair`; generic file
-editing is disabled. Native scope/path checks reject report, workflow, Git
-metadata, new-file and unrelated destinations.
+The skill is authoritative for review coverage, evidence, severity, repair
+eligibility, independent approval, privacy, and report presentation. Inspect
+every changed hunk and follow each applicable trust boundary; do not limit
+findings to automatically repairable code.
 
-Do not invoke another agent. After your invocation finishes, the trusted driver
-alone launches the fixed `ghaw-pr-security-reviewer` profile for a candidate.
-It supplies the immutable head, native final patch digest, comparison base,
-finding hypotheses, and required validation plans from the validated candidate.
-The reviewer has only read-only native inspection capabilities and must fetch
-the full original diff, base/head source traces and invariants, and full final
-candidate itself. Parent-copied source and patch text is not independent proof.
-Only the trusted driver can record `review.status: source-pass` after checking
-the reviewer's successful native reads and explicit matching `SOURCE_PASS`.
-Missing or incomplete native evidence fails closed. Source approval is not
-build or test evidence. The original reviewer, which may be an agent, owns
-subsequent build/test validation and may revert each finding's dedicated
-proposed-fix commit. Inseparable or ambiguous per-finding edits remain blocked;
-do not combine multiple findings into one commit.
-
-Complete the prepared `/tmp/gh-aw/agent/security-findings.json` exactly as the
-skill specifies, preserve its native identity fields, and list every modified
-path in `patch`. Submit complete JSON as the `report_json` string to
-`submit-security-report`, with the required `summary_markdown` string authored
-from the skill's findings and validation table template. Use exactly one
-`{{commit:N}}` placeholder per proposed finding, numbered in proposed-finding
-JSON order. The controller only binds those tokens to verified commit links;
-no script constructs the summary or table rows.
-Only this fixed capability validates against the protected native scope and
-writes the report. Do not write it through filesystem
-tools, shell commands, PowerShell, or a validator CLI. The advisory scope and
-prepared template are context, not tool-server authority. These shared tools
-accept data only; they do not execute model commands or PR code. Never execute
-PR-controlled build scripts, Cargo commands, tests, or other code in the agent
-environment or in this workflow's post-validation. This workflow does not build
-or test proposed fixes before the controller commits each HIGH finding
-individually and pushes the approved commit chain.
-Call `noop` exactly once whether or not a
-source-reviewed patch exists. Never publish code or add a PR comment: the trusted
-controller consumes the checked artifact, publishes an eligible proposed fix,
-and reports the outcome on the PR. Other findings receive guidance without a
-commit. Remaining HIGH findings stay blocking with a concrete reason.
+Use the prepared `/tmp/gh-aw/agent/security-findings.json` identity and submit
+the completed JSON plus agent-authored Markdown through
+`submit-security-report`. Follow the skill's template, field limits and
+commit placeholders. Correct rejected submissions through that same tool.
+Emit exactly one `noop` after acceptance. Never execute PR code, delegate,
+push a commit, or post a PR comment. The caller owns independent review and
+publication; build/test validation remains the original PR reviewer's job.

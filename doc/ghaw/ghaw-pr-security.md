@@ -125,6 +125,14 @@ rewind; it never authorizes rewriting history.
 
 ## Native review capabilities
 
+The worker prompt supplies PR identity and points to the skill as the single
+owner of model-facing review and report rules. It does not repeat those rules.
+Runtime logging, detector hooks and publication implementation stay in this
+maintainer guide and the trusted scripts, rather than routine model context.
+The model still inspects those files if they are changed or needed for a source
+trace. This reduces repeated instructions; it does not skip changed hunks,
+relax evidence requirements, change models, or lower review budgets.
+
 The retained repair worker uses `.github/agents/ghaw-pr-security.agent.md` and the shared
 `.github/skills/ghaw-pr-security/SKILL.md`. The primary has bounded immutable
 reads, `inspect-security-repair`, the repair-mode-only bounded writer, report
