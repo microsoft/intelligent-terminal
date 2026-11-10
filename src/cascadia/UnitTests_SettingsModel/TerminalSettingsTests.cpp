@@ -52,6 +52,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(NormalizeCommandLine);
         TEST_METHOD(GetProfileForArgsWithCommandline);
         TEST_METHOD(MakeSettingsForProfile);
+        TEST_METHOD(AcrylicSettingsReachTerminal);
         TEST_METHOD(MakeSettingsForDefaultProfileThatDoesntExist);
         TEST_METHOD(TestLayerProfileOnColorScheme);
         TEST_METHOD(TestCommandlineToTitlePromotion);
@@ -62,6 +63,25 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileAppendPreservesRawCommandline);
         TEST_METHOD(AgentProfileManagedLayoutOrphan);
     };
+
+    void TerminalSettingsTests::AcrylicSettingsReachTerminal()
+    {
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(std::string_view{ R"({
+            "profiles": [
+                {"name": "Inherited"},
+                {"name": "Disabled", "useAcrylic": false, "opacity": 80}
+            ]
+        })" });
+        const auto inherited = TerminalSettings::CreateWithProfile(*settings, settings->GetProfileByName(L"Inherited")).DefaultSettings();
+        VERIFY_IS_TRUE(inherited->UseAcrylic());
+        VERIFY_IS_TRUE(inherited->EnableUnfocusedAcrylic());
+        const auto disabled = TerminalSettings::CreateWithProfile(*settings, settings->GetProfileByName(L"Disabled")).DefaultSettings();
+        VERIFY_IS_FALSE(disabled->UseAcrylic());
+        VERIFY_ARE_EQUAL(0.8f, disabled->Opacity());
+
+        settings->GlobalSettings().EnableUnfocusedAcrylic(false);
+        VERIFY_IS_FALSE(TerminalSettings::CreateWithProfile(*settings, settings->GetProfileByName(L"Inherited")).DefaultSettings()->EnableUnfocusedAcrylic());
+    }
 
     void TerminalSettingsTests::AgentProfileDirectCommandPrecedence()
     {

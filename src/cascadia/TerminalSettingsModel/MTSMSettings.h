@@ -47,7 +47,7 @@ Author(s):
     X(bool, SidebarCollapsed, "sidebarCollapsed", false)                                                                                                                                              \
     X(bool, SidebarShowAgentsOnly, "sidebarShowAgentsOnly", false)                                                                                                                                   \
     X(bool, SidebarShowRecentAgentSessions, "sidebarShowRecentAgentSessions", true)                                                                                                                   \
-    X(bool, UseAcrylicInTabRow, "useAcrylicInTabRow", false)                                                                                                                                          \
+    X(bool, UseAcrylicInTabRow, "useAcrylicInTabRow", true)                                                                                                                                           \
     X(bool, ShowTabsInTitlebar, "showTabsInTitlebar", true)                                                                                                                                           \
     X(bool, InputServiceWarning, "warning.inputService", true)                                                                                                                                        \
     X(winrt::Microsoft::Terminal::Control::CopyFormat, CopyFormatting, "copyFormatting", 0)                                                                                                           \
@@ -180,7 +180,7 @@ Author(s):
     X(IMediaResource, BackgroundImagePath, "backgroundImage", implementation::MediaResource::Empty())                                                              \
     X(Model::IntenseStyle, IntenseTextStyle, "intenseTextStyle", Model::IntenseStyle::Bright)                                                                      \
     X(Core::AdjustTextMode, AdjustIndistinguishableColors, "adjustIndistinguishableColors", Core::AdjustTextMode::Automatic)                                       \
-    X(bool, UseAcrylic, "useAcrylic", false)
+    X(bool, UseAcrylic, "useAcrylic", true)
 
 // Intentionally omitted Appearance settings:
 // * ForegroundKey, BackgroundKey, SelectionBackgroundKey, CursorColorKey: all optional colors
