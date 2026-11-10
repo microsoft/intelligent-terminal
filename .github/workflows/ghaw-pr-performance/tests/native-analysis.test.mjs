@@ -53,6 +53,10 @@ test('Windows native job is original-source, read-only and feeds Linux review ev
     const compiledNative = compiled.split(/^  native_analysis:\r?\n/m)[1].split(/^  [a-z_]+:\r?\n/m)[0];
     assert.match(compiledNative, /- activation/);
     assert.match(compiledNative, /needs\.activation\.result == 'success'\s*&&\s*needs\.activation\.outputs\.daily_ai_credits_exceeded != 'true'/);
+    const nativeEnvironment = compiledNative.match(/^    env:\r?\n((?:      [^\r\n]*\r?\n)+)/m)?.[1];
+    assert.ok(nativeEnvironment, 'the native job must override inherited telemetry bindings');
+    for (const name of ['OTEL_EXPORTER_OTLP_HEADERS', 'GH_AW_OTLP_ENDPOINTS'])
+        assert.match(nativeEnvironment, new RegExp(`^      ${name}: \\$\\{\\{ '' \\}\\}\\r?$`, 'm'));
 });
 
 test('controller budget includes the compiled native-analysis phase and reporting headroom', () => {

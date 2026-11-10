@@ -128,6 +128,9 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      OTEL_EXPORTER_OTLP_HEADERS: "${{ '' }}"
+      GH_AW_OTLP_ENDPOINTS: "${{ '' }}"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
