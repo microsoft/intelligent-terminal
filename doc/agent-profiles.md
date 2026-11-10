@@ -115,11 +115,19 @@ security boundary.
 
 ## Splitting panes
 
-The default split shortcuts, tab split action, and Command Palette's four
-directional split commands use `splitMode: "profile"`. These commands do not
-prompt for a profile, unlike `Split pane...`.
+The Command Palette offers separate split choices:
+
+- The original directional `Split pane` commands use the global default profile.
+- `Split up/down/left/right (current profile)` always starts another instance of
+  the focused pane's profile, ignoring `defaultSplitProfile`. These reuse
+  Duplicate pane actions, not Duplicate tab; no existing terminal contents or
+  agent session is copied.
+- `Split pane...` lets you explicitly choose a target profile.
+
+The default split shortcuts and tab split action still use `splitMode: "profile"`.
 Configure the source profile's `defaultSplitProfile` in `settings.json`; there
-is no default split target control in the profile editor. It determines the target:
+is no default split target control in the profile editor. For profile-mode
+actions, it determines the target:
 
 | Value | Result |
 | --- | --- |

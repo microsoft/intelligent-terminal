@@ -1012,4 +1012,20 @@
     <value>‮ÅÏ Åģëñŧš‬ !!!</value>
     <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>[!! &#x202e;Šρļĩŧ üρ (çüŕŕëñŧ ρŕöƒĩļë)&#x202c; !!]</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>[!! &#x202e;Šρļĩŧ ďöŵñ (çüŕŕëñŧ ρŕöƒĩļë)&#x202c; !!]</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>[!! &#x202e;Šρļĩŧ ļëƒŧ (çüŕŕëñŧ ρŕöƒĩļë)&#x202c; !!]</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>[!! &#x202e;Šρļĩŧ ŕĩĝĥŧ (çüŕŕëñŧ ρŕöƒĩļë)&#x202c; !!]</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
 </root>

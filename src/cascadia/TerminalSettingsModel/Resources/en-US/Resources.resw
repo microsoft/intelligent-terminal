@@ -231,6 +231,22 @@
   <data name="DuplicatePaneCommandKey" xml:space="preserve">
     <value>Duplicate pane</value>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>Split up (current profile)</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>Split down (current profile)</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>Split left (current profile)</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>Split right (current profile)</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
   <data name="DuplicateTabCommandKey" xml:space="preserve">
     <value>Duplicate tab</value>
   </data>

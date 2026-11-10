@@ -1021,4 +1021,20 @@
   <data name="WorkspacesCommandKey" xml:space="preserve">
     <value>Робочі області...</value>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>Розділити панель вгору (поточний профіль)</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>Розділити панель вниз (поточний профіль)</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>Розділити панель ліворуч (поточний профіль)</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>Розділити панель праворуч (поточний профіль)</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
 </root>

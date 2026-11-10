@@ -36,7 +36,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestExplicitUnbind);
         TEST_METHOD(TestArbitraryArgs);
         TEST_METHOD(TestSplitPaneArgs);
-        TEST_METHOD(DefaultDirectionalSplitCommandsUseProfileMode);
+        TEST_METHOD(DefaultSplitCommandsKeepProfileChoicesDistinct);
+        TEST_METHOD(UserDuplicatePaneNamesRemainUnchanged);
         TEST_METHOD(TestStringOverload);
         TEST_METHOD(TestSetTabColorArgs);
         TEST_METHOD(TestScrollArgs);
@@ -487,27 +488,106 @@ namespace SettingsModelUnitTests
         }
     }
 
-    void KeyBindingsTests::DefaultDirectionalSplitCommandsUseProfileMode()
+    void KeyBindingsTests::DefaultSplitCommandsKeepProfileChoicesDistinct()
     {
         const auto map = CascadiaSettings::LoadDefaults().ActionMap();
-        for (const auto& [id, direction] : {
-                 std::pair{ L"Terminal.SplitPaneUp", SplitDirection::Up },
-                 std::pair{ L"Terminal.SplitPaneDown", SplitDirection::Down },
-                 std::pair{ L"Terminal.SplitPaneLeft", SplitDirection::Left },
-                 std::pair{ L"Terminal.SplitPaneRight", SplitDirection::Right } })
+        const auto names = map.NameMap();
+        struct testCase
         {
-            const auto command = map.GetActionByID(id);
-            VERIFY_IS_NOT_NULL(command);
-            const auto action = command.ActionAndArgs();
-            VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, action.Action());
-            const auto args = action.Args().as<SplitPaneArgs>();
+            const wchar_t* defaultId;
+            const wchar_t* currentId;
+            SplitDirection direction;
+            const wchar_t* currentName;
+        };
+        for (const auto& test : {
+                 testCase{ L"Terminal.SplitPaneUp", L"Terminal.DuplicatePaneUp", SplitDirection::Up, L"Split up (current profile)" },
+                 testCase{ L"Terminal.SplitPaneDown", L"Terminal.DuplicatePaneDown", SplitDirection::Down, L"Split down (current profile)" },
+                 testCase{ L"Terminal.SplitPaneLeft", L"Terminal.DuplicatePaneLeft", SplitDirection::Left, L"Split left (current profile)" },
+                 testCase{ L"Terminal.SplitPaneRight", L"Terminal.DuplicatePaneRight", SplitDirection::Right, L"Split right (current profile)" } })
+        {
+            const auto original = map.GetActionByID(test.defaultId);
+            const auto current = map.GetActionByID(test.currentId);
+            VERIFY_IS_NOT_NULL(original);
+            VERIFY_IS_NOT_NULL(current);
+            VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, original.ActionAndArgs().Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, current.ActionAndArgs().Action());
+            const auto originalArgs = original.ActionAndArgs().Args().as<SplitPaneArgs>();
+            const auto currentArgs = current.ActionAndArgs().Args().as<SplitPaneArgs>();
+            VERIFY_ARE_EQUAL(SplitType::Manual, originalArgs.SplitMode());
+            VERIFY_ARE_EQUAL(SplitType::Duplicate, currentArgs.SplitMode());
+            VERIFY_ARE_EQUAL(test.direction, originalArgs.SplitDirection());
+            VERIFY_ARE_EQUAL(test.direction, currentArgs.SplitDirection());
+            VERIFY_ARE_EQUAL(winrt::hstring{ test.currentName }, current.LanguageNeutralName());
+            VERIFY_ARE_NOT_EQUAL(original.Name(), current.Name());
+            VERIFY_ARE_EQUAL(original.ID(), names.Lookup(original.Name()).ID());
+            VERIFY_ARE_EQUAL(current.ID(), names.Lookup(current.Name()).ID());
+            VERIFY_IS_TRUE(map.AvailableActions().HasKey(original.Name()));
+            VERIFY_IS_TRUE(map.AvailableActions().HasKey(current.Name()));
+            uint32_t visibleCurrent = 0;
+            uint32_t visibleDefault = 0;
+            for (const auto& entry : names)
+            {
+                const auto action = entry.Value().ActionAndArgs();
+                if (action && action.Action() == ShortcutAction::SplitPane)
+                {
+                    const auto args = action.Args().as<SplitPaneArgs>();
+                    if (args.SplitDirection() == test.direction)
+                    {
+                        visibleCurrent += args.SplitMode() == SplitType::Duplicate;
+                        visibleDefault += args.SplitMode() == SplitType::Manual;
+                    }
+                }
+            }
+            VERIFY_ARE_EQUAL(1u, visibleCurrent);
+            VERIFY_ARE_EQUAL(1u, visibleDefault);
+        }
+        for (const auto& [id, direction] : {
+                 std::pair{ L"Terminal.SplitProfileDown", SplitDirection::Down },
+                 std::pair{ L"Terminal.SplitProfileRight", SplitDirection::Right },
+                 std::pair{ L"Terminal.SplitProfileAuto", SplitDirection::Automatic } })
+        {
+            const auto args = map.GetActionByID(id).ActionAndArgs().Args().as<SplitPaneArgs>();
             VERIFY_ARE_EQUAL(SplitType::Profile, args.SplitMode());
             VERIFY_ARE_EQUAL(direction, args.SplitDirection());
         }
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.SplitProfileDown" }, map.GetActionByKeyChord(KeyChordSerialization::FromString(L"alt+shift+-")).ID());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.SplitProfileRight" }, map.GetActionByKeyChord(KeyChordSerialization::FromString(L"alt+shift+plus")).ID());
+        const auto automatic = map.GetActionByID(L"Terminal.DuplicatePaneAuto");
+        VERIFY_ARE_EQUAL(SplitType::Duplicate, automatic.ActionAndArgs().Args().as<SplitPaneArgs>().SplitMode());
+        VERIFY_ARE_EQUAL(SplitDirection::Automatic, automatic.ActionAndArgs().Args().as<SplitPaneArgs>().SplitDirection());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Duplicate pane" }, automatic.LanguageNeutralName());
         const auto [parsed, warnings] = implementation::SplitPaneArgs::FromJson(VerifyParseSucceeded(R"({"action":"splitPane"})"));
         VERIFY_IS_TRUE(warnings.empty());
         VERIFY_ARE_EQUAL(SplitType::Manual, parsed.as<SplitPaneArgs>().SplitMode());
         VERIFY_ARE_EQUAL(SplitType::Manual, SplitPaneArgs{ SplitType::Manual }.SplitMode());
+    }
+
+    void KeyBindingsTests::UserDuplicatePaneNamesRemainUnchanged()
+    {
+        const auto defaults = CascadiaSettings::LoadDefaults().ActionMap();
+        // LoadDefaults already has an empty user layer directly over the inbox.
+        const auto user = winrt::get_self<implementation::ActionMap>(defaults)->get_strong();
+        user->LayerJson(VerifyParseSucceeded(R"([
+            { "id": "User.MyDuplicateRight", "name": "My duplicate right", "command": { "action": "splitPane", "splitMode": "duplicate", "split": "right" } },
+            { "id": "User.MyDuplicateUp", "command": { "action": "splitPane", "splitMode": "duplicate", "split": "up" } },
+            { "name": "My generated duplicate", "command": { "action": "splitPane", "splitMode": "duplicate", "split": "right" } },
+            { "keys": "ctrl+alt+shift+d", "command": { "action": "splitPane", "splitMode": "duplicate", "split": "down" } }
+        ])"), OriginTag::User);
+        user->_FinalizeInheritance();
+        const auto custom = user->GetActionByID(L"User.MyDuplicateRight");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My duplicate right" }, custom.Name());
+        VERIFY_ARE_EQUAL(custom.ID(), user->NameMap().Lookup(custom.Name()).ID());
+        const auto unnamed = user->GetActionByID(L"User.MyDuplicateUp");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Duplicate pane, split: up" }, unnamed.LanguageNeutralName());
+        VERIFY_ARE_EQUAL(unnamed.ID(), user->NameMap().Lookup(unnamed.Name()).ID());
+        const auto stock = user->GetActionByID(L"Terminal.DuplicatePaneRight");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Split right (current profile)" }, stock.LanguageNeutralName());
+        VERIFY_ARE_EQUAL(stock.ID(), user->NameMap().Lookup(stock.Name()).ID());
+        const auto generated = user->NameMap().Lookup(L"My generated duplicate");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My generated duplicate" }, generated.Name());
+        VERIFY_ARE_NOT_EQUAL(stock.ID(), generated.ID());
+        const auto rebound = user->GetActionByKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+shift+d"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.DuplicatePaneDown" }, rebound.ID());
     }
 
     void KeyBindingsTests::TestSetTabColorArgs()

@@ -1046,4 +1046,20 @@
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
     <value>Включить или отключить палитру команд в режиме делегирования агенту</value>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>Разделить область вверх (текущий профиль)</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>Разделить область вниз (текущий профиль)</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>Разделить область влево (текущий профиль)</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>Разделить область вправо (текущий профиль)</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
 </root>

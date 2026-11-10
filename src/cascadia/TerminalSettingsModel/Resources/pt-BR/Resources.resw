@@ -1046,4 +1046,20 @@
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
     <value>Alternar a paleta de comandos para o modo de delegação ao agente</value>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>Dividir painel para cima (perfil atual)</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>Dividir painel para baixo (perfil atual)</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>Dividir painel para a esquerda (perfil atual)</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>Dividir painel para a direita (perfil atual)</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+  </data>
 </root>
