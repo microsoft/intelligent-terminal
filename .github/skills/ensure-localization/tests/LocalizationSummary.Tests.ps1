@@ -90,6 +90,20 @@ run(require, github, context).catch(error => { console.error(error.message); pro
             $result.Output | Should -Match 'non-empty regular Markdown file'
             $result.Published | Should -BeNullOrEmpty
         }
+
+    }
+
+    It 'preserves blocked execution diagnostics verbatim and collects them even after worker failure' {
+        $content = "**Result:** Incomplete`n**Final checks:** BLOCKED`n**Independent review:** BLOCKED`nGet-ChildItem was unavailable; shared checks and reviewer did not run."
+        $published = Invoke-SummaryPublication -Content $content
+        $published.ExitCode | Should -Be 0
+        $published.Published | Should -BeExactly $content
+        $controller = Get-Content -LiteralPath $script:controllerPath -Raw
+        $controller | Should -Match '(?s)name: Download agent-authored localization summary\s+if: always\(\).*?continue-on-error: true'
+        $controller | Should -Match '(?s)name: Publish agent-authored localization summary\s+if: always\(\)'
+        $template = Get-Content -LiteralPath $script:summaryTemplatePath -Raw
+        $template | Should -Match 'name: Upload agent-authored localization summary\s+if: always\(\)'
+        $controller | Should -Match '(?s)name: Enforce internal worker success\s+if: always\(\)'
     }
 
     It 'uses one shared Copilot template instead of composing summaries in scripts' {

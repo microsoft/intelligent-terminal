@@ -16,6 +16,49 @@ BeforeAll {
 }
 
 Describe 'Copilot review summary compatibility' {
+    It 'accepts the observed v2 zero-issue field without treating its runtime warning as validation' {
+        # PR 1363 review 5837382036: no code findings, but hosted cancellation remains unproved.
+        $body = @'
+<!-- ccr-overview-v2 -->
+
+### 🔵 Needs a closer look
+
+Hosted validation is still needed because mocked fixtures do not establish real Actions cancellation behavior, delayed worker discovery, or diagnostic artifact retention.
+
+**No open issues** 🎉
+
+<details>
+<summary><strong>What changed in this PR</strong></summary>
+
+This PR makes Intelligent Terminal’s localization workflow fail closed when validation or independent review cannot complete, while preserving diagnostic summaries.
+</details>
+'@
+        Test-CopilotReviewHasNoNewFindings $body | Should -BeTrue
+        Test-CopilotReviewHasNoNewFindings ($body.Replace("`r`n", "`n").Replace("`n", "`r`n")) | Should -BeTrue
+        Test-CopilotReviewHasNoNewFindings ($body.Replace(' 🎉', '')) | Should -BeTrue
+    }
+
+    It 'rejects non-authoritative or conflicting zero-issue summaries: <Name>' -TestCases @(
+        @{ Name = 'missing marker'; Body = '**No open issues** 🎉' }
+        @{ Name = 'quoted'; Body = "<!-- ccr-overview-v2 -->`n> **No open issues** 🎉" }
+        @{ Name = 'fenced'; Body = '<!-- ccr-overview-v2 -->' + "`n" + '```' + "`n**No open issues** 🎉`n" + '```' }
+        @{ Name = 'qualified'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** except one" }
+        @{ Name = 'positive findings'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`nFindings: 1" }
+        @{ Name = 'positive comments'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`nComments generated: 1 new" }
+        @{ Name = 'positive open findings'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n**1 open finding**" }
+        @{ Name = 'positive open issues'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n**1 open issue**" }
+        @{ Name = 'positive open actions'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n**1 open action**" }
+        @{ Name = 'required action'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n**Action required:** fix the gate" }
+        @{ Name = 'required action with another zero field'; Body = "<!-- ccr-overview-v2 -->`nFindings: None`n**No open issues** 🎉`n**Action required:** fix the gate" }
+        @{ Name = 'changes requested'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n### Changes requested" }
+        @{ Name = 'previously missed'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`nPreviously missed (1)" }
+        @{ Name = 'discussion link'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n[Bug](#discussion_r123)" }
+        @{ Name = 'severity finding'; Body = "<!-- ccr-overview-v2 -->`n**No open issues** 🎉`n<img alt='Medium severity' />" }
+    ) {
+        param($Name, $Body)
+        Test-CopilotReviewHasNoNewFindings $Body | Should -BeFalse
+    }
+
     It 'accepts legacy no-comment summaries' {
         Test-CopilotReviewHasNoNewFindings 'Copilot generated no new comments.' | Should -BeTrue
         Test-CopilotReviewHasNoNewFindings 'Copilot generated 0 comments.' | Should -BeTrue
