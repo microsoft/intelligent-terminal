@@ -11,7 +11,8 @@ import {
   readImmutableHunks, inspectSecurityRepair, writeSecurityRepair,
 } from './security-review.mjs';
 import { restoreTrustedInputs } from './restore-security-review-trusted-inputs.mjs';
-import { collectSarif, proposeWarningDecisions, readWarningPage } from './ci-security.mjs';
+import { proposeWarningDecisions, readWarningPage } from './ci-security.mjs';
+import { collectSarif } from '../../../../build/scripts/ci-security-analysis.mjs';
 import {
   buildPhaseArguments, parseTranscript, runSecurityReviewDriver, validateCompleteDiffCoverage,
   validateReviewerTranscript as validateTranscript,

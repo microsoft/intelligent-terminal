@@ -92,11 +92,23 @@ better vulnerability detection.
 
 ## Warning proposals and owner decisions
 
-C++ and Rust CodeQL use source-only (`none`) analysis. The regular C++ build
+CI owns the producer and artifact contract in
+`build\scripts\ci-security-analysis.mjs`, plus the reviewed baseline in
+`build\config\codeql-accepted-warnings.json`. The CI workflow checks out only
+those CI-owned tools; it does not import security-agent scripts or validators.
+The security agent consumes the resulting artifacts through that contract.
+Its warning reader, proposal persistence and model-output validation remain
+owned by the gh-aw skill.
+
+C++ and Rust CodeQL use `none` analysis. The regular C++ build
 and unit tests run outside compiler tracing: the first traced build took
 101 minutes and its following unit run hung until the job timeout.
-Source-only analysis does not cover build-generated code or reproduce all
-build-specific preprocessor settings. PR-diff filtering is disabled so existing
+C++ no-build analysis does not reproduce all build-specific defines or
+generated-code coverage. Rust still invokes Cargo/rust-analyzer for semantic
+loading, build scripts and procedural macros. Scanned-file counts do not
+guarantee complete semantic extraction: the examined Rust 2.27.4 runs reported
+extraction errors in generated files and six real source files.
+PR-diff filtering is disabled so existing
 and unrelated warnings remain available for the agent to classify.
 Real compilation and all unit tests
 remain required for CI success. Ordinary C++ units have a 30-second per-test
@@ -116,7 +128,7 @@ Warning IDs bind columns and a canonical result digest; raw diagnostic text
 and code flows are not forwarded. Only identical instances are deduplicated.
 Proposal batches use a cross-process writer lock. A competing writer gets
 an explicit retry response rather than silently overwriting accepted decisions.
-Every reported high/medium warning needs
+Every active high/medium warning needs
 an explicit proposed `fix` or `ignore`, a reason, PR relevance and a suggested
 owner action. A changed-line flag is only a navigation hint: a changed caller
 can affect an unchanged sink, and an existing warning may still matter.
@@ -127,10 +139,16 @@ its completion record is accepted. The complete decisions are retained as
 The Markdown groups priorities and asks the PR owner or their coding agent to
 review and apply or reject the proposals. No script builds that summary.
 
-An `ignore` proposal does not suppress a rule. Existing debt and justified
-false positives can be addressed in separate owner-approved fix or narrowly
-scoped baseline changes. Warning counts, including lower/unclassified results,
-remain visible. Warnings are not automatically promoted to security findings;
+An `ignore` proposal does not itself suppress a rule. The owner-approved CI
+baseline suppresses only exact reviewed instances with matching analyzer
+version, metadata, full result fingerprint and immutable source-blob bindings.
+Changes to a bound file, reviewed caller, dependency lock or finding reactivate
+the warning. No entire rule, source file or test module is excluded.
+Suppressed records and reasons remain in the artifact, and `counts.suppressed`
+is separate from active high/medium counts. An all-suppressed scan is not an
+empty scan or proof of complete coverage. Suppression reduces reporting/AI
+triage noise, not extraction or query runtime.
+Warnings are not automatically promoted to security findings;
 the independent immutable-diff source review remains required.
 
 The original PR reviewer owns subsequent validation and the decision to retain

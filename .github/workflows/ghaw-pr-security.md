@@ -413,6 +413,7 @@ steps:
       [ "$TRUSTED_SHA" = "$EXPECTED_WORKFLOW_SHA" ]
       [ "$GITHUB_RUN_ATTEMPT" = 1 ]
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/ci-security.mjs" > "$RUNNER_TEMP/gh-aw/ci-security.mjs"
+      git show "$TRUSTED_SHA:build/scripts/ci-security-analysis.mjs" > "$RUNNER_TEMP/gh-aw/ci-analysis-contract.mjs"
       node --input-type=module - "$trusted_validator" <<'NODE'
       import { execFileSync } from 'node:child_process';
       import { mkdirSync, writeFileSync, readdirSync, lstatSync } from 'node:fs';
@@ -443,6 +444,7 @@ steps:
       mkdir -p "$driver_dir"
       cp "$trusted_validator" "$driver_dir/security-review.mjs"
       cp "$RUNNER_TEMP/gh-aw/ci-security.mjs" "$driver_dir/ci-security.mjs"
+      cp "$RUNNER_TEMP/gh-aw/ci-analysis-contract.mjs" "$driver_dir/ci-analysis-contract.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs" > "$driver_dir/security-review-driver.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/prepare-security-review-private-logs.mjs" > "$driver_dir/prepare-security-review-private-logs.mjs"
       node "$trusted_validator" scope \

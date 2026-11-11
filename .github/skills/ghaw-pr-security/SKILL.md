@@ -180,6 +180,11 @@ warnings.
    reported columns to distinguish them.
    It reports high/medium analyzer warnings; counts of lower or
    unclassified results remain visible, not asserted clean.
+   Accepted CI baseline suppressions are counted separately and retained in
+   the CI artifact. Report active and suppressed counts distinctly; zero
+   active warnings does not mean the analyzer emitted no results.
+   Scanned-file counts also do not prove complete semantic extraction;
+   missing alerts are not proof that the source is secure.
 2. For each warning, compare immutable base/head code and relevant product
    contracts. Trace the input, ownership/policy check and affected operation.
    `onChangedLines` is only a navigation hint: unchanged lines can be affected

@@ -40,7 +40,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Checkout workflow-revision analysis helpers
+      - name: Checkout workflow-revision CI analysis tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
@@ -48,8 +48,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: |
-            .github/skills/ghaw-pr-security/scripts/ci-security.mjs
-            .github/skills/ghaw-pr-security/scripts/security-review.mjs
+            build/scripts/ci-security-analysis.mjs
+            build/config/codeql-accepted-warnings.json
           sparse-checkout-cone-mode: false
 
       - name: Verify built commit
@@ -85,9 +85,10 @@ jobs:
 
       - name: Collect advisory C++ findings
         run: |
-          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
+          node ci-analysis-tools\build\scripts\ci-security-analysis.mjs collect `
             --sarif ci-security\cpp\sarif\cpp.sarif `
             --language cpp --head $env:EXPECTED_HEAD_SHA `
+            --baseline ci-analysis-tools\build\config\codeql-accepted-warnings.json `
             --output ci-security\cpp\findings.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -153,7 +154,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Checkout workflow-revision analysis helpers
+      - name: Checkout workflow-revision CI analysis tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
@@ -161,8 +162,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: |
-            .github/skills/ghaw-pr-security/scripts/ci-security.mjs
-            .github/skills/ghaw-pr-security/scripts/security-review.mjs
+            build/scripts/ci-security-analysis.mjs
+            build/config/codeql-accepted-warnings.json
           sparse-checkout-cone-mode: false
 
       - name: Verify analyzed commit
@@ -214,9 +215,10 @@ jobs:
 
       - name: Collect advisory Rust findings
         run: |
-          node ci-analysis-tools\.github\skills\ghaw-pr-security\scripts\ci-security.mjs collect `
+          node ci-analysis-tools\build\scripts\ci-security-analysis.mjs collect `
             --sarif ci-security\rust\sarif\rust.sarif `
             --language rust --head $env:EXPECTED_HEAD_SHA `
+            --baseline ci-analysis-tools\build\config\codeql-accepted-warnings.json `
             --output ci-security\rust\findings.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

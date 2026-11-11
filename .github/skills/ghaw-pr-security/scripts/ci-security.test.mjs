@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  collectSarif, completedWarningReview, proposeWarningDecisions, readCiWarnings, readWarningPage,
+  completedWarningReview, proposeWarningDecisions, readCiWarnings, readWarningPage,
 } from './ci-security.mjs';
+import { applySuppressionBaseline, collectSarif } from '../../../../build/scripts/ci-security-analysis.mjs';
 import { validateCiWarningProposals } from './security-review.mjs';
 
 const HEAD = 'a'.repeat(40);
@@ -59,7 +60,7 @@ function fixture(run) {
 
 test('security analysis keeps high/medium warnings without source snippets or untrusted messages', () => {
   const report = collectSarif(sarif(), { ...CI, language: 'rust' });
-  assert.deepEqual(report.counts, { total: 3, high: 1, medium: 1, low: 1, unclassified: 0, outsideWorkspace: 0, duplicates: 0 });
+  assert.deepEqual(report.counts, { total: 3, high: 1, medium: 1, low: 1, unclassified: 0, outsideWorkspace: 0, duplicates: 0, suppressed: 0 });
   assert.deepEqual(report.findings.map(item => item.priority), ['high', 'medium']);
   assert.deepEqual(report.analysis, { toolVersion: '2.27.4', rulesInSarif: 3 });
   assert(!JSON.stringify(report).includes('Untrusted source detail'));
@@ -139,7 +140,7 @@ test('collector diagnostics expose contract failures but not raw malformed evide
     ]) {
       writeFileSync(input, body);
       const child = spawnSync(process.execPath, [
-        fileURLToPath(new URL('./ci-security.mjs', import.meta.url)), 'collect',
+        fileURLToPath(new URL('../../../../build/scripts/ci-security-analysis.mjs', import.meta.url)), 'collect',
         '--sarif', input, '--language', 'rust', '--head', HEAD,
         '--output', resolve(directory, 'output.json'),
       ], { encoding: 'utf8', env: { ...process.env, GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2' } });
@@ -194,6 +195,47 @@ test('changed-line flags are hints, not an automatic unrelated/ignore decision',
     assert.equal(second.nextOffset, null);
     assert.match(second.caution, /not necessarily unrelated/);
     assert.throws(() => readWarningPage(directory, scope, 0, 21));
+  });
+});
+
+test('accepted CI suppressions stay auditable without requiring new agent decisions', () => {
+  fixture(directory => {
+    const path = resolve(directory, 'rust', 'findings.json');
+    const original = JSON.parse(readFileSync(path, 'utf8'));
+    const source = original.findings[0].file;
+    const blob = 'b'.repeat(40);
+    const accepted = applySuppressionBaseline(original, {
+      version: 1, reviewedHeadSha: HEAD, sourceBlobs: { [source]: blob },
+      entries: original.findings.map(finding => ({ language: 'rust',
+        toolVersion: original.analysis.toolVersion, finding, sources: [source],
+        reason: 'Previously accepted synthetic test fixture.' })),
+    }, () => blob);
+    writeFileSync(path, JSON.stringify(accepted));
+    const page = readWarningPage(directory, scope);
+    assert.equal(page.total, 0);
+    assert.equal(page.counts.total, 3);
+    assert.equal(page.counts.suppressed, 2);
+    const completed = completedWarningReview(directory, scope);
+    assert.equal(completed.findings.length, 0);
+    assert.equal(completed.suppressedFindings.length, 2);
+  });
+});
+
+test('native consumer packaging uses the CI-owned contract without repository-relative dependencies', () => {
+  fixture(directory => {
+    const native = resolve(directory, 'native');
+    mkdirSync(native);
+    for (const [source, target] of [
+      [new URL('./ci-security.mjs', import.meta.url), 'ci-security.mjs'],
+      [new URL('./security-review.mjs', import.meta.url), 'security-review.mjs'],
+      [new URL('../../../../build/scripts/ci-security-analysis.mjs', import.meta.url), 'ci-analysis-contract.mjs'],
+    ]) copyFileSync(fileURLToPath(source), resolve(native, target));
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `const module = await import(${JSON.stringify(pathToFileURL(resolve(native, 'ci-security.mjs')).href)});
+       console.log(JSON.stringify(module.readWarningPage(${JSON.stringify(directory)}, ${JSON.stringify(scope)})));`],
+    { encoding: 'utf8', timeout: 10000 });
+    assert.equal(child.status, 0, child.stderr);
+    assert.equal(JSON.parse(child.stdout).total, 2);
   });
 });
 
