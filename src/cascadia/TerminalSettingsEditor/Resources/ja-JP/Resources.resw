@@ -3078,4 +3078,8 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <value>Terminal は、インストール済みのエージェント CLI をプロファイルとして自動的に追加します。新しいタブのメニューからプロファイルを開いて使い始めましょう。</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>エージェントとモデルの選択は、すべてお客様にお任せします。続行する前に、選択したエージェントとモデルが、お住まいの地域のすべての AI 規制に完全に準拠していることをご確認ください。</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

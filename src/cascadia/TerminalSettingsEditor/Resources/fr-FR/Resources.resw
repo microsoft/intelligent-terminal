@@ -3079,4 +3079,8 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <value>Terminal ajoute automatiquement les outils en ligne de commande d’agents installés en tant que profils. Ouvrez-en un depuis le menu de nouvel onglet pour commencer.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Le choix de l’agent et du modèle vous appartient entièrement. Avant de continuer, veuillez vérifier que votre choix respecte pleinement toutes les réglementations relatives à l’IA dans votre région.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

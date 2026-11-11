@@ -3121,4 +3121,8 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <value>Terminal מוסיף אוטומטית את כלי שורת הפקודה של הסוכנים המותקנים כפרופילים. כדי להתחיל, פתח אחד מהם מתפריט הכרטיסייה החדשה.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>הבחירה בסוכן ובמודל היא לגמרי שלך. לפני ההמשך, יש לוודא שהבחירה שלך עומדת באופן מלא בכל תקנות הבינה המלאכותית באזור שלך.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

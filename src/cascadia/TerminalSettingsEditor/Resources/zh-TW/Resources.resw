@@ -3078,4 +3078,8 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <value>Terminal 會自動將已安裝的智能體命令列工具新增為設定檔。從新增索引標籤功能表開啟其中一個即可開始使用。</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>代理程式和模型完全由您自行選擇。繼續之前，請確認您的選擇完全符合您所在地區的所有 AI 法規。</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

@@ -3063,4 +3063,8 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <value>Terminal автоматично додає встановлені засоби командного рядка агентів як профілі. Щоб почати, відкрийте один із них у меню нової вкладки.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Вибір агента й моделі повністю за вами. Перш ніж продовжити, переконайтеся, що ваш вибір повністю відповідає всім нормативним вимогам щодо ШІ у вашому регіоні.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

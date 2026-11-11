@@ -3071,4 +3071,8 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Terminal‮ åüŧöḿåŧïçåŀŀÿ åđđš ÿöüŕ ïñšŧåŀŀëđ åģëñŧ ÇĿÏš åš ƥŕöƒïŀëš. Öƥëñ öñë ƒŕöḿ ŧħë ñëŵ ŧåƀ ḿëñü ŧö ģëŧ šŧåŕŧëđ.‬ !!! !!! !!! !!! !!!</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>‮Ŧħë çħöïçë öƒ åģëñŧ åñđ ḿöđëŀ ïš ëñŧïŕëŀÿ ÿöüŕš. Ƥŀëåšë våŀïđåŧë ÿöüŕ çħöïçë ïš ƒüŀŀÿ çöḿƥŀïåñŧ ŵïŧħ åŀŀ ÅÏ ŕëģüŀåŧïöñš ïñ ÿöüŕ ŕëģïöñ ƀëƒöŕë ƥŕöçëëđïñģ.‬ !!! !!! !!! !!! !!!</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

@@ -3114,4 +3114,8 @@ Alt+Shift+/ ввести запрос; Alt+Shift+B запустить без н�
     <value>Terminal автоматически добавляет установленные средства командной строки агентов в виде профилей. Чтобы начать, откройте один из них в меню новой вкладки.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Выбор агента и модели полностью за вами. Прежде чем продолжить, убедитесь, что ваш выбор полностью соответствует всем нормативным требованиям в области ИИ в вашем регионе.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

@@ -3118,4 +3118,8 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <value>Terminal аутоматски додаје инсталиране алатке командне линије за агенте као профиле. Отворите један из менија нове картице да бисте почели.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Избор агента и модела је у потпуности на вама. Пре него што наставите, проверите да ли је ваш избор у потпуности усклађен са свим прописима о вештачкој интелигенцији у вашем региону.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

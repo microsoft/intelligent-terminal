@@ -3114,4 +3114,8 @@ Alt+Shift+/ 输入提示词；Alt+Shift+B 不带初始提示词启动。</value>
     <value>Terminal 会自动将已安装的智能体命令行工具添加为配置文件。从新建标签页菜单中打开一个即可开始使用。</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>智能体和模型完全由您自行选择。继续之前，请确认您的选择完全符合您所在地区的所有人工智能法规。</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

@@ -3114,4 +3114,8 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>Terminal은 설치된 에이전트 CLI를 프로필로 자동 추가합니다. 새 탭 메뉴에서 프로필을 열어 시작하세요.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>에이전트와 모델의 선택은 전적으로 사용자에게 달려 있습니다. 계속하기 전에 선택한 에이전트와 모델이 해당 지역의 모든 AI 규정을 완전히 준수하는지 확인해 주세요.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

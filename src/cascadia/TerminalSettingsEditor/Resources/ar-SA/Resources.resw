@@ -3121,4 +3121,8 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>يضيف Terminal تلقائيًا أدوات سطر أوامر الوكلاء المثبتة لديك كملفات تعريف. افتح أحدها من قائمة علامة التبويب الجديدة للبدء.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>اختيار الوكيل والنموذج متروك لك بالكامل. يُرجى التأكد من أن اختيارك يتوافق تمامًا مع جميع لوائح الذكاء الاصطناعي في منطقتك قبل المتابعة.</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>

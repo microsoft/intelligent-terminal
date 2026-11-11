@@ -3071,4 +3071,8 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Terminal ａｕｔｏｍａｔｉｃａｌｌｙ ａｄｄｓ ｙｏｕｒ ｉｎｓｔａｌｌｅｄ ａｇｅｎｔ ＣＬＩｓ ａｓ ｐｒｏｆｉｌｅｓ. Ｏｐｅｎ ｏｎｅ ｆｒｏｍ ｔｈｅ ｎｅｗ ｔａｂ ｍｅｎｕ ｔｏ ｇｅｔ ｓｔａｒｔｅｄ. !!! !!! !!! !!! !!!</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Ｔｈｅ ｃｈｏｉｃｅ ｏｆ ａｇｅｎｔ ａｎｄ ｍｏｄｅｌ ｉｓ ｅｎｔｉｒｅｌｙ ｙｏｕｒｓ. Ｐｌｅａｓｅ ｖａｌｉｄａｔｅ ｙｏｕｒ ｃｈｏｉｃｅ ｉｓ ｆｕｌｌｙ ｃｏｍｐｌｉａｎｔ ｗｉｔｈ ａｌｌ ＡＩ ｒｅｇｕｌａｔｉｏｎｓ ｉｎ ｙｏｕｒ ｒｅｇｉｏｎ ｂｅｆｏｒｅ ｐｒｏｃｅｅｄｉｎｇ. !!! !!! !!! !!! !!!</value>
+    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+  </data>
 </root>
