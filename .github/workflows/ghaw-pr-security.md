@@ -493,6 +493,7 @@ pre-agent-steps:
       CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
       EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
       EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+      EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
       HEAD_REF: ${{ github.event.inputs.head_ref }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
     run: |

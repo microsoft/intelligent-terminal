@@ -1002,6 +1002,17 @@ test('native CI verification rechecks live PR and trusted workflow before return
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
     { runId: '91', runAttempt: 2, headSha: HEAD });
+  const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
+  const preInferenceStep = markdown.split('  - name: Revalidate successful exact-head CI immediately before inference')[1]
+    .split('    run: |')[0];
+  const inputs = { ci_run_id: '91', ci_run_attempt: '2', expected_head_sha: HEAD,
+    expected_base_sha: BASE, head_ref: 'topic', pr_number: '17', expected_workflow_sha: '3'.repeat(40) };
+  const stepEnvironment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42' };
+  for (const match of preInferenceStep.matchAll(/([A-Z_]+): \$\{\{ github\.event\.inputs\.([a-z_]+) \}\}/g)) {
+    stepEnvironment[match[1]] = inputs[match[2]];
+  }
+  assert.deepEqual(verifyCiSecurity({ environment: stepEnvironment, request }).identity,
+    { runId: '91', runAttempt: 2, headSha: HEAD }, 'actual pre-inference step supplies every admission binding');
   const workflowFile = responses[`git/trees/${HEAD}?recursive=1`].tree[0];
   workflowFile.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
