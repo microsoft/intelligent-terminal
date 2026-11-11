@@ -119,6 +119,12 @@ namespace Microsoft::Terminal::ShellIntegration
         // "Failed to read <ProfileFriendlyName>" etc.
         virtual std::wstring ProfileFriendlyName() const = 0;
 
+        // A shell may refuse profile edits when the file has an integrity
+        // mechanism (for example, an Authenticode signature) that edits
+        // would invalidate. Return an error before writing any integration
+        // files or changing the profile.
+        virtual std::optional<std::wstring> ProfileModificationError(std::string_view) const { return std::nullopt; }
+
         // How the orchestrator should pick the EOL it writes (see
         // LineEndingPolicy). Bash returns Lf; PowerShell returns Auto.
         virtual LineEndingPolicy LineEndings() const = 0;
@@ -409,6 +415,11 @@ namespace Microsoft::Terminal::ShellIntegration
                 {
                     return { false, false, L"Failed to read " + friendlyName };
                 }
+            }
+
+            if (const auto error = flavor.ProfileModificationError(contents))
+            {
+                return { false, false, *error };
             }
 
             const std::string_view eol = (flavor.LineEndings() == LineEndingPolicy::Auto &&

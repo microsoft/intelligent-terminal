@@ -19,6 +19,42 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Powershell
 {
+    namespace details
+    {
+        // PowerShell treats the Authenticode signature block as the end of
+        // executable script text. Appending even harmless integration code
+        // after it makes the profile fail to parse; inserting before it
+        // would invalidate the signature. Leave signed profiles untouched.
+        inline constexpr std::string_view AuthenticodeSignatureBegin =
+            "# SIG # Begin signature block";
+
+        inline bool HasAuthenticodeSignatureBlock(std::string_view contents) noexcept
+        {
+            size_t lineStart = 0;
+            while (lineStart <= contents.size())
+            {
+                const auto lineEnd = contents.find_first_of("\r\n", lineStart);
+                const auto line = contents.substr(
+                    lineStart,
+                    lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
+                if (line == AuthenticodeSignatureBegin)
+                {
+                    return true;
+                }
+                if (lineEnd == std::string_view::npos)
+                {
+                    break;
+                }
+                lineStart = lineEnd + 1;
+                if (contents[lineEnd] == '\r' && lineStart < contents.size() && contents[lineStart] == '\n')
+                {
+                    ++lineStart;
+                }
+            }
+            return false;
+        }
+    }
+
     enum class ExecutionPolicyStatus
     {
         Absent,
@@ -1295,6 +1331,15 @@ __ShellInteg_Rearm
         std::wstring          ProfileFriendlyName() const override  { return L"PowerShell profile"; }
         LineEndingPolicy      LineEndings() const override          { return LineEndingPolicy::Auto; }
         bool                  PlaceBlockAtEnd() const noexcept override { return true; }
+
+        std::optional<std::wstring> ProfileModificationError(std::string_view contents) const override
+        {
+            if (details::HasAuthenticodeSignatureBlock(contents))
+            {
+                return L"Refusing to modify an Authenticode-signed PowerShell profile";
+            }
+            return std::nullopt;
+        }
 
         std::string ScriptBlock(std::string_view eol) const override
         {

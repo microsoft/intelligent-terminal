@@ -131,6 +131,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_EmptyPath_Fails);
     TEST_METHOD(Install_ProfileMissing_CreatesProfileAndScript);
     TEST_METHOD(Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
+    TEST_METHOD(Install_LeavesAuthenticodeSignedPowerShellProfileUntouched);
     TEST_METHOD(Install_PreservesCrlfFromExistingProfile);
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
@@ -1191,6 +1192,23 @@ void ShellIntegrationTests::Install_ProfileWithoutBlock_AppendsBlockPreservesOri
     VERIFY_IS_TRUE(contents.rfind(original, 0) == 0, L"Original content must remain at start of file");
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockOpenMarker));
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockCloseMarker));
+}
+
+void ShellIntegrationTests::Install_LeavesAuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    _WriteFile(profile, original);
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_FALSE(result.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" }, result.errorMessage);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
 }
 
 void ShellIntegrationTests::Install_PreservesCrlfFromExistingProfile()
