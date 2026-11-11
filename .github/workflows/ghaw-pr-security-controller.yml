@@ -55,11 +55,15 @@ jobs:
       - name: Admit only successful matching current PR build CI
         id: admission
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          TRUSTED_CI_SHA: ${{ github.workflow_sha }}
         with:
           script: |
             const { pathToFileURL } = require('node:url');
-            const { validateCiRun, validateCiPull } = await import(pathToFileURL(
+            const { CI_DEFINITION_PATHS, validateCiDefinition, validateCiRun, validateCiPull } = await import(pathToFileURL(
               `${process.env.GITHUB_WORKSPACE}/.github/skills/ghaw-pr-security/scripts/security-review.mjs`));
+            const trustedSha = process.env.TRUSTED_CI_SHA;
+            if (!/^[0-9a-f]{40}$/.test(trustedSha || '')) throw Error('Missing trusted CI revision.');
             const source = context.payload.workflow_run;
             const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id })).data;
             const identity = { repository: `${context.repo.owner}/${context.repo.repo}`,
@@ -72,6 +76,9 @@ jobs:
               ...context.repo, workflow_id: 'pr-build-security.yml' })).data;
             if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
                 workflow.state !== 'active') throw Error('CI workflow is not the active trusted workflow.');
+            const definition = async ref => Promise.all(CI_DEFINITION_PATHS.map(async path =>
+              (await github.rest.repos.getContent({ ...context.repo, path, ref })).data));
+            validateCiDefinition(await definition(run.head_sha), await definition(trustedSha));
             const associated = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
               { ...context.repo, commit_sha: run.head_sha, per_page: 100 });
             const candidates = associated.filter(pr => pr.state === 'open' &&

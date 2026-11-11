@@ -99,6 +99,12 @@ those CI-owned tools; it does not import security-agent scripts or validators.
 The security agent consumes the resulting artifacts through that contract.
 Its warning reader, proposal persistence and model-output validation remain
 owned by the gh-aw skill.
+Admission also compares the PR's CI workflow, direct build/test runners,
+collector and baseline blobs with the trusted controller/worker revision.
+Successful same-name jobs cannot admit a PR that substitutes those files.
+CI still builds such PRs; their automation changes require manual review
+before AI admission. This guards orchestration identity, not the meaning of
+PR-controlled application code, build inputs or test assertions.
 
 C++ and Rust CodeQL use `none` analysis. The regular C++ build
 and unit tests run outside compiler tracing: the first traced build took

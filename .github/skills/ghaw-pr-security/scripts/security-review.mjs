@@ -927,6 +927,29 @@ export function publicationDecision(report) {
   return 'none';
 }
 
+export const CI_DEFINITION_PATHS = [
+  '.github/workflows/pr-build-security.yml',
+  'build/scripts/Run-Tests.ps1',
+  'tools/razzle.cmd',
+  'build/scripts/ci-security-analysis.mjs',
+  'build/config/codeql-accepted-warnings.json',
+];
+
+export function validateCiDefinition(sourceFiles, trustedFiles) {
+  for (const files of [sourceFiles, trustedFiles]) {
+    if (!Array.isArray(files) || files.length !== CI_DEFINITION_PATHS.length ||
+        CI_DEFINITION_PATHS.some(path => files.filter(file => file?.path === path &&
+          file.type === 'file' && SHA.test(file.sha ?? '')).length !== 1)) {
+      fail('CI implementation requires immutable regular-file identities');
+    }
+  }
+  for (const path of CI_DEFINITION_PATHS) {
+    if (sourceFiles.find(file => file.path === path).sha !== trustedFiles.find(file => file.path === path).sha) {
+      fail('CI implementation differs from the trusted workflow revision; manual review is required');
+    }
+  }
+}
+
 export function validateCiRun(run, jobs, identity) {
   const { repository, repositoryId, runId, runAttempt, headSha } = identity;
   if (!SHA.test(headSha ?? '') || !/^[1-9][0-9]*$/.test(String(runId)) ||
@@ -984,7 +1007,8 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
       !/^[1-9][0-9]*$/.test(identity.runId ?? '') ||
       !/^[1-9][0-9]*$/.test(environment.CI_RUN_ATTEMPT ?? '') ||
       !/^[1-9][0-9]*$/.test(identity.prNumber ?? '') ||
-      !SHA.test(identity.baseSha ?? '') || !identity.headRef) fail('CI admission inputs are invalid');
+      !SHA.test(identity.baseSha ?? '') || !identity.headRef ||
+      !SHA.test(environment.EXPECTED_WORKFLOW_SHA ?? '')) fail('CI admission inputs are invalid');
   const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}/${endpoint}`], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
@@ -1004,6 +1028,9 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   const workflow = api('actions/workflows/pr-build-security.yml');
   if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
       workflow.state !== 'active') fail('CI source workflow is not trusted');
+  validateCiDefinition(
+    CI_DEFINITION_PATHS.map(path => api(`contents/${path}?ref=${identity.headSha}`)),
+    CI_DEFINITION_PATHS.map(path => api(`contents/${path}?ref=${environment.EXPECTED_WORKFLOW_SHA}`)));
   validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
   const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
   return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };

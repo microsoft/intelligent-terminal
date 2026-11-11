@@ -12,7 +12,7 @@ import {
   publicationDecision, validatePublicationRun, preparePublication, validateRepairChanges, validateRepairTargetPath,
   createDetectorPublicationProof, validateDetectorPublicationProof, validateDetectorExecutionJobs,
   TRUSTED_GUIDANCE_ROOTS, isTrustedGuidancePath,
-  validateCiRun, validateCiPull, validateCiArtifacts, verifyCiSecurity,
+  CI_DEFINITION_PATHS, validateCiDefinition, validateCiRun, validateCiPull, validateCiArtifacts, verifyCiSecurity,
 } from './security-review.mjs';
 import { PREPARE_SHA256, INSTALL_SHA256, consumedBinding, stageDetectorInputs, verifyDetectorInputs,
   completeHostDetector, validateOriginalOutcomes, validateNativeConclusionOutput } from './security-detector.mjs';
@@ -917,6 +917,24 @@ function ciFixture() {
   return { identity, run, jobs, pull, artifacts };
 }
 
+function ciDefinitionFiles() {
+  return CI_DEFINITION_PATHS.map(path => ({ path, type: 'file', sha: '4'.repeat(40) }));
+}
+
+test('CI admission rejects substituted orchestration and analyzer policy despite successful job metadata', () => {
+  const trusted = ciDefinitionFiles();
+  assert.doesNotThrow(() => validateCiDefinition(structuredClone(trusted), trusted));
+  for (const path of CI_DEFINITION_PATHS) {
+    const changed = trusted.map(file => file.path === path ? { ...file, sha: HEAD } : file);
+    assert.throws(() => validateCiDefinition(changed, trusted), /CI implementation differs/);
+  }
+  for (const malformed of [trusted.slice(1), [...trusted, trusted[0]],
+    trusted.map(file => ({ ...file, type: 'symlink' })),
+    trusted.map(file => ({ ...file, sha: 'main' }))]) {
+    assert.throws(() => validateCiDefinition(malformed, trusted), /regular-file identities/);
+  }
+});
+
 test('CI admission requires successful exact-head same-repo workflow, attempt and both unit jobs', () => {
   const { identity, run, jobs, pull, artifacts } = ciFixture();
   assert.doesNotThrow(() => validateCiRun(run, jobs, identity));
@@ -956,19 +974,28 @@ test('native CI verification rechecks live PR and trusted workflow before return
   const { run, jobs, pull, artifacts } = ciFixture();
   const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
     CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
-    PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic' };
+    PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
   const responses = {
     'actions/runs/91': run,
     'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
     'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
     'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
   };
+  for (const file of ciDefinitionFiles()) {
+    for (const sha of [HEAD, environment.EXPECTED_WORKFLOW_SHA]) {
+      responses[`contents/${file.path}?ref=${sha}`] = structuredClone(file);
+    }
+  }
   const request = endpoint => {
     assert(Object.hasOwn(responses, endpoint), endpoint);
     return responses[endpoint];
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
     { runId: '91', runAttempt: 2, headSha: HEAD });
+  const workflowFile = responses[`contents/.github/workflows/pr-build-security.yml?ref=${HEAD}`];
+  workflowFile.sha = BASE;
+  assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
+  workflowFile.sha = '4'.repeat(40);
   responses['actions/workflows/pr-build-security.yml'] = { id: 8, path: run.path, state: 'active' };
   assert.throws(() => verifyCiSecurity({ environment, request }), /source workflow/);
   responses['actions/workflows/pr-build-security.yml'].id = 7;
@@ -982,7 +1009,8 @@ test('actual controller admission uses trusted commit association when workflow_
     .split('          script: |')[1].split('\n      - name:')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', 'require', script);
-  for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork']) {
+  for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
+    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision']) {
     const { run, pull, jobs } = ciFixture();
     const source = structuredClone(run);
     source.pull_requests = [];
@@ -997,7 +1025,14 @@ test('actual controller admission uses trusted commit association when workflow_
       getWorkflowRun: async () => ({ data: run }),
       listJobsForWorkflowRunAttempt: 'jobs',
       getWorkflow: async () => ({ data: { id: 7, path: run.path, state: 'active' } }),
-    }, repos: { listPullRequestsAssociatedWithCommit: 'associated' },
+    }, repos: { listPullRequestsAssociatedWithCommit: 'associated',
+      getContent: async ({ path, ref }) => {
+        const substituted = ref === HEAD && (
+          (variant === 'no-op-builds' && path === '.github/workflows/pr-build-security.yml') ||
+          (variant === 'changed-test-runner' && path === 'build/scripts/Run-Tests.ps1') ||
+          (variant === 'changed-analyzer-policy' && path === 'build/config/codeql-accepted-warnings.json'));
+        return { data: { path, type: 'file', sha: substituted ? BASE : '4'.repeat(40) } };
+      } },
     pulls: { get: async () => ({ data: pull }) } },
     paginate: async endpoint => endpoint === 'jobs' ? jobs : associated };
     const output = {};
@@ -1006,6 +1041,7 @@ test('actual controller admission uses trusted commit association when workflow_
       payload: { workflow_run: source, repository: { id: 42 } } },
     { setOutput: (key, value) => { output[key] = value; } },
     { env: { GITHUB_WORKSPACE: fileURLToPath(new URL('../../../../', import.meta.url)),
+      TRUSTED_CI_SHA: variant === 'missing-trusted-revision' ? '' : '3'.repeat(40),
       GITHUB_RUN_ATTEMPT: variant === 'controller-retry' ? '2' : '1' } },
     name => name === 'node:url' ? { pathToFileURL: value => new URL(`file:///${value.replaceAll('\\', '/')}`) } : null);
     if (['current', 'controller-retry'].includes(variant)) {
