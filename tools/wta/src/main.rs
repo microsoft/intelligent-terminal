@@ -80,7 +80,7 @@ fn locale_initialization_fits_small_worker_stack() {
         .expect("localization initialization fits a small worker stack");
 }
 
-/// Normalize a detected OS locale to the closest available locale file.
+/// Normalize a detected OS locale to the closest supported locale file.
 /// Mimics Windows MRT behavior with script-aware affinity matching.
 fn normalize_locale(locale: &str) -> String {
     let available = rust_i18n::available_locales!();
