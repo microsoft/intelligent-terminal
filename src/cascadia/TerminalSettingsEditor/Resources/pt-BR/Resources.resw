@@ -3115,7 +3115,34 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
   <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
-    <value>A escolha do agente e do modelo é inteiramente sua. Antes de prosseguir, verifique se sua escolha está em total conformidade com todas as regulamentações de IA da sua região.</value>
-    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+    <value>A escolha do agente e do modelo é inteiramente sua. Você é responsável por verificar se sua escolha é apropriada para uso na sua região.</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>Saiba mais.</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>Escolha de agentes e modelos</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>Fechar</value>
+  </data>
+  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
+    <value>qualquer agente</value>
+    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>Os agentes e modelos de IA que você hospeda e aos quais escolhe se conectar são uma escolha sua. Se você escolher um agente ou modelo de terceiros, a Microsoft poderá não fornecer, hospedar, operar ou monitorá-los. Se você usar {0} para interagir com um agente ou modelo que hospeda, será por sua conta e risco.</value>
+    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>Se você escolher um modelo de terceiros, a Microsoft não filtra, modera nem valida as respostas do modelo. Você é responsável por implementar suas próprias soluções de procedência de conteúdo e medidas de mitigação de IA responsável, como prompts do sistema, filtros de conteúdo ou outros sistemas de segurança, e por revisar a saída antes de usá-la; ou por determinar que o modelo selecionado implementa essas soluções em seu nome.</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>Você também é responsável por garantir que seu uso cumpra todas as regulamentações de IA, os requisitos de tratamento de dados e/ou os compromissos de residência de dados aplicáveis.</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
   </data>
 </root>

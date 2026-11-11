@@ -3064,7 +3064,34 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
   <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
-    <value>Вибір агента й моделі повністю за вами. Перш ніж продовжити, переконайтеся, що ваш вибір повністю відповідає всім нормативним вимогам щодо ШІ у вашому регіоні.</value>
-    <comment>Persistent informational notice above the Agent pane settings. Agent means an AI software agent; model means the AI model it uses. Reminds users to verify regional regulatory compliance before using their chosen agent and model.</comment>
+    <value>Вибір агента й моделі повністю за вами. Ви відповідаєте за перевірку того, що ваш вибір підходить для використання у вашому регіоні.</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>Докладніше.</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>Вибір агентів і моделей</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>Закрити</value>
+  </data>
+  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
+    <value>будь-якого агента</value>
+    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>Агенти й моделі ШІ, які ви розміщуєте в себе та до яких вирішуєте підключатися, — це ваш вибір. Якщо ви обираєте стороннього агента або модель, Microsoft може не надавати, не розміщувати, не експлуатувати й не відстежувати їх. Якщо ви використовуєте {0} для взаємодії з агентом або моделлю, які розміщуєте в себе, ви робите це на власний ризик.</value>
+    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>Якщо ви обираєте сторонню модель, Microsoft не фільтрує, не модерує й не перевіряє відповіді моделі. Ви відповідаєте за впровадження власних рішень для відстеження походження вмісту та заходів зі зменшення ризиків відповідального використання ШІ, як-от системних запитів, фільтрів вмісту чи інших систем безпеки, а також за перевірку результатів перед використанням; або за визначення того, що обрана модель упроваджує ці рішення від вашого імені.</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>Ви також відповідаєте за те, щоб ваше використання відповідало всім застосовним нормативним вимогам щодо ШІ, вимогам до обробки даних і/або зобов’язанням щодо місця зберігання та обробки даних.</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
   </data>
 </root>

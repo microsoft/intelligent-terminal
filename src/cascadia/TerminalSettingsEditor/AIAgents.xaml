@@ -182,13 +182,77 @@
                 </Paragraph>
             </RichTextBlock>
 
-            <muxc:InfoBar x:Uid="AIAgents_ComplianceInfo"
+            <muxc:InfoBar x:Name="ComplianceInfoBar"
+                          x:Uid="AIAgents_ComplianceInfo"
                           AutomationProperties.AutomationId="AgentComplianceInfoBar"
                           HorizontalAlignment="Stretch"
                           IsClosable="False"
                           IsOpen="True"
                           Margin="0,0,0,16"
-                          Severity="Informational" />
+                          Severity="Informational">
+                <muxc:InfoBar.Template>
+                    <ControlTemplate TargetType="muxc:InfoBar">
+                        <Border x:Name="ContentRoot"
+                                Padding="16"
+                                Background="{ThemeResource InfoBarInformationalSeverityBackgroundBrush}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="SeverityLevels">
+                                    <VisualState x:Name="Informational" />
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="InfoBarVisibility">
+                                    <VisualState x:Name="InfoBarVisible" />
+                                    <VisualState x:Name="InfoBarCollapsed">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentRoot.Visibility" Value="Collapsed" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Margin="0,2,12,0"
+                                      VerticalAlignment="Top">
+                                    <TextBlock x:Name="IconBackground"
+                                               AutomationProperties.AccessibilityView="Raw"
+                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                               FontSize="{StaticResource InfoBarIconFontSize}"
+                                               Foreground="{ThemeResource InfoBarInformationalSeverityIconBackground}"
+                                               Text="{StaticResource InfoBarIconBackgroundGlyph}" />
+                                    <TextBlock x:Name="StandardIcon"
+                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                               FontSize="{StaticResource InfoBarIconFontSize}"
+                                               Foreground="{ThemeResource InfoBarInformationalSeverityIconForeground}"
+                                               Text="{StaticResource InfoBarInformationalIconGlyph}" />
+                                </Grid>
+                                <ContentPresenter Grid.Column="1"
+                                                  Content="{TemplateBinding Content}" />
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </muxc:InfoBar.Template>
+                <RichTextBlock Foreground="{ThemeResource InfoBarMessageForeground}"
+                               IsTextSelectionEnabled="False"
+                               TextWrapping="Wrap">
+                    <Paragraph>
+                        <Run x:Name="ComplianceMessage" /><Run Text=" " /><InlineUIContainer>
+                            <HyperlinkButton AutomationProperties.AutomationId="AgentComplianceLearnMoreButton"
+                                             Click="ComplianceLearnMore_Click"
+                                             Style="{StaticResource InlineSettingsLinkStyle}">
+                                <TextBlock x:Uid="AIAgents_ComplianceLearnMore"
+                                           Loaded="InlineLinkText_Loaded"
+                                           SizeChanged="InlineLinkText_SizeChanged"
+                                           TextDecorations="Underline" />
+                            </HyperlinkButton>
+                        </InlineUIContainer>
+                    </Paragraph>
+                </RichTextBlock>
+            </muxc:InfoBar>
 
             <!--  ═══ Agent pane group ═══
                   First sub-header on the page: override the style's 32px
@@ -637,5 +701,25 @@
             </local:SettingContainer>
 
         </StackPanel>
+        <ContentDialog x:Name="ComplianceDialog"
+                       x:Uid="AIAgents_ComplianceDialog"
+                       x:Load="False"
+                       AutomationProperties.AutomationId="AgentComplianceDialog"
+                       DefaultButton="Close">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <TextBlock x:Name="ComplianceHostingText"
+                               IsTextSelectionEnabled="True"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Uid="AIAgents_ComplianceModels"
+                               IsTextSelectionEnabled="True"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Uid="AIAgents_ComplianceRegulations"
+                               IsTextSelectionEnabled="True"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
+        </ContentDialog>
     </StackPanel>
 </Page>

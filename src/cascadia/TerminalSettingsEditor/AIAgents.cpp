@@ -152,6 +152,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         PageSubtitlePrefix().Text(RS_(L"AIAgents_PageSubtitlePrefix"));
         PageSubtitlePrivacyLink().Text(RS_(L"AIAgents_PageSubtitlePrivacyLink"));
+        ComplianceMessage().Text(ComplianceInfoBar().Message());
 
         const auto customModelsHeader = RS_(L"AIAgents_CustomModels/Header");
         const auto customModelsCaption = RS_(L"AIAgents_CustomModels/HelpText");
@@ -184,6 +185,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
+    }
+
+    safe_void_coroutine AIAgents::ComplianceLearnMore_Click(const IInspectable&, const RoutedEventArgs&)
+    {
+        const auto lifetime = get_strong();
+        const auto dialog = FindName(L"ComplianceDialog").as<ContentDialog>();
+        const auto selectedAgent = AcpAgentComboBox().SelectedItem().try_as<Editor::AgentEntry>();
+        const auto agentName = selectedAgent && !selectedAgent.IsAddNew() && !selectedAgent.DisplayName().empty() ?
+                                   selectedAgent.DisplayName() :
+                                   RS_(L"AIAgents_ComplianceAnyAgent");
+        ComplianceHostingText().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", agentName) });
+
+        dialog.XamlRoot(XamlRoot());
+        // XAML island popups do not inherit the page's theme. Match TerminalWindow::ShowDialog.
+        const auto applyTheme = [theme = ActualTheme()](const IInspectable& sender, const RoutedEventArgs&) {
+            auto element = sender.as<FrameworkElement>();
+            while (element)
+            {
+                element.RequestedTheme(theme);
+                element = element.Parent().try_as<FrameworkElement>();
+            }
+        };
+        applyTheme(dialog, nullptr);
+        const auto loadedRevoker = dialog.Loaded(winrt::auto_revoke, applyTheme);
+        co_await dialog.ShowAsync();
     }
 
     void AIAgents::InlineLinkText_Loaded(const IInspectable& sender, const RoutedEventArgs&)
