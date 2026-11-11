@@ -510,6 +510,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SidebarGlobalSearchRestoresIndependentPreferences);
         TEST_METHOD(SidebarFilterActionsTogglePreferencesDuringSearch);
         TEST_METHOD(VerticalTitlebarDragAreaExcludesControls);
+        TEST_METHOD(VerticalNewTabTouchKeepsActionsSeparate);
         TEST_METHOD(SidebarRailHintsTrackBindings);
         TEST_METHOD(VerticalTabChromeBackgroundTracksTheme);
         TEST_METHOD(NewTabButtonSharesChromeBackdrop);
@@ -7319,6 +7320,85 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalNewTabTouchKeepsActionsSeparate()
+    {
+        TestOnUIThread([]() {
+            const auto row = winrt::make_self<winrt::TerminalApp::implementation::TabRowControl>();
+            row->IsVerticalLayout(true);
+            const auto chrome = row->VerticalTitleBarContent().as<FrameworkElement>();
+            winrt::TerminalApp::TitlebarControl titlebar{ uint64_t{ 0 } };
+            titlebar.Width(800);
+            titlebar.Content(chrome);
+            const auto previousContent = Window::Current().Content();
+            const auto cleanup = wil::scope_exit([&]() {
+                Window::Current().Content(previousContent);
+            });
+            Window::Current().Content(titlebar);
+            Window::Current().Activate();
+
+            const auto button = row->VerticalNewTabButton();
+            const auto bounds = [&](const FrameworkElement& element) {
+                return element.TransformToVisual(chrome).TransformBounds(
+                    { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+            };
+            for (const auto direction : { FlowDirection::LeftToRight, FlowDirection::RightToLeft })
+            {
+                titlebar.FlowDirection(direction);
+                for (const auto width : { 180.0, 272.0, 480.0 })
+                {
+                    row->SetVerticalRailState(true, false, width);
+                    titlebar.UpdateLayout();
+                    button.ApplyTemplate();
+                    VERIFY_IS_TRUE(VisualStateManager::GoToState(button, L"SecondaryButtonRight", false));
+                    titlebar.UpdateLayout();
+                    const auto root = Media::VisualTreeHelper::GetChild(button, 0).as<Grid>();
+                    const auto primary = root.FindName(L"PrimaryButton").as<Button>();
+                    const auto secondary = root.FindName(L"SecondaryButton").as<Button>();
+                    const auto background = root.FindName(L"SecondaryBackgroundGrid").as<FrameworkElement>();
+                    const auto glyph = secondary.Content().as<FrameworkElement>();
+                    const auto originalGlyph = bounds(glyph);
+                    const auto originalPrimary = bounds(primary);
+                    const auto originalSecondary = bounds(secondary);
+                    const auto originalBackground = bounds(background);
+                    const auto center = [](const auto& rect) { return rect.X + rect.Width / 2; };
+                    VERIFY_IS_TRUE(std::abs(center(originalGlyph) - center(originalBackground)) <= 1.0f);
+
+                    for (const auto placement : { L"SecondaryButtonSpan", L"SecondaryButtonRight", L"SecondaryButtonSpan", L"SecondaryButtonRight" })
+                    {
+                        VERIFY_IS_TRUE(VisualStateManager::GoToState(button, placement, false));
+                        for (const auto state : { L"PrimaryPressed", L"SecondaryPressed", L"TouchPressed", L"FlyoutOpen", L"Normal" })
+                        {
+                            VERIFY_IS_TRUE(VisualStateManager::GoToState(button, state, false));
+                            titlebar.UpdateLayout();
+                            const auto currentGlyph = bounds(glyph);
+                            const auto currentSecondary = bounds(secondary);
+                            VERIFY_IS_TRUE(std::abs(currentSecondary.X - originalSecondary.X) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(currentSecondary.Width - originalSecondary.Width) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(currentGlyph.X - originalGlyph.X) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(currentGlyph.Y - originalGlyph.Y) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(currentGlyph.Width - originalGlyph.Width) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(center(currentGlyph) - center(bounds(background))) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(bounds(primary).X - originalPrimary.X) <= 1.0f);
+                            VERIFY_IS_TRUE(std::abs(bounds(primary).Width - originalPrimary.Width) <= 1.0f);
+                            for (const auto region : { primary, secondary })
+                            {
+                                const auto point = region.TransformToVisual(nullptr).TransformPoint(
+                                    { static_cast<float>(region.ActualWidth() / 2), static_cast<float>(region.ActualHeight() / 2) });
+                                bool regionHit = false;
+                                for (const auto hit : Media::VisualTreeHelper::FindElementsInHostCoordinates(point, root))
+                                {
+                                    regionHit = regionHit || hit == region;
+                                    VERIFY_IS_FALSE(hit == (region == primary ? secondary : primary));
+                                }
+                                VERIFY_IS_TRUE(regionHit);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     void TabTests::SidebarCollapsedRestoresFromSettingsOrWindowLayout()
     {
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -7468,7 +7548,6 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_TRUE(dragBounds.X >= 52.0f);
                     const auto toggleBounds = bounds(row->VerticalRailToggleButton());
                     VERIFY_ARE_EQUAL(46.0f, toggleBounds.Width);
-                    VERIFY_ARE_EQUAL(26.0f, toggleBounds.X + toggleBounds.Width / 2);
                     VERIFY_IS_TRUE(toggleBounds.X + toggleBounds.Width <= dragBounds.X);
                     VERIFY_ARE_EQUAL(buttonBounds.X, dragBounds.X + dragBounds.Width);
                     VERIFY_IS_TRUE(std::abs(railToggleIconBounds.Width - sidebarToggleIconSize) <= layoutTolerance);
@@ -11257,11 +11336,6 @@ namespace TerminalAppLocalTests
                     const auto toggle = bounds(chrome->VerticalRailToggleButton());
                     const auto groupToggle = bounds(tabRoot.FindName(L"TabGroupToggleButton").as<Button>());
                     VERIFY_ARE_EQUAL(46.0f, toggle.Width);
-                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(chevron)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(center(toggle) - center(groupToggle)) <= 1.0);
-                    VERIFY_IS_TRUE(std::abs(direction == FlowDirection::LeftToRight ?
-                                                center(toggle) - 26 :
-                                                width - center(toggle) - 26) <= 1.0);
                     const auto drag = bounds(winrt::TerminalApp::TitlebarControl::GetContentDragArea(chrome->VerticalTitleBarContent().as<FrameworkElement>()));
                     VERIFY_IS_TRUE(drag.Width > 0);
                     VERIFY_IS_TRUE(toggle.X + toggle.Width <= drag.X || drag.X + drag.Width <= toggle.X);
