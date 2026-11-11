@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "reviewedHeadSha": "b214ab1f8dfc6544df1309397e42d49b5197da93",
+  "sourceBlobs": {
+    "src/propslib/RegistrySerialization.cpp": "2800854a2c3c5aade5934adde57beef63ab026ff",
+    "src/propsheet/registry.cpp": "64d392aa76d808d9e58ad3d2a6a791fdc9c00c0b",
+    "src/interactivity/win32/window.cpp": "3e0c28381b8a74aec22f916346aed9e9650740a6",
+    "tools/wta/src/coordinator.rs": "2a30470592813526ed46812e607724424b8be9f3",
+    "tools/wta/Cargo.lock": "ea5f6b3e7b2f9551c032b2af635038f86bcce6b7",
+    "tools/wta/src/custom_model_provider.rs": "c3d9827fb46db4757248f8ed76a4d2cccea111e7",
+    "tools/wta/src/session_registry.rs": "7b3ff3fd66b599ff454112bc621102699465f832",
+    "tools/wta/src/shell/wt_channel/cli_channel.rs": "a5984167dfd79eabdacaa480c3a23d9ea3798f8e"
+  },
+  "entries": [
+    {
+      "language": "cpp",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "cpp/incorrect-allocation-error-handling",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "src/propslib/RegistrySerialization.cpp",
+        "startLine": 401,
+        "endLine": 401,
+        "startColumn": 17,
+        "endColumn": 54,
+        "instanceSha256": "a25b65362b85e79925a5bb8163d04ef254988cd9ed39ae018d815ef5765f8a36",
+        "title": "Incorrect allocation-error handling",
+        "helpUri": "",
+        "id": "CISEC-3B879EE5C474FCD9"
+      },
+      "reason": "Allocation uses are guarded by Data != nullptr; allocation failure returns a failing NTSTATUS without registry mutation. Reviewed callers handle or log failure.",
+      "sources": [
+        "src/propslib/RegistrySerialization.cpp",
+        "src/propsheet/registry.cpp",
+        "src/interactivity/win32/window.cpp"
+      ]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/coordinator.rs",
+        "startLine": 2759,
+        "endLine": 2759,
+        "startColumn": 17,
+        "endColumn": 53,
+        "instanceSha256": "72b5416dad2968e63756005e5314f11a34d589f9a645d97b7f016c9ea62157a4",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-0EA5B9278DF7297D"
+      },
+      "reason": "cfg(test) assertion uses literal executable names, a synthetic prompt and a fixed fixture session ID, not production credentials or user input.",
+      "sources": ["tools/wta/src/coordinator.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/coordinator.rs",
+        "startLine": 2765,
+        "endLine": 2765,
+        "startColumn": 17,
+        "endColumn": 97,
+        "instanceSha256": "a957b35e7949f1205c2415645a200cfc3d88108adf6480b9e1d9eb550829e2a9",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-653CBC9E1A1900F7"
+      },
+      "reason": "The adjacent cfg(test) flag-position assertion reports the same controlled command-line fixture and fixed session ID.",
+      "sources": ["tools/wta/src/coordinator.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/coordinator.rs",
+        "startLine": 2797,
+        "endLine": 2797,
+        "startColumn": 13,
+        "endColumn": 83,
+        "instanceSha256": "3924d061cbad2f2ad7e5a67e2c9ce2032534dcacf2c6ba289b3c2101d4a04f55",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-B241384DC7B9B911"
+      },
+      "reason": "cfg(test) adapter-launch assertion uses a literal command, synthetic prompt, fixed session ID and mock executable resolver.",
+      "sources": ["tools/wta/src/coordinator.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/coordinator.rs",
+        "startLine": 4333,
+        "endLine": 4333,
+        "startColumn": 17,
+        "endColumn": 89,
+        "instanceSha256": "7eab264469e56220c33208994817620f0ead3e2f215b27ae4a49096d675bff05",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-4668DFE60F77D1A1"
+      },
+      "reason": "cfg(test) mixed-case launcher diagnostic contains only literal fake terminal context and command output.",
+      "sources": ["tools/wta/src/coordinator.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/coordinator.rs",
+        "startLine": 4337,
+        "endLine": 4337,
+        "startColumn": 17,
+        "endColumn": 65,
+        "instanceSha256": "6624e5f3fc50a306877380e5f3ca3a9e7203088b7044bcab8fa02cf5d649d528",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-9495965D83C73F0A"
+      },
+      "reason": "The adjacent negative assertion reports the same synthetic launch fixture inside cfg(test), not a runtime command or secret.",
+      "sources": ["tools/wta/src/coordinator.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/access-invalid-pointer",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/custom_model_provider.rs",
+        "startLine": 370,
+        "endLine": 370,
+        "startColumn": 32,
+        "endColumn": 42,
+        "instanceSha256": "0b6022a834945e397423a66180324c926b8d59bd9f8c02e0761f058894d08ab3",
+        "title": "Access of invalid pointer",
+        "helpUri": "",
+        "id": "CISEC-57AA49031877E43F"
+      },
+      "reason": "Dereference follows successful CredReadW and an explicit null check. Its documented single allocated block remains valid until the later CredFree.",
+      "sources": ["tools/wta/src/custom_model_provider.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/session_registry.rs",
+        "startLine": 11033,
+        "endLine": 11035,
+        "startColumn": 13,
+        "endColumn": 32,
+        "instanceSha256": "f77c56013215a446ffacf74b56f73a446401e42b188ae77ab6aad83fc6aac929",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-28EE325EEBB0CFAD"
+      },
+      "reason": "cfg(test) in-memory registry fixture reports only literal helper/shell pane labels and a synthetic session ID.",
+      "sources": ["tools/wta/src/session_registry.rs", "tools/wta/Cargo.lock"]
+    },
+    {
+      "language": "rust",
+      "toolVersion": "2.27.4",
+      "finding": {
+        "ruleId": "rust/cleartext-logging",
+        "priority": "high",
+        "securitySeverity": 7.5,
+        "file": "tools/wta/src/shell/wt_channel/cli_channel.rs",
+        "startLine": 1343,
+        "endLine": 1343,
+        "startColumn": 53,
+        "endColumn": 75,
+        "instanceSha256": "1311fc36adaa0f786b56c560655a2fa321c11afd0e1900de26ed6daf2206aa35",
+        "title": "Cleartext logging of sensitive information",
+        "helpUri": "",
+        "id": "CISEC-AE0D2FDAB336BCC8"
+      },
+      "reason": "cfg(test) assertion prints hardcoded invalid inputs. A deliberately missing executable and validation prevent actual pane-context invocation.",
+      "sources": ["tools/wta/src/shell/wt_channel/cli_channel.rs", "tools/wta/Cargo.lock"]
+    }
+  ]
+}

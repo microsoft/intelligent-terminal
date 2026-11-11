@@ -6,12 +6,14 @@ import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, read
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import {
   createReportTemplate, inspectSecurityRepair, readSecurityDiff, readSecuritySource, validateCandidate,
   SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, normalizePath, validatePatch, validateProposal, validateReport,
   validateSummaryMarkdown,
   TRUSTED_GUIDANCE_ROOTS, isTrustedGuidancePath,
 } from './security-review.mjs';
+import { completedWarningReview, readCiWarnings, readWarningPage } from './ci-security.mjs';
 
 const SOURCE = fileURLToPath(import.meta.url);
 const MAX_OUTPUT = 16 * 1024 * 1024;
@@ -20,7 +22,8 @@ const READ_TOOLS = [
   'mcpscripts-read_security_diff', 'mcpscripts-read_security_source', 'mcpscripts-inspect_security_repair',
 ];
 const PRIMARY_TOOLS = ['view', 'skill', ...READ_TOOLS,
-  'mcpscripts-write_security_repair', 'mcpscripts-submit_security_report', 'safeoutputs-noop'];
+  'mcpscripts-write_security_repair', 'mcpscripts-submit_security_report',
+  'mcpscripts-read_ci_security_findings', 'mcpscripts-propose_ci_warning_decisions', 'safeoutputs-noop'];
 const EXCLUDED = ['task', 'read_agent', 'write_agent', 'list_agents',
   'bash', 'powershell', 'create', 'edit', 'apply_patch', 'str_replace_editor'];
 
@@ -427,12 +430,15 @@ export function runSecurityReviewDriver({
   binary, argv = [], workspace = process.env.GITHUB_WORKSPACE ?? process.cwd(),
   scopePath = resolve(process.env.RUNNER_TEMP ?? '', 'gh-aw', 'security-report-scope.json'),
   reportPath = '/tmp/gh-aw/agent/security-findings.json',
+  ciSecurityDirectory = process.env.SECURITY_CI_REQUIRED === 'true'
+    ? resolve(dirname(scopePath), 'ci-security') : undefined,
   runChild = spawnSync, inspect = inspectCandidate, readDiff = readSecurityDiff, readSource = readSecuritySource,
   emitPrimary = output => process.stdout.write(output),
   logger = message => writeSync(process.stderr.fd, `${message}\n`), timeout = 540_000,
   privateRoot = resolve(dirname(reportPath), '..', '..', 'gh-aw-security-private'),
   profileSource = dirname(process.env.GH_AW_MCP_CONFIG ?? resolve(process.env.HOME ?? homedir(), '.copilot', 'mcp-config.json')),
 } = {}) {
+  logger('[security-review-driver] stage=setup');
   const root = realpathSync(resolve(workspace));
   const executable = protectedPath(binary, root);
   protectedPath(SOURCE, root);
@@ -442,6 +448,10 @@ export function runSecurityReviewDriver({
   const scopeBytes = readFileSync(scopePath, 'utf8');
   const scope = JSON.parse(scopeBytes);
   createReportTemplate(scope);
+  const ciWarnings = ciSecurityDirectory === undefined ? undefined : (() => {
+    protectedPath(resolve(ciSecurityDirectory, 'identity.json'), root);
+    return readCiWarnings(ciSecurityDirectory, scope);
+  })();
   regularPath(reportPath);
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 540_000) fail('phase timeout exceeds trusted bound');
   const privateDirectory = resolve(privateRoot);
@@ -486,14 +496,36 @@ export function runSecurityReviewDriver({
   };
   const guidanceBaseline = protectedBaseline(root);
   const primary = launch('primary');
+  logger('[security-review-driver] stage=protected-inputs');
   verifyProtectedBaseline(root, guidanceBaseline);
   const transcript = parseTranscript(primary, PRIMARY_TOOLS);
+  logger('[security-review-driver] stage=diff-coverage');
   validateCompleteDiffCoverage(transcript.calls, scope, paths => readDiff(scope, paths, root));
+  if (ciWarnings) {
+    logger('[security-review-driver] stage=ci-warning-reads');
+    const readIds = new Set();
+    let pages = 0;
+    for (const call of transcript.calls.filter(call => call.toolName === 'mcpscripts-read_ci_security_findings')) {
+      const data = nativeResult(call);
+      const expected = readWarningPage(ciSecurityDirectory, scope,
+        call.arguments?.offset ?? 0, call.arguments?.limit ?? 20);
+      if (!isDeepStrictEqual(data?.ci, expected.ci) ||
+          !isDeepStrictEqual(data?.findings, expected.findings)) {
+        fail('CI warning reads do not match the protected evidence');
+      }
+      pages++;
+      for (const item of expected.findings) readIds.add(item.id);
+    }
+    if (!pages || ciWarnings.findings.some(item => !readIds.has(item.id))) {
+      fail('every reported CI warning must be read before report completion');
+    }
+  }
   if (!transcript.calls.some(call => call.toolName === 'mcpscripts-submit_security_report' &&
       nativeResult(call)?.accepted === true)) fail('primary did not successfully submit a native report');
   if (transcript.calls.filter(call => call.toolName === 'safeoutputs-noop').length !== 1) {
     fail('primary must emit exactly one successful noop');
   }
+  logger('[security-review-driver] stage=report-contract');
   const candidateInput = readReport(reportPath);
   const candidateBytes = readFileSync(reportPath, 'utf8');
   const candidate = scope.mode === 'repair'
@@ -502,6 +534,15 @@ export function runSecurityReviewDriver({
   validateSummaryMarkdown(candidate);
   if (readFileSync(scopePath, 'utf8') !== scopeBytes) fail('protected scope changed during primary');
   const emitReport = report => {
+    if (ciWarnings) {
+      logger('[security-review-driver] stage=ci-warning-proposals');
+      const warningReview = `${JSON.stringify(completedWarningReview(ciSecurityDirectory, scope), null, 2)}\n`;
+      writeFileSync(resolve(dirname(reportPath), 'security-ci-warning-dispositions.json'),
+        warningReview, { flag: 'wx', mode: 0o600 });
+      report = { ...report, ciWarningDispositionsSha256: createHash('sha256').update(warningReview).digest('hex') };
+      writeReport(reportPath, report);
+    }
+    logger('[security-review-driver] stage=report-output');
     const metadata = projectSecurityReviewOutput(transcript, report);
     emitPrimary(metadata);
     const publicLogs = resolve(dirname(reportPath), '..', 'sandbox', 'agent', 'logs');
@@ -521,6 +562,7 @@ export function runSecurityReviewDriver({
     emitReport(candidate);
     return { mode: scope.mode, reviewed: false };
   }
+  logger('[security-review-driver] stage=candidate-patch');
   const before = inspect(scope, root, guidanceBaseline);
   const patchReport = { ...candidate, review: { ...candidate.review, patchSha256: before.patchSha256 } };
   validatePatch(patchReport, before.paths, before.patch, scope);
@@ -542,6 +584,7 @@ export function runSecurityReviewDriver({
   })}`;
   verifyProtectedBaseline(root, guidanceBaseline);
   const reviewer = launch('reviewer', prompt);
+  logger('[security-review-driver] stage=reviewer-proof');
   verifyProtectedBaseline(root, guidanceBaseline);
   const response = validateReviewerTranscript(reviewer, scope, before, originalDiff, before.paths,
     diffForPaths, candidate.findings, sourceForRange);

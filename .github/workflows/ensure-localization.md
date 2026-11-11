@@ -251,9 +251,26 @@ Same-repo localization repair for PR #${{ github.event.inputs.pr_number }} in
 
 Imported runtime role: `localization-expert`.
 
-Use `pwsh` for programmatic file reads, XML/YAML processing, and summary writes.
-If a tool call is denied, switch directly to the permitted PowerShell operation;
-do not probe permissions or retry variants of the denied operation.
+The shell tool runs Bash, not PowerShell. Use `pwsh -NoProfile -NonInteractive
+-File .github/skills/ensure-localization/scripts/localization_checks.ps1`
+with the shared skill's CLI arguments for individual checks. For batching, use
+`pwsh -NoProfile -NonInteractive -Command '<PowerShell code>'`, with single
+quotes around the entire command so Bash does not expand PowerShell variables.
+Use the native file edit tool for batch content and the summary, not shell
+heredocs or unapproved Python substitutes.
+
+Before discovery, execute this preflight through the shell tool:
+
+```bash
+pwsh -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; "PSHOME=$PSHOME; filesystem-root=$($ExecutionContext.SessionState.Drive.GetAll().Where({$_.Name -eq "/"}).Root); cwd=$PWD"; Get-ChildItem -LiteralPath .github/skills/ensure-localization/scripts/localization_checks.ps1 -ErrorAction Stop | Out-Null; . ./.github/skills/ensure-localization/scripts/localization_checks.ps1; $probe = Test-ResourceSyntax -File tools/wta/locales/en-US.yml; $probe | ConvertTo-Json -Depth 10 -Compress; if ($probe.status -cne "PASS") { throw "Shared checker preflight failed." }'
+```
+
+This fixed-file smoke check proves checker execution only; it does not select
+or validate the PR's English-derived scope.
+If that command is denied or fails, stop validation, record its actual error in
+the summary and report the native incomplete outcome. In particular, a launched
+`pwsh` with unavailable core cmdlets is an execution failure, not a passed check.
+Do not probe permissions, retry denied variants, or replace the shared checker.
 
 ## Goal
 
@@ -279,8 +296,12 @@ in the Markdown summary.
 
 Repair only localized targets in that English-derived scope. Keep source
 authority read-only and finish with the required independent review. Invoke the
-registered `localization-review-gate` agent after the final checks and require
-its explicit `PASS` before requesting any branch write. The root repair agent
+registered `Localization Reviewer` agent with the native `task` tool
+(`agent_type: "Localization Reviewer"`) after the final checks and require its
+actual returned `PASS` before requesting any branch write. Invoke it even when
+there is no English-derived scope, to independently confirm that no work is
+required. Registration or your own assessment is not a reviewer verdict.
+The root repair agent
 owns all git inspection, scope discovery, edits, and the final checker rerun;
 do not delegate those steps. Preserve the exact English-derived keys, values,
 and surrounding context through the final rerun; do not replace them with
@@ -333,7 +354,7 @@ If checks or review cannot complete, describe the limitation in the summary and
 use the appropriate native incomplete outcome instead of a push or success
 acknowledgement. No extra output, extra commit, or source-authority edit.
 
-## agent: `localization-review-gate`
+## agent: `localization-reviewer`
 {{#runtime-import .github/agents/localization-reviewer.agent.md}}
 
 Caller contract for this reviewer: pass the comparison base, immutable head,
@@ -344,4 +365,7 @@ content independently, treat only English source-authority additions, updates,
 or deletions as scope-creating, audit all shipped localized counterparts
 implicated by that scope, and fail `PASS` when any expected key block in that
 scope is mismatched or omitted.
-## end agent: `localization-review-gate`
+Denied or failed checker execution and missing validation are `BLOCKED`, never
+`PASS`. Reuse actual successful final checker results, but do not infer them
+from matching resource shapes, a parent verdict, or a clean working tree.
+## end agent: `localization-reviewer`

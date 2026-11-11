@@ -1021,4 +1021,20 @@
   <data name="ToggleCommandPaletteAgentDelegationModeCommandKey" xml:space="preserve">
     <value>エージェント委任モードでコマンド パレットを切り替える</value>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>ペインを分割する (現在のプロファイル), split: up</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: up"}</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>ペインを分割する (現在のプロファイル), split: down</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: down"}</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>ペインを分割する (現在のプロファイル), split: left</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: left"}</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>ペインを分割する (現在のプロファイル), split: right</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: right"}</comment>
+  </data>
 </root>
