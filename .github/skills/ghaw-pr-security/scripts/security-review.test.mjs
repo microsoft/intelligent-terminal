@@ -902,7 +902,7 @@ test('publication rejects wrong run, revision, source job, attempt and detector 
 
 function ciFixture() {
   const identity = { repository: 'owner/repo', repositoryId: 42, runId: '91', runAttempt: 2,
-    headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic' };
+    headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic', defaultBranch: 'main' };
   const run = { id: 91, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
     path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis',
@@ -970,6 +970,7 @@ test('CI admission requires successful exact-head same-repo workflow, attempt an
     { ...pull, head: { ...pull.head, sha: BASE } },
     { ...pull, head: { ...pull.head, ref: 'renamed' } },
     { ...pull, head: { ...pull.head, repo: { id: 99, full_name: 'fork/repo' } } },
+    { ...pull, base: { ...pull.base, ref: 'untrusted-target' } },
     { ...pull, base: { ...pull.base, sha: HEAD } }]) {
     assert.throws(() => validateCiPull(badPull, run, identity), /CI pull request/);
   }
@@ -987,6 +988,7 @@ test('native CI verification rechecks live PR and trusted workflow before return
     CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
     PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
   const responses = {
+    '': { default_branch: 'main' },
     'actions/runs/91': run,
     'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
     'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
@@ -1013,6 +1015,9 @@ test('native CI verification rechecks live PR and trusted workflow before return
   }
   assert.deepEqual(verifyCiSecurity({ environment: stepEnvironment, request }).identity,
     { runId: '91', runAttempt: 2, headSha: HEAD }, 'actual pre-inference step supplies every admission binding');
+  pull.base.ref = 'untrusted-target';
+  assert.throws(() => verifyCiSecurity({ environment, request }), /CI pull request/);
+  pull.base.ref = 'main';
   const workflowFile = responses[`git/trees/${HEAD}?recursive=1`].tree[0];
   workflowFile.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
@@ -1031,7 +1036,7 @@ test('actual controller admission uses trusted commit association when workflow_
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', 'require', script);
   for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
-    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr']) {
+    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr', 'untrusted-target']) {
     const { run, pull, jobs } = ciFixture();
     const source = structuredClone(run);
     source.pull_requests = [];
@@ -1040,6 +1045,7 @@ test('actual controller admission uses trusted commit association when workflow_
     if (variant === 'wrong-workflow') run.workflow_id = 8;
     if (variant === 'fork') run.head_repository.id = 99;
     if (variant === 'stale-pr') pull.head.sha = BASE;
+    if (variant === 'untrusted-target') pull.base.ref = 'untrusted-target';
     const associated = [{ ...pull, head: { ...pull.head, sha: HEAD } }];
     if (variant === 'ambiguous') associated.push({ ...associated[0], number: 18 });
     const github = { rest: { actions: {
@@ -1069,7 +1075,7 @@ test('actual controller admission uses trusted commit association when workflow_
     const output = {};
     const invoke = () => execute(github, { repo: { owner: 'owner', repo: 'repo' },
       runAttempt: variant === 'controller-retry' ? 2 : 1,
-      payload: { workflow_run: source, repository: { id: 42 } } },
+      payload: { workflow_run: source, repository: { id: 42, default_branch: 'main' } } },
     { setOutput: (key, value) => { output[key] = value; } },
     { env: { GITHUB_WORKSPACE: fileURLToPath(new URL('../../../../', import.meta.url)),
       TRUSTED_CI_SHA: variant === 'missing-trusted-revision' ? '' : '3'.repeat(40),

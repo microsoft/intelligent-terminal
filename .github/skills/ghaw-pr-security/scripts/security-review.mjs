@@ -982,10 +982,12 @@ export function validateCiPull(pull, run, identity) {
       pull.head?.sha !== identity.headSha || pull.head?.ref !== run.head_branch ||
       pull.head?.repo?.id !== identity.repositoryId || pull.head?.repo?.full_name !== identity.repository ||
       pull.base?.repo?.id !== identity.repositoryId || pull.base?.repo?.full_name !== identity.repository ||
+      typeof identity.defaultBranch !== 'string' || !identity.defaultBranch ||
+      pull.base?.ref !== identity.defaultBranch ||
       !SHA.test(pull.base?.sha ?? '') || typeof pull.base?.ref !== 'string' ||
       (identity.baseSha !== undefined && pull.base.sha !== identity.baseSha) ||
       (identity.headRef !== undefined && pull.head.ref !== identity.headRef)) {
-    fail('stale or foreign CI pull request identity');
+    fail('stale, foreign or non-default-target CI pull request identity');
   }
 }
 
@@ -1015,9 +1017,10 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
       !/^[1-9][0-9]*$/.test(identity.prNumber ?? '') ||
       !SHA.test(identity.baseSha ?? '') || !identity.headRef ||
       !SHA.test(environment.EXPECTED_WORKFLOW_SHA ?? '')) fail('CI admission inputs are invalid');
-  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}/${endpoint}`], {
+  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
+  identity.defaultBranch = api('').default_branch;
   const run = api(`actions/runs/${identity.runId}`);
   const collect = (endpoint, key) => {
     const items = [];

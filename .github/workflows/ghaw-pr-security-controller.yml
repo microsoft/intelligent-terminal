@@ -68,7 +68,8 @@ jobs:
             const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id })).data;
             const identity = { repository: `${context.repo.owner}/${context.repo.repo}`,
               repositoryId: context.payload.repository.id, runId: String(source.id),
-              runAttempt: source.run_attempt, headSha: source.head_sha };
+              runAttempt: source.run_attempt, headSha: source.head_sha,
+              defaultBranch: context.payload.repository.default_branch };
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
               { ...context.repo, run_id: run.id, attempt_number: identity.runAttempt, per_page: 100 });
             validateCiRun(run, jobs, identity);

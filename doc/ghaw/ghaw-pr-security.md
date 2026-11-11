@@ -108,6 +108,9 @@ before AI admission. This guards orchestration identity, not the meaning of
 PR-controlled application code, build inputs or test assertions.
 Older branches that did not change these paths may inherit trusted CI from
 the target branch; they need not already contain the newly added CI files.
+Automatic AI admission is limited to PRs targeting the repository's default
+branch. Other targets still get CI, but require manual review: their merge
+workflow can inherit target-only automation that the PR did not change.
 
 C++ and Rust CodeQL use `none` analysis. The regular C++ build
 and unit tests run outside compiler tracing: the first traced build took
