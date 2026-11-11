@@ -593,6 +593,11 @@ namespace Microsoft::Terminal::ShellIntegration
                 }
             }
 
+            if (const auto error = flavor.ProfileModificationError(contents))
+            {
+                return { false, false, L"Automatic shell integration removal was skipped: " + *error };
+            }
+
             const auto existing = flavor.FindExistingScriptBlock(contents);
             if (!existing)
             {

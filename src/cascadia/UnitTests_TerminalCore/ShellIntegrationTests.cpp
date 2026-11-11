@@ -151,6 +151,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Uninstall_EmptyPath_Fails);
     TEST_METHOD(Uninstall_ProfileMissing_NoOp);
     TEST_METHOD(Uninstall_ProfileWithoutBlock_NoOp);
+    TEST_METHOD(Uninstall_LeavesSignedPowerShellProfilesUntouched);
     TEST_METHOD(Uninstall_StripsModernBlockCleanly);
     TEST_METHOD(Uninstall_StripsBlockInMiddleOfFile);
     TEST_METHOD(Uninstall_StripsLegacyDotSourceLine);
@@ -334,6 +335,18 @@ private:
         std::filesystem::create_directories(p.parent_path(), ec);
         std::ofstream out{ p, std::ios::binary | std::ios::trunc };
         out.write(contents.data(), contents.size());
+    }
+
+    static std::string _EncodeAsciiAsUtf16Le(std::string_view contents)
+    {
+        std::string encoded{ "\xff\xfe", 2 }; // UTF-16 LE BOM
+        encoded.reserve(2 + contents.size() * 2);
+        for (const auto ch : contents)
+        {
+            encoded.push_back(ch);
+            encoded.push_back('\0');
+        }
+        return encoded;
     }
 
     static bool _Contains(std::string_view haystack, std::string_view needle)
@@ -1221,13 +1234,7 @@ void ShellIntegrationTests::Install_LeavesUtf16AuthenticodeSignedPowerShellProfi
         "# SIG # Begin signature block\r\n"
         "# MIIC...signature-data...\r\n"
         "# SIG # End signature block\r\n";
-    std::string original{ "\xff\xfe", 2 }; // UTF-16 LE BOM
-    original.reserve(2 + utf8Original.size() * 2);
-    for (const auto ch : utf8Original)
-    {
-        original.push_back(ch);
-        original.push_back('\0');
-    }
+    const auto original = _EncodeAsciiAsUtf16Le(utf8Original);
     _WriteFile(profile, original);
 
     const auto result = Install(profile.wstring());
@@ -1526,6 +1533,36 @@ void ShellIntegrationTests::Uninstall_ProfileWithoutBlock_NoOp()
     VERIFY_IS_TRUE(r.success);
     VERIFY_IS_TRUE(r.alreadyInstalled);
     VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Uninstall_LeavesSignedPowerShellProfilesUntouched()
+{
+    const auto profile = _ProfilePath();
+    const auto script = profile.parent_path() / ShellIntegrationScriptFileName();
+    const std::string scriptContents = "integration script sentinel";
+    _WriteFile(script, scriptContents);
+
+    const auto integrationBlock = BuildShellIntegrationBlock(L"PowerShell", "\r\n");
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n" + integrationBlock +
+        "\r\n# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    const auto utf16Original = _EncodeAsciiAsUtf16Le(utf8Original);
+    const std::wstring expectedError{
+        L"Automatic shell integration removal was skipped: Refusing to modify an Authenticode-signed PowerShell profile"
+    };
+
+    for (const auto& original : { utf8Original, utf16Original })
+    {
+        _WriteFile(profile, original);
+
+        const auto result = Uninstall(profile.wstring());
+        VERIFY_IS_FALSE(result.success);
+        VERIFY_ARE_EQUAL(expectedError, result.errorMessage);
+        VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+        VERIFY_ARE_EQUAL(scriptContents, _ReadFile(script));
+    }
 }
 
 void ShellIntegrationTests::Uninstall_StripsModernBlockCleanly()
