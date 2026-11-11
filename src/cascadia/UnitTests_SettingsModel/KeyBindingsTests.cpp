@@ -38,6 +38,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestSplitPaneArgs);
         TEST_METHOD(DefaultSplitCommandsKeepProfileChoicesDistinct);
         TEST_METHOD(UserDuplicatePaneNamesRemainUnchanged);
+        TEST_METHOD(UserProfileSplitActionsRemainVisible);
         TEST_METHOD(TestStringOverload);
         TEST_METHOD(TestSetTabColorArgs);
         TEST_METHOD(TestScrollArgs);
@@ -490,8 +491,18 @@ namespace SettingsModelUnitTests
 
     void KeyBindingsTests::DefaultSplitCommandsKeepProfileChoicesDistinct()
     {
-        const auto map = CascadiaSettings::LoadDefaults().ActionMap();
+        const auto settings = CascadiaSettings::LoadDefaults();
+        const auto map = settings.ActionMap();
         const auto names = map.NameMap();
+        const auto expanded = map.ExpandedCommands();
+        auto visibleCount = [&](const winrt::hstring& id) {
+            uint32_t count = 0;
+            for (const auto& command : expanded)
+            {
+                count += command.ID() == id;
+            }
+            return count;
+        };
         struct testCase
         {
             const wchar_t* defaultId;
@@ -521,6 +532,8 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_NOT_EQUAL(original.Name(), current.Name());
             VERIFY_ARE_EQUAL(original.ID(), names.Lookup(original.Name()).ID());
             VERIFY_ARE_EQUAL(current.ID(), names.Lookup(current.Name()).ID());
+            VERIFY_ARE_EQUAL(1u, visibleCount(original.ID()));
+            VERIFY_ARE_EQUAL(1u, visibleCount(current.ID()));
             VERIFY_IS_TRUE(map.AvailableActions().HasKey(original.Name()));
             VERIFY_IS_TRUE(map.AvailableActions().HasKey(current.Name()));
             uint32_t visibleCurrent = 0;
@@ -546,9 +559,44 @@ namespace SettingsModelUnitTests
                  std::pair{ L"Terminal.SplitProfileRight", SplitDirection::Right },
                  std::pair{ L"Terminal.SplitProfileAuto", SplitDirection::Automatic } })
         {
-            const auto args = map.GetActionByID(id).ActionAndArgs().Args().as<SplitPaneArgs>();
+            const auto command = map.GetActionByID(id);
+            const auto args = command.ActionAndArgs().Args().as<SplitPaneArgs>();
             VERIFY_ARE_EQUAL(SplitType::Profile, args.SplitMode());
             VERIFY_ARE_EQUAL(direction, args.SplitDirection());
+            VERIFY_IS_FALSE(command.Name().empty());
+            VERIFY_IS_FALSE(names.HasKey(command.Name()));
+            VERIFY_ARE_EQUAL(0u, visibleCount(command.ID()));
+            VERIFY_IS_TRUE(map.AvailableActions().HasKey(command.Name()));
+            uint32_t editorCount = 0;
+            for (const auto& editorCommand : map.AllCommands())
+            {
+                editorCount += editorCommand.ID() == command.ID();
+            }
+            VERIFY_ARE_EQUAL(1u, editorCount);
+        }
+        Command wizard{ nullptr };
+        for (const auto& command : expanded)
+        {
+            if (command.HasNestedCommands() && command.LanguageNeutralName() == L"Split pane...")
+            {
+                wizard = command;
+            }
+        }
+        VERIFY_IS_NOT_NULL(wizard);
+        VERIFY_ARE_EQUAL(settings.ActiveProfiles().Size(), wizard.NestedCommands().Size());
+        for (const auto& profileChoice : wizard.NestedCommands())
+        {
+            std::set<SplitDirection> directions;
+            for (const auto& directionChoice : profileChoice.Value().NestedCommands())
+            {
+                const auto args = directionChoice.Value().ActionAndArgs().Args().as<SplitPaneArgs>();
+                VERIFY_ARE_EQUAL(SplitType::Manual, args.SplitMode());
+                VERIFY_IS_FALSE(args.ContentArgs().as<NewTerminalArgs>().Profile().empty());
+                directions.insert(args.SplitDirection());
+            }
+            VERIFY_ARE_EQUAL(5u, profileChoice.Value().NestedCommands().Size());
+            const std::set expectedDirections{ SplitDirection::Automatic, SplitDirection::Up, SplitDirection::Down, SplitDirection::Left, SplitDirection::Right };
+            VERIFY_IS_TRUE(directions == expectedDirections);
         }
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.SplitProfileDown" }, map.GetActionByKeyChord(KeyChordSerialization::FromString(L"alt+shift+-")).ID());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.SplitProfileRight" }, map.GetActionByKeyChord(KeyChordSerialization::FromString(L"alt+shift+plus")).ID());
@@ -588,6 +636,46 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_NOT_EQUAL(stock.ID(), generated.ID());
         const auto rebound = user->GetActionByKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+shift+d"));
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.DuplicatePaneDown" }, rebound.ID());
+    }
+
+    void KeyBindingsTests::UserProfileSplitActionsRemainVisible()
+    {
+        const auto settings = CascadiaSettings::LoadDefaults();
+        const auto map = settings.ActionMap();
+        const auto user = winrt::get_self<implementation::ActionMap>(map);
+        user->LayerJson(VerifyParseSucceeded(R"([
+            { "id": "User.NamedPolicy", "name": "My policy split", "command": { "action": "splitPane", "splitMode": "profile", "split": "right" } },
+            { "id": "User.UnnamedPolicy", "command": { "action": "splitPane", "splitMode": "profile", "split": "down" } },
+            { "keys": "ctrl+alt+shift+p", "command": { "action": "splitPane", "splitMode": "profile", "split": "right" } },
+            { "name": "My inherited policy", "command": { "action": "splitPane", "splitMode": "profile", "split": "auto" } },
+            { "id": "Terminal.SplitProfileDown", "name": "My builtin policy override", "command": { "action": "splitPane", "splitMode": "profile", "split": "down" } }
+        ])"), OriginTag::User);
+        user->LayerJson(VerifyParseSucceeded(R"([
+            { "keys": "ctrl+alt+shift+o", "command": { "action": "splitPane", "splitMode": "profile", "split": "auto" } }
+        ])"), OriginTag::User);
+        user->_FinalizeInheritance();
+        winrt::get_self<implementation::CascadiaSettings>(settings)->ExpandCommands();
+        const auto named = map.GetActionByID(L"User.NamedPolicy");
+        const auto unnamed = map.GetActionByID(L"User.UnnamedPolicy");
+        const auto generated = map.GetActionByKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+shift+p"));
+        const auto inherited = map.GetActionByKeyChord(KeyChordSerialization::FromString(L"ctrl+alt+shift+o"));
+        const auto overridden = map.GetActionByID(L"Terminal.SplitProfileDown");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My policy split" }, named.Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My inherited policy" }, inherited.Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My builtin policy override" }, overridden.Name());
+        VERIFY_ARE_NOT_EQUAL(winrt::hstring{ L"Terminal.SplitProfileRight" }, generated.ID());
+        for (const auto& command : { named, unnamed, generated, inherited, overridden })
+        {
+            VERIFY_ARE_EQUAL(OriginTag::User, command.Origin());
+            VERIFY_ARE_EQUAL(SplitType::Profile, command.ActionAndArgs().Args().as<SplitPaneArgs>().SplitMode());
+            VERIFY_ARE_EQUAL(command.ID(), map.NameMap().Lookup(command.Name()).ID());
+            bool visible = false;
+            for (const auto& paletteCommand : map.ExpandedCommands())
+            {
+                visible |= paletteCommand.ID() == command.ID();
+            }
+            VERIFY_IS_TRUE(visible);
+        }
     }
 
     void KeyBindingsTests::TestSetTabColorArgs()

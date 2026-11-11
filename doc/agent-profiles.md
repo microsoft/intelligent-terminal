@@ -125,6 +125,9 @@ The Command Palette offers separate split choices:
 - `Split pane...` lets you explicitly choose a target profile.
 
 The default split shortcuts and tab split action still use `splitMode: "profile"`.
+Their built-in policy actions remain available to shortcuts and Settings without
+adding another group of Command Palette choices. User-defined profile-mode
+actions remain available in the palette.
 Configure the source profile's `defaultSplitProfile` in `settings.json`; there
 is no default split target control in the profile editor. For profile-mode
 actions, it determines the target:

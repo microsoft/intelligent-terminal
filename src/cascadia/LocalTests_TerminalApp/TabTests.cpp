@@ -31459,7 +31459,24 @@ namespace TerminalAppLocalTests
                         reinterpret_cast<const char16_t*>(output.data() + output.size()) });
 
                     const auto palette = page->LoadCommandPalette();
+                    palette.SetActionMap(map);
+                    palette.EnableCommandPaletteMode(CommandPaletteLaunchMode::Action);
                     palette.Visibility(Visibility::Visible);
+                    auto paletteContains = [&](const winrt::hstring& name) {
+                        for (const auto& item : palette.FilteredActions())
+                        {
+                            if (item.Item().Name() == name)
+                            {
+                                return true;
+                            }
+                        }
+                        return false;
+                    };
+                    VERIFY_IS_TRUE(paletteContains(map.GetActionByID(id).Name()));
+                    for (const auto policyId : { L"Terminal.SplitProfileDown", L"Terminal.SplitProfileRight", L"Terminal.SplitProfileAuto" })
+                    {
+                        VERIFY_IS_FALSE(paletteContains(map.GetActionByID(policyId).Name()));
+                    }
                     VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
                     VERIFY_IS_TRUE(tab->GetActivePane() == sourcePane);
                     palette.Visibility(Visibility::Collapsed);
