@@ -12,6 +12,7 @@ import {
   publicationDecision, validatePublicationRun, preparePublication, validateRepairChanges, validateRepairTargetPath,
   createDetectorPublicationProof, validateDetectorPublicationProof, validateDetectorExecutionJobs,
   TRUSTED_GUIDANCE_ROOTS, isTrustedGuidancePath,
+  CI_DEFINITION_PATHS, validateCiDefinition, validateCiRun, validateCiPull, validateCiArtifacts, verifyCiSecurity,
 } from './security-review.mjs';
 import { PREPARE_SHA256, INSTALL_SHA256, consumedBinding, stageDetectorInputs, verifyDetectorInputs,
   completeHostDetector, validateOriginalOutcomes, validateNativeConclusionOutput } from './security-detector.mjs';
@@ -51,10 +52,11 @@ function publicationJobs(sameRepo) {
     }));
 }
 
-function detectorProof(current, candidate, patch = '') {
+function detectorProof(current, candidate, patch = '', workflowSha = current.observedBaseSha) {
   const environment = {
     DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: 'owner/repo',
-    GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', TRUSTED_SHA: current.observedBaseSha,
+    GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', TRUSTED_SHA: workflowSha,
+    EXPECTED_WORKFLOW_SHA: workflowSha,
     EXPECTED_BASE_SHA: current.observedBaseSha, EXPECTED_HEAD_SHA: current.headSha,
     COMPARISON_BASE_SHA: current.baseSha, PR_NUMBER: String(current.prNumber),
   };
@@ -89,6 +91,126 @@ test('queued noop rejects model content, missing message, unknown and prototype 
   }
 });
 
+test('controller concurrency isolates rejected CI completions and stale attempts', () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const template = controller.match(/^  group: (.+)$/m)?.[1];
+  assert(template);
+  const groupFor = source => {
+    const group = template.replace(/\$\{\{\s*github\.event\.workflow_run\.(\w+)\s*\}\}/g,
+      (_, field) => {
+        assert(Object.hasOwn(source, field));
+        return String(source[field]);
+      });
+    assert(!group.includes('${{'));
+    return group;
+  };
+  const valid = { id: 99, run_attempt: 2, head_branch: 'topic', event: 'pull_request',
+    conclusion: 'success', head_repository: { id: 42 }, head_sha: HEAD };
+  for (const rejected of [
+    { ...valid, id: 100, event: 'workflow_dispatch' },
+    { ...valid, id: 101, conclusion: 'failure' },
+    { ...valid, id: 102, head_repository: { id: 84 } },
+    { ...valid, id: 98, head_sha: BASE },
+    { ...valid, run_attempt: 1 },
+  ]) assert.notEqual(groupFor(valid), groupFor(rejected));
+  assert.equal(groupFor(valid), groupFor(structuredClone(valid)));
+});
+
+test('controller reports execution status on the admitted PR commit, not the workflow_run default branch', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const pending = controller.split('      - name: Mark admitted PR review pending')[1]
+    ?.split('          script: |')[1]?.split('\n      - name:')[0];
+  const final = controller.split('      - name: Publish admitted PR review outcome')[1]
+    ?.split('          script: |')[1];
+  assert(pending && final, 'Both pending and final PR statuses are required.');
+  const execute = script => new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'process', 'core', script);
+  const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 456,
+    sha: BASE, serverUrl: 'https://github.com' };
+  for (const [analysis, applicable, repair, report, blocking, expected] of [
+    ['success', 'true', 'skipped', 'success', 'false', 'success'],
+    ['success', 'true', 'success', 'success', 'false', 'success'],
+    ['success', 'false', 'skipped', 'skipped', '', 'success'],
+    ['failure', 'true', 'skipped', 'success', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', '', 'failure'],
+    ['cancelled', 'true', 'skipped', 'skipped', '', 'cancelled'],
+    ['success', 'true', 'failure', 'skipped', 'false', 'failure'],
+    ['success', 'true', 'success', 'failure', 'false', 'failure'],
+  ]) {
+    const calls = [], outputs = {};
+    const github = { rest: { checks: {
+      create: async value => { calls.push(value); return { data: { id: 1234 } }; },
+      update: async value => calls.push(value),
+    } } };
+    const core = { setOutput: (key, value) => { outputs[key] = value; } };
+    const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
+      SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report,
+      REVIEW_BLOCKING: blocking, CANONICAL_RESULT: blocking ? 'success' : 'failure',
+      GITHUB_RUN_ATTEMPT: '1' } };
+    await execute(pending)(github, context, process, core);
+    process.env.REVIEW_CHECK_ID = outputs.review_check_id;
+    await execute(final)(github, context, process, core);
+    assert.deepEqual(calls.map(value => value.status), ['in_progress', 'completed']);
+    assert.equal(calls[0].head_sha, HEAD);
+    assert.equal(calls[1].check_run_id, 1234);
+    assert.equal(calls[1].conclusion, expected);
+    assert(calls.every(value => value.details_url.endsWith('/actions/runs/456')));
+    if (blocking === 'true') assert.equal(calls[1].output.title, 'Changes required');
+    else if (!['success', 'cancelled'].includes(expected)) assert.equal(calls[1].output.title, 'Review did not complete');
+  }
+  const github = { rest: { checks: {
+    create: async () => assert.fail('No admitted head; no check write.'),
+    update: async () => assert.fail('No admitted head; no check write.'),
+  } } };
+  for (const script of [pending, final]) {
+    await assert.rejects(execute(script)(github, context, { env: { REVIEWED_HEAD_SHA: '', PR_NUMBER: '17' } }),
+      /Invalid admitted review identity/);
+  }
+});
+
+test('a late older review outcome cannot replace a newer completed check on the same head', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const pending = controller.split('      - name: Mark admitted PR review pending')[1]
+    .split('          script: |')[1].split('\n      - name:')[0];
+  const final = controller.split('      - name: Publish admitted PR review outcome')[1]
+    .split('          script: |')[1];
+  const execute = script => new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'process', 'core', script);
+  let sharedStatus;
+  const checks = new Map();
+  const github = { rest: {
+    repos: { createCommitStatus: async value => { sharedStatus = value.state; } },
+    checks: {
+      create: async value => {
+        const id = checks.size + 1;
+        checks.set(id, value);
+        return { data: { id } };
+      },
+      update: async value => checks.set(value.check_run_id, { ...checks.get(value.check_run_id), ...value }),
+    },
+  } };
+  const make = runId => {
+    const outputs = {};
+    return { outputs, context: { repo: { owner: 'owner', repo: 'repo' }, runId },
+      process: { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', GITHUB_RUN_ATTEMPT: '1' } },
+      core: { setOutput: (key, value) => { outputs[key] = value; } } };
+  };
+  const older = make(456), newer = make(457);
+  for (const run of [older, newer]) {
+    await execute(pending)(github, run.context, run.process, run.core);
+    run.process.env.REVIEW_CHECK_ID = String(run.outputs.review_check_id ?? '');
+  }
+  Object.assign(newer.process.env, { ANALYSIS_RESULT: 'success', SCOPE_APPLICABLE: 'true',
+    CANONICAL_RESULT: 'success', REVIEW_BLOCKING: 'false', REPAIR_RESULT: 'skipped', REPORT_RESULT: 'success' });
+  Object.assign(older.process.env, { ANALYSIS_RESULT: 'failure', SCOPE_APPLICABLE: 'true',
+    CANONICAL_RESULT: 'failure', REPAIR_RESULT: 'skipped', REPORT_RESULT: 'skipped' });
+  await execute(final)(github, newer.context, newer.process, newer.core);
+  await execute(final)(github, older.context, older.process, older.core);
+  const newerResult = checks.get(Number(newer.outputs.review_check_id))?.conclusion ?? sharedStatus;
+  assert.equal(newerResult, 'success');
+  assert.equal(checks.size, 2);
+});
+
 test('controller separates repair writes from PR reporting after canonical validation', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   assert(controller.includes('permissions: {}'));
@@ -113,7 +235,7 @@ test('controller separates repair writes from PR reporting after canonical valid
   assert(!repair.includes('git commit-tree'));
   assert(repair.includes('--force-with-lease="refs/heads/$HEAD_REF:$EXPECTED_HEAD_SHA"'));
   assert(repair.includes('git merge-base --is-ancestor'));
-  assert(repair.includes('EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}'));
+  assert(repair.includes('EXPECTED_BASE_SHA: ${{ needs.security-review.outputs.base_sha }}'));
   assert(repair.includes('jq -r .base.sha'));
   const identityChecks = [...repair.matchAll(/^          verify_live_pr_identity\r?$/gm)];
   assert.equal(identityChecks.length, 2);
@@ -173,7 +295,7 @@ test('all controller stages load workflow code when the PR base predates the rev
   const trusted = git(['rev-parse', 'HEAD']);
   assert.equal(git(['merge-base', trusted, head]), head);
   const context = { 'github.workflow_sha': trusted, 'github.event.pull_request.base.sha': base };
-  const refs = [...controller.matchAll(/ref: \$\{\{\s*([^}]+?)\s*\}\}/g)];
+  const refs = [...controller.matchAll(/^\s+ref: \$\{\{\s*([^}]+?)\s*\}\}/gm)];
   assert.equal(refs.length, 3, 'exercise scope resolution, repair publication and report publication');
   for (const [index, match] of refs.entries()) {
     assert(Object.hasOwn(context, match[1]));
@@ -188,8 +310,8 @@ test('all controller stages load workflow code when the PR base predates the rev
     assert.equal(scope.headSha, head);
     assert.equal(git(['rev-parse', 'HEAD']), trusted);
   }
-  assert(controller.includes('BASE_SHA: ${{ github.event.pull_request.base.sha }}'));
-  assert(controller.includes('EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}'));
+  assert(controller.includes('BASE_SHA: ${{ steps.admission.outputs.base_sha }}'));
+  assert(controller.includes('EXPECTED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}'));
 });
 
 test('compiled repair worker attests generated detector outputs only after detection in a native job', () => {
@@ -229,44 +351,56 @@ test('worker trusted revision metadata identifies workflow source, not candidate
   }
 });
 
-test('controller rejects stale or unresolved exact base refs before dispatch without changing SHA inputs', async () => {
+test('controller separates cached PR base from new worker SHA and rejects dispatch races', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  const script = controller.split('            const pr = context.payload.pull_request;')[1]
-    .split('\n      - name: Canonicalize worker')[0];
+  const script = controller.split('      - name: Dispatch and wait for security worker')[1]
+    .split('          script: |')[1].split('\n      - name: Canonicalize worker')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
-    'github', 'context', 'core', 'process', `const pr = context.payload.pull_request;${script}`);
-  for (const variant of ['current', 'stale', 'wrong-ref', 'wrong-type', 'api-failure', 'post-read-race']) {
+    'github', 'context', 'core', 'process', script);
+  for (const variant of ['current', 'new-worker', 'stale-pr', 'dispatch-race', 'wrong-ref', 'wrong-type',
+    'missing-worker-ref', 'api-failure', 'post-read-race']) {
     let dispatched = false;
     const outputs = {};
     const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
-      payload: { pull_request: { number: 17, base: { ref: 'release/nested' } } } };
+      payload: { repository: { id: 42, default_branch: variant === 'missing-worker-ref' ? undefined : 'main' } } };
     const env = { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
-      WORKER: 'ghaw-pr-security.lock.yml' };
+      WORKER: 'ghaw-pr-security.lock.yml', PR_NUMBER: '17', BASE_REF: 'release/nested',
+      HEAD_REF: 'topic', HEAD_REPO: 'owner/repo', CI_RUN_ID: '99', CI_RUN_ATTEMPT: '2', GITHUB_RUN_ATTEMPT: '1' };
+    let refReads = 0;
+    const workerSha = variant === 'new-worker' ? '3'.repeat(40) : BASE;
     const github = {
       rest: {
+        pulls: { get: async () => ({ data: { number: 17, state: 'open',
+          head: { sha: variant === 'stale-pr' ? BASE : HEAD, ref: 'topic', repo: { id: 42, full_name: 'owner/repo' } },
+          base: { sha: BASE, ref: 'release/nested' } } }) },
         git: { getRef: async args => {
-          assert.equal(args.ref, 'heads/release/nested');
+          refReads++;
+          assert.equal(args.ref, 'heads/main');
           if (variant === 'api-failure') throw new Error('API unavailable');
-          return { data: { ref: variant === 'wrong-ref' ? 'refs/heads/other' : 'refs/heads/release/nested',
-            object: { type: variant === 'wrong-type' ? 'tag' : 'commit', sha: variant === 'stale' ? HEAD : BASE } } };
+          return { data: { ref: variant === 'wrong-ref' ? 'refs/heads/other' : 'refs/heads/main',
+            object: { type: variant === 'wrong-type' ? 'tag' : 'commit',
+              sha: variant === 'dispatch-race' && refReads === 2 ? HEAD : workerSha } } };
         } },
         actions: { getWorkflowRun: async () => ({ data: { status: 'completed',
           conclusion: variant === 'post-read-race' ? 'failure' : 'success', html_url: 'https://example.invalid/run' } }) },
       },
       request: async (route, args) => {
         dispatched = true;
-        assert.equal(args.ref, 'release/nested');
+        assert.equal(args.ref, 'main');
         assert.equal(args.inputs.expected_base_sha, BASE);
+        assert.equal(args.inputs.expected_workflow_sha, workerSha);
+        assert.equal(args.inputs.ci_run_id, '99');
+        assert.equal(args.inputs.ci_run_attempt, '2');
         return { data: { workflow_run_id: 321 } };
       },
     };
     const run = () => execute(github, context, { setOutput: (key, value) => { outputs[key] = value; } }, { env });
-    if (['current', 'post-read-race'].includes(variant)) {
+    if (['current', 'new-worker', 'post-read-race'].includes(variant)) {
       await run();
       assert.equal(dispatched, true);
-      assert.equal(outputs.conclusion, variant === 'current' ? 'success' : 'failure');
+      assert.equal(outputs.conclusion, variant === 'post-read-race' ? 'failure' : 'success');
     } else {
-      await assert.rejects(run, variant === 'api-failure' ? /API unavailable/ : /Stale security base/);
+      await assert.rejects(run, /API unavailable|Stale PR|Invalid trusted worker|changed before dispatch/);
       assert.equal(dispatched, false);
     }
     assert.equal(env.EXPECTED_BASE_SHA, BASE);
@@ -277,17 +411,20 @@ test('controller rejects stale or unresolved exact base refs before dispatch wit
 
 test('controller correlates dispatched runs beyond the first page with the same immutable identity', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  const script = controller.split('            const pr = context.payload.pull_request;')[1]
-    .split('\n      - name: Canonicalize worker')[0];
+  const script = controller.split('      - name: Dispatch and wait for security worker')[1]
+    .split('          script: |')[1].split('\n      - name: Canonicalize worker')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
-    'github', 'context', 'core', 'process', 'setTimeout', `const pr = context.payload.pull_request;${script}`);
+    'github', 'context', 'core', 'process', 'setTimeout', script);
   const context = { repo: { owner: 'owner', repo: 'repo' }, runId: 123, runAttempt: 1,
-    payload: { pull_request: { number: 17, base: { ref: 'release/nested' } } } };
+    payload: { repository: { id: 42, default_branch: 'main' } } };
   const outputs = {};
   let listed = false;
   const github = {
     rest: {
-      git: { getRef: async () => ({ data: { ref: 'refs/heads/release/nested', object: { type: 'commit', sha: BASE } } }) },
+      pulls: { get: async () => ({ data: { number: 17, state: 'open',
+        head: { sha: HEAD, ref: 'topic', repo: { id: 42, full_name: 'owner/repo' } },
+        base: { sha: BASE, ref: 'release/nested' } } }) },
+      git: { getRef: async () => ({ data: { ref: 'refs/heads/main', object: { type: 'commit', sha: BASE } } }) },
       actions: {
         listWorkflowRuns: () => { throw new Error('Unpaginated listing must not be used'); },
         getWorkflowRun: async args => {
@@ -300,7 +437,7 @@ test('controller correlates dispatched runs beyond the first page with the same 
     paginate: async (endpoint, args) => {
       assert.equal(endpoint, github.rest.actions.listWorkflowRuns);
       assert.equal(args.workflow_id, 'ghaw-pr-security.lock.yml');
-      assert.equal(args.branch, 'release/nested');
+      assert.equal(args.branch, 'main');
       assert.equal(args.event, 'workflow_dispatch');
       assert.equal(args.per_page, 100);
       assert.match(args.created, /^>=\d{4}-\d{2}-\d{2}T/);
@@ -313,7 +450,8 @@ test('controller correlates dispatched runs beyond the first page with the same 
   };
   await execute(github, context, { setOutput: (key, value) => { outputs[key] = value; } },
     { env: { EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE,
-      WORKER: 'ghaw-pr-security.lock.yml' } }, resolve => resolve());
+      WORKER: 'ghaw-pr-security.lock.yml', PR_NUMBER: '17', BASE_REF: 'release/nested',
+      HEAD_REF: 'topic', HEAD_REPO: 'owner/repo', GITHUB_RUN_ATTEMPT: '1' } }, resolve => resolve());
   assert.equal(listed, true);
   assert.equal(outputs.run_id, '321');
   assert.equal(outputs.conclusion, 'success');
@@ -327,6 +465,7 @@ test('typed detector proof rejects warning, cancelled, missing and self-reported
     const environment = {
       DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: 'owner/repo',
       GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE,
+      EXPECTED_WORKFLOW_SHA: BASE,
       EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17',
     };
     const bytes = JSON.stringify(candidate);
@@ -377,7 +516,8 @@ test('typed detector proof rejects warning, cancelled, missing and self-reported
 
 test('actual PR report publisher verifies per-finding parent chains, idempotence and immutable identities', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  const script = "const fs = require('node:fs');" + controller.split("            const fs = require('node:fs');")[1];
+  const script = "const fs = require('node:fs');" + controller.split("            const fs = require('node:fs');")[1]
+    .split('\n  review-status:')[0];
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)('require', 'github', 'context', 'process', script);
   for (const mode of ['fork', 'same-no-patch', 'same-unpublished', 'same-repair']) {
   for (const existing of [false, true]) {
@@ -476,6 +616,7 @@ test('native staging consumes exact final bytes and rejects missing or subsequen
       ...process.env, DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success',
       GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
       TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD,
+      EXPECTED_WORKFLOW_SHA: BASE,
       COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17',
       SECURITY_SCOPE_FILE: 'security-scope.json',
     };
@@ -507,6 +648,7 @@ test('repair detector stages the actual patch bytes under the pinned aw patch co
     const environment = {
       GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
       TRUSTED_SHA: BASE, EXPECTED_BASE_SHA: BASE, EXPECTED_HEAD_SHA: HEAD,
+      EXPECTED_WORKFLOW_SHA: BASE,
       COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17', SECURITY_SCOPE_FILE: 'security-scope.validated.json',
     };
     const inputs = join(root, 'inputs');
@@ -726,7 +868,7 @@ test('publication branches preserve fork guidance, same-repo repairs and no-patc
 
 test('publication rejects wrong run, revision, source job, attempt and detector without requiring a runtime job', () => {
   for (const sameRepo of [true]) {
-    const identity = { repository: 'owner/repo', runId: '123', baseSha: BASE, sameRepo, dispatchId: 'fixed-dispatch' };
+    const identity = { repository: 'owner/repo', runId: '123', expectedWorkflowSha: BASE, sameRepo, dispatchId: 'fixed-dispatch' };
     const run = {
       id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
       path: '.github/workflows/ghaw-pr-security.lock.yml',
@@ -758,11 +900,247 @@ test('publication rejects wrong run, revision, source job, attempt and detector 
   }
 });
 
+function ciFixture() {
+  const identity = { repository: 'owner/repo', repositoryId: 42, runId: '91', runAttempt: 2,
+    headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic', defaultBranch: 'main' };
+  const run = { id: 91, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
+    head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
+    path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis',
+    workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
+  const jobs = ['C++ build and unit tests', 'Rust build and unit tests'].map(name =>
+    ({ name, run_id: 91, run_attempt: 2, status: 'completed', conclusion: 'success' }));
+  const pull = { number: 17, state: 'open', head: { sha: HEAD, ref: 'topic',
+    repo: { id: 42, full_name: 'owner/repo' } },
+    base: { sha: BASE, ref: 'main', repo: { id: 42, full_name: 'owner/repo' } } };
+  const artifacts = ['cpp', 'rust'].map((language, index) => ({ id: 100 + index,
+    name: `ci-security-${language}-91-2`, expired: false, workflow_run: { id: 91, head_sha: HEAD } }));
+  return { identity, run, jobs, pull, artifacts };
+}
+
+function ciDefinitionTree() {
+  return { truncated: false, tree: CI_DEFINITION_PATHS.map(path =>
+    ({ path, mode: '100644', type: 'blob', sha: '4'.repeat(40) })) };
+}
+
+test('CI admission rejects substituted orchestration and analyzer policy despite successful job metadata', () => {
+  const trusted = ciDefinitionTree();
+  assert.doesNotThrow(() => validateCiDefinition(structuredClone(trusted), trusted));
+  for (const path of CI_DEFINITION_PATHS) {
+    const changed = { ...trusted, tree: trusted.tree.map(file => file.path === path ? { ...file, sha: HEAD } : file) };
+    assert.throws(() => validateCiDefinition(changed, trusted), /CI implementation differs/);
+    assert.throws(() => validateCiDefinition({ ...trusted, tree: trusted.tree.filter(file => file.path !== path) }, trusted));
+  }
+  for (const malformed of [
+    { ...trusted, tree: [...trusted.tree, trusted.tree[0]] },
+    { ...trusted, tree: trusted.tree.map(file => ({ ...file, mode: '120000' })) },
+    { ...trusted, tree: trusted.tree.map(file => ({ ...file, sha: 'main' })) }]) {
+    assert.throws(() => validateCiDefinition(malformed, trusted), /regular-file identities/);
+  }
+  assert.throws(() => validateCiDefinition({ ...trusted, truncated: true }, trusted), /complete immutable trees/);
+});
+
+test('unchanged older PRs inherit trusted CI even when their comparison base lacks its files', () => {
+  const older = { truncated: false, tree: [{ path: 'tools/wta/src/main.rs', type: 'blob', mode: '100644', sha: BASE }] };
+  assert.doesNotThrow(() => validateCiDefinition({ ...older,
+    tree: older.tree.map(file => ({ ...file, sha: HEAD })) }, older));
+  assert.throws(() => validateCiDefinition(ciDefinitionTree(), older), /CI implementation differs/);
+});
+
+test('CI admission requires successful exact-head same-repo workflow, attempt and both unit jobs', () => {
+  const { identity, run, jobs, pull, artifacts } = ciFixture();
+  assert.doesNotThrow(() => validateCiRun(run, jobs, identity));
+  assert.doesNotThrow(() => validateCiPull(pull, run, identity));
+  assert.equal(validateCiArtifacts(artifacts, run).length, 2);
+  for (const extra of [
+    { conclusion: 'failure' }, { conclusion: 'cancelled' }, { status: 'in_progress' },
+    { head_sha: BASE }, { run_attempt: 3 }, { path: '.github/workflows/forged.yml' },
+    { name: 'another workflow' }, { event: 'push' }, { id: 92 },
+    { repository: { id: 99, full_name: 'owner/repo' } },
+    { head_repository: { id: 99, full_name: 'fork/repo' } },
+  ]) assert.throws(() => validateCiRun({ ...run, ...extra }, jobs, identity));
+  for (const extra of [{ runAttempt: 1 }, { repositoryId: 99 }, { headSha: BASE }]) {
+    assert.throws(() => validateCiRun(run, jobs, { ...identity, ...extra }));
+  }
+  for (const badJobs of [jobs.slice(1), [...jobs, jobs[0]],
+    jobs.map(job => ({ ...job, run_attempt: 1 })), jobs.map(job => ({ ...job, conclusion: 'failure' })),
+    jobs.map(job => ({ ...job, conclusion: 'skipped' }))]) {
+    assert.throws(() => validateCiRun(run, badJobs, identity));
+  }
+  for (const badPull of [{ ...pull, state: 'closed' },
+    { ...pull, head: { ...pull.head, sha: BASE } },
+    { ...pull, head: { ...pull.head, ref: 'renamed' } },
+    { ...pull, head: { ...pull.head, repo: { id: 99, full_name: 'fork/repo' } } },
+    { ...pull, base: { ...pull.base, ref: 'untrusted-target' } },
+    { ...pull, base: { ...pull.base, sha: HEAD } }]) {
+    assert.throws(() => validateCiPull(badPull, run, identity), /CI pull request/);
+  }
+  for (const badArtifacts of [artifacts.slice(1), [...artifacts, artifacts[0]],
+    artifacts.map(item => ({ ...item, expired: true })),
+    artifacts.map(item => ({ ...item, workflow_run: { id: 91, head_sha: BASE } })),
+    artifacts.map(item => ({ ...item, name: item.name.replace('-2', '-1') }))]) {
+    assert.throws(() => validateCiArtifacts(badArtifacts, run));
+  }
+});
+
+test('native CI verification rechecks live PR and trusted workflow before returning protected artifact identities', () => {
+  const { run, jobs, pull, artifacts } = ciFixture();
+  const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
+    CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
+    PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
+  const responses = {
+    '': { default_branch: 'main' },
+    'actions/runs/91': run,
+    'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
+    'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
+    'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
+  };
+  responses[`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`] =
+    { merge_base_commit: { sha: BASE } };
+  responses[`git/trees/${HEAD}?recursive=1`] = ciDefinitionTree();
+  responses[`git/trees/${BASE}?recursive=1`] = ciDefinitionTree();
+  const request = endpoint => {
+    assert(Object.hasOwn(responses, endpoint), endpoint);
+    return responses[endpoint];
+  };
+  assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
+    { runId: '91', runAttempt: 2, headSha: HEAD });
+  const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
+  const preInferenceStep = markdown.split('  - name: Revalidate successful exact-head CI immediately before inference')[1]
+    .split('    run: |')[0];
+  const inputs = { ci_run_id: '91', ci_run_attempt: '2', expected_head_sha: HEAD,
+    expected_base_sha: BASE, head_ref: 'topic', pr_number: '17', expected_workflow_sha: '3'.repeat(40) };
+  const stepEnvironment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42' };
+  for (const match of preInferenceStep.matchAll(/([A-Z_]+): \$\{\{ github\.event\.inputs\.([a-z_]+) \}\}/g)) {
+    stepEnvironment[match[1]] = inputs[match[2]];
+  }
+  assert.deepEqual(verifyCiSecurity({ environment: stepEnvironment, request }).identity,
+    { runId: '91', runAttempt: 2, headSha: HEAD }, 'actual pre-inference step supplies every admission binding');
+  pull.base.ref = 'untrusted-target';
+  assert.throws(() => verifyCiSecurity({ environment, request }), /CI pull request/);
+  pull.base.ref = 'main';
+  const workflowFile = responses[`git/trees/${HEAD}?recursive=1`].tree[0];
+  workflowFile.sha = BASE;
+  assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
+  workflowFile.sha = '4'.repeat(40);
+  responses['actions/workflows/pr-build-security.yml'] = { id: 8, path: run.path, state: 'active' };
+  assert.throws(() => verifyCiSecurity({ environment, request }), /source workflow/);
+  responses['actions/workflows/pr-build-security.yml'].id = 7;
+  pull.head.sha = BASE;
+  assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
+});
+
+test('actual controller admission uses trusted commit association when workflow_run pull_requests is empty', async () => {
+  const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
+  const script = controller.split('      - name: Admit only successful matching current PR build CI')[1]
+    .split('          script: |')[1].split('\n      - name:')[0];
+  const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
+    'github', 'context', 'core', 'process', 'require', script);
+  for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
+    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr', 'untrusted-target']) {
+    const { run, pull, jobs } = ciFixture();
+    const source = structuredClone(run);
+    source.pull_requests = [];
+    if (variant === 'failed') run.conclusion = 'failure';
+    if (variant === 'replayed') run.run_attempt = 3;
+    if (variant === 'wrong-workflow') run.workflow_id = 8;
+    if (variant === 'fork') run.head_repository.id = 99;
+    if (variant === 'stale-pr') pull.head.sha = BASE;
+    if (variant === 'untrusted-target') pull.base.ref = 'untrusted-target';
+    const associated = [{ ...pull, head: { ...pull.head, sha: HEAD } }];
+    if (variant === 'ambiguous') associated.push({ ...associated[0], number: 18 });
+    const github = { rest: { actions: {
+      getWorkflowRun: async () => ({ data: run }),
+      listJobsForWorkflowRunAttempt: 'jobs',
+      getWorkflow: async () => ({ data: { id: 7, path: run.path, state: 'active' } }),
+    }, repos: { listPullRequestsAssociatedWithCommit: 'associated',
+      compareCommits: async ({ base, head }) => {
+        assert.equal(base, '3'.repeat(40));
+        assert.equal(head, HEAD);
+        return { data: { merge_base_commit: { sha: BASE } } };
+      } },
+    git: { getTree: async ({ tree_sha }) => {
+      const tree = variant === 'older-pr' ? { truncated: false, tree: [] } : ciDefinitionTree();
+      for (const file of tree.tree) {
+        const path = file.path;
+        const substituted = tree_sha === HEAD && (
+          (variant === 'no-op-builds' && path === '.github/workflows/pr-build-security.yml') ||
+          (variant === 'changed-test-runner' && path === 'build/scripts/Run-Tests.ps1') ||
+          (variant === 'changed-analyzer-policy' && path === 'build/config/codeql-accepted-warnings.json'));
+        if (substituted) file.sha = BASE;
+      }
+      return { data: tree };
+    } },
+    pulls: { get: async () => ({ data: pull }) } },
+    paginate: async endpoint => endpoint === 'jobs' ? jobs : associated };
+    const output = {};
+    const invoke = () => execute(github, { repo: { owner: 'owner', repo: 'repo' },
+      runAttempt: variant === 'controller-retry' ? 2 : 1,
+      payload: { workflow_run: source, repository: { id: 42, default_branch: 'main' } } },
+    { setOutput: (key, value) => { output[key] = value; } },
+    { env: { GITHUB_WORKSPACE: fileURLToPath(new URL('../../../../', import.meta.url)),
+      TRUSTED_CI_SHA: variant === 'missing-trusted-revision' ? '' : '3'.repeat(40),
+      GITHUB_RUN_ATTEMPT: variant === 'controller-retry' ? '2' : '1' } },
+    name => name === 'node:url' ? { pathToFileURL: value => new URL(`file:///${value.replaceAll('\\', '/')}`) } : null);
+    if (['current', 'controller-retry', 'older-pr'].includes(variant)) {
+      await invoke();
+      assert.equal(output.pr_number, '17');
+      assert.equal(output.ci_run_attempt, '2');
+      assert.equal(output.base_sha, BASE);
+    } else {
+      await assert.rejects(invoke);
+      assert.deepEqual(output, {});
+    }
+  }
+});
+
+test('publication and detector accept old comparison base with distinct explicitly bound worker revision', () => {
+  const workflow = '3'.repeat(40);
+  const current = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0tools/wta/src/master/mod.rs\0', BASE, 'repair');
+  const candidate = { ...createReportTemplate(current), summary: 'Separate trusted worker revision.' };
+  const environment = { DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success',
+    GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
+    TRUSTED_SHA: workflow, EXPECTED_WORKFLOW_SHA: workflow, EXPECTED_BASE_SHA: BASE,
+    EXPECTED_HEAD_SHA: HEAD, COMPARISON_BASE_SHA: BASE, PR_NUMBER: '17' };
+  const bytes = JSON.stringify(candidate);
+  const proof = createDetectorPublicationProof(environment, current, bytes, '',
+    detectorEvidence(environment, current, bytes));
+  const run = { id: 123, repository: { full_name: 'owner/repo' }, head_sha: workflow,
+    run_attempt: 1, path: '.github/workflows/ghaw-pr-security.lock.yml', event: 'workflow_dispatch',
+    display_title: 'Security Repair fixed', status: 'completed', conclusion: 'success' };
+  const identity = { repository: 'owner/repo', runId: '123', expectedWorkflowSha: workflow,
+    sameRepo: true, dispatchId: 'fixed' };
+  validatePublicationRun(run, publicationJobs(true), identity);
+  validateDetectorPublicationProof(proof, run, current, bytes, '', 'owner/repo');
+  assert.throws(() => validatePublicationRun(run, publicationJobs(true), { ...identity, expectedWorkflowSha: BASE }));
+  assert.throws(() => createDetectorPublicationProof({ ...environment, EXPECTED_WORKFLOW_SHA: BASE },
+    current, bytes, '', detectorEvidence(environment, current, bytes)));
+  assert.throws(() => createDetectorPublicationProof({ ...environment, EXPECTED_WORKFLOW_SHA: undefined },
+    current, bytes, '', detectorEvidence(environment, current, bytes)));
+});
+
+test('actual worker prepare rejects revision races and replays before CI API access or inference', () => {
+  const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
+  const prefix = markdown.split('      - name: Validate immutable dispatch')[1]
+    .split('        run: |')[1].split('          [ "$TARGET_REPOSITORY"')[0];
+  const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+  const environment = { ...process.env, PR_NUMBER: '17', EXPECTED_HEAD_SHA: HEAD,
+    EXPECTED_BASE_SHA: BASE, COMPARISON_BASE_SHA: BASE, GITHUB_RUN_ATTEMPT: '1',
+    EXPECTED_WORKFLOW_SHA: '3'.repeat(40), TRUSTED_WORKFLOW_SHA: '3'.repeat(40) };
+  const run = extra => spawnSync(bash, ['--noprofile', '--norc', '-c', prefix],
+    { env: { ...environment, ...extra }, encoding: 'utf8', timeout: 10_000 });
+  assert.equal(run({}).status, 0, 'old PR base does not replace the independently expected worker revision');
+  for (const extra of [{ TRUSTED_WORKFLOW_SHA: BASE }, { EXPECTED_WORKFLOW_SHA: BASE },
+    { EXPECTED_WORKFLOW_SHA: '' }, { GITHUB_RUN_ATTEMPT: '2' }]) {
+    assert.notEqual(run(extra).status, 0);
+  }
+});
+
 test('canonical handoff rematerializes no-patch reports and fails closed before outputs', () => {
   const root = mkdtempSync(join(tmpdir(), '.canonical-publication-'));
   try {
-    for (const sameRepo of [true]) {
-      const directory = join(root, String(sameRepo));
+    for (const workflowSha of [BASE, '3'.repeat(40)]) {
+      const sameRepo = true;
+      const directory = join(root, workflowSha);
       const artifacts = join(directory, 'artifacts');
       mkdirSync(artifacts, { recursive: true });
       const current = buildScope(BASE, HEAD, 17, sameRepo ? 'same-repo' : 'fork',
@@ -775,20 +1153,21 @@ test('canonical handoff rematerializes no-patch reports and fails closed before 
       writeFileSync(join(artifacts, 'security-status.txt'), 'forged status');
       writeFileSync(join(artifacts, 'security-repair.patch'), '');
       const detectorPath = join(directory, 'detector.json');
-      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, '', workflowSha)));
       const environment = {
         GITHUB_REPOSITORY: 'owner/repo', PR_NUMBER: '17', RUN_ID: '123',
         EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE, SAME_REPO: String(sameRepo),
+        EXPECTED_WORKFLOW_SHA: workflowSha,
         HEAD_REF: 'branch-with-$-safe-data', DISPATCH_ID: 'fixed-dispatch', GITHUB_OUTPUT: join(directory, 'outputs'),
       };
       const run = {
-        id: 123, repository: { full_name: 'owner/repo' }, head_sha: BASE, run_attempt: 1,
+        id: 123, repository: { full_name: 'owner/repo' }, head_sha: workflowSha, run_attempt: 1,
         path: '.github/workflows/ghaw-pr-security.lock.yml',
         event: 'workflow_dispatch', display_title: 'Security Repair fixed-dispatch',
         status: 'completed', conclusion: 'success',
       };
       const jobs = publicationJobs(sameRepo);
-      let proofArtifacts = [detectorArtifact()];
+      let proofArtifacts = [detectorArtifact(workflowSha)];
       const pull = { base: { sha: BASE }, head: { sha: HEAD, ref: environment.HEAD_REF, repo: { full_name: sameRepo ? 'owner/repo' : 'fork/repo' } } };
       const request = endpoint => {
         if (endpoint === 'pulls/17') return pull;
@@ -839,17 +1218,17 @@ test('canonical handoff rematerializes no-patch reports and fails closed before 
         assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
         assert.throws(() => readFileSync(join(output, 'security-summary.md')));
       }
-      proofArtifacts = [detectorArtifact()];
+      proofArtifacts = [detectorArtifact(workflowSha)];
       for (const extra of [
         { detectionSuccess: false }, { detectionConclusion: 'warning' }, { runAttempt: 2 },
         { reportSha256: '0'.repeat(64) }, { sourceJob: 'agent' },
       ]) {
-        writeFileSync(detectorPath, JSON.stringify({ ...detectorProof(current, candidate), ...extra }));
+        writeFileSync(detectorPath, JSON.stringify({ ...detectorProof(current, candidate, '', workflowSha), ...extra }));
         assert.throws(() => preparePublication({ environment, request, paths }), /attestation/);
         assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
         assert.throws(() => readFileSync(join(output, 'security-summary.md')));
       }
-      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, '', workflowSha)));
       for (const bytes of ['{malformed', 'null']) {
         writeFileSync(detectorPath, bytes);
         assert.throws(() => preparePublication({ environment, request, paths }));
@@ -859,7 +1238,7 @@ test('canonical handoff rematerializes no-patch reports and fails closed before 
       unlinkSync(detectorPath);
       assert.throws(() => preparePublication({ environment, request, paths }), /ENOENT/);
       assert.throws(() => readFileSync(environment.GITHUB_OUTPUT));
-      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate)));
+      writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, '', workflowSha)));
       output = join(directory, 'accepted');
       mkdirSync(output);
       preparePublication({ environment, request, paths });
@@ -870,12 +1249,12 @@ test('canonical handoff rematerializes no-patch reports and fails closed before 
       assert.equal(readFileSync(join(output, 'security-status.txt'), 'utf8'), sameRepo ? 'pass\n' : 'blocking\n');
       assert.deepEqual(JSON.parse(readFileSync(join(output, 'security-scope.json'), 'utf8')), current);
       assert.deepEqual(JSON.parse(readFileSync(join(output, 'security-findings.json'), 'utf8')), validateReport(candidate, current));
-      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\ndetector_attested=true\\n$`));
+      assert.match(readFileSync(environment.GITHUB_OUTPUT, 'utf8'), new RegExp(`^publication=${sameRepo ? 'none' : 'comment'}\\npatch_sha256=[0-9a-f]{64}\\ndetector_attested=true\\nreview_blocking=${!sameRepo}\\n$`));
       if (sameRepo) {
         output = join(directory, 'unreported-patch');
         mkdirSync(output);
         writeFileSync(join(artifacts, 'security-repair.patch'), PATCH_TEXT);
-        writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, PATCH_TEXT)));
+        writeFileSync(detectorPath, JSON.stringify(detectorProof(current, candidate, PATCH_TEXT, workflowSha)));
         assert.throws(() => preparePublication({ environment, request, paths }), /unreported/);
         assert.throws(() => readFileSync(join(output, 'security-summary.md')));
       }
@@ -1046,6 +1425,7 @@ test('canonical repair publishes an unbuilt untested source-approved proposal us
     const environment = {
       GITHUB_REPOSITORY: 'owner/repo', PR_NUMBER: '17', RUN_ID: '123', EXPECTED_HEAD_SHA: head,
       EXPECTED_BASE_SHA: base, SAME_REPO: 'true', HEAD_REF: 'reviewed', DISPATCH_ID: 'fixed',
+      EXPECTED_WORKFLOW_SHA: base,
       GITHUB_OUTPUT: join(root, 'outputs'),
     };
     const run = { id: 123, repository: { full_name: 'owner/repo' }, head_sha: base, run_attempt: 1,
@@ -1661,7 +2041,7 @@ test('classifies project trust boundaries', () => {
 
 test('Cargo configuration triggers review but cannot enter automatic repair', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  assert(controller.includes("- '.cargo/**'"));
+  assert(controller.includes('workflow_run:'));
   const cargoOnly = buildScope(BASE, HEAD, 17, 'same-repo', 'M\0.cargo/config.toml\0', BASE, 'repair');
   assert.equal(cargoOnly.applicable, true);
   assert(cargoOnly.domains.includes('build-tooling'));
@@ -1674,7 +2054,7 @@ test('Cargo configuration triggers review but cannot enter automatic repair', ()
 
 test('installer scripts and bootstrap packaging have synchronized review coverage without automatic repair', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  assert(controller.includes("- 'installer/**'"));
+  assert(controller.includes('workflow_run:'));
   for (const path of [
     'installer/Install-Msix.ps1', 'installer/install.cmd',
     'installer/install-local-terminal.ps1', 'installer/uninstall-local-terminal.ps1',
@@ -1695,18 +2075,12 @@ test('installer scripts and bootstrap packaging have synchronized review coverag
   }
 });
 
-test('loaded instruction roots have coherent triggers and classification without Rust repair eligibility', () => {
+test('CI-completed controller preserves instruction classification without Rust repair eligibility', () => {
   const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
   const controller = workflow('ghaw-pr-security-controller.yml');
-  const pathsBlock = controller.match(/    paths:\r?\n((?:      - '[^']+'\r?\n)+)/)?.[1];
-  assert(pathsBlock, 'controller must declare review path triggers');
-  const triggers = [...pathsBlock.matchAll(/      - '([^']+)'/g)].map(match => match[1]);
-  assert.deepEqual(triggers, [
-    'AGENTS.md', '.agents/**', '.cargo/**', '.github/**', 'build/**',
-    'installer/**', 'src/**', 'tools/**', 'test/**', 'doc/security-model.md',
-  ]);
-  const triggered = path => triggers.some(pattern =>
-    pattern.endsWith('/**') ? path.startsWith(pattern.slice(0, -2)) : path === pattern);
+  assert(controller.includes('workflow_run:'));
+  assert(controller.includes("workflows: ['PR build and security analysis']"));
+  assert(!controller.includes('  pull_request:'));
   for (const name of ['ghaw-pr-security.lock.yml']) {
     const worker = workflow(name);
     assert(worker.includes('GH_AW_AGENT_FILES: "AGENTS.md"'));
@@ -1716,7 +2090,6 @@ test('loaded instruction roots have coherent triggers and classification without
     'AGENTS.md', '.agents/skills/reviewer/SKILL.md',
     '.github/instructions/security.instructions.md',
   ]) {
-    assert.equal(triggered(path), true);
     assert.deepEqual(classifyPath(path), ['workflow-credentials']);
     const instructionOnly = buildScope(BASE, HEAD, 17, 'same-repo', `M\0${path}\0`, BASE, 'repair');
     assert.equal(instructionOnly.applicable, true);
@@ -1727,7 +2100,6 @@ test('loaded instruction roots have coherent triggers and classification without
     assert.throws(() => validateRepairScope(mixed), /non-WTA-source paths/);
   }
   for (const path of ['AGENTS.md.bak', 'docs/AGENTS.md', '.agents-backup/skills/reviewer/SKILL.md']) {
-    assert.equal(triggered(path), false);
     assert.deepEqual(classifyPath(path), []);
   }
 });

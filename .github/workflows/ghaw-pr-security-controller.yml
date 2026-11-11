@@ -1,25 +1,15 @@
 name: Intelligent Terminal Security Review
-run-name: Security Review for PR #${{ github.event.pull_request.number }}
+run-name: Security Review after CI ${{ github.event.workflow_run.id }}
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    paths:
-      - 'AGENTS.md'
-      - '.agents/**'
-      - '.cargo/**'
-      - '.github/**'
-      - 'build/**'
-      - 'installer/**'
-      - 'src/**'
-      - 'tools/**'
-      - 'test/**'
-      - 'doc/security-model.md'
+  workflow_run:
+    workflows: ['PR build and security analysis']
+    types: [completed]
 
 permissions: {}
 
 concurrency:
-  group: ghaw-pr-security-${{ github.event.pull_request.number }}
+  group: ghaw-pr-security-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: true
 
 env:
@@ -27,7 +17,7 @@ env:
 
 jobs:
   security-review:
-    if: github.event.pull_request.head.repo.id == github.repository_id
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
     name: Intelligent Terminal security review
     runs-on: ubuntu-latest
     timeout-minutes: 210
@@ -35,7 +25,21 @@ jobs:
       actions: write
       contents: read
       pull-requests: read
+      checks: write
     outputs:
+      pr_number: ${{ steps.admission.outputs.pr_number }}
+      head_sha: ${{ steps.admission.outputs.head_sha }}
+      base_sha: ${{ steps.admission.outputs.base_sha }}
+      head_ref: ${{ steps.admission.outputs.head_ref }}
+      head_repo: ${{ steps.admission.outputs.head_repo }}
+      base_ref: ${{ steps.admission.outputs.base_ref }}
+      ci_run_id: ${{ steps.admission.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.admission.outputs.ci_run_attempt }}
+      scope_applicable: ${{ steps.scope.outputs.applicable }}
+      review_check_id: ${{ steps.review-check.outputs.review_check_id }}
+      canonical_result: ${{ steps.canonical.outcome }}
+      review_blocking: ${{ steps.canonical.outputs.review_blocking }}
+      expected_workflow_sha: ${{ steps.worker.outputs.expected_workflow_sha }}
       publication: ${{ steps.canonical.outputs.publication }}
       patch_sha256: ${{ steps.canonical.outputs.patch_sha256 }}
       detector_attested: ${{ steps.canonical.outputs.detector_attested }}
@@ -48,15 +52,82 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Admit only successful matching current PR build CI
+        id: admission
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          TRUSTED_CI_SHA: ${{ github.workflow_sha }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { validateCiDefinition, validateCiRun, validateCiPull } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/.github/skills/ghaw-pr-security/scripts/security-review.mjs`));
+            const trustedSha = process.env.TRUSTED_CI_SHA;
+            if (!/^[0-9a-f]{40}$/.test(trustedSha || '')) throw Error('Missing trusted CI revision.');
+            const source = context.payload.workflow_run;
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id })).data;
+            const identity = { repository: `${context.repo.owner}/${context.repo.repo}`,
+              repositoryId: context.payload.repository.id, runId: String(source.id),
+              runAttempt: source.run_attempt, headSha: source.head_sha,
+              defaultBranch: context.payload.repository.default_branch };
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
+              { ...context.repo, run_id: run.id, attempt_number: identity.runAttempt, per_page: 100 });
+            validateCiRun(run, jobs, identity);
+            const workflow = (await github.rest.actions.getWorkflow({
+              ...context.repo, workflow_id: 'pr-build-security.yml' })).data;
+            if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
+                workflow.state !== 'active') throw Error('CI workflow is not the active trusted workflow.');
+            const comparison = (await github.rest.repos.compareCommits({
+              ...context.repo, base: trustedSha, head: run.head_sha, per_page: 1 })).data;
+            if (!/^[0-9a-f]{40}$/.test(comparison.merge_base_commit?.sha || '')) throw Error('Invalid CI comparison base.');
+            const definitions = await Promise.all([run.head_sha, comparison.merge_base_commit.sha].map(async tree_sha =>
+              (await github.rest.git.getTree({ ...context.repo, tree_sha, recursive: '1' })).data));
+            validateCiDefinition(...definitions);
+            const associated = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { ...context.repo, commit_sha: run.head_sha, per_page: 100 });
+            const candidates = associated.filter(pr => pr.state === 'open' &&
+              pr.head?.sha === run.head_sha && pr.head?.ref === run.head_branch &&
+              pr.head?.repo?.id === identity.repositoryId && pr.base?.repo?.id === identity.repositoryId);
+            if (candidates.length !== 1) throw Error('Expected exactly one current same-repository CI pull request.');
+            const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: candidates[0].number })).data;
+            validateCiPull(pr, run, { ...identity, prNumber: pr.number });
+            for (const [key, value] of Object.entries({
+              pr_number: pr.number, head_sha: pr.head.sha, base_sha: pr.base.sha,
+              head_ref: pr.head.ref, head_repo: pr.head.repo.full_name, base_ref: pr.base.ref,
+              ci_run_id: run.id, ci_run_attempt: run.run_attempt,
+            })) core.setOutput(key, String(value));
+
+      - name: Mark admitted PR review pending
+        id: review-check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          REVIEWED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+        with:
+          retries: 3
+          script: |
+            const sha = process.env.REVIEWED_HEAD_SHA;
+            if (!/^[0-9a-f]{40}$/.test(sha || '') ||
+                !/^[1-9][0-9]*$/.test(process.env.PR_NUMBER || '')) throw Error('Invalid admitted review identity.');
+            const check = (await github.rest.checks.create({
+              ...context.repo, head_sha: sha, status: 'in_progress',
+              name: 'Intelligent Terminal security review',
+              external_id: `security-review-${context.runId}-${process.env.GITHUB_RUN_ATTEMPT}`,
+              output: { title: 'Review in progress', summary: 'Reviewing the validated PR commit.' },
+              details_url: `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            })).data;
+            if (!/^[1-9][0-9]*$/.test(String(check.id))) throw Error('Invalid review check identity.');
+            core.setOutput('review_check_id', String(check.id));
+
       - name: Resolve immutable review scope
         id: scope
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          BASE_SHA: ${{ steps.admission.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+          SAME_REPO: 'true'
         run: |
           set -euo pipefail
           [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
@@ -106,16 +177,33 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           WORKER: ${{ steps.scope.outputs.worker }}
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ steps.admission.outputs.base_sha }}
           COMPARISON_BASE_SHA: ${{ steps.scope.outputs.comparison_base_sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ steps.admission.outputs.head_ref }}
+          HEAD_REPO: ${{ steps.admission.outputs.head_repo }}
+          BASE_REF: ${{ steps.admission.outputs.base_ref }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+          CI_RUN_ID: ${{ steps.admission.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.admission.outputs.ci_run_attempt }}
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR_NUMBER) })).data;
+            if (pr.state !== 'open' || pr.head.sha !== process.env.EXPECTED_HEAD_SHA ||
+                pr.base.sha !== process.env.EXPECTED_BASE_SHA || pr.base.ref !== process.env.BASE_REF ||
+                pr.head.ref !== process.env.HEAD_REF || pr.head.repo.full_name !== process.env.HEAD_REPO ||
+                pr.head.repo.id !== context.payload.repository.id) throw Error('Stale PR before worker dispatch.');
+            const workerRef = context.payload.repository.default_branch;
+            if (typeof workerRef !== 'string' || !workerRef) throw Error('Invalid trusted worker reference.');
+            const baseRef = await github.rest.git.getRef({ ...context.repo, ref: `heads/${workerRef}` });
+            if (baseRef.data.ref !== `refs/heads/${workerRef}` ||
+                baseRef.data.object.type !== "commit" || !/^[0-9a-f]{40}$/.test(baseRef.data.object.sha)) {
+              throw Error('Invalid trusted worker branch revision.');
+            }
+            const expectedWorkflowSha = baseRef.data.object.sha;
+            core.setOutput("expected_workflow_sha", expectedWorkflowSha);
             const dispatchId =
-              `ghaw-pr-security-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${context.runAttempt}`;
+              `ghaw-pr-security-${pr.number}-${process.env.EXPECTED_HEAD_SHA}-${context.runId}-${process.env.GITHUB_RUN_ATTEMPT}`;
             core.setOutput("dispatch_id", dispatchId);
             const inputs = {
               dispatch_id: dispatchId,
@@ -123,6 +211,9 @@ jobs:
               repo: `${context.repo.owner}/${context.repo.repo}`,
               expected_head_sha: process.env.EXPECTED_HEAD_SHA,
               expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              expected_workflow_sha: expectedWorkflowSha,
+              ci_run_id: process.env.CI_RUN_ID,
+              ci_run_attempt: process.env.CI_RUN_ATTEMPT,
               comparison_base_sha: process.env.COMPARISON_BASE_SHA,
               head_ref: process.env.HEAD_REF,
               head_repo: process.env.HEAD_REPO,
@@ -137,18 +228,18 @@ jobs:
                 root_workflow_id: "ghaw-pr-security-controller"
               })
             };
-            const baseRef = await github.rest.git.getRef({
-              ...context.repo, ref: `heads/${pr.base.ref}`
+            const dispatchRef = await github.rest.git.getRef({
+              ...context.repo, ref: `heads/${workerRef}`
             });
-            if (baseRef.data.ref !== `refs/heads/${pr.base.ref}` ||
-                baseRef.data.object.type !== "commit" ||
-                baseRef.data.object.sha !== process.env.EXPECTED_BASE_SHA) {
-              throw new Error("Stale security base: the base branch changed before dispatch; refusing to replace the immutable expected base.");
+            if (dispatchRef.data.ref !== `refs/heads/${workerRef}` ||
+                dispatchRef.data.object.type !== "commit" ||
+                dispatchRef.data.object.sha !== expectedWorkflowSha) {
+              throw new Error("Trusted workflow branch changed before dispatch.");
             }
             const startedAt = Date.now() - 5000;
             const response = await github.request(
               "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
-              { ...context.repo, workflow_id: process.env.WORKER, ref: pr.base.ref, inputs }
+              { ...context.repo, workflow_id: process.env.WORKER, ref: workerRef, inputs }
             );
             let runId = response.data?.workflow_run_id;
             let run;
@@ -158,7 +249,7 @@ jobs:
                 ...context.repo,
                 workflow_id: process.env.WORKER,
                 event: "workflow_dispatch",
-                branch: pr.base.ref,
+                branch: workerRef,
                 created: `>=${new Date(startedAt).toISOString()}`,
                 per_page: 100
               });
@@ -191,11 +282,14 @@ jobs:
           RUN_ID: ${{ steps.worker.outputs.run_id }}
           RUN_URL: ${{ steps.worker.outputs.run_url }}
           WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+          HEAD_REF: ${{ steps.admission.outputs.head_ref }}
+          SAME_REPO: 'true'
+          EXPECTED_BASE_SHA: ${{ steps.admission.outputs.base_sha }}
+          EXPECTED_WORKFLOW_SHA: ${{ steps.worker.outputs.expected_workflow_sha }}
+          CI_RUN_ID: ${{ steps.admission.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.admission.outputs.ci_run_attempt }}
           DISPATCH_ID: ${{ steps.worker.outputs.dispatch_id }}
         run: |
           set -euo pipefail
@@ -236,7 +330,7 @@ jobs:
           name: security-publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/security-canonical
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
       - name: Enforce canonical report
         if: steps.canonical.outcome == 'success'
@@ -256,7 +350,7 @@ jobs:
 
   publish-repair:
     needs: security-review
-    if: needs.security-review.result == 'success' && needs.security-review.outputs.detector_attested == 'true' && needs.security-review.outputs.publication == 'push' && github.event.pull_request.head.repo.id == github.repository_id
+    if: needs.security-review.result == 'success' && needs.security-review.outputs.detector_attested == 'true' && needs.security-review.outputs.publication == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -281,10 +375,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD_SHA: ${{ needs.security-review.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.security-review.outputs.base_sha }}
+          HEAD_REF: ${{ needs.security-review.outputs.head_ref }}
+          PR_NUMBER: ${{ needs.security-review.outputs.pr_number }}
           PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
         run: |
           set -euo pipefail
@@ -333,7 +427,7 @@ jobs:
           name: security-repair-commits-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/security-repair-commits.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   publish-report:
     needs: [security-review, publish-repair]
@@ -364,13 +458,13 @@ jobs:
       - name: Publish idempotent SHA-labelled PR security report
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ needs.security-review.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.security-review.outputs.base_sha }}
           PUBLISHED_HEAD_SHA: ${{ needs.publish-repair.outputs.published_head }}
           PATCH_SHA256: ${{ needs.security-review.outputs.patch_sha256 }}
           PUBLICATION: ${{ needs.security-review.outputs.publication }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SAME_REPO: 'true'
+          PR_NUMBER: ${{ needs.security-review.outputs.pr_number }}
         with:
           script: |
             const fs = require('node:fs');
@@ -448,3 +542,50 @@ jobs:
             } else {
               await github.rest.issues.createComment({ ...context.repo, issue_number: pull_number, body });
             }
+
+  review-status:
+    name: Publish security review execution status
+    needs: [security-review, publish-repair, publish-report]
+    if: always() && needs.security-review.outputs.review_check_id != ''
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Publish admitted PR review outcome
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          REVIEWED_HEAD_SHA: ${{ needs.security-review.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.security-review.outputs.pr_number }}
+          REVIEW_CHECK_ID: ${{ needs.security-review.outputs.review_check_id }}
+          SCOPE_APPLICABLE: ${{ needs.security-review.outputs.scope_applicable }}
+          ANALYSIS_RESULT: ${{ needs.security-review.result }}
+          CANONICAL_RESULT: ${{ needs.security-review.outputs.canonical_result }}
+          REVIEW_BLOCKING: ${{ needs.security-review.outputs.review_blocking }}
+          REPAIR_RESULT: ${{ needs.publish-repair.result }}
+          REPORT_RESULT: ${{ needs.publish-report.result }}
+        with:
+          retries: 3
+          script: |
+            const sha = process.env.REVIEWED_HEAD_SHA;
+            if (!/^[0-9a-f]{40}$/.test(sha || '') ||
+                !/^[1-9][0-9]*$/.test(process.env.PR_NUMBER || '') ||
+                !/^[1-9][0-9]*$/.test(process.env.REVIEW_CHECK_ID || '')) throw Error('Invalid admitted review identity.');
+            const notRequired = process.env.ANALYSIS_RESULT === 'success' && process.env.SCOPE_APPLICABLE === 'false';
+            const completed = process.env.CANONICAL_RESULT === 'success' &&
+              ['true', 'false'].includes(process.env.REVIEW_BLOCKING) &&
+              process.env.REPORT_RESULT === 'success' && ['success', 'skipped'].includes(process.env.REPAIR_RESULT);
+            const blocking = completed && process.env.REVIEW_BLOCKING === 'true';
+            await github.rest.checks.update({
+              ...context.repo, check_run_id: Number(process.env.REVIEW_CHECK_ID), status: 'completed',
+              conclusion: notRequired || (completed && !blocking) ? 'success' :
+                process.env.ANALYSIS_RESULT === 'cancelled' ? 'cancelled' : 'failure',
+              output: {
+                title: notRequired ? 'Review not required' : blocking ? 'Changes required' :
+                  completed ? 'Review completed' : 'Review did not complete',
+                summary: notRequired ? 'No security-relevant surface; AI review not required.' :
+                  blocking ? 'Review completed with unresolved HIGH findings; changes are required.' :
+                  completed ? 'See the published report for findings and proposals.' :
+                  'Build success is not a completed security review; see workflow logs.',
+              },
+              details_url: `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
