@@ -917,22 +917,33 @@ function ciFixture() {
   return { identity, run, jobs, pull, artifacts };
 }
 
-function ciDefinitionFiles() {
-  return CI_DEFINITION_PATHS.map(path => ({ path, type: 'file', sha: '4'.repeat(40) }));
+function ciDefinitionTree() {
+  return { truncated: false, tree: CI_DEFINITION_PATHS.map(path =>
+    ({ path, mode: '100644', type: 'blob', sha: '4'.repeat(40) })) };
 }
 
 test('CI admission rejects substituted orchestration and analyzer policy despite successful job metadata', () => {
-  const trusted = ciDefinitionFiles();
+  const trusted = ciDefinitionTree();
   assert.doesNotThrow(() => validateCiDefinition(structuredClone(trusted), trusted));
   for (const path of CI_DEFINITION_PATHS) {
-    const changed = trusted.map(file => file.path === path ? { ...file, sha: HEAD } : file);
+    const changed = { ...trusted, tree: trusted.tree.map(file => file.path === path ? { ...file, sha: HEAD } : file) };
     assert.throws(() => validateCiDefinition(changed, trusted), /CI implementation differs/);
+    assert.throws(() => validateCiDefinition({ ...trusted, tree: trusted.tree.filter(file => file.path !== path) }, trusted));
   }
-  for (const malformed of [trusted.slice(1), [...trusted, trusted[0]],
-    trusted.map(file => ({ ...file, type: 'symlink' })),
-    trusted.map(file => ({ ...file, sha: 'main' }))]) {
+  for (const malformed of [
+    { ...trusted, tree: [...trusted.tree, trusted.tree[0]] },
+    { ...trusted, tree: trusted.tree.map(file => ({ ...file, mode: '120000' })) },
+    { ...trusted, tree: trusted.tree.map(file => ({ ...file, sha: 'main' })) }]) {
     assert.throws(() => validateCiDefinition(malformed, trusted), /regular-file identities/);
   }
+  assert.throws(() => validateCiDefinition({ ...trusted, truncated: true }, trusted), /complete immutable trees/);
+});
+
+test('unchanged older PRs inherit trusted CI even when their comparison base lacks its files', () => {
+  const older = { truncated: false, tree: [{ path: 'tools/wta/src/main.rs', type: 'blob', mode: '100644', sha: BASE }] };
+  assert.doesNotThrow(() => validateCiDefinition({ ...older,
+    tree: older.tree.map(file => ({ ...file, sha: HEAD })) }, older));
+  assert.throws(() => validateCiDefinition(ciDefinitionTree(), older), /CI implementation differs/);
 });
 
 test('CI admission requires successful exact-head same-repo workflow, attempt and both unit jobs', () => {
@@ -981,18 +992,17 @@ test('native CI verification rechecks live PR and trusted workflow before return
     'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
     'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
   };
-  for (const file of ciDefinitionFiles()) {
-    for (const sha of [HEAD, environment.EXPECTED_WORKFLOW_SHA]) {
-      responses[`contents/${file.path}?ref=${sha}`] = structuredClone(file);
-    }
-  }
+  responses[`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`] =
+    { merge_base_commit: { sha: BASE } };
+  responses[`git/trees/${HEAD}?recursive=1`] = ciDefinitionTree();
+  responses[`git/trees/${BASE}?recursive=1`] = ciDefinitionTree();
   const request = endpoint => {
     assert(Object.hasOwn(responses, endpoint), endpoint);
     return responses[endpoint];
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
     { runId: '91', runAttempt: 2, headSha: HEAD });
-  const workflowFile = responses[`contents/.github/workflows/pr-build-security.yml?ref=${HEAD}`];
+  const workflowFile = responses[`git/trees/${HEAD}?recursive=1`].tree[0];
   workflowFile.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
   workflowFile.sha = '4'.repeat(40);
@@ -1010,7 +1020,7 @@ test('actual controller admission uses trusted commit association when workflow_
   const execute = new (Object.getPrototypeOf(async function () {}).constructor)(
     'github', 'context', 'core', 'process', 'require', script);
   for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
-    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision']) {
+    'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr']) {
     const { run, pull, jobs } = ciFixture();
     const source = structuredClone(run);
     source.pull_requests = [];
@@ -1026,13 +1036,23 @@ test('actual controller admission uses trusted commit association when workflow_
       listJobsForWorkflowRunAttempt: 'jobs',
       getWorkflow: async () => ({ data: { id: 7, path: run.path, state: 'active' } }),
     }, repos: { listPullRequestsAssociatedWithCommit: 'associated',
-      getContent: async ({ path, ref }) => {
-        const substituted = ref === HEAD && (
+      compareCommits: async ({ base, head }) => {
+        assert.equal(base, '3'.repeat(40));
+        assert.equal(head, HEAD);
+        return { data: { merge_base_commit: { sha: BASE } } };
+      } },
+    git: { getTree: async ({ tree_sha }) => {
+      const tree = variant === 'older-pr' ? { truncated: false, tree: [] } : ciDefinitionTree();
+      for (const file of tree.tree) {
+        const path = file.path;
+        const substituted = tree_sha === HEAD && (
           (variant === 'no-op-builds' && path === '.github/workflows/pr-build-security.yml') ||
           (variant === 'changed-test-runner' && path === 'build/scripts/Run-Tests.ps1') ||
           (variant === 'changed-analyzer-policy' && path === 'build/config/codeql-accepted-warnings.json'));
-        return { data: { path, type: 'file', sha: substituted ? BASE : '4'.repeat(40) } };
-      } },
+        if (substituted) file.sha = BASE;
+      }
+      return { data: tree };
+    } },
     pulls: { get: async () => ({ data: pull }) } },
     paginate: async endpoint => endpoint === 'jobs' ? jobs : associated };
     const output = {};
@@ -1044,7 +1064,7 @@ test('actual controller admission uses trusted commit association when workflow_
       TRUSTED_CI_SHA: variant === 'missing-trusted-revision' ? '' : '3'.repeat(40),
       GITHUB_RUN_ATTEMPT: variant === 'controller-retry' ? '2' : '1' } },
     name => name === 'node:url' ? { pathToFileURL: value => new URL(`file:///${value.replaceAll('\\', '/')}`) } : null);
-    if (['current', 'controller-retry'].includes(variant)) {
+    if (['current', 'controller-retry', 'older-pr'].includes(variant)) {
       await invoke();
       assert.equal(output.pr_number, '17');
       assert.equal(output.ci_run_attempt, '2');

@@ -931,20 +931,26 @@ export const CI_DEFINITION_PATHS = [
   '.github/workflows/pr-build-security.yml',
   'build/scripts/Run-Tests.ps1',
   'tools/razzle.cmd',
+  'tools/.razzlerc.cmd',
   'build/scripts/ci-security-analysis.mjs',
   'build/config/codeql-accepted-warnings.json',
 ];
 
-export function validateCiDefinition(sourceFiles, trustedFiles) {
-  for (const files of [sourceFiles, trustedFiles]) {
-    if (!Array.isArray(files) || files.length !== CI_DEFINITION_PATHS.length ||
-        CI_DEFINITION_PATHS.some(path => files.filter(file => file?.path === path &&
-          file.type === 'file' && SHA.test(file.sha ?? '')).length !== 1)) {
-      fail('CI implementation requires immutable regular-file identities');
-    }
-  }
+export function validateCiDefinition(sourceTree, comparisonBaseTree) {
+  const definitions = [sourceTree, comparisonBaseTree].map(tree => {
+    if (tree?.truncated !== false || !Array.isArray(tree.tree)) fail('CI implementation requires complete immutable trees');
+    return CI_DEFINITION_PATHS.map(path => {
+      const entries = tree.tree.filter(file => file?.path === path);
+      if (entries.length > 1 || entries.some(file => file.type !== 'blob' ||
+          !['100644', '100755'].includes(file.mode) || !SHA.test(file.sha ?? ''))) {
+        fail('CI implementation requires immutable regular-file identities');
+      }
+      return entries.length ? [entries[0].mode, entries[0].type, entries[0].sha] : null;
+    });
+  });
   for (const path of CI_DEFINITION_PATHS) {
-    if (sourceFiles.find(file => file.path === path).sha !== trustedFiles.find(file => file.path === path).sha) {
+    const index = CI_DEFINITION_PATHS.indexOf(path);
+    if (stableJson(definitions[0][index]) !== stableJson(definitions[1][index])) {
       fail('CI implementation differs from the trusted workflow revision; manual review is required');
     }
   }
@@ -1028,9 +1034,10 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   const workflow = api('actions/workflows/pr-build-security.yml');
   if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
       workflow.state !== 'active') fail('CI source workflow is not trusted');
-  validateCiDefinition(
-    CI_DEFINITION_PATHS.map(path => api(`contents/${path}?ref=${identity.headSha}`)),
-    CI_DEFINITION_PATHS.map(path => api(`contents/${path}?ref=${environment.EXPECTED_WORKFLOW_SHA}`)));
+  const comparison = api(`compare/${environment.EXPECTED_WORKFLOW_SHA}...${identity.headSha}?per_page=1`);
+  if (!SHA.test(comparison.merge_base_commit?.sha ?? '')) fail('CI comparison base is invalid');
+  validateCiDefinition(api(`git/trees/${identity.headSha}?recursive=1`),
+    api(`git/trees/${comparison.merge_base_commit.sha}?recursive=1`));
   validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
   const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
   return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
