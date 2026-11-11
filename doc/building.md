@@ -77,6 +77,9 @@ This reusable profile can analyze local work, branches, or pull requests.
 The profile uses Visual Studio's standard ClangTidy imports and explicit target,
 not automatic fixes or a replacement compiler. Install the Visual Studio C++
 Clang tools before using it.
+The opt-in profile defaults `ClangTidyExtraArgs` to `-Wno-error` unless explicitly
+overridden, keeping diagnostics advisory rather than inheriting MSVC's `/WX`.
+Real compiler/parser errors still fail. Ordinary builds are unchanged.
 
 The additional checks are `performance-inefficient-vector-operation`,
 `performance-for-range-copy`, `performance-unnecessary-value-param`, and

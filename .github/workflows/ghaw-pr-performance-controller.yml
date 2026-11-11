@@ -19,7 +19,7 @@ jobs:
   performance-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id
     runs-on: ubuntu-latest
-    timeout-minutes: 175
+    timeout-minutes: 220
     outputs:
       worker_run_id: ${{ steps.worker.outputs.run_id }}
       comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
@@ -143,7 +143,7 @@ jobs:
             core.setOutput("run_id", String(run.id));
             core.setOutput("run_url", run.html_url ||
               `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}`);
-            const deadline = Date.now() + 150 * 60 * 1000;
+            const deadline = Date.now() + 195 * 60 * 1000;
             const phaseTimeoutMinutes = { activation: 5, conclusion: 3 };
             let completedReads = 0;
             const cancelWorker = async () => {
@@ -217,7 +217,7 @@ jobs:
               await new Promise(resolve => setTimeout(resolve, 15000));
             }
             await cancelWorker();
-            throw new Error(`${worker} run ${run.id} exceeded 150 minutes.`);
+            throw new Error(`${worker} run ${run.id} exceeded 195 minutes.`);
 
       - name: Publish linked PR run report
         if: always() && steps.gate.outputs.applicable == 'true'

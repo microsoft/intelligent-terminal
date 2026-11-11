@@ -4,9 +4,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
-import { classifyPullRequest, prepareScope, readReviewSummary, verifyFixCommits, verifyProposalTransport, verifyPullRequest } from '../scripts/performance-review.mjs';
+import { classifyPullRequest, planNativeAnalysis, prepareScope, readReviewSummary, verifyFixCommits, verifyProposalTransport, verifyPullRequest } from '../scripts/performance-review.mjs';
 
 const identity = { prNumber: 42, baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40) };
+
+test('native analysis includes production C++ and Rust, not documentation or dedicated tests', () => {
+    const files = ['src/types/convert.cpp', 'src/types/inc/convert.hpp', 'tools/wta/src/app.rs',
+        'src/cascadia/LocalTests_TerminalApp/TabTests.cpp', 'tools/wta/src/master/tests.rs', 'doc/building.md']
+        .map(filename => ({ filename, additions: 2, deletions: 1 }));
+    const scope = classifyPullRequest(files, identity);
+    const plan = planNativeAnalysis(scope.candidates);
+    assert.equal(plan.enabled, true);
+    assert.equal(plan.rust, true);
+    assert.deepEqual(plan.cpp, ['src/types/convert.cpp', 'src/types/inc/convert.hpp']);
+    assert.equal(planNativeAnalysis(classifyPullRequest(files.slice(3), identity).candidates).enabled, false);
+    assert.equal(planNativeAnalysis([{ filename: 'src/ui/Layout.xaml', additions: 1, deletions: 0 }]).enabled, false);
+});
+
+test('large or binary native changes retain source review but skip bounded native builds', () => {
+    const file = { filename: 'tools/wta/src/app.rs', additions: 2001, deletions: 0 };
+    assert.equal(planNativeAnalysis([file]).enabled, false);
+    assert.match(planNativeAnalysis([file]).reason, /source review still applies/);
+    assert.equal(planNativeAnalysis([{ ...file, additions: null }]).enabled, false);
+    assert.equal(planNativeAnalysis(Array.from({ length: 21 }, (_, index) => ({
+        filename: `src/types/file${index}.cpp`, additions: 1, deletions: 0,
+    }))).enabled, false);
+});
 
 test('source scope includes product code but not tests or documentation', () => {
     const scope = classifyPullRequest([
