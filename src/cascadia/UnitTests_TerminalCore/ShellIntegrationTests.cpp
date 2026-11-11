@@ -132,6 +132,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_ProfileMissing_CreatesProfileAndScript);
     TEST_METHOD(Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
     TEST_METHOD(Install_LeavesAuthenticodeSignedPowerShellProfileUntouched);
+    TEST_METHOD(Install_LeavesUtf16AuthenticodeSignedPowerShellProfileUntouched);
     TEST_METHOD(Install_PreservesCrlfFromExistingProfile);
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
@@ -1206,7 +1207,33 @@ void ShellIntegrationTests::Install_LeavesAuthenticodeSignedPowerShellProfileUnt
 
     const auto result = Install(profile.wstring());
     VERIFY_IS_FALSE(result.success);
-    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" }, result.errorMessage);
+    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                     result.errorMessage);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+}
+
+void ShellIntegrationTests::Install_LeavesUtf16AuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    std::string original{ "\xff\xfe", 2 }; // UTF-16 LE BOM
+    original.reserve(2 + utf8Original.size() * 2);
+    for (const auto ch : utf8Original)
+    {
+        original.push_back(ch);
+        original.push_back('\0');
+    }
+    _WriteFile(profile, original);
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_FALSE(result.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                     result.errorMessage);
     VERIFY_ARE_EQUAL(original, _ReadFile(profile));
     VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
 }

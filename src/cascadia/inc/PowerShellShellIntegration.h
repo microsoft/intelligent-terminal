@@ -28,8 +28,53 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         inline constexpr std::string_view AuthenticodeSignatureBegin =
             "# SIG # Begin signature block";
 
+        inline bool HasUtf16AuthenticodeSignatureBlock(std::string_view contents, bool littleEndian) noexcept
+        {
+            std::string line;
+            bool asciiLine = true;
+            for (size_t offset = 2; offset + 1 < contents.size(); offset += 2)
+            {
+                const auto first = static_cast<unsigned char>(contents[offset]);
+                const auto second = static_cast<unsigned char>(contents[offset + 1]);
+                const auto lowByte = static_cast<unsigned int>(littleEndian ? first : second);
+                const auto highByte = static_cast<unsigned int>(littleEndian ? second : first);
+                const auto codeUnit = lowByte | (highByte << 8);
+                if (codeUnit == '\r' || codeUnit == '\n')
+                {
+                    if (asciiLine && line == AuthenticodeSignatureBegin)
+                    {
+                        return true;
+                    }
+                    line.clear();
+                    asciiLine = true;
+                }
+                else if (asciiLine && codeUnit <= 0x7f)
+                {
+                    line.push_back(static_cast<char>(codeUnit));
+                }
+                else
+                {
+                    asciiLine = false;
+                }
+            }
+            return asciiLine && line == AuthenticodeSignatureBegin;
+        }
+
         inline bool HasAuthenticodeSignatureBlock(std::string_view contents) noexcept
         {
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe)
+            {
+                return HasUtf16AuthenticodeSignatureBlock(contents, true);
+            }
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xfe &&
+                static_cast<unsigned char>(contents[1]) == 0xff)
+            {
+                return HasUtf16AuthenticodeSignatureBlock(contents, false);
+            }
+
             size_t lineStart = 0;
             while (lineStart <= contents.size())
             {
