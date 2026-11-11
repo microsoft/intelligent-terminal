@@ -28,51 +28,74 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
         inline constexpr std::string_view AuthenticodeSignatureBegin =
             "# SIG # Begin signature block";
 
-        inline bool HasUtf16AuthenticodeSignatureBlock(std::string_view contents, bool littleEndian) noexcept
+        inline bool HasEncodedAuthenticodeSignatureBlock(std::string_view contents,
+                                                         size_t codeUnitSize,
+                                                         bool littleEndian) noexcept
         {
-            std::string line;
-            bool asciiLine = true;
-            for (size_t offset = 2; offset + 1 < contents.size(); offset += 2)
+            size_t lineLength = 0;
+            bool matchesMarker = true;
+            for (size_t offset = codeUnitSize; offset + codeUnitSize <= contents.size(); offset += codeUnitSize)
             {
-                const auto first = static_cast<unsigned char>(contents[offset]);
-                const auto second = static_cast<unsigned char>(contents[offset + 1]);
-                const auto lowByte = static_cast<unsigned int>(littleEndian ? first : second);
-                const auto highByte = static_cast<unsigned int>(littleEndian ? second : first);
-                const auto codeUnit = lowByte | (highByte << 8);
+                unsigned int codeUnit = 0;
+                for (size_t index = 0; index < codeUnitSize; ++index)
+                {
+                    const auto byte = static_cast<unsigned char>(contents[offset + index]);
+                    const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                    codeUnit |= static_cast<unsigned int>(byte) << shift;
+                }
+
                 if (codeUnit == '\r' || codeUnit == '\n')
                 {
-                    if (asciiLine && line == AuthenticodeSignatureBegin)
+                    if (matchesMarker && lineLength == AuthenticodeSignatureBegin.size())
                     {
                         return true;
                     }
-                    line.clear();
-                    asciiLine = true;
-                }
-                else if (asciiLine && codeUnit <= 0x7f)
-                {
-                    line.push_back(static_cast<char>(codeUnit));
+                    lineLength = 0;
+                    matchesMarker = true;
                 }
                 else
                 {
-                    asciiLine = false;
+                    if (matchesMarker &&
+                        (codeUnit > 0x7f || lineLength >= AuthenticodeSignatureBegin.size() ||
+                         codeUnit != static_cast<unsigned char>(AuthenticodeSignatureBegin[lineLength])))
+                    {
+                        matchesMarker = false;
+                    }
+                    ++lineLength;
                 }
             }
-            return asciiLine && line == AuthenticodeSignatureBegin;
+            return matchesMarker && lineLength == AuthenticodeSignatureBegin.size();
         }
 
         inline bool HasAuthenticodeSignatureBlock(std::string_view contents) noexcept
         {
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe &&
+                static_cast<unsigned char>(contents[2]) == 0x00 &&
+                static_cast<unsigned char>(contents[3]) == 0x00)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, true);
+            }
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0x00 &&
+                static_cast<unsigned char>(contents[1]) == 0x00 &&
+                static_cast<unsigned char>(contents[2]) == 0xfe &&
+                static_cast<unsigned char>(contents[3]) == 0xff)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, false);
+            }
             if (contents.size() >= 2 &&
                 static_cast<unsigned char>(contents[0]) == 0xff &&
                 static_cast<unsigned char>(contents[1]) == 0xfe)
             {
-                return HasUtf16AuthenticodeSignatureBlock(contents, true);
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, true);
             }
             if (contents.size() >= 2 &&
                 static_cast<unsigned char>(contents[0]) == 0xfe &&
                 static_cast<unsigned char>(contents[1]) == 0xff)
             {
-                return HasUtf16AuthenticodeSignatureBlock(contents, false);
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, false);
             }
 
             size_t lineStart = 0;

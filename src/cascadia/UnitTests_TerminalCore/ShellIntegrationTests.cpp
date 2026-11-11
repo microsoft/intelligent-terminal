@@ -132,7 +132,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_ProfileMissing_CreatesProfileAndScript);
     TEST_METHOD(Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
     TEST_METHOD(Install_LeavesAuthenticodeSignedPowerShellProfileUntouched);
-    TEST_METHOD(Install_LeavesUtf16AuthenticodeSignedPowerShellProfileUntouched);
+    TEST_METHOD(Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched);
     TEST_METHOD(Install_PreservesCrlfFromExistingProfile);
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
@@ -337,14 +337,26 @@ private:
         out.write(contents.data(), contents.size());
     }
 
-    static std::string _EncodeAsciiAsUtf16Le(std::string_view contents)
+    static std::string _EncodeAsciiWithBom(std::string_view contents, size_t codeUnitSize, bool littleEndian)
     {
-        std::string encoded{ "\xff\xfe", 2 }; // UTF-16 LE BOM
-        encoded.reserve(2 + contents.size() * 2);
+        std::string encoded;
+        if (codeUnitSize == 2)
+        {
+            encoded.append(littleEndian ? "\xff\xfe" : "\xfe\xff", 2);
+        }
+        else
+        {
+            encoded.append(littleEndian ? "\xff\xfe\x00\x00" : "\x00\x00\xfe\xff", 4);
+        }
+        encoded.reserve(codeUnitSize + contents.size() * codeUnitSize);
         for (const auto ch : contents)
         {
-            encoded.push_back(ch);
-            encoded.push_back('\0');
+            const auto codepoint = static_cast<unsigned char>(ch);
+            for (size_t index = 0; index < codeUnitSize; ++index)
+            {
+                const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                encoded.push_back(static_cast<char>((codepoint >> shift) & 0xff));
+            }
         }
         return encoded;
     }
@@ -1226,7 +1238,7 @@ void ShellIntegrationTests::Install_LeavesAuthenticodeSignedPowerShellProfileUnt
     VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
 }
 
-void ShellIntegrationTests::Install_LeavesUtf16AuthenticodeSignedPowerShellProfileUntouched()
+void ShellIntegrationTests::Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched()
 {
     const auto profile = _ProfilePath();
     const std::string utf8Original =
@@ -1234,15 +1246,21 @@ void ShellIntegrationTests::Install_LeavesUtf16AuthenticodeSignedPowerShellProfi
         "# SIG # Begin signature block\r\n"
         "# MIIC...signature-data...\r\n"
         "# SIG # End signature block\r\n";
-    const auto original = _EncodeAsciiAsUtf16Le(utf8Original);
-    _WriteFile(profile, original);
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            const auto original = _EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian);
+            _WriteFile(profile, original);
 
-    const auto result = Install(profile.wstring());
-    VERIFY_IS_FALSE(result.success);
-    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
-                     result.errorMessage);
-    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
-    VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+            const auto result = Install(profile.wstring());
+            VERIFY_IS_FALSE(result.success);
+            VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                             result.errorMessage);
+            VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+            VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+        }
+    }
 }
 
 void ShellIntegrationTests::Install_PreservesCrlfFromExistingProfile()
@@ -1548,12 +1566,19 @@ void ShellIntegrationTests::Uninstall_LeavesSignedPowerShellProfilesUntouched()
         "\r\n# SIG # Begin signature block\r\n"
         "# MIIC...signature-data...\r\n"
         "# SIG # End signature block\r\n";
-    const auto utf16Original = _EncodeAsciiAsUtf16Le(utf8Original);
     const std::wstring expectedError{
         L"Automatic shell integration removal was skipped: Refusing to modify an Authenticode-signed PowerShell profile"
     };
+    std::vector<std::string> signedProfiles{ utf8Original };
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            signedProfiles.emplace_back(_EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian));
+        }
+    }
 
-    for (const auto& original : { utf8Original, utf16Original })
+    for (const auto& original : signedProfiles)
     {
         _WriteFile(profile, original);
 
