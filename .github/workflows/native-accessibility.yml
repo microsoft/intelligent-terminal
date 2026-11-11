@@ -44,6 +44,7 @@ jobs:
             throw 'Checked-out revision does not match the immutable PR head.'
           }
       - name: Build accessibility test host
+        id: build
         shell: cmd
         run: |
           set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -53,6 +54,7 @@ jobs:
           if errorlevel 1 exit /b 1
           call bx
       - name: Acquire pinned Axe.Windows CLI
+        id: axe
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -94,6 +96,7 @@ jobs:
             throw 'Trusted harness checkout does not match the immutable revision.'
           }
       - name: Install test host framework dependencies
+        id: dependencies
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -167,6 +170,42 @@ jobs:
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
+      - name: Record native discovery outcomes
+        if: always()
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+          TRUSTED_SHA: ${{ inputs.trusted-sha }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          AXE_OUTCOME: ${{ steps.axe.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
+          FRE_OUTCOME: ${{ steps.fre.outcome }}
+          AGENTS_OUTCOME: ${{ steps.agents.outcome }}
+          FRE_SETTINGS_OUTCOME: ${{ steps.fre-settings.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stages = [ordered]@{
+            build = $env:BUILD_OUTCOME
+            axe = $env:AXE_OUTCOME
+            dependencies = $env:DEPENDENCIES_OUTCOME
+          }
+          $scans = [ordered]@{ fre = $env:FRE_OUTCOME; agents = $env:AGENTS_OUTCOME; 'fre-settings' = $env:FRE_SETTINGS_OUTCOME }
+          $incomplete = @($stages.Values | Where-Object { $_ -ne 'success' }).Count -gt 0 -or
+            @($scans.Values | Where-Object { $_ -ne 'success' }).Count -gt 0
+          $receipt = [ordered]@{
+            source_sha = $env:SOURCE_SHA
+            trusted_sha = $env:TRUSTED_SHA
+            run_id = $env:GITHUB_RUN_ID
+            attempt = $env:GITHUB_RUN_ATTEMPT
+            selection = 'Caller-selected Axe.Windows; fixed FRE/Agents/FRE-settings smoke suite'
+            selected_surfaces = @('fre', 'agents', 'fre-settings')
+            stages = $stages
+            scans = $scans
+            status = $(if ($incomplete) { 'incomplete' } else { 'scan-results-available' })
+          }
+          New-Item -ItemType Directory -Force -Path $env:ACCESSIBILITY_RESULTS | Out-Null
+          $receipt | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $env:ACCESSIBILITY_RESULTS 'native-outcome.json') -Encoding utf8
       - name: Upload native accessibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
