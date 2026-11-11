@@ -511,10 +511,10 @@ namespace SettingsModelUnitTests
             const wchar_t* currentName;
         };
         for (const auto& test : {
-                 testCase{ L"Terminal.SplitPaneUp", L"Terminal.DuplicatePaneUp", SplitDirection::Up, L"Split up (current profile)" },
-                 testCase{ L"Terminal.SplitPaneDown", L"Terminal.DuplicatePaneDown", SplitDirection::Down, L"Split down (current profile)" },
-                 testCase{ L"Terminal.SplitPaneLeft", L"Terminal.DuplicatePaneLeft", SplitDirection::Left, L"Split left (current profile)" },
-                 testCase{ L"Terminal.SplitPaneRight", L"Terminal.DuplicatePaneRight", SplitDirection::Right, L"Split right (current profile)" } })
+                 testCase{ L"Terminal.SplitPaneUp", L"Terminal.DuplicatePaneUp", SplitDirection::Up, L"Split pane (current profile), split: up" },
+                 testCase{ L"Terminal.SplitPaneDown", L"Terminal.DuplicatePaneDown", SplitDirection::Down, L"Split pane (current profile), split: down" },
+                 testCase{ L"Terminal.SplitPaneLeft", L"Terminal.DuplicatePaneLeft", SplitDirection::Left, L"Split pane (current profile), split: left" },
+                 testCase{ L"Terminal.SplitPaneRight", L"Terminal.DuplicatePaneRight", SplitDirection::Right, L"Split pane (current profile), split: right" } })
         {
             const auto original = map.GetActionByID(test.defaultId);
             const auto current = map.GetActionByID(test.currentId);
@@ -629,7 +629,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Duplicate pane, split: up" }, unnamed.LanguageNeutralName());
         VERIFY_ARE_EQUAL(unnamed.ID(), user->NameMap().Lookup(unnamed.Name()).ID());
         const auto stock = user->GetActionByID(L"Terminal.DuplicatePaneRight");
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"Split right (current profile)" }, stock.LanguageNeutralName());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Split pane (current profile), split: right" }, stock.LanguageNeutralName());
         VERIFY_ARE_EQUAL(stock.ID(), user->NameMap().Lookup(stock.Name()).ID());
         const auto generated = user->NameMap().Lookup(L"My generated duplicate");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"My generated duplicate" }, generated.Name());

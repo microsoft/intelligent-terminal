@@ -1043,19 +1043,19 @@
     <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
   </data>
   <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
-    <value>פצל חלונית למעלה (הפרופיל הנוכחי)</value>
-    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target.</comment>
+    <value>פצל חלונית (הפרופיל הנוכחי), split: up</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: up"}</comment>
   </data>
   <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
-    <value>פצל חלונית למטה (הפרופיל הנוכחי)</value>
-    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target.</comment>
+    <value>פצל חלונית (הפרופיל הנוכחי), split: down</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: down"}</comment>
   </data>
   <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
-    <value>פצל חלונית שמאלה (הפרופיל הנוכחי)</value>
-    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target.</comment>
+    <value>פצל חלונית (הפרופיל הנוכחי), split: left</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: left"}</comment>
   </data>
   <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
-    <value>פצל חלונית ימינה (הפרופיל הנוכחי)</value>
-    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target.</comment>
+    <value>פצל חלונית (הפרופיל הנוכחי), split: right</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: right"}</comment>
   </data>
 </root>

@@ -117,8 +117,9 @@ security boundary.
 
 The Command Palette offers separate split choices:
 
-- The original directional `Split pane` commands use the global default profile.
-- `Split up/down/left/right (current profile)` always starts another instance of
+- The original directional commands (for example, `Split pane, split: left`)
+  use the global default profile.
+- `Split pane (current profile), split: up/down/left/right` always starts another instance of
   the focused pane's profile, ignoring `defaultSplitProfile`. These reuse
   Duplicate pane actions, not Duplicate tab; no existing terminal contents or
   agent session is copied.
