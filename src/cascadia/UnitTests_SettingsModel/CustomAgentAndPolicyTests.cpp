@@ -882,6 +882,16 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
         source.DefaultSplitProfile(L"{00000000-0000-0000-0000-000000000001}");
         VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
+        const auto defaults = CascadiaSettings::LoadDefaults().ActionMap();
+        for (const auto id : { L"Terminal.SplitProfileDown", L"Terminal.SplitProfileRight", L"Terminal.SplitProfileAuto" })
+        {
+            const auto args = defaults.GetActionByID(id).ActionAndArgs().Args().as<SplitPaneArgs>();
+            VERIFY_ARE_EQUAL(SplitType::Profile, args.SplitMode());
+            const auto decision = Splits::Resolve(settings, source, args.ContentArgs());
+            VERIFY_IS_FALSE(decision.duplicate);
+            VERIFY_IS_FALSE(decision.unavailable);
+            VERIFY_ARE_EQUAL(shell.Guid(), decision.target.Guid());
+        }
         source.DefaultSplitProfile(L"invalid-guid");
         const auto missing = Splits::Resolve(settings, source, nullptr);
         VERIFY_IS_TRUE(missing.unavailable);

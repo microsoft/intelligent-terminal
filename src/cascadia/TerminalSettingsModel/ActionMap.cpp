@@ -16,6 +16,19 @@ using namespace winrt::Windows::Foundation::Collections;
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    // These built-in policy actions are shortcut/editor entries, not palette choices.
+    static bool IsBuiltinProfileSplitCommand(const Model::Command& command)
+    {
+        if (command.Origin() != OriginTag::InBox)
+        {
+            return false;
+        }
+        const auto id = command.ID();
+        return id == L"Terminal.SplitProfileDown" ||
+               id == L"Terminal.SplitProfileRight" ||
+               id == L"Terminal.SplitProfileAuto";
+    }
+
     static InternalActionID Hash(const Model::ActionAndArgs& actionAndArgs)
     {
         til::hasher hasher;
@@ -325,7 +338,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             for (const auto& [_, cmd] : foundParent->_ActionMap)
             {
-                inboxActions.emplace(Hash(cmd.ActionAndArgs()), cmd);
+                // Do not collapse a user-authored palette action into a shortcut-only entry.
+                if (!IsBuiltinProfileSplitCommand(cmd))
+                {
+                    inboxActions.emplace(Hash(cmd.ActionAndArgs()), cmd);
+                }
             }
         }
 
@@ -539,7 +556,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         for (const auto& [_, cmd] : _CumulativeIDToActionMapCache)
         {
             const auto& name{ cmd.Name() };
-            if (!name.empty())
+            if (!name.empty() && !IsBuiltinProfileSplitCommand(cmd))
             {
                 // there might be a collision here, where there could be 2 different commands with the same name
                 // in this case, prioritize the user's action

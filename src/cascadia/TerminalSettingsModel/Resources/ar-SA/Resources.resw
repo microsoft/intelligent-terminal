@@ -1042,4 +1042,20 @@
     <value>وكلاء الذكاء الاصطناعي</value>
     <comment>Display name of the native AI agent profile generator source shown in Settings > Extensions. This source generates profiles for installed native AI agent command-line applications.</comment>
   </data>
+  <data name="SplitUpCurrentProfileCommandName" xml:space="preserve">
+    <value>تقسيم اللوحة (ملف التعريف الحالي), split: up</value>
+    <comment>Command Palette action to split upward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: up"}</comment>
+  </data>
+  <data name="SplitDownCurrentProfileCommandName" xml:space="preserve">
+    <value>تقسيم اللوحة (ملف التعريف الحالي), split: down</value>
+    <comment>Command Palette action to split downward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: down"}</comment>
+  </data>
+  <data name="SplitLeftCurrentProfileCommandName" xml:space="preserve">
+    <value>تقسيم اللوحة (ملف التعريف الحالي), split: left</value>
+    <comment>Command Palette action to split leftward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: left"}</comment>
+  </data>
+  <data name="SplitRightCurrentProfileCommandName" xml:space="preserve">
+    <value>تقسيم اللوحة (ملف التعريف الحالي), split: right</value>
+    <comment>Command Palette action to split rightward, always using the focused pane's profile, not the global default or configured split target. The suffix matches the generated command name and must remain literal. {Locked=", split: right"}</comment>
+  </data>
 </root>

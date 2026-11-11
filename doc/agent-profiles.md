@@ -115,9 +115,23 @@ security boundary.
 
 ## Splitting panes
 
-The default split shortcuts and tab split action use `splitMode: "profile"`.
+The Command Palette offers separate split choices:
+
+- The original directional commands (for example, `Split pane, split: left`)
+  use the global default profile.
+- `Split pane (current profile), split: up/down/left/right` always starts another instance of
+  the focused pane's profile, ignoring `defaultSplitProfile`. These reuse
+  Duplicate pane actions, not Duplicate tab; no existing terminal contents or
+  agent session is copied.
+- `Split pane...` lets you explicitly choose a target profile.
+
+The default split shortcuts and tab split action still use `splitMode: "profile"`.
+Their built-in policy actions remain available to shortcuts and Settings without
+adding another group of Command Palette choices. User-defined profile-mode
+actions remain available in the palette.
 Configure the source profile's `defaultSplitProfile` in `settings.json`; there
-is no default split target control in the profile editor. It determines the target:
+is no default split target control in the profile editor. For profile-mode
+actions, it determines the target:
 
 | Value | Result |
 | --- | --- |
@@ -128,11 +142,15 @@ is no default split target control in the profile editor. It determines the targ
 An explicit `splitMode: "duplicate"` always starts another instance of the
 current profile. An action specifying a profile, profile index, command, or
 another content type keeps its explicit target. Existing user-defined actions
-are not rewritten.
+are not rewritten. A user-defined action with an omitted `splitMode` still uses
+`manual` (the specified or global default profile), as does `wt split-pane`
+unless `--duplicate` is supplied. Saved layouts retain their recorded profiles.
 
 All new-terminal splits, including Alt-click profile selections and protocol
 splits, inherit the source pane's working directory unless the operation supplies
-an explicit directory. Shell-to-shell, shell-to-agent, agent-to-shell and
+an explicit directory. A compatible source directory takes precedence over the
+target profile's configured starting directory. Ordinary new tabs continue to
+use their configured starting directory. Shell-to-shell, shell-to-agent, agent-to-shell and
 agent-to-agent splits follow the same rule. Native agents use their current
 pane-bound session directory when available; otherwise their resolved launch
 directory (including relative `-d` arguments), not subsequently edited settings.
