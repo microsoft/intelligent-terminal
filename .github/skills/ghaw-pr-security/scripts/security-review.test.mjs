@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync, spawnSync } from 'node:child_process';
+import childProcess, { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -1027,6 +1028,35 @@ test('native CI verification rechecks live PR and trusted workflow before return
   responses['actions/workflows/pr-build-security.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
+});
+
+test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {
+  const { run, jobs } = ciFixture();
+  const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
+    PR_NUMBER: '17', RUN_ID: '123', EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE,
+    EXPECTED_WORKFLOW_SHA: '3'.repeat(40), SAME_REPO: 'true', HEAD_REF: 'topic',
+    CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2' };
+  const responses = {
+    '/repos/owner/repo': { default_branch: 'main' },
+    '/repos/owner/repo/actions/runs/91': { ...run, conclusion: 'failure' },
+    '/repos/owner/repo/actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
+  };
+  const requests = [];
+  const command = t.mock.method(childProcess, 'execFileSync', (program, args) => {
+    assert.equal(program, 'gh');
+    assert.equal(args[0], 'api');
+    requests.push(args[1]);
+    if (!Object.hasOwn(responses, args[1])) throw new Error('GitHub API endpoint not found');
+    return JSON.stringify(responses[args[1]]);
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => preparePublication({ environment }), /CI run identity or successful conclusion is invalid/);
+    assert.deepEqual(requests, Object.keys(responses));
+  } finally {
+    command.mock.restore();
+    syncBuiltinESMExports();
+  }
 });
 
 test('actual controller admission uses trusted commit association when workflow_run pull_requests is empty', async () => {

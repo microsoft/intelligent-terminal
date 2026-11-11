@@ -1283,7 +1283,7 @@ export function preparePublication({ environment = process.env, request, paths =
       !/^[1-9][0-9]*$/.test(pr ?? '') || !/^[1-9][0-9]*$/.test(runId ?? '') ||
       !SHA.test(head ?? '') || !SHA.test(base ?? '') || !SHA.test(expectedWorkflowSha ?? '') ||
       !['true', 'false'].includes(environment.SAME_REPO)) fail('publication inputs are invalid');
-  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}/${endpoint}`], {
+  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
   const sameRepo = environment.SAME_REPO === 'true';
