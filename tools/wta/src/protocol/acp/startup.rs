@@ -118,7 +118,7 @@ pub(crate) async fn start_probe_with_provider(
             .map_err(anyhow::Error::new)
             .context(StartupPhase::Initialize)?;
         stderr.mark_initialized();
-        startup.succeeded()?;
+        startup.succeeded();
         Ok((connection, response))
     }
     .await;

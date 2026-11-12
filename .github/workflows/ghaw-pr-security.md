@@ -1,6 +1,6 @@
 ---
 name: 'Intelligent Terminal Security Repair Analysis'
-description: 'Same-repository security review worker that may produce one independently source-reviewed HIGH-confidence fix proposal.'
+description: 'Successful exact-head PR CI-gated same-repository security review with independently source-reviewed fix proposals.'
 
 on:
   workflow_dispatch:
@@ -25,6 +25,18 @@ on:
         description: 'Observed pull request base tip'
         required: true
         type: string
+      expected_workflow_sha:
+        description: 'Controller-resolved trusted worker branch revision, independent of PR comparison base'
+        required: true
+        type: string
+      ci_run_id:
+        description: 'Verified successful exact-head PR build CI run'
+        required: true
+        type: string
+      ci_run_attempt:
+        description: 'Verified CI run attempt'
+        required: true
+        type: string
       comparison_base_sha:
         description: 'Controller-resolved merge base'
         required: true
@@ -46,12 +58,17 @@ permissions:
 
 env:
   GIT_NO_REPLACE_OBJECTS: '1'
+  SECURITY_CI_RUN_ID: "${{ github.event.inputs.ci_run_id }}"
+  SECURITY_CI_RUN_ATTEMPT: "${{ github.event.inputs.ci_run_attempt }}"
 
 engine:
   id: copilot
   agent: ghaw-pr-security
   version: '1.0.90'
   env:
+    SECURITY_CI_REQUIRED: 'true'
+    SECURITY_CI_RUN_ID: "${{ github.event.inputs.ci_run_id }}"
+    SECURITY_CI_RUN_ATTEMPT: "${{ github.event.inputs.ci_run_attempt }}"
     # Telemetry credentials remain available to native runner/gateway steps only.
     OTEL_EXPORTER_OTLP_HEADERS: "${{ '' }}"
     GH_AW_OTLP_ENDPOINTS: "${{ '' }}"
@@ -90,9 +107,15 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
     outputs:
       trusted_code_revision: ${{ steps.validate.outputs.trusted_code_revision }}
     steps:
+      - name: Checkout trusted admission code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
       - name: Validate immutable dispatch
         id: validate
         shell: bash
@@ -105,6 +128,10 @@ jobs:
           TARGET_REPOSITORY: ${{ github.event.inputs.repo }}
           REPOSITORY: ${{ github.repository }}
           TRUSTED_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
+          CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
+          HEAD_REF: ${{ github.event.inputs.head_ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -112,13 +139,19 @@ jobs:
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$COMPARISON_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [ "$TRUSTED_WORKFLOW_SHA" = "$EXPECTED_BASE_SHA" ]
+          [ "$GITHUB_RUN_ATTEMPT" = 1 ]
+          [[ "$EXPECTED_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [ "$TRUSTED_WORKFLOW_SHA" = "$EXPECTED_WORKFLOW_SHA" ]
           [ "$TARGET_REPOSITORY" = "$REPOSITORY" ]
           [ "$HEAD_REPO" = "$REPOSITORY" ]
           current_head="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
           current_head_repo="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .head.repo.full_name)"
           [ "$current_head" = "$EXPECTED_HEAD_SHA" ]
           [ "$current_head_repo" = "$HEAD_REPO" ]
+          node --input-type=module <<'NODE'
+          import { verifyCiSecurity } from './.github/skills/ghaw-pr-security/scripts/security-review.mjs';
+          verifyCiSecurity();
+          NODE
           echo "trusted_code_revision=$TRUSTED_WORKFLOW_SHA" >> "$GITHUB_OUTPUT"
 
   agent:
@@ -155,6 +188,8 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
           TRUSTED_SHA: ${{ github.workflow_sha }}
+          CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
         run: |
           set -euo pipefail
           [ "$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$EXPECTED_HEAD_SHA" ]
@@ -185,7 +220,9 @@ jobs:
           fi
           node "$validator" validate --scope "$final/security-scope.validated.json" \
             --report "$proposal/security-findings.proposed.json" --validated "$final/security-findings.validated.json" \
-            --summary "$final/security-summary.md" --status "$final/security-status.txt"
+            --summary "$final/security-summary.md" --status "$final/security-status.txt" \
+            --ci-warnings "$proposal/security-ci-warning-dispositions.json"
+          cp "$proposal/security-ci-warning-dispositions.json" "$final/security-ci-warning-dispositions.json"
           git diff --no-ext-diff --no-textconv --binary --full-index HEAD > "$final/security-repair.patch"
           cmp "$proposal/security-repair.patch" "$final/security-repair.patch"
           cat "$final/security-summary.md" >> "$GITHUB_STEP_SUMMARY"
@@ -199,8 +236,9 @@ jobs:
             ${{ runner.temp }}/security-final/security-summary.md
             ${{ runner.temp }}/security-final/security-status.txt
             ${{ runner.temp }}/security-final/security-repair.patch
+            ${{ runner.temp }}/security-final/security-ci-warning-dispositions.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   detection:
     needs: [finalize]
@@ -219,6 +257,7 @@ jobs:
         shell: bash
         env:
           TRUSTED_SHA: ${{ github.workflow_sha }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
           EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
@@ -227,7 +266,7 @@ jobs:
         run: |
           set -euo pipefail
           node .github/skills/ghaw-pr-security/scripts/security-detector.mjs prepare
-          for key in TRUSTED_SHA EXPECTED_BASE_SHA EXPECTED_HEAD_SHA COMPARISON_BASE_SHA PR_NUMBER SECURITY_SCOPE_FILE; do
+          for key in TRUSTED_SHA EXPECTED_WORKFLOW_SHA EXPECTED_BASE_SHA EXPECTED_HEAD_SHA COMPARISON_BASE_SHA PR_NUMBER SECURITY_SCOPE_FILE; do
             printf '%s=%s\n' "$key" "${!key}" >> "$GITHUB_ENV"
           done
 
@@ -261,6 +300,7 @@ jobs:
           DETECTION_CONCLUSION: ${{ needs.detection.outputs.detection_conclusion }}
           GH_TOKEN: ${{ github.token }}
           TRUSTED_SHA: ${{ github.workflow_sha }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
           EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
           COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
@@ -356,16 +396,55 @@ steps:
       COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       TRUSTED_SHA: ${{ github.workflow_sha }}
+      EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
+      CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
+      CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
+      HEAD_REF: ${{ github.event.inputs.head_ref }}
+      GH_TOKEN: ${{ github.token }}
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
       rm -f /tmp/gh-aw/security-scope.json /tmp/gh-aw/agent/security-findings.json
+      rm -f /tmp/gh-aw/agent/security-driver-completion.json
       trusted_validator="$RUNNER_TEMP/security-review.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
       cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review-check.mjs"
+      cp "$trusted_validator" "$RUNNER_TEMP/gh-aw/security-review.mjs"
+      [ "$TRUSTED_SHA" = "$EXPECTED_WORKFLOW_SHA" ]
+      [ "$GITHUB_RUN_ATTEMPT" = 1 ]
+      git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/ci-security.mjs" > "$RUNNER_TEMP/gh-aw/ci-security.mjs"
+      git show "$TRUSTED_SHA:build/scripts/ci-security-analysis.mjs" > "$RUNNER_TEMP/gh-aw/ci-analysis-contract.mjs"
+      node --input-type=module - "$trusted_validator" <<'NODE'
+      import { execFileSync } from 'node:child_process';
+      import { mkdirSync, writeFileSync, readdirSync, lstatSync } from 'node:fs';
+      import { join } from 'node:path';
+      import { pathToFileURL } from 'node:url';
+      const { verifyCiSecurity } = await import(pathToFileURL(process.argv[2]));
+      const verified = verifyCiSecurity();
+      const root = join(process.env.RUNNER_TEMP, 'gh-aw', 'ci-security');
+      mkdirSync(root, { mode: 0o700 });
+      for (const artifact of verified.artifacts) {
+        const directory = join(root, artifact.language);
+        mkdirSync(directory, { mode: 0o700 });
+        execFileSync('gh', ['run', 'download', verified.identity.runId, '--repo',
+          process.env.GITHUB_REPOSITORY, '--name', artifact.name, '--dir', directory], { stdio: 'pipe' });
+        const names = readdirSync(directory);
+        const stat = lstatSync(join(directory, 'findings.json'));
+        if (names.length !== 1 || names[0] !== 'findings.json' || !stat.isFile() ||
+            stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw Error('Invalid CI findings artifact layout.');
+      }
+      const confirmed = verifyCiSecurity();
+      if (JSON.stringify(confirmed.identity) !== JSON.stringify(verified.identity) ||
+          JSON.stringify(confirmed.artifacts) !== JSON.stringify(verified.artifacts)) {
+        throw Error('CI identity changed during artifact download.');
+      }
+      writeFileSync(join(root, 'identity.json'), JSON.stringify(verified.identity), { flag: 'wx', mode: 0o600 });
+      NODE
       driver_dir="$RUNNER_TEMP/gh-aw/security-review-native"
       mkdir -p "$driver_dir"
       cp "$trusted_validator" "$driver_dir/security-review.mjs"
+      cp "$RUNNER_TEMP/gh-aw/ci-security.mjs" "$driver_dir/ci-security.mjs"
+      cp "$RUNNER_TEMP/gh-aw/ci-analysis-contract.mjs" "$driver_dir/ci-analysis-contract.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review-driver.mjs" > "$driver_dir/security-review-driver.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/prepare-security-review-private-logs.mjs" > "$driver_dir/prepare-security-review-private-logs.mjs"
       node "$trusted_validator" scope \
@@ -406,6 +485,28 @@ pre-agent-steps:
       set -euo pipefail
       bash "${RUNNER_TEMP}/gh-aw/actions/clean_git_credentials.sh"
       node "$RUNNER_TEMP/gh-aw/security-review-check.mjs" verify-credentials --workspace "$GITHUB_WORKSPACE"
+  - name: Revalidate successful exact-head CI immediately before inference
+    shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
+      CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
+      EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+      EXPECTED_BASE_SHA: ${{ github.event.inputs.expected_base_sha }}
+      EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
+      HEAD_REF: ${{ github.event.inputs.head_ref }}
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
+    run: |
+      set -euo pipefail
+      [ "$GITHUB_RUN_ATTEMPT" = 1 ]
+      node --input-type=module - "$RUNNER_TEMP/gh-aw/security-review-check.mjs" <<'NODE'
+      import { readFileSync } from 'node:fs';
+      import { pathToFileURL } from 'node:url';
+      const { verifyCiSecurity } = await import(pathToFileURL(process.argv[2]));
+      const actual = verifyCiSecurity().identity;
+      const protectedIdentity = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/gh-aw/ci-security/identity.json`, 'utf8'));
+      if (JSON.stringify(actual) !== JSON.stringify(protectedIdentity)) throw Error('CI identity changed before inference.');
+      NODE
 
 post-steps:
   - name: Reject stale or malformed repair output
@@ -418,6 +519,8 @@ post-steps:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       REPOSITORY: ${{ github.repository }}
       TRUSTED_SHA: ${{ github.workflow_sha }}
+      CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
+      CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
     run: |
       set -euo pipefail
       set +x
@@ -441,6 +544,14 @@ post-steps:
       }
       trusted_validator="$RUNNER_TEMP/security-review-final.mjs"
       git show "$TRUSTED_SHA:.github/skills/ghaw-pr-security/scripts/security-review.mjs" > "$trusted_validator"
+      node "$trusted_validator" check-driver-completion \
+        --scope "$RUNNER_TEMP/gh-aw/security-report-scope.json" \
+        --report /tmp/gh-aw/agent/security-findings.json \
+        --completion /tmp/gh-aw/agent/security-driver-completion.json
+      node "$trusted_validator" check-ci-warning-proposals \
+        --scope "$RUNNER_TEMP/gh-aw/security-report-scope.json" \
+        --report /tmp/gh-aw/agent/security-findings.json \
+        --warnings /tmp/gh-aw/agent/security-ci-warning-dispositions.json
       source_workspace="$GITHUB_WORKSPACE"
       trusted_workspace="$RUNNER_TEMP/security-repair-workspace"
       trusted_scope="$RUNNER_TEMP/security-scope.final.json"
@@ -519,6 +630,7 @@ post-steps:
       git diff --no-ext-diff --no-textconv --binary --full-index HEAD > /tmp/gh-aw/security-repair.patch
       popd
       cp "$trusted_scope" /tmp/gh-aw/security-scope.proposed.json
+      cp /tmp/gh-aw/agent/security-ci-warning-dispositions.json /tmp/gh-aw/security-ci-warning-dispositions.json
 
   - name: Retain trusted repair parity evidence
     if: always()
@@ -538,8 +650,9 @@ post-steps:
         /tmp/gh-aw/security-scope.proposed.json
         /tmp/gh-aw/security-findings.proposed.json
         /tmp/gh-aw/security-repair.patch
+        /tmp/gh-aw/security-ci-warning-dispositions.json
       if-no-files-found: error
-      retention-days: 14
+      retention-days: 30
 
 timeout-minutes: 45
 max-ai-credits: 800
@@ -561,53 +674,20 @@ Read `/tmp/gh-aw/security-scope.json`, then follow
 base `${{ github.event.inputs.comparison_base_sha }}` and immutable head
 `${{ github.event.inputs.expected_head_sha }}`.
 
-Review every applicable changed trust boundary. Only a HIGH/high-confidence
-finding with strong repository evidence, a minimal patch to an existing
-`tools/wta/src/**/*.rs` file may be submitted as a candidate marked `proposed`,
-with `review.status: pending`. Never claim `SOURCE_PASS` or mark an
-agent-authored result `fixed`. The trusted driver must obtain independent source
-approval before native post-validation can accept a proposal, and the trusted
-post-step checks the exact final patch against the approved digest without
-building or testing it. It remains `proposed`, never `fixed`. All other repairs
-remain blocked with guidance.
-Write proposed source changes only with `write-security-repair`; generic file
-editing is disabled. Native scope/path checks reject report, workflow, Git
-metadata, new-file and unrelated destinations.
+The skill is authoritative for review coverage, evidence, severity, repair
+eligibility, independent approval, privacy, and report presentation. Inspect
+every changed hunk and follow each applicable trust boundary; do not limit
+findings to automatically repairable code.
 
-Do not invoke another agent. After your invocation finishes, the trusted driver
-alone launches the fixed `ghaw-pr-security-reviewer` profile for a candidate.
-It supplies the immutable head, native final patch digest, comparison base,
-finding hypotheses, and required validation plans from the validated candidate.
-The reviewer has only read-only native inspection capabilities and must fetch
-the full original diff, base/head source traces and invariants, and full final
-candidate itself. Parent-copied source and patch text is not independent proof.
-Only the trusted driver can record `review.status: source-pass` after checking
-the reviewer's successful native reads and explicit matching `SOURCE_PASS`.
-Missing or incomplete native evidence fails closed. Source approval is not
-build or test evidence. The original reviewer, which may be an agent, owns
-subsequent build/test validation and may revert each finding's dedicated
-proposed-fix commit. Inseparable or ambiguous per-finding edits remain blocked;
-do not combine multiple findings into one commit.
+Follow its CI warning proposal procedure as well: read the matching CI
+warnings, record a fix-or-ignore proposal for each, and include priority,
+PR relevance and an owner/coding-agent handoff in your summary. Do not apply
+or suppress those proposals automatically.
 
-Complete the prepared `/tmp/gh-aw/agent/security-findings.json` exactly as the
-skill specifies, preserve its native identity fields, and list every modified
-path in `patch`. Submit complete JSON as the `report_json` string to
-`submit-security-report`, with the required `summary_markdown` string authored
-from the skill's findings and validation table template. Use exactly one
-`{{commit:N}}` placeholder per proposed finding, numbered in proposed-finding
-JSON order. The controller only binds those tokens to verified commit links;
-no script constructs the summary or table rows.
-Only this fixed capability validates against the protected native scope and
-writes the report. Do not write it through filesystem
-tools, shell commands, PowerShell, or a validator CLI. The advisory scope and
-prepared template are context, not tool-server authority. These shared tools
-accept data only; they do not execute model commands or PR code. Never execute
-PR-controlled build scripts, Cargo commands, tests, or other code in the agent
-environment or in this workflow's post-validation. This workflow does not build
-or test proposed fixes before the controller commits each HIGH finding
-individually and pushes the approved commit chain.
-Call `noop` exactly once whether or not a
-source-reviewed patch exists. Never publish code or add a PR comment: the trusted
-controller consumes the checked artifact, publishes an eligible proposed fix,
-and reports the outcome on the PR. Other findings receive guidance without a
-commit. Remaining HIGH findings stay blocking with a concrete reason.
+Use the prepared `/tmp/gh-aw/agent/security-findings.json` identity and submit
+the completed JSON plus agent-authored Markdown through
+`submit-security-report`. Follow the skill's template, field limits and
+commit placeholders. Correct rejected submissions through that same tool.
+Emit exactly one `noop` after acceptance. Never execute PR code, delegate,
+push a commit, or post a PR comment. The caller owns independent review and
+publication; build/test validation remains the original PR reviewer's job.

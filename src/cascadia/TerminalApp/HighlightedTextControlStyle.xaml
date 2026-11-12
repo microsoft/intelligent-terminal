@@ -9,7 +9,8 @@
                     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                     mc:Ignorable="d">
 
-    <Style TargetType="local:HighlightedTextControl">
+    <Style x:Key="DefaultHighlightedTextControlStyle"
+           TargetType="local:HighlightedTextControl">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="local:HighlightedTextControl">
@@ -18,6 +19,25 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <Style BasedOn="{StaticResource DefaultHighlightedTextControlStyle}"
+           TargetType="local:HighlightedTextControl" />
+
+    <Style x:Key="SidebarCaptionTextStyle"
+           TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineHeight" Value="16" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="SidebarCaptionControlStyle"
+           BasedOn="{StaticResource DefaultHighlightedTextControlStyle}"
+           TargetType="local:HighlightedTextControl">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     </Style>
 
 </ResourceDictionary>

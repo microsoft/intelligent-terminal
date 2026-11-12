@@ -1215,6 +1215,10 @@
     <value>Виберіть агента, який використовується для делегування з палітри команд у цьому профілі. Цей вибір має пріоритет над глобальним параметром агента делегування.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Використовувати глобальний параметр ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2578,16 +2582,12 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows. Аргументи, що суперечать керованим налаштуванням або політикам, відхиляються. Команди оболонки не підтримуються.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Використовувати налаштування розділення профілю</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Ваша організація блокує керований запуск нативних агентів. Агент має бути дозволений, а політика має дозволяти автоматичне схвалення, оскільки нативні агенти самі керують власними налаштуваннями схвалення.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>Перемикайтеся між новою бічною панеллю та класичним горизонтальним поданням вкладок</value>
@@ -3054,5 +3054,13 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Спробувати знову</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>Профілі агентів додано автоматично</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal автоматично додає встановлені засоби командного рядка агентів як профілі. Щоб почати, відкрийте один із них у меню нової вкладки.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>

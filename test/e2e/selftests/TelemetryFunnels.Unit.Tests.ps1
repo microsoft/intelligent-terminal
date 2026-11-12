@@ -3,7 +3,8 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
     BeforeAll {
         . (Join-Path $PSScriptRoot '..\tests\helpers\TelemetryFunnels.Scenarios.ps1')
         . (Join-Path $PSScriptRoot '..\tests\helpers\TelemetryPolicy.ps1')
-        $script:root = Join-Path $PSScriptRoot ('..\artifacts\telemetry-scenario-unit-' + [guid]::NewGuid().ToString('N'))
+        $artifactRoot = if ($env:ITE2E_ARTIFACT_ROOT) { $env:ITE2E_ARTIFACT_ROOT } else { Join-Path $PSScriptRoot '..\artifacts' }
+        $script:root = Join-Path $artifactRoot ('telemetry-scenario-unit-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:root -Force | Out-Null
     }
     AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force }
@@ -190,6 +191,7 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
             if ($script:coldAllowed) { Add-Content -LiteralPath $script:requestLog -Value 'fixture|session/prompt|mock' }
         }
         Mock Wait-WtCommandFailure {}
+        Mock Wait-TelemetryBlockedShellFailure { [pscustomobject]@{ method = 'shell_command_failed' } }
         Mock Send-WtInput {
             $script:coldOrder.Add($(if ($Text -eq 'exit 37') { 'exit' } else { 'failure' }))
         }
@@ -198,7 +200,6 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
         Mock Get-WtCapture { 'rendered exception fixture' }
         Mock Wait-WtEvent { @{ method = 'connection_state'; params = @{ pane_id = 'cold-source'; state = 'failed' } } }
         Mock Get-WtPaneStatus { @{ state = 'running' } }
-        Mock Get-ItLogText { 'surfacing Detected pill; sending auto-fix prompt' }
         Mock Wait-Until { & $Condition }
         Mock Start-Sleep {}
         Mock Get-WtEvents { @() }
@@ -212,7 +213,8 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
             $result.HotRefreshValidated | Should -BeFalse
             $result.SourcePane | Should -Be 'cold-source'
             $result.HelperPid | Should -Be 201
-            $result.DetectionMethod | Should -Be $(if ($Allowed) { 'vt_sequence' } else { 'connection_state' })
+            $result.DetectionMethod | Should -Be 'vt_sequence'
+            Should -Invoke Wait-TelemetryBlockedShellFailure -Times $(if ($Allowed) { 0 } else { 1 }) -Exactly
             Should -Invoke Wait-WtCommandFailure -Times $(if ($Allowed) { 1 } else { 0 }) -Exactly
             Should -Invoke Wait-NewAgentPaneSession -Times $(if ($Allowed) { 1 } else { 0 }) -Exactly
             Should -Invoke Wait-TelemetryOnlyOwnedAgent -Times $(if ($Allowed) { 0 } else { 1 }) -Exactly
@@ -242,6 +244,35 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
         Should -Invoke Resolve-AgentOwnerTabId -Times 0 -Exactly
     }
 
+    It 'Blocked-failure oracle requires the content-free typed native snapshot' {
+        Mock Wait-WtEvent {
+            [pscustomobject]@{
+                method = 'shell_command_failed'
+                params = [pscustomobject]@{
+                    pane_id = 'source'; tab_id = 'owner'
+                    autofix_policy_state = 'disabled'; autofix_enabled = $false
+                }
+            }
+        }
+        (Wait-TelemetryBlockedShellFailure -Listener @{} -PaneId source).params.tab_id | Should -Be 'owner'
+    }
+
+    It 'Blocked-failure oracle rejects <Defect>' -ForEach @(
+        @{ Defect = 'shell content' }, @{ Defect = 'string boolean' }, @{ Defect = 'missing owner' }
+    ) {
+        $script:blockedParams = [pscustomobject]@{
+            pane_id = 'source'; tab_id = 'owner'
+            autofix_policy_state = 'disabled'; autofix_enabled = $false
+        }
+        switch ($Defect) {
+            'shell content' { $script:blockedParams | Add-Member -NotePropertyName sequence -NotePropertyValue 'private shell output' }
+            'string boolean' { $script:blockedParams.autofix_enabled = 'false' }
+            'missing owner' { $script:blockedParams.tab_id = '' }
+        }
+        Mock Wait-WtEvent { [pscustomobject]@{ method = 'shell_command_failed'; params = $script:blockedParams } }
+        { Wait-TelemetryBlockedShellFailure -Listener @{} -PaneId source } | Should -Throw
+    }
+
     It 'Hot-policy post-barrier failure uses the policy-permitted oracle for <Allowed>' -ForEach @(
         @{ Allowed = $false }, @{ Allowed = $true }
     ) {
@@ -252,10 +283,10 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
         Set-Content -LiteralPath $script:requestLog -Value ''
         $script:forwardedHotVt = $false
         Mock Initialize-LogOffsets {}
-        Mock Invoke-RunCommand {}
+        Mock Invoke-RunCommand { Add-Content -LiteralPath $script:requestLog -Value 'fixture|session/prompt|mock' }
         Mock Wait-WtCommandFailure {}
+        Mock Wait-TelemetryBlockedShellFailure { [pscustomobject]@{ method = 'shell_command_failed' } }
         Mock Wait-Until { & $Condition }
-        Mock Get-ItLogText { 'sending auto-fix prompt' }
         Mock Send-WtInput { $script:hotCommand = $Text }
         Mock Send-WtKeys {}
         Mock Assert-Pane {
@@ -274,6 +305,7 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
             $marker | Should -Match '^TELEMETRY_POLICY_[a-f0-9]{32}$'
             Should -Invoke Wait-WtCommandFailure -Times $(if ($Allowed) { 1 } else { 0 }) -Exactly
             Should -Invoke Invoke-RunCommand -Times $(if ($Allowed) { 1 } else { 0 }) -Exactly
+            Should -Invoke Wait-Until -Times $(if ($Allowed) { 1 } else { 0 }) -Exactly
             Should -Invoke Assert-Pane -Times $(if ($Allowed) { 0 } else { 1 }) -Exactly
             if (-not $Allowed) {
                 $script:forwardedHotVt = $true

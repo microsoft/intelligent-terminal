@@ -1253,6 +1253,10 @@
     <value>Escolha o agente usado para delegação pela paleta de comandos neste perfil. Esta seleção tem precedência sobre a configuração global do agente delegado.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Usar configuração global ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -3047,16 +3051,12 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Use as regras de aspas da linha de comando do Windows para valores que contenham espaços. Argumentos que entrem em conflito com configurações gerenciadas ou políticas são rejeitados. Comandos de shell não são aceitos.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Use as regras de aspas da linha de comando do Windows para valores que contenham espaços.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Usar a preferência de divisão do perfil</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Sua organização bloqueia as inicializações gerenciadas de agentes nativos. O agente deve ser permitido, e a política deve permitir a aprovação automática, pois os agentes nativos controlam suas próprias configurações de aprovação.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>Alterne entre a nova barra lateral e a exibição clássica de guias horizontais</value>
@@ -3105,5 +3105,13 @@ Alt+Shift+/ insira um prompt; Alt+Shift+B inicie sem um prompt inicial.</value>
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Tentar novamente</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>Perfis de agentes adicionados automaticamente</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>O Terminal adiciona automaticamente as CLIs de agentes instaladas como perfis. Abra um deles no menu de nova guia para começar.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>

@@ -39,6 +39,32 @@ WT (one process, N windows)
 Per agent pane: 1 conpty + 1 helper process. Per Terminal: 1 master + 1
 agent CLI. **N panes ⇒ N helpers + 1 master + 1 agent CLI.**
 
+### Process-owned background service
+
+`SharedWta` starts the master on first assistant, CLI-tracking, or session-list
+demand. Once started, the master belongs to the Terminal process, not to the
+set of assistant panes. Closing the last helper retires its ACP sessions but
+does not stop CLI tracking or global status aggregation. Hiding an assistant
+only stashes its pane: its helper, ACP session, and chat history remain intact.
+Closing one window does not stop the master while the Terminal process lives.
+
+Unexpected master exit permits one automatic replacement per explicit start
+or restart, including when no assistant remains. Status polling cannot renew
+that budget. The stable pipe and receiver-generation handshake let retained
+helpers reconnect and Terminal replay confirmed pane/session bindings.
+
+Normal process exit explicitly signals the master before Terminal's final
+self-termination. Master bounds session cleanup to two seconds; Terminal waits
+up to three seconds, then closes the `KILL_ON_JOB_CLOSE` job to reclaim the
+master and its owned descendants. Abrupt Terminal exit still closes that job
+automatically. User-started CLI processes in ordinary ConPTY panes are not
+members of the master job.
+
+Policy stops the service only when no built-in agents, custom agents, or
+session hooks remain allowed. Re-enabling policy permits on-demand startup;
+it cannot undo final process shutdown. ACP pool warming and history refresh
+retain their existing policies and are separate from master lifetime.
+
 ### Non-activating hook delivery
 
 Terminal publishes its existing COM class factory in the Running Object Table
@@ -889,11 +915,13 @@ architecture:
   continues, verify helper process persists across the move.
 - Window close: close window with agent pane open, verify that
   helper exits and master refcount decrements.
-- Last-pane close: close last agent pane, verify master exits via
-  Job Object.
-- Master crash: kill master mid-conversation, verify helpers and panes
-  exit, no session is loaded automatically, and a later explicit pane
-  open creates a fresh session.
+- Last-pane close: close last agent pane, verify master remains available
+  for ordinary CLI status tracking and session listing.
+- Master crash: stop the test-owned master, verify one bounded replacement,
+  retained helper reconnection, and confirmed binding replay. A second crash
+  must not cause a status-poll-driven respawn loop.
+- Terminal process exit: verify bounded master cleanup and Job Object
+  containment of owned ACP children, without targeting ordinary shell CLIs.
 - Helper crash: kill helper, verify only its pane is affected.
 - Resize: window resize → conpty resize → helper sees it via
   crossterm `Event::Resize` (no `_internal.resize_pane` needed).

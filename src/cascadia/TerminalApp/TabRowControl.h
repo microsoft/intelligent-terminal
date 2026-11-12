@@ -44,6 +44,7 @@ namespace winrt::TerminalApp::implementation
     private:
         bool _showElevationShield{ false };
         bool _isVerticalLayout{ false };
+        bool _isVerticalRailCollapsed{ false };
         winrt::hstring _sidebarToggleKeyChordText;
         winrt::Windows::UI::Xaml::UIElement _verticalTitleBarContent{ nullptr };
         winrt::Windows::UI::Xaml::UIElement _verticalExpandedChrome{ nullptr };
@@ -55,6 +56,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::UI::Xaml::Controls::SplitButton _verticalNewTabButton{ nullptr };
         void _applyLayoutVisibility();
         void _ensureVerticalChrome();
+        void _updateVerticalRailToggleState();
         void _attachChromeToVertical();
         void _attachChromeToHorizontal();
     };

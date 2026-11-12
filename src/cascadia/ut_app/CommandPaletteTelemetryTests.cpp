@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "../TerminalApp/CommandPaletteTelemetry.h"
+#include "../TerminalApp/SidebarTelemetry.h"
 #include "../inc/InteractionTelemetry.h"
 
 using namespace WEX::TestExecution;
@@ -17,7 +18,37 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LeavingAndReenteringMode);
         TEST_METHOD(ClosingBeforeModePreparation);
         TEST_METHOD(DailyInteraction);
+        TEST_METHOD(SidebarKeyboardEntryRequiresCompletedExternalTransition);
+        TEST_METHOD(SidebarHistoryAgeUsesPreviousActivity);
     };
+
+    void CommandPaletteTelemetryTests::SidebarKeyboardEntryRequiresCompletedExternalTransition()
+    {
+        ::TerminalApp::SidebarTelemetry::KeyboardEntry entry;
+        entry.Preparing(false, true, true);
+        VERIFY_IS_TRUE(entry.Focused(true));
+        VERIFY_IS_FALSE(entry.Focused(true));
+        entry.Preparing(true, true, true);
+        VERIFY_IS_FALSE(entry.Focused(true));
+        entry.Preparing(false, true, false);
+        VERIFY_IS_FALSE(entry.Focused(true));
+        entry.Preparing(false, true, true);
+        VERIFY_IS_FALSE(entry.Focused(false));
+        entry.Preparing(false, true, true);
+        entry.Preparing(true, true, true);
+        VERIFY_IS_FALSE(entry.Focused(true));
+        entry.Preparing(false, true, true);
+        VERIFY_IS_TRUE(entry.Focused(true));
+    }
+
+    void CommandPaletteTelemetryTests::SidebarHistoryAgeUsesPreviousActivity()
+    {
+        using ::TerminalApp::SidebarTelemetry::AgeDays;
+        VERIFY_ARE_EQUAL(int64_t{ 2 }, AgeDays(1, 2 * 86'400'000ULL + 1));
+        VERIFY_ARE_EQUAL(int64_t{ 0 }, AgeDays(100, 101));
+        VERIFY_ARE_EQUAL(int64_t{ -1 }, AgeDays(std::nullopt, 100));
+        VERIFY_ARE_EQUAL(int64_t{ -1 }, AgeDays(101, 100));
+    }
 
     void CommandPaletteTelemetryTests::DailyInteraction()
     {

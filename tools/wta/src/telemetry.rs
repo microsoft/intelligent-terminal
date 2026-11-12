@@ -318,6 +318,8 @@ pub fn log_agent_response_complete(
     agent_id: &str,
     identity: PromptIdentity,
 ) {
+    #[cfg(test)]
+    capture::record(capture::Event::AgentResponseComplete(identity, success));
     let success_i32: i32 = if success { 1 } else { 0 };
     let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
     tlg::write_event!(
@@ -349,6 +351,14 @@ pub fn log_agent_slash_command_used(command: &str) {
     let Some(command) = builtin_slash_command(command) else {
         return;
     };
+    log_slash_command_category(command, "builtin");
+}
+
+pub fn log_agent_provided_slash_command_used() {
+    log_slash_command_category("agentProvided", "agentProvided");
+}
+
+fn log_slash_command_category(command: &'static str, kind: &'static str) {
     #[cfg(test)]
     capture::record(capture::Event::AgentSlashCommandUsed(command));
     tlg::write_event!(
@@ -357,6 +367,7 @@ pub fn log_agent_slash_command_used(command: &str) {
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("command", command),
+        str8("CommandKind", kind),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }
@@ -511,15 +522,45 @@ pub fn log_delegate_invoked(trigger_source: &str) {
     );
 }
 
-/// Emitted when a newly spawned agent process finishes its initialize flow.
-pub fn log_agent_cold_start_complete(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ColdStartFailureKind {
+    DependencyInstallFailed,
+    SpawnFailed,
+    TransportFailed,
+    InitializeFailed,
+    Timeout,
+    CleanupFailed,
+}
+
+impl ColdStartFailureKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DependencyInstallFailed => "DependencyInstallFailed",
+            Self::SpawnFailed => "SpawnFailed",
+            Self::TransportFailed => "TransportFailed",
+            Self::InitializeFailed => "InitializeFailed",
+            Self::Timeout => "Timeout",
+            Self::CleanupFailed => "CleanupFailed",
+        }
+    }
+}
+
+/// Emitted when a cold agent startup finishes, including failed-startup cleanup.
+pub(crate) fn log_agent_cold_start_complete(
     agent_id: &str,
     source: &str,
     duration_ms: f64,
-    success: bool,
-    failure_kind: &str,
+    failure: Option<ColdStartFailureKind>,
 ) {
-    let success_i32: i32 = if success { 1 } else { 0 };
+    #[cfg(test)]
+    capture::record(capture::Event::AgentColdStartComplete {
+        agent_id: sanitize_agent_id(agent_id).to_string(),
+        source: source.to_string(),
+        failure,
+    });
+
+    let success_i32: i32 = if failure.is_none() { 1 } else { 0 };
+    let failure_kind = failure.map(ColdStartFailureKind::as_str).unwrap_or("");
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentColdStartComplete",
@@ -576,6 +617,12 @@ pub(crate) mod capture {
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) enum Event {
+        AgentResponseComplete(super::PromptIdentity, bool),
+        AgentColdStartComplete {
+            agent_id: String,
+            source: String,
+            failure: Option<super::ColdStartFailureKind>,
+        },
         AgentSlashCommandUsed(&'static str),
         ErrorFixOffered(uuid::Uuid),
         ErrorFixAccepted(uuid::Uuid, &'static str),
@@ -629,6 +676,11 @@ mod tests {
                 .iter()
                 .map(|spec| capture::Event::AgentSlashCommandUsed(spec.name))
                 .collect::<Vec<_>>()
+        );
+        log_agent_provided_slash_command_used();
+        assert_eq!(
+            capture::take(),
+            vec![capture::Event::AgentSlashCommandUsed("agentProvided")]
         );
     }
 

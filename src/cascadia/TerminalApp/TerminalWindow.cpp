@@ -5,6 +5,7 @@
 #include "TerminalWindow.h"
 
 #include "AppLogic.h"
+#include "FreLayoutMetrics.h"
 
 #include <til/env.h>
 
@@ -177,6 +178,11 @@ namespace winrt::TerminalApp::implementation
             // layout will only ever be non-null if there were >0 tabs persisted in
             // .TabLayout(). We can re-evaluate that as a part of TODO: GH#12633
             _root->SetStartupActions(wil::to_vector(layout.TabLayout()));
+            const auto collapsed = layout.SidebarCollapsed();
+            if (collapsed)
+            {
+                _root->SetStartupSidebarCollapsed(collapsed.Value());
+            }
         }
         else if (_appArgs)
         {
@@ -240,11 +246,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalWindow::_pageInitialized(const IInspectable&, const IInspectable&)
     {
+        const auto launchMode = this->GetLaunchMode();
         // GH#288 - When we finish initialization, if the user wanted us
         // launched _fullscreen_, toggle fullscreen mode. This will make sure
         // that the window size is _first_ set up as something sensible, so
         // leaving fullscreen returns to a reasonable size.
-        const auto launchMode = this->GetLaunchMode();
         if (_WindowProperties->IsQuakeWindow() || WI_IsFlagSet(launchMode, LaunchMode::FocusMode))
         {
             _root->SetFocusMode(true);
@@ -626,7 +632,9 @@ namespace winrt::TerminalApp::implementation
     // - a point containing the requested dimensions in pixels.
     winrt::Windows::Foundation::Size TerminalWindow::GetLaunchDimensions(uint32_t dpi)
     {
+        _shouldConstrainFreLaunchToWorkArea = false;
         winrt::Windows::Foundation::Size proposedSize{};
+        bool hasPersistedSize{ false };
 
         // In focus mode, we don't want to include our own tab row in the size
         // of the window that we hand back. So we account for passing
@@ -645,6 +653,7 @@ namespace winrt::TerminalApp::implementation
 
             if (layout.InitialSize())
             {
+                hasPersistedSize = true;
                 proposedSize = layout.InitialSize().Value();
                 // The size is saved as a non-scaled real pixel size,
                 // so we need to scale it appropriately.
@@ -653,7 +662,8 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        if ((_appArgs && _appArgs->ParsedArgs().GetSize().has_value()) || (proposedSize.Width == 0 && proposedSize.Height == 0))
+        const bool hasExplicitSize = _appArgs && _appArgs->ParsedArgs().GetSize().has_value();
+        if (hasExplicitSize || (proposedSize.Width == 0 && proposedSize.Height == 0))
         {
             // Use the default profile to determine how big of a window we need.
             const auto settings{ Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, nullptr) };
@@ -666,14 +676,16 @@ namespace winrt::TerminalApp::implementation
                                                               commandlineSize.height);
         }
 
-        if (_startupKeptSize.Width > 0 && _startupKeptSize.Height > 0)
+        const bool hasStartupKeptSize = _startupKeptSize.Width > 0 && _startupKeptSize.Height > 0;
+        if (hasStartupKeptSize)
         {
             // Restore the usable size without changing normal window-position
             // or maximize preferences as a drag/tear-out would.
             return { _startupKeptSize.Width * scale, _startupKeptSize.Height * scale };
         }
 
-        if (_contentBounds)
+        const bool hasContentBounds = static_cast<bool>(_contentBounds);
+        if (hasContentBounds)
         {
             // If we've been created as a torn-out window, then we'll need to
             // use that size instead. _contentBounds is in DIPs. Scale
@@ -681,6 +693,24 @@ namespace winrt::TerminalApp::implementation
             return {
                 _contentBounds.Value().Width * scale,
                 _contentBounds.Value().Height * scale
+            };
+        }
+
+        const bool freRequired = IsFreRequired();
+        const bool isDefaultLaunchMode = GetLaunchMode() == LaunchMode::DefaultMode;
+        if (ShouldUseFreDefaultWindowSize(freRequired,
+                                          hasExplicitSize,
+                                          hasPersistedSize,
+                                          hasStartupKeptSize,
+                                          hasContentBounds,
+                                          isDefaultLaunchMode))
+        {
+            _shouldConstrainFreLaunchToWorkArea = true;
+            const auto includeHostedTitlebar = _settings.GlobalSettings().ShowTabsInTitlebar() && !focusMode;
+            const auto freSize = ResolveFreDefaultWindowSize(scale, includeHostedTitlebar);
+            return {
+                static_cast<float>(freSize.width),
+                static_cast<float>(freSize.height),
             };
         }
 
@@ -718,6 +748,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         return proposedSize;
+    }
+
+    bool TerminalWindow::IsFreRequired() const noexcept
+    {
+        return !ApplicationState::SharedInstance().AgentFreCompleted();
     }
 
     // Method Description:

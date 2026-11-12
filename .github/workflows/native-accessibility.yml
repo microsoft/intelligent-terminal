@@ -17,6 +17,8 @@ on:
         type: string
 permissions:
   contents: read
+env:
+  ACCESSIBILITY_RESULTS: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
 jobs:
   native-smoke:
     name: Native Axe.Windows smoke
@@ -137,7 +139,7 @@ jobs:
             -Surface fre `
             -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
             -AxePath $env:AXE_WINDOWS_PATH `
-            -OutputDirectory "$env:RUNNER_TEMP/accessibility-results" `
+            -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
       - name: Scan Agents settings
         id: agents
@@ -150,7 +152,7 @@ jobs:
             -Surface agents `
             -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
             -AxePath $env:AXE_WINDOWS_PATH `
-            -OutputDirectory "$env:RUNNER_TEMP/accessibility-results" `
+            -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
       - name: Scan FRE settings
         id: fre-settings
@@ -163,14 +165,14 @@ jobs:
             -Surface fre-settings `
             -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
             -AxePath $env:AXE_WINDOWS_PATH `
-            -OutputDirectory "$env:RUNNER_TEMP\accessibility-results" `
+            -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
       - name: Upload native accessibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: native-accessibility-${{ inputs.head-sha }}
-          path: ${{ runner.temp }}/accessibility-results
+          name: native-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.ACCESSIBILITY_RESULTS }}
           if-no-files-found: warn
           retention-days: 14
       - name: Enforce native scan results
@@ -188,7 +190,7 @@ jobs:
           }
           $markers = @{ fre = 'NextButton'; 'fre-settings' = 'AgentComboBox'; agents = 'AcpAgentComboBox' }
           foreach ($surface in @('fre', 'fre-settings', 'agents')) {
-            $directory = Join-Path "$env:RUNNER_TEMP\accessibility-results" $surface
+            $directory = Join-Path $env:ACCESSIBILITY_RESULTS $surface
             $result = Get-Content -LiteralPath (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json
             if ($result.status -ne 'PASS' -or $result.source_sha -ne $env:SOURCE_SHA -or
                 $result.surface -ne $surface -or $result.process_id -le 0) {

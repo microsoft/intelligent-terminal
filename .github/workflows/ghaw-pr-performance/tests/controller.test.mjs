@@ -92,6 +92,28 @@ test('repair worker collects the agent-written report from its pre-created outpu
     assert.match(worker, /noop\.message[^]*?does not replace/);
 });
 
+test('preparation reads metadata only from the owning repository and preserves it for identity verification', async t => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const block = worker.match(/name: Read live PR metadata[\s\S]*?script: \|\r?\n((?: {12}.*(?:\r?\n|$))+)/)?.[1];
+    assert.ok(block);
+    const read = new AsyncFunction('github', 'context', 'process', 'require', block.replace(/^ {12}/gm, ''));
+    const root = temporaryDirectory('performance-pr-metadata-');
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const metadata = { number: 42, head: { sha: 'a'.repeat(40) }, base: { sha: 'b'.repeat(40) } };
+    const calls = [];
+    const github = { rest: { pulls: { async get(value) { calls.push(value); return { data: metadata }; } } } };
+    const context = { repo: { owner: 'owner', repo: 'repo' } };
+    const process = { env: { PR_NUMBER: '42', RUNNER_TEMP: root } };
+    await read(github, context, process, createRequire(import.meta.url));
+    assert.deepEqual(calls, [{ owner: 'owner', repo: 'repo', pull_number: 42 }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'performance-pr.json'), 'utf8')), metadata);
+    process.env.PR_NUMBER = '42/other';
+    await assert.rejects(read(github, context, process, createRequire(import.meta.url)), /Invalid PR/);
+    assert.equal(calls.length, 1);
+    assert.match(worker, /name: Read live PR metadata[\s\S]*?retries: 2/);
+    assert.match(worker, /verify-pr[\s\S]*?--expected-base/);
+});
+
 async function reportRun(markdown, { currentHead = 'a'.repeat(40), recordedHead = 'a'.repeat(40),
     outcome = 'success', comments = [], failComment = false, commentSequence, headSequence } = {}) {
     const root = temporaryDirectory('performance-delivery-');
@@ -236,7 +258,7 @@ test('worker/controller source contains no build/test, proposal renderer or nati
     assert.match(workflow, /readReviewSummary/);
 });
 
-test('controller dispatches only the repair worker with immutable pull-request context and correlates its run', async () => {
+async function workerRun({ readErrors = {}, jobsSequence, runSequence, dispatchError, cancelError } = {}) {
     const dispatch = new AsyncFunction('github', 'context', 'core', 'process', 'setTimeout',
         extract('Dispatch and wait for isolated worker'));
     const head = 'a'.repeat(40);
@@ -245,31 +267,63 @@ test('controller dispatches only the repair worker with immutable pull-request c
     const dispatchId = `ghaw-pr-performance-42-${head}-100-2`;
     const calls = [];
     const outputs = {};
+    const warnings = [];
+    const waits = [];
+    const reads = { list: 0, run: 0, jobs: 0 };
     const run = { id: 101, display_title: `Performance repair ${dispatchId}`,
         created_at: new Date().toISOString(), status: 'completed', conclusion: 'success',
         html_url: 'https://github.com/owner/repo/actions/runs/101' };
+    const agent = { name: 'agent', conclusion: 'success',
+        steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: 'success' }] };
+    const read = kind => {
+        const index = reads[kind]++;
+        const status = readErrors[kind]?.[index];
+        if (status) throw Object.assign(new Error(`Read failed: ${status}`), { status });
+        return index;
+    };
     const github = { rest: { actions: {
-        async createWorkflowDispatch(value) { calls.push(['dispatch', value]); },
+        async createWorkflowDispatch(value) {
+            calls.push(['dispatch', value]);
+            if (dispatchError) throw Object.assign(new Error('Dispatch failed'), { status: dispatchError });
+        },
         async listWorkflowRuns(value) {
+            read('list');
             calls.push(['list', value]);
             return { data: { workflow_runs: [
                 { ...run, id: 102, display_title: 'Unrelated repair' }, run,
             ] } };
         },
-        async getWorkflowRun(value) { assert.equal(value.run_id, 101); return { data: run }; },
+        async getWorkflowRun(value) {
+            assert.equal(value.run_id, 101);
+            const index = read('run');
+            return { data: { ...run, ...runSequence?.[Math.min(index, runSequence.length - 1)] } };
+        },
+        async cancelWorkflowRun(value) {
+            calls.push(['cancel', value]);
+            if (cancelError) throw Object.assign(new Error('Cancellation failed'), { status: cancelError });
+        },
         listJobsForWorkflowRun: 'jobs',
     } }, async paginate(method, value) {
         assert.equal(method, 'jobs');
         assert.equal(value.run_id, 101);
-        return [{ name: 'agent', conclusion: 'success',
-            steps: [{ name: 'Execute GitHub Copilot CLI', conclusion: 'success' }] }];
+        const index = read('jobs');
+        return jobsSequence?.[Math.min(index, jobsSequence.length - 1)] ?? [agent];
     } };
-    await dispatch(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100,
-        payload: { pull_request: { number: 42 } } },
-    { setOutput(name, value) { outputs[name] = value; } },
-    { env: { GITHUB_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
-        COMPARISON_BASE_SHA: mergeBase, HEAD_REF: 'feature', BASE_REF: 'main', HEAD_REPO: 'owner/repo' } },
-    callback => callback());
+    let error;
+    try {
+        await dispatch(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100,
+            payload: { pull_request: { number: 42 } } },
+        { setOutput(name, value) { outputs[name] = value; }, warning(message) { warnings.push(message); } },
+        { env: { GITHUB_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
+            COMPARISON_BASE_SHA: mergeBase, HEAD_REF: 'feature', BASE_REF: 'main', HEAD_REPO: 'owner/repo' } },
+        (callback, delay) => { waits.push(delay); callback(); });
+    } catch (caught) { error = caught; }
+    return { calls, outputs, warnings, waits, reads, error, head, base, mergeBase, dispatchId, agent };
+}
+
+test('controller dispatches only the repair worker with immutable pull-request context and correlates its run', async () => {
+    const { calls, outputs, error, head, base, mergeBase, dispatchId } = await workerRun();
+    assert.equal(error, undefined);
     assert.deepEqual(calls.map(([method]) => method), ['dispatch', 'list']);
     const inputs = calls[0][1].inputs;
     for (const [, value] of calls) assert.equal(value.workflow_id, 'ghaw-pr-performance.lock.yml');
@@ -288,4 +342,55 @@ test('controller dispatches only the repair worker with immutable pull-request c
     });
     assert.equal(outputs.run_id, '101');
     assert.equal(outputs.conclusion, 'success');
+});
+
+test('controller retries transient reads without dispatching another paid worker', async () => {
+    const result = await workerRun({ readErrors: { list: [503], run: [502, 504], jobs: [502] } });
+    assert.equal(result.error, undefined);
+    assert.equal(result.calls.filter(([name]) => name === 'dispatch').length, 1);
+    assert.equal(result.warnings.length, 4);
+    assert.equal(result.outputs.conclusion, 'success');
+});
+
+test('controller bounds transient read retries and does not retry permanent reads or uncertain dispatch', async () => {
+    const exhausted = await workerRun({ readErrors: { run: [503, 503, 503, 503] } });
+    assert.equal(exhausted.reads.run, 3);
+    assert.equal(exhausted.error.status, 503);
+    const denied = await workerRun({ readErrors: { run: [403] } });
+    assert.equal(denied.reads.run, 1);
+    assert.equal(denied.warnings.length, 0);
+    const dispatch = await workerRun({ dispatchError: 503 });
+    assert.equal(dispatch.calls.length, 1);
+    assert.equal(dispatch.error.status, 503);
+    assert.equal(dispatch.reads.run, 0);
+});
+
+test('controller waits for completed agent-step visibility but still rejects missing execution', async () => {
+    const { agent } = await workerRun();
+    const delayed = await workerRun({ jobsSequence: [[], [{ ...agent, steps: [] }], [agent]] });
+    assert.equal(delayed.error, undefined);
+    assert.equal(delayed.reads.jobs, 3);
+    assert.equal(delayed.warnings.length, 2);
+    const missing = await workerRun({ jobsSequence: [[]] });
+    assert.match(missing.error.message, /did not complete the agent execution step/);
+    assert.equal(missing.reads.jobs, 3);
+});
+
+test('controller handles a cancellation conflict only when the worker actually completed', async () => {
+    const overdue = { name: 'activation', status: 'in_progress', started_at: '2000-01-01T00:00:00Z' };
+    const { agent } = await workerRun();
+    const completed = await workerRun({ runSequence: [{ status: 'in_progress' }, { status: 'completed' }],
+        jobsSequence: [[overdue], [agent]], cancelError: 409 });
+    assert.equal(completed.error, undefined);
+    assert.equal(completed.outputs.conclusion, 'success');
+    assert.equal(completed.calls.filter(([name]) => name === 'cancel').length, 1);
+    const stillRunning = await workerRun({ runSequence: [{ status: 'in_progress' }],
+        jobsSequence: [[overdue]], cancelError: 409 });
+    assert.equal(stillRunning.error.status, 409);
+    const denied = await workerRun({ runSequence: [{ status: 'in_progress' }],
+        jobsSequence: [[overdue]], cancelError: 403 });
+    assert.equal(denied.error.status, 403);
+    const failed = await workerRun({ runSequence: [{ status: 'in_progress' }, { status: 'completed', conclusion: 'failure' }],
+        jobsSequence: [[overdue]], cancelError: 409 });
+    assert.match(failed.error.message, /phase deadline/);
 });

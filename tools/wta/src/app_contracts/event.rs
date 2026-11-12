@@ -66,6 +66,11 @@ pub enum AppEvent {
     AgentReconnectReady(crate::protocol::acp::client::AgentReconnectRequest),
     /// The ACP task exited before it could consume a queued reconnect request.
     AgentClientFailed,
+    SessionTelemetryBound {
+        tab_id: String,
+        session_id: String,
+        observation_id: uuid::Uuid,
+    },
     SessionAttached {
         tab_id: String,
         session_id: String,

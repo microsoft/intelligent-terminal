@@ -51,6 +51,19 @@ namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
 
 namespace SettingsModelUnitTests
 {
+    static std::vector<std::wstring> ParseFullCommandLine(const std::wstring& command)
+    {
+        int argc = 0;
+        wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(command.c_str(), &argc) };
+        THROW_LAST_ERROR_IF_NULL(argv.get());
+        std::vector<std::wstring> arguments;
+        for (int i = 0; i < argc; ++i)
+        {
+            arguments.emplace_back(argv[i]);
+        }
+        return arguments;
+    }
+
     class CustomAgentAndPolicyTests : public JsonTestClass
     {
         TEST_CLASS(CustomAgentAndPolicyTests);
@@ -62,13 +75,14 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileCommandQuoting);
         TEST_METHOD(AgentProfileNativeCommands);
         TEST_METHOD(AgentProfileArgumentValidation);
+        TEST_METHOD(AgentProfileUserArguments);
         TEST_METHOD(AgentProfileDiscoveryLifecycle);
         TEST_METHOD(AgentProfileDiscoveryExecutionAliases);
         TEST_METHOD(AgentProfileDiscoveryCacheLifecycle);
         TEST_METHOD(AgentProfileDiscoveryCacheFirstFailure);
         TEST_METHOD(AgentProfileNativeAllowlist);
         TEST_METHOD(AgentProfileUninstallPreservesOverrides);
-        TEST_METHOD(AgentProfileLaunchPolicy);
+        TEST_METHOD(AgentProfileGenerationPolicy);
         TEST_METHOD(AgentProfileBatchCommand);
         TEST_METHOD(AgentProfileSplitTargets);
         TEST_METHOD(CustomDelegateAgentRoundtrips);
@@ -443,6 +457,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, std::wstring{ argv[1] });
         VERIFY_ARE_EQUAL(std::wstring{ LR"(model "name"\)" }, std::wstring{ argv[2] });
         VERIFY_ARE_EQUAL(std::wstring{ L"--permission-mode" }, std::wstring{ argv[3] });
+        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, std::wstring{ argv[4] });
         VERIFY_ARE_EQUAL(std::wstring{ L"--add-dir" }, std::wstring{ argv[5] });
         VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\source tree)" }, std::wstring{ argv[6] });
     }
@@ -478,7 +493,7 @@ namespace SettingsModelUnitTests
         {
             const auto executable = L"C:\\Native Tools\\" + std::wstring{ agent.cliExecutable } + L".exe";
             VERIFY_ARE_EQUAL(L"\"" + executable + L"\"", Agents::BuildCommand(executable, agent.id, {}, {}, {}));
-            const auto args = Agents::ParseArguments(Agents::BuildCommand(executable, agent.id, L"provider/model", {}, L"--version"));
+            const auto args = ParseFullCommandLine(Agents::BuildCommand(executable, agent.id, L"provider/model", {}, L"--version"));
             VERIFY_ARE_EQUAL(size_t{ 4 }, args.size());
             VERIFY_ARE_EQUAL(executable, args[0]);
             VERIFY_ARE_EQUAL(std::wstring{ L"--model" }, args[1]);
@@ -494,43 +509,75 @@ namespace SettingsModelUnitTests
                  std::tuple{ L"antigravity", L"accept-edits", L"--mode" },
                  std::tuple{ L"antigravity", L"plan", L"--mode" } })
         {
-            const auto args = Agents::ParseArguments(Agents::BuildCommand(L"C:\\agent.exe", id, {}, mode, {}));
+            const auto args = ParseFullCommandLine(Agents::BuildCommand(L"C:\\agent.exe", id, {}, mode, {}));
+            const auto flagOnly = std::wstring_view{ id } == L"copilot" || std::wstring_view{ id } == L"opencode";
+            VERIFY_ARE_EQUAL(flagOnly ? size_t{ 2 } : size_t{ 3 }, args.size());
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\agent.exe" }, args[0]);
             VERIFY_ARE_EQUAL(std::wstring{ flag }, args[1]);
+            if (!flagOnly)
+            {
+                VERIFY_ARE_EQUAL(std::wstring{ mode }, args[2]);
+            }
         }
     }
 
     void CustomAgentAndPolicyTests::AgentProfileArgumentValidation()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        for (const auto arguments : { L"--model other", L"--config approval_policy=never", L"-capproval_policy=never",
-                                     L"--permission-mode=auto", L"--allow-all", L"--acp", L"login",
-                                     L"--resume", L"--add-dir --model", L"--version=other" })
-        {
-            VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, arguments), wil::ResultException);
-        }
-        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", L"--allow-all", {}, {}), wil::ResultException);
-        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, L"invented-mode", {}), wil::ResultException);
+        // Windows process and batch transport require these constraints.
+        const auto nul = std::wstring{ L"value" } + L'\0' + L"suffix";
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", nul, {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, nul, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, nul), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildCommand({}, L"claude", {}, {}, {}), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.cmd", L"claude", L"%PATH%", {}, {}), wil::ResultException);
-        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", L"%PATH%", {}, {}), wil::ResultException);
-        VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.exe", L"claude", {}, {}, L"--add-dir %USERPROFILE%"), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\claude.cmd", L"claude", L"embedded\"quote", {}, {}), wil::ResultException);
         VERIFY_THROWS(Agents::BuildCommand(L"C:\\agent.exe", L"custom:claude", {}, {}, {}), wil::ResultException);
-        const auto antigravity = Agents::ParseArguments(Agents::BuildCommand(
+        const auto antigravity = ParseFullCommandLine(Agents::BuildCommand(
             L"C:\\agy.exe", L"antigravity", L"chosen-model", L"plan",
             LR"(--conversation "session id" --add-dir "C:\source tree" --prompt-interactive "Explain this project" --continue)"));
-        VERIFY_ARE_EQUAL(size_t{ 12 }, antigravity.size());
-        VERIFY_ARE_EQUAL(std::wstring{ L"--mode" }, antigravity[3]);
-        VERIFY_ARE_EQUAL(std::wstring{ L"plan" }, antigravity[4]);
-        VERIFY_ARE_EQUAL(std::wstring{ L"session id" }, antigravity[6]);
-        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\source tree" }, antigravity[8]);
-        VERIFY_ARE_EQUAL(std::wstring{ L"Explain this project" }, antigravity[10]);
-        for (const auto arguments : { L"--conversation", L"--conversation=--model", L"--resume session",
-                                     L"--mode plan", L"--dangerously-skip-permissions", L"--print prompt",
-                                     L"--model other", L"--add-dir --model" })
+        const std::vector<std::wstring> expected{
+            L"C:\\agy.exe", L"--model", L"chosen-model", L"--mode", L"plan",
+            L"--conversation", L"session id", L"--add-dir", L"C:\\source tree",
+            L"--prompt-interactive", L"Explain this project", L"--continue"
+        };
+        VERIFY_ARE_EQUAL(expected.size(), antigravity.size());
+        for (size_t i = 0; i < expected.size(); ++i)
         {
-            VERIFY_THROWS(Agents::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, {}, arguments), wil::ResultException);
+            VERIFY_ARE_EQUAL(expected[i], antigravity[i]);
         }
-        VERIFY_THROWS(Agents::BuildCommand(L"C:\\agy.exe", L"antigravity", {}, L"yolo", {}), wil::ResultException);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileUserArguments()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const std::wstring_view arguments{
+            LR"(--yolo --new-option=value -c "approval_policy=never" --model "extra model" "" "quoted \"value\"" "C:\path with spaces\\" "%USERPROFILE%" "日本語 & | < >")"
+        };
+        const std::vector<std::wstring> expected{
+            L"--yolo", L"--new-option=value", L"-c", L"approval_policy=never", L"--model", L"extra model",
+            L"", L"quoted \"value\"", L"C:\\path with spaces\\", L"%USERPROFILE%", L"日本語 & | < >"
+        };
+        for (const auto& [id, prefix] : {
+                 std::tuple{ L"copilot", std::vector<std::wstring>{ L"C:\\Native Tools\\copilot.exe", L"--model", L"chosen-model", L"--future-mode" } },
+                 std::tuple{ L"claude", std::vector<std::wstring>{ L"C:\\Native Tools\\claude.exe", L"--model", L"chosen-model", L"--permission-mode", L"future-mode" } },
+                 std::tuple{ L"codex", std::vector<std::wstring>{ L"C:\\Native Tools\\codex.exe", L"--model", L"chosen-model", L"--ask-for-approval", L"future-mode" } },
+                 std::tuple{ L"gemini", std::vector<std::wstring>{ L"C:\\Native Tools\\gemini.exe", L"--model", L"chosen-model", L"--approval-mode", L"future-mode" } },
+                 std::tuple{ L"opencode", std::vector<std::wstring>{ L"C:\\Native Tools\\opencode.exe", L"--model", L"chosen-model", L"--future-mode" } },
+                 std::tuple{ L"antigravity", std::vector<std::wstring>{ L"C:\\Native Tools\\agy.exe", L"--model", L"chosen-model", L"--mode", L"future-mode" } } })
+        {
+            // Structured options precede additional arguments in argv.
+            const auto args = ParseFullCommandLine(Agents::BuildCommand(prefix[0], id, L"chosen-model", L"future-mode", arguments));
+            VERIFY_ARE_EQUAL(prefix.size() + expected.size(), args.size());
+            for (size_t i = 0; i < prefix.size(); ++i)
+            {
+                VERIFY_ARE_EQUAL(prefix[i], args[i]);
+            }
+            for (size_t i = 0; i < expected.size(); ++i)
+            {
+                VERIFY_ARE_EQUAL(expected[i], args[prefix.size() + i]);
+            }
+        }
     }
 
     void CustomAgentAndPolicyTests::AgentProfileDiscoveryLifecycle()
@@ -683,15 +730,12 @@ namespace SettingsModelUnitTests
         VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::Command(*profile, true, L""), wil::ResultException);
         AgentPolicy::PolicySnapshot policy;
         VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
-        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy);
         policy.allowedAgents.emplace();
         VERIFY_IS_FALSE(Registry::IsNativeAgentProviderAllowed(L"antigravity", policy));
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
         policy.allowedAgents->insert(L"antigravity");
         VERIFY_IS_TRUE(Registry::IsNativeAgentProviderAllowed(L"ANTIGRAVITY", policy));
-        ::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy);
         policy.yoloMode = AgentPolicy::PolicyState::Blocked;
-        VERIFY_THROWS(::Microsoft::Terminal::AgentProfiles::CheckLaunchPolicy(L"antigravity", policy), wil::ResultException);
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"agy.exe\"" }, ::Microsoft::Terminal::AgentProfiles::Command(*profile, false, L""));
     }
 
     void CustomAgentAndPolicyTests::AgentProfileUninstallPreservesOverrides()
@@ -727,17 +771,51 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"My Claude" }, profile.Name());
     }
 
-    void CustomAgentAndPolicyTests::AgentProfileLaunchPolicy()
+    void CustomAgentAndPolicyTests::AgentProfileGenerationPolicy()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        AgentPolicy::PolicySnapshot policy;
-        Agents::CheckLaunchPolicy(L"claude", policy);
-        policy.allowedAgents.emplace();
-        VERIFY_THROWS(Agents::CheckLaunchPolicy(L"claude", policy), wil::ResultException);
-        policy.allowedAgents->insert(L"claude");
-        Agents::CheckLaunchPolicy(L"claude", policy);
-        policy.yoloMode = AgentPolicy::PolicyState::Blocked;
-        VERIFY_THROWS(Agents::CheckLaunchPolicy(L"claude", policy), wil::ResultException);
+        const auto pane = MakeSettings(R"("acpAgent":"copilot","agentPane.yoloMode":true)");
+        SetPolicy(MakePolicy());
+        AgentProfileGenerator generator;
+        std::vector<winrt::com_ptr<implementation::Profile>> offered;
+        generator.GenerateProfiles(offered);
+        WEX::Logging::Log::Comment((L"Installed native profiles checked: " + std::to_wstring(offered.size())).c_str());
+        SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{},
+                             AgentPolicy::PolicyState::NotConfigured, AgentPolicy::PolicyState::Blocked));
+        std::vector<winrt::com_ptr<implementation::Profile>> blocked;
+        generator.GenerateProfiles(blocked);
+        VERIFY_IS_TRUE(blocked.empty());
+        VERIFY_IS_TRUE(pane->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(pane->GlobalSettings().EffectiveAgentPaneYoloMode());
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::temp_directory_path() / (L"Native Generation Policy " + Utils::GuidToString(guid));
+        std::filesystem::create_directory(root);
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
+        {
+            std::ofstream{ root / (std::wstring{ agent.cliExecutable } + L".exe") }.put('\n');
+            auto profile = winrt::make_self<implementation::Profile>();
+            profile->AgentProfileId(winrt::hstring{ agent.id });
+            profile->AgentProfileModel(L"chosen");
+            profile->AgentProfileArguments(L"--user-option");
+            VERIFY_IS_TRUE(Agents::IsManaged(*profile));
+            const auto command = Agents::Command(*profile, true, root.native());
+            VERIFY_IS_TRUE(command.find(L"--user-option") != std::wstring::npos);
+            VERIFY_IS_TRUE(command.find(L"chosen") != std::wstring::npos);
+            profile->AgentProfileModel(winrt::hstring{ std::wstring{ L"bad\0model", 9 } });
+            VERIFY_THROWS(Agents::Command(*profile, true, root.native()), wil::ResultException);
+        }
+        // Discovery is environment-dependent; every installed profile must still
+        // be offered only when its provider is in the generation allowlist.
+        for (const auto& profile : offered)
+        {
+            SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ std::wstring{ profile->AgentProfileId() } }));
+            std::vector<winrt::com_ptr<implementation::Profile>> allowed;
+            generator.GenerateProfiles(allowed);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, allowed.size());
+            VERIFY_ARE_EQUAL(profile->AgentProfileId(), allowed.front()->AgentProfileId());
+        }
     }
 
     void CustomAgentAndPolicyTests::AgentProfileBatchCommand()
@@ -804,6 +882,16 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
         source.DefaultSplitProfile(L"{00000000-0000-0000-0000-000000000001}");
         VERIFY_ARE_EQUAL(shell.Guid(), Splits::Resolve(settings, source, nullptr).target.Guid());
+        const auto defaults = CascadiaSettings::LoadDefaults().ActionMap();
+        for (const auto id : { L"Terminal.SplitProfileDown", L"Terminal.SplitProfileRight", L"Terminal.SplitProfileAuto" })
+        {
+            const auto args = defaults.GetActionByID(id).ActionAndArgs().Args().as<SplitPaneArgs>();
+            VERIFY_ARE_EQUAL(SplitType::Profile, args.SplitMode());
+            const auto decision = Splits::Resolve(settings, source, args.ContentArgs());
+            VERIFY_IS_FALSE(decision.duplicate);
+            VERIFY_IS_FALSE(decision.unavailable);
+            VERIFY_ARE_EQUAL(shell.Guid(), decision.target.Guid());
+        }
         source.DefaultSplitProfile(L"invalid-guid");
         const auto missing = Splits::Resolve(settings, source, nullptr);
         VERIFY_IS_TRUE(missing.unavailable);

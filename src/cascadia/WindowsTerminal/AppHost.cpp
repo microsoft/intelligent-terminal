@@ -11,6 +11,7 @@
 #include "VirtualDesktopUtils.h"
 #include "WindowEmperor.h"
 #include "TerminalProtocolComServer.h"
+#include "../TerminalApp/FreLayoutMetrics.h"
 #include "../types/inc/utils.hpp"
 
 using namespace winrt::Windows::UI;
@@ -302,6 +303,8 @@ void AppHost::Initialize()
     TerminalTrySetAutoCompleteAnimationsWhenOccluded(static_cast<::IUnknown*>(winrt::get_abi(_windowLogic.GetRoot())), true);
 
     _window->SetSnapDimensionCallback([this](auto&& PH1, auto&& PH2) { return _windowLogic.CalcSnappedDimension(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2)); });
+    _window->SetWorkAreaConstraintCallback([this]() { return _windowLogic.IsFreRequired(); });
+    _window->SetResizeLockCallback([this]() { return _windowLogic.IsFreRequired(); });
 
     // Create a throttled function for updating the window state, to match the
     // one requested by the pty. A 200ms delay was chosen because it's the
@@ -603,6 +606,7 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     }
 
     auto initialSize = _windowLogic.GetLaunchDimensions(dpix);
+    const auto constrainFreLaunchToWorkArea = _windowLogic.ShouldConstrainFreLaunchToWorkArea();
 
     const auto islandWidth = Utils::ClampToShortMax(lrintf(initialSize.Width), 1);
     const auto islandHeight = Utils::ClampToShortMax(lrintf(initialSize.Height), 1);
@@ -625,6 +629,17 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     GetMonitorInfo(hMonNearest, &nearestMonitorInfo);
     const til::size desktopDimensions{ nearestMonitorInfo.rcWork.right - nearestMonitorInfo.rcWork.left,
                                        nearestMonitorInfo.rcWork.bottom - nearestMonitorInfo.rcWork.top };
+
+    if (constrainFreLaunchToWorkArea)
+    {
+        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowSizeToWorkArea(
+            { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
+            { static_cast<double>(desktopDimensions.width), static_cast<double>(desktopDimensions.height) });
+        dimensions = {
+            Utils::ClampToShortMax(lrint(constrained.width), 1),
+            Utils::ClampToShortMax(lrint(constrained.height), 1),
+        };
+    }
 
     // GH#10583 - Adjust the position of the rectangle to account for the size
     // of the invisible borders on the left/right. We DON'T want to adjust this
@@ -659,7 +674,30 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
         };
     }
 
+    if (constrainFreLaunchToWorkArea)
+    {
+        const auto constrained = winrt::TerminalApp::implementation::ClampFreWindowPositionToWorkArea(
+            { static_cast<double>(origin.x), static_cast<double>(origin.y) },
+            { static_cast<double>(dimensions.width), static_cast<double>(dimensions.height) },
+            { static_cast<double>(nearestMonitorInfo.rcWork.left), static_cast<double>(nearestMonitorInfo.rcWork.top) },
+            { static_cast<double>(desktopDimensions.width), static_cast<double>(desktopDimensions.height) });
+        origin = {
+            gsl::narrow<til::CoordType>(constrained.x),
+            gsl::narrow<til::CoordType>(constrained.y),
+        };
+    }
+
     const til::rect newRect{ origin, dimensions };
+    if (constrainFreLaunchToWorkArea)
+    {
+        _window->SetMinimumSizeOverride(dimensions);
+    }
+    const auto clearMinimumSizeOverride = wil::scope_exit([&]() {
+        if (constrainFreLaunchToWorkArea)
+        {
+            _window->SetMinimumSizeOverride(std::nullopt);
+        }
+    });
     bool succeeded = SetWindowPos(hwnd,
                                   nullptr,
                                   newRect.left,
@@ -1133,6 +1171,11 @@ void AppHost::_ShowWindowChanged(const winrt::Windows::Foundation::IInspectable&
 void AppHost::_WindowSizeChanged(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                  const winrt::Microsoft::Terminal::Control::WindowSizeChangedEventArgs& args)
 {
+    if (_windowLogic.IsFreRequired())
+    {
+        return;
+    }
+
     _resizeWindow(_window->GetHandle(), { args.Width(), args.Height() });
 }
 

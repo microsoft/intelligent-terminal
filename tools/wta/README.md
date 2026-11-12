@@ -101,12 +101,10 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
-### Native interactive Agent Profiles (Windows host)
+### Native CLI utilities (Windows host)
 
-Automatically generated Terminal Agent profiles now discover and launch the
-native CLI directly through C++, without these WTA commands. The commands below
-remain available as standalone CLI utilities; their native flag/argument
-contract is also used by Terminal's managed profile command builder.
+`probe-profile-agents` lists installed native CLIs; `launch-agent` runs one in
+the current terminal.
 
 ```powershell
 wta probe-profile-agents
@@ -184,12 +182,12 @@ Both commands read current policy at invocation under
 `Software\Policies\Microsoft\IntelligentTerminal`, preferring HKLM over HKCU
 independently for each value. `AllowedAgents` (`REG_MULTI_SZ`) is case-insensitive:
 absent means all built-ins, empty means none. Discovery filters disallowed IDs;
-launch checks again. Invalid/unreadable policy fails explicitly rather than
-reporting “not installed”. `AllowAutomaticApproval=0` blocks **all native profile
-launches**, even with no permission override: a native CLI's configuration,
-environment or in-session toggles cannot be reliably constrained by this
-wrapper. Use the policy-enforced ACP agent pane instead. Discovery remains an
-availability probe and does not hide installed agents for this approval policy.
+`wta launch-agent` checks again. Invalid/unreadable policy fails explicitly rather
+than reporting “not installed”. `AllowAutomaticApproval=0` blocks all
+`wta launch-agent` invocations, even with no permission override: a native CLI's
+configuration, environment or in-session toggles cannot be reliably constrained
+by this wrapper. Discovery remains an availability probe and does not hide
+installed agents for this approval policy.
 
 `probe-profile-agents` emits exactly one stdout JSON object, with no resolved
 paths and no authentication/model probe:
@@ -255,7 +253,7 @@ has a separate, reusable history-only ACP process, including already-connected
 WSL and custom agents. It is never used for chat, Autofix, or session restoration.
 Its ACP transport driver owns a `LocalSet` on the blocking boundary, so ordinary
 `Send` tasks can start the history worker safely. Worker exit releases its
-startup ownership, allowing a later refresh to restart it.
+worker slot, but does not reset a paused recovery cycle.
 History and title updates share one response. After success, the next query waits
 five seconds from completion; timer, manual, and hook refreshes share this stream
 and cannot queue additional RPCs. Slow title queries never block hook dispatch.
@@ -272,7 +270,9 @@ so its replacement can pick up credentials from the normal sign-in flow; it
 never starts a separate interactive login.
 
 At 300 seconds without a response, master recycles only the dedicated history
-process, confirms its exit, then rebuilds after backoff. Windows query launchers
+process, confirms its exit, then rebuilds after backoff within its three-failed-cycle
+budget. Reaching that limit pauses automatic recovery until an explicit history
+retry or master restart. Windows query launchers
 are assigned to a private kill-on-close Job Object before executing, so their
 descendants are reclaimed too. WSL uses a private process group with a PID/start
 time receipt and a stdin-EOF guardian; recovery checks that the group has exited.
@@ -399,7 +399,10 @@ If the activation CLI times out, the sidebar checks the receipt using
 never start another focus or restore. Master continues an accepted activation
 after the requesting CLI disconnects. Retrying an unresolved row checks the
 same receipt, including after closing and reopening History; it does not generate
-a fresh activation ID. See
+a fresh activation ID. Receipts include `launched: true` only after a new native
+CLI pane has been created and bound. This remains true if subsequent focusing
+fails (`accepted: false`); focusing an existing pane does not count as a launch.
+See
 [session tracking](../../doc/specs/hybrid-agent-session-tracking.md) for receipt
 retention and refresh cancellation/backoff behavior.
 
@@ -456,21 +459,33 @@ probe. The normal agent-pane connection similarly verifies its prepared
 dependency in the actual shared runtime. An installation-time check is not a
 guarantee of future startup.
 
-Failure budgets are stored under the package-private `acp-startup` directory,
-scoped to the WTA binary identity and hashed effective launch target. They contain
-counts, structured failure fields and bounded, filtered native details rather
-than full provider configuration objects. Native details can include file paths. Ordinary
-refreshes and new helper generations do not reset them. A successful initialize
-or an explicit user retry resets the target's budget; unconfirmed cleanup stops
-replacement instead. `probe-models --retry-startup` is the CLI equivalent of the
-explicit retry action. See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
+Failure budgets and cleanup quarantine are held in memory for the lifetime of
+the owning WTA process. Helpers and pool replacements in one master share the
+same target budget; restarting the master clears it. Independent model-probe and
+verification processes each start their own bounded cycle. No startup admission
+state is read from or written to `acp-startup`; leftover files from older builds
+cannot block initialization. A successful initialize or explicit retry resets
+the target's budget, but retry does not override unconfirmed cleanup within the
+same process. Logs retain safely filtered diagnostic details.
+See [ACP provider lifecycle](../../doc/specs/acp-provider-lifecycle.md).
 
-The `probe-sessions` and `probe-host-sessions` diagnostics share admission for
-their inherited provider binding and retain it through confirmed cleanup.
-Both accept `--retry-startup`; it reopens an exhausted cycle, not a cleanup
-quarantine. They preserve their diagnostic output shapes and treat an unsupported
-session-list method as a normal result rather than an initialization failure.
-Their session-list timeout remains 10 seconds.
+Dedicated history connections retain their own single-flight, adaptive wait,
+hard timeout, backoff and confirmed-cleanup recovery without consuming the chat
+startup budget. Automatic recovery pauses after three consecutive failed query
+cycles, including initialization failures and 300-second query timeouts.
+Successful initialization does not reset that count; an actual successful
+session-list response does, including an empty result. Soft timeouts retain the
+same request without counting as failed cycles. Ordinary refresh cannot reopen
+paused recovery. Use `wta sessions refresh --master <pipe> --retry-history` to
+request a fresh history-only recovery cycle in the background, or restart the
+master. This does not reset chat admission, drop a healthy chat connection, or
+bypass confirmed process cleanup.
+
+The `probe-sessions` and `probe-host-sessions` diagnostics likewise
+own invocation-local state and preserve their output shapes. Both still accept
+`--retry-startup`, but a new invocation needs no retry flag to recover from an
+earlier failure. An unsupported session-list method remains a normal result,
+and their session-list timeout remains 10 seconds.
 
 Startup checks allow up to 60 seconds for an ACP `initialize` reply from either a
 native agent or an `npx` adapter, including cold starts. Session creation and

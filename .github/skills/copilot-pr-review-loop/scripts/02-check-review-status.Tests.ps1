@@ -105,6 +105,16 @@ Review effort: Balanced
         $status.Converged | Should -BeFalse
     }
 
+    It 'Keeps head, pending-review and unanswered-thread gates for the v2 zero-issue field' {
+        $body = "<!-- ccr-overview-v2 -->`n### Needs a closer look`nHosted cancellation remains unproved.`n**No open issues** 🎉"
+        $status = Invoke-StatusFixture -Body $body
+        $status.NoNewComments | Should -BeTrue
+        $status.LatestCopilotReview.bodyHead | Should -Match 'Hosted cancellation remains unproved'
+        (Invoke-StatusFixture -Body $body -ReviewSha 'stale-head').Converged | Should -BeFalse
+        (Invoke-StatusFixture -Body $body -Pending).Converged | Should -BeFalse
+        (Invoke-StatusFixture -Body $body -LastAuthor 'copilot-pull-request-reviewer').Converged | Should -BeFalse
+    }
+
     It 'Does not converge while an open thread awaits our reply' {
         $status = Invoke-StatusFixture -Body '**Comments generated:** 0 new' -LastAuthor 'copilot-pull-request-reviewer'
         $status.ReviewAtHead | Should -BeTrue

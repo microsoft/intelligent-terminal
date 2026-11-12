@@ -1344,6 +1344,10 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <value>Изаберите агента који се користи за делегирање из палете команди у овом профилу. Овај избор има предност над глобалном поставком агента за делегирање.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>Користи глобално подешавање ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -3051,16 +3055,12 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>За вредности које садрже размаке користите правила за наводнике у Windows командној линији. Аргументи који су у сукобу са управљаним подешавањима или смерницама се одбијају. Команде љуске нису подржане.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>За вредности које садрже размаке користите правила за наводнике у Windows командној линији.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Користи подешавање поделе профила</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Ваша организација блокира управљана покретања изворних агената. Агент мора бити дозвољен, а смернице морају дозвољавати аутоматско одобравање јер изворни агенти контролишу сопствена подешавања одобравања.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>Пребаците се између нове бочне траке и класичног хоризонталног приказа картица</value>
@@ -3109,5 +3109,13 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>Покушај поново</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>Профили агената су аутоматски додати</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>Terminal аутоматски додаје инсталиране алатке командне линије за агенте као профиле. Отворите један из менија нове картице да бисте почели.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>

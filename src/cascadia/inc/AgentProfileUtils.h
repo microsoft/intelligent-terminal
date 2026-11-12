@@ -98,7 +98,7 @@ namespace Microsoft::Terminal::AgentProfiles
         std::vector<std::wstring> values;
         if (!arguments.empty())
         {
-            THROW_HR_IF(E_INVALIDARG, arguments.find(L'\0') != std::wstring_view::npos);
+            THROW_HR_IF_MSG(E_INVALIDARG, arguments.find(L'\0') != std::wstring_view::npos, "Native agent command contains an embedded NUL.");
             const auto command = L"agent " + std::wstring{ arguments };
             int argc = 0;
             wil::unique_hlocal_ptr<PWSTR[]> argv{ CommandLineToArgvW(command.c_str(), &argc) };
@@ -111,45 +111,6 @@ namespace Microsoft::Terminal::AgentProfiles
         return values;
     }
 
-    inline void ValidateArguments(const std::wstring_view id, const std::vector<std::wstring>& arguments)
-    {
-        for (size_t i = 0; i < arguments.size(); ++i)
-        {
-            const std::wstring_view argument{ arguments[i] };
-            const auto equals = argument.find(L'=');
-            const auto flag = argument.substr(0, equals);
-            const auto takesValue =
-                ((id == L"claude" || id == L"copilot" || id == L"codex" || id == L"antigravity") && flag == L"--add-dir") ||
-                (id == L"claude" && flag == L"--resume") ||
-                (id == L"gemini" && (flag == L"--resume" || flag == L"--prompt-interactive")) ||
-                (id == L"opencode" && (flag == L"--session" || flag == L"--prompt")) ||
-                (id == L"antigravity" && (flag == L"--conversation" || flag == L"--prompt-interactive"));
-            const auto standalone = flag == L"--help" || flag == L"--version" ||
-                                    (id == L"copilot" && flag == L"--resume") ||
-                                    ((id == L"copilot" || id == L"claude" || id == L"opencode" || id == L"antigravity") && flag == L"--continue") ||
-                                    (id == L"codex" && flag == L"--no-alt-screen");
-            THROW_HR_IF_MSG(E_INVALIDARG, !(takesValue || standalone), "Unsupported or conflicting native agent argument");
-            if (takesValue)
-            {
-                std::wstring_view value;
-                if (equals != std::wstring_view::npos)
-                {
-                    value = argument.substr(equals + 1);
-                }
-                else
-                {
-                    THROW_HR_IF(E_INVALIDARG, ++i == arguments.size());
-                    value = arguments[i];
-                }
-                THROW_HR_IF(E_INVALIDARG, value.empty() || value.front() == L'-');
-            }
-            else
-            {
-                THROW_HR_IF(E_INVALIDARG, equals != std::wstring_view::npos);
-            }
-        }
-    }
-
     inline std::wstring BuildCommand(const std::wstring_view executable,
                                      const std::wstring_view id,
                                      const std::wstring_view model,
@@ -159,47 +120,26 @@ namespace Microsoft::Terminal::AgentProfiles
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(id));
         auto values = ParseArguments(arguments);
-        if (validate)
-        {
-            ValidateArguments(id, values);
-        }
         if (!permissionMode.empty())
         {
-            if (id == L"copilot" && (permissionMode == L"allow-all-tools" || permissionMode == L"allow-all"))
+            // Map the structured permission option to the provider's CLI syntax.
+            if (id == L"copilot" || id == L"opencode")
             {
                 values.insert(values.begin(), L"--" + std::wstring{ permissionMode });
             }
-            else if (id == L"opencode" && permissionMode == L"auto")
-            {
-                values.insert(values.begin(), L"--auto");
-            }
             else
             {
-                const auto valid =
-                    (id == L"claude" && (permissionMode == L"acceptEdits" || permissionMode == L"auto" ||
-                                        permissionMode == L"bypassPermissions" || permissionMode == L"manual" ||
-                                        permissionMode == L"dontAsk" || permissionMode == L"plan")) ||
-                    (id == L"codex" && (permissionMode == L"untrusted" || permissionMode == L"on-request" || permissionMode == L"never")) ||
-                    (id == L"gemini" && (permissionMode == L"default" || permissionMode == L"auto_edit" || permissionMode == L"yolo" || permissionMode == L"plan")) ||
-                    (id == L"antigravity" && (permissionMode == L"accept-edits" || permissionMode == L"plan"));
-                THROW_HR_IF(E_INVALIDARG, validate && !valid);
                 const auto flag = id == L"claude" ? L"--permission-mode" : id == L"codex" ? L"--ask-for-approval" : id == L"antigravity" ? L"--mode" : L"--approval-mode";
                 values.insert(values.begin(), { flag, std::wstring{ permissionMode } });
             }
         }
         if (!model.empty())
         {
-            THROW_HR_IF(E_INVALIDARG, validate && (model.front() == L'-' || model.find(L'\0') != std::wstring_view::npos));
             values.insert(values.begin(), { L"--model", std::wstring{ model } });
         }
         THROW_HR_IF(E_INVALIDARG, executable.empty() || executable.find(L'\0') != std::wstring_view::npos);
-        if (validate)
-        {
-            // ConPTY expands environment references before CreateProcess; keep validated argv unchanged.
-            THROW_HR_IF_MSG(E_INVALIDARG, executable.find(L'%') != std::wstring_view::npos ||
-                                            std::ranges::any_of(values, [](const auto& value) { return value.find(L'%') != std::wstring::npos; }),
-                           "Environment references are not supported in managed native agent commands");
-        }
+        THROW_HR_IF_MSG(E_INVALIDARG, validate && std::ranges::any_of(values, [](const auto& value) { return value.find(L'\0') != std::wstring::npos; }),
+                       "Native agent command contains an embedded NUL.");
         const auto batch = til::equals_insensitive_ascii(std::filesystem::path{ executable }.extension().native(), L".cmd");
         if (batch && validate)
         {
@@ -227,14 +167,6 @@ namespace Microsoft::Terminal::AgentProfiles
             return wrapped;
         }
         return command;
-    }
-
-    inline void CheckLaunchPolicy(const std::wstring_view id, const Settings::Model::AgentPolicy::PolicySnapshot& policy)
-    {
-        THROW_HR_IF_MSG(E_ACCESSDENIED, !Settings::Model::AgentRegistry::SupportsNativeProfile(id) ||
-                                        !Settings::Model::AgentRegistry::IsNativeAgentProviderAllowed(id, policy) ||
-                                        policy.yoloMode == Settings::Model::AgentPolicy::PolicyState::Blocked,
-                     "Managed native agent launch blocked by policy");
     }
 
     template<typename Profile>
@@ -271,7 +203,6 @@ namespace Microsoft::Terminal::AgentProfiles
             // Orphaned profiles must remain editable without an installed CLI.
             executable = std::wstring{ Settings::Model::AgentRegistry::CliExecutable(std::wstring_view{ profile.AgentProfileId() }) } + L".exe";
         }
-        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(),
-                            profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
+        return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
     }
 }

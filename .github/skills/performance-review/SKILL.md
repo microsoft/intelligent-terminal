@@ -19,6 +19,9 @@ Identify changed files, affected components and callers. File and line counts
 help estimate effort; execution frequency, data growth and subsystem risk
 determine which paths merit deeper investigation. Caller-supplied scope and
 analyzer output are discovery inputs, not proof of complete coverage.
+Review every relevant language independently of edit permissions. A Rust-only
+repair allowlist does not exclude C++, XAML, rendering or UI-thread paths from
+source review. State uninspected paths as coverage gaps.
 
 Review produces Markdown using the results template below. The caller owns
 execution permissions, additional output formats, validation and delivery.
@@ -50,6 +53,9 @@ identify revisions, tool versions, configuration, target and analyzed scope.
 Separate new or worsened costs from unchanged baseline debt; moved lines alone
 are not new defects. Shared headers or callers can worsen behavior outside
 edited lines.
+Check the actual implementation and version of library helpers before claiming
+a cost difference; an owned return value can transfer an allocation rather than
+reuse it. Trace existing backoff, caps and cleanup before recommending them.
 
 Available repository entrypoints include the opt-in C++
 `PerformanceAnalysis=Extended` profile, `cargo wta-perf` and
@@ -99,6 +105,12 @@ Collapse duplicate warnings for the same underlying defect.
 | Important defect with redesign, ordering/lifetime uncertainty or unsupported validation | Manual handoff with evidence and missing proof. |
 | Plausible cost with uncertain impact or frequency | MEDIUM/LOW advice with uncertainty and tradeoffs. |
 | Unrelated baseline debt, negligible bounded cost, intentional behavior or false positive | Explain the exclusion in check evidence. |
+
+Every finding needs an introduced, unintended cost and its affected scenario.
+Do not fill finding rows with observations that conclude the work is negligible,
+unchanged or intentional; record those exclusions in checks instead. A source
+proof of blocking, repeated work or unbounded retention does not require a
+benchmark, but an unexplored alternative implementation is not such proof.
 
 Proof that work exists is not proof that it merits HIGH repair. Tie its growth,
 blocking or retention to the affected scenario's actual bounds/frequency or

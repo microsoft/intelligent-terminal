@@ -19,6 +19,110 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Powershell
 {
+    namespace details
+    {
+        // PowerShell treats the Authenticode signature block as the end of
+        // executable script text. Appending even harmless integration code
+        // after it makes the profile fail to parse; inserting before it
+        // would invalidate the signature. Leave signed profiles untouched.
+        inline constexpr std::string_view AuthenticodeSignatureBegin =
+            "# SIG # Begin signature block";
+
+        inline bool HasEncodedAuthenticodeSignatureBlock(std::string_view contents,
+                                                         size_t codeUnitSize,
+                                                         bool littleEndian) noexcept
+        {
+            size_t lineLength = 0;
+            bool matchesMarker = true;
+            for (size_t offset = codeUnitSize; offset + codeUnitSize <= contents.size(); offset += codeUnitSize)
+            {
+                unsigned int codeUnit = 0;
+                for (size_t index = 0; index < codeUnitSize; ++index)
+                {
+                    const auto byte = static_cast<unsigned char>(contents[offset + index]);
+                    const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                    codeUnit |= static_cast<unsigned int>(byte) << shift;
+                }
+
+                if (codeUnit == '\r' || codeUnit == '\n')
+                {
+                    if (matchesMarker && lineLength == AuthenticodeSignatureBegin.size())
+                    {
+                        return true;
+                    }
+                    lineLength = 0;
+                    matchesMarker = true;
+                }
+                else
+                {
+                    if (matchesMarker &&
+                        (codeUnit > 0x7f || lineLength >= AuthenticodeSignatureBegin.size() ||
+                         codeUnit != static_cast<unsigned char>(AuthenticodeSignatureBegin[lineLength])))
+                    {
+                        matchesMarker = false;
+                    }
+                    ++lineLength;
+                }
+            }
+            return matchesMarker && lineLength == AuthenticodeSignatureBegin.size();
+        }
+
+        inline bool HasAuthenticodeSignatureBlock(std::string_view contents) noexcept
+        {
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe &&
+                static_cast<unsigned char>(contents[2]) == 0x00 &&
+                static_cast<unsigned char>(contents[3]) == 0x00)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, true);
+            }
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0x00 &&
+                static_cast<unsigned char>(contents[1]) == 0x00 &&
+                static_cast<unsigned char>(contents[2]) == 0xfe &&
+                static_cast<unsigned char>(contents[3]) == 0xff)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, false);
+            }
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, true);
+            }
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xfe &&
+                static_cast<unsigned char>(contents[1]) == 0xff)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, false);
+            }
+
+            size_t lineStart = 0;
+            while (lineStart <= contents.size())
+            {
+                const auto lineEnd = contents.find_first_of("\r\n", lineStart);
+                const auto line = contents.substr(
+                    lineStart,
+                    lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
+                if (line == AuthenticodeSignatureBegin)
+                {
+                    return true;
+                }
+                if (lineEnd == std::string_view::npos)
+                {
+                    break;
+                }
+                lineStart = lineEnd + 1;
+                if (contents[lineEnd] == '\r' && lineStart < contents.size() && contents[lineStart] == '\n')
+                {
+                    ++lineStart;
+                }
+            }
+            return false;
+        }
+    }
+
     enum class ExecutionPolicyStatus
     {
         Absent,
@@ -870,9 +974,11 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // v11: parse literal resume arguments so quoted IDs and additional CLI
     // options also establish the binding before the first conversation,
     // including Antigravity, while rejecting option-shaped session IDs.
+    // v12: compensate for missing-drive errors from the default drive-switch
+    // functions, whose non-terminating Set-Location errors leave $? true.
     // ───────────────────────────────────────────────────────────────────
-    // v12: report foreground shell commands through OSC 7501 when enabled by the host.
-    inline constexpr int kVersion = 12;
+    // v13: report foreground shell commands through OSC 7501 when enabled by the host.
+    inline constexpr int kVersion = 13;
 
     inline std::wstring ScriptFileName()
     {
@@ -1065,6 +1171,46 @@ if (-not $Global:__ShellInteg_Installed) {
         return -1
     }
 
+    function Global:__ShellInteg_IsDriveSwitchFailure {
+        param($ast, $errorRecord)
+        if ($ErrorActionPreference -ne 'Continue' -or
+            $errorRecord.FullyQualifiedErrorId -cne 'DriveNotFound,Microsoft.PowerShell.Commands.SetLocationCommand' -or
+            $errorRecord.InvocationInfo.MyCommand -isnot [System.Management.Automation.CmdletInfo] -or
+            $errorRecord.InvocationInfo.MyCommand.ImplementingType.FullName -cne 'Microsoft.PowerShell.Commands.SetLocationCommand') {
+            return $false
+        }
+        # ErrorRecords do not retain whether an ErrorAction default suppressed
+        # their display. Leave these configurations to the normal $? path.
+        foreach ($key in $PSDefaultParameterValues.Keys) {
+            if ($key -notlike '*:*') { continue }
+            $parameterPattern = ($key -split ':', 2)[1]
+            if ($parameterPattern -and
+                ('ErrorAction' -like $parameterPattern -or 'ea' -like $parameterPattern)) { return $false }
+        }
+        if ($null -eq $ast.EndBlock -or $ast.BeginBlock -or
+            $ast.ProcessBlock -or $ast.ParamBlock -or
+            $ast.UsingStatements.Count -ne 0 -or
+            $ast.EndBlock.Statements.Count -ne 1) { return $false }
+        $pipeline = $ast.EndBlock.Statements[0]
+        if ($pipeline -isnot [System.Management.Automation.Language.PipelineAst] -or
+            $pipeline.PipelineElements.Count -ne 1) { return $false }
+        if ($pipeline.PSObject.Properties['Background'] -and $pipeline.Background) { return $false }
+        $command = $pipeline.PipelineElements[0]
+        if ($command -isnot [System.Management.Automation.Language.CommandAst] -or
+            $command.InvocationOperator -ne [System.Management.Automation.Language.TokenKind]::Unknown -or
+            $command.CommandElements.Count -ne 1 -or
+            $command.Redirections.Count -ne 0) { return $false }
+        $name = $command.GetCommandName()
+        if ($name -notmatch '\A[A-Za-z]:\z' -or
+            $errorRecord.TargetObject -ine $name.Substring(0, 1)) { return $false }
+        $function = Get-Command -Name $name -ErrorAction Ignore
+        $definition = 'Set-Location $MyInvocation.MyCommand.Name'
+        return $function -is [System.Management.Automation.FunctionInfo] -and
+            $function.Definition.Trim() -ceq $definition -and
+            $errorRecord.InvocationInfo.Line.Trim() -ceq $definition
+    }
+)"
+            R"(
     function prompt {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
         $gle           = $(__ShellInteg_GetLastExitCode)
@@ -1102,19 +1248,26 @@ if (-not $Global:__ShellInteg_Installed) {
                 $null -ne $errorRecord -and
                 -not [object]::ReferenceEquals($errorRecord, $Global:__ShellInteg_LastErrorRecord)
             $inputHadParserError = $false
+            $inputHadDriveSwitchError = $false
             if ($Global:__ShellInteg_CanInspectErrors -and
                 $gle -eq 0 -and
                 $null -ne $submittedLine -and
                 ($newErrorRecord -or -not $historyAdvanced)) {
                 $tokens = $null
                 $parseErrors = $null
-                [void][System.Management.Automation.Language.Parser]::ParseInput(
+                $inputAst = [System.Management.Automation.Language.Parser]::ParseInput(
                     $submittedLine,
                     [ref]$tokens,
                     [ref]$parseErrors)
                 $inputHadParserError = $parseErrors.Count -gt 0
+                if (-not $inputHadParserError -and $newErrorRecord) {
+                    $inputHadDriveSwitchError = __ShellInteg_IsDriveSwitchFailure $inputAst $errorRecord
+                }
             }
             if ($inputHadParserError -and $gle -eq 0) {
+                $gle = -1
+            }
+            if ($inputHadDriveSwitchError -and $gle -eq 0) {
                 $gle = -1
             }
             $newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord
@@ -1156,8 +1309,8 @@ if (-not $Global:__ShellInteg_Installed) {
             # before the delegation.
             #
             # The value restored is derived from $gle, not the literal $? the
-            # engine had: parser-error detection above can turn a $?-true command
-            # into $gle -1. That is deliberate - $gle is the same failure signal
+            # engine had: parser and drive-switch checks can turn a $?-true
+            # command into $gle -1. That is deliberate - $gle is the same failure signal
             # reported in OSC 133;D, so the wrapped prompt and the terminal agree
             # on whether the command failed.
             $Global:__ShellInteg_Rendering = $true
@@ -1286,6 +1439,15 @@ __ShellInteg_Rearm
         std::wstring          ProfileFriendlyName() const override  { return L"PowerShell profile"; }
         LineEndingPolicy      LineEndings() const override          { return LineEndingPolicy::Auto; }
         bool                  PlaceBlockAtEnd() const noexcept override { return true; }
+
+        std::optional<std::wstring> ProfileModificationError(std::string_view contents) const override
+        {
+            if (details::HasAuthenticodeSignatureBlock(contents))
+            {
+                return L"Refusing to modify an Authenticode-signed PowerShell profile";
+            }
+            return std::nullopt;
+        }
 
         std::string ScriptBlock(std::string_view eol) const override
         {

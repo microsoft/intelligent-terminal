@@ -243,6 +243,14 @@
     <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ. ການກວດຫາຂໍ້ຜິດພາດຖືກປິດແລ້ວ.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>ແຜງ shell</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>ກົດ Enter ເພື່ອເນັ້ນໄປທີ່ shell.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ການນຳໃຊ້</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>ໂທເຄັນ</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>ໜ້າຕ່າງບໍລິບົດ</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -299,7 +307,8 @@
     <value>ຄົ້ນຫາແທັບ</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>ຄົ້ນຫາແທັບ</value>
+    <value>ຄົ້ນຫາ</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>ຄົ້ນຫາແທັບ</value>
@@ -385,6 +394,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>ບໍ່ມີເຊດຊັນເອເຈນທີ່ກົງກັນ.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>ບໍ່ມີແທັບທີ່ເປີດຢູ່ ຫຼືເຊດຊັນເອເຈນກ່ອນໜ້າທີ່ກົງກັບການຄົ້ນຫາຂອງທ່ານ.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>ບໍ່ສາມາດໂຫຼດເຊດຊັນເອເຈນໄດ້.</value>
@@ -545,7 +558,7 @@
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
-    <value>ປິດແທັບທັງໝົດທີ່ກຳລັງເຮັດວຽກຢູ່ເບື້ອງຫຼັງ</value>
+    <value>ປິດແທັບທັງໝົດໃນໂໝດບໍ່ມີອິນເຕີເຟດ</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
@@ -566,7 +579,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>ຄົ້ນຫາແທັບ ແລະເຊດຊັນເອເຈນຫຼ້າສຸດ</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · ໃນໜ້າຕ່າງອື່ນ</value>
@@ -580,6 +593,7 @@
   <data name="ExportTabText"><value>ສົ່ງອອກຂໍ້ຄວາມ</value></data>
   <data name="FindText"><value>ຄົ້ນຫາ</value></data>
   <data name="RestartConnectionText"><value>ເລີ່ມເຊດຊັນໃໝ່</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} ແຜງ</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>ປິດ</value></data>
   <data name="TabClose"><value>ປິດແທັບ</value></data>
   <data name="MoveTabToNewWindowText"><value>ຍ້າຍແທັບໄປໜ້າຕ່າງໃໝ່</value></data>

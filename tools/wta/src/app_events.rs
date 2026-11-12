@@ -1114,6 +1114,15 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if session_capabilities_ready && !loading_session {
+                    if let Some(binding) = tab
+                        .pending_telemetry_observation
+                        .take()
+                        .filter(|(sid, _)| sid == &session_id)
+                    {
+                        tab.telemetry_observation = Some(binding);
+                    }
+                }
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {
                         tab.pending_queue_action = None;
@@ -1145,6 +1154,20 @@ impl App {
                 self.project_tab_state(&bind_tab);
                 if session_capabilities_ready && !loading_session {
                     self.publish_session_started(&bind_tab, false);
+                }
+            }
+            AppEvent::SessionTelemetryBound {
+                tab_id,
+                session_id,
+                observation_id,
+            } => {
+                if self.tab_sessions.contains_key(&tab_id)
+                    || self.owner_tab_id.as_deref() == Some(tab_id.as_str())
+                {
+                    // This event precedes attachment acceptance. Do not replace
+                    // the active correlation until its ownership checks pass.
+                    self.tab_mut(&tab_id).pending_telemetry_observation =
+                        Some((session_id, observation_id));
                 }
             }
             AppEvent::SessionAttached {
@@ -1207,6 +1230,13 @@ impl App {
                     .insert(session_id.clone(), tab_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                if let Some(binding) = tab
+                    .pending_telemetry_observation
+                    .take()
+                    .filter(|(sid, _)| sid == &session_id)
+                {
+                    tab.telemetry_observation = Some(binding);
+                }
                 tab.telemetry_model_pending = None;
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {
@@ -2829,6 +2859,29 @@ impl App {
                 // envelope in Debug builds, or INFO with method only in Release.
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
+                if method == "shell_command_failed" {
+                    // Capture-time policy may precede the helper's config refresh.
+                    // This signal is telemetry-only, never an Autofix/UI input.
+                    if !pane_id.is_empty()
+                        && tab_id.as_deref().is_some_and(|tab| {
+                            !tab.is_empty() && self.agent_routing_tab_id() == Some(tab)
+                        })
+                        && params.get("autofix_policy_state").and_then(|v| v.as_str())
+                            == Some("disabled")
+                        && params.get("autofix_enabled").and_then(|v| v.as_bool()) == Some(false)
+                    {
+                        crate::telemetry::log_error_detected(
+                            "Actionable",
+                            "vt_sequence",
+                            &pane_id,
+                            crate::telemetry::AutoFixPolicyState::Disabled,
+                            false,
+                            uuid::Uuid::new_v4(),
+                        );
+                    }
+                    return;
+                }
+
                 if method == "fre_auto_install_selected_agent" {
                     let targets_this_helper = tab_id
                         .as_deref()
@@ -3016,13 +3069,17 @@ impl App {
                 }
 
                 if method == "agent_master_restarted" {
-                    let request_id = params
+                    let operation_id = params
                         .get("operation_id")
                         .and_then(|value| value.as_str())
                         .unwrap_or("");
-                    if request_id.is_empty() {
+                    if operation_id.is_empty() {
                         return;
                     }
+                    let request_id = params
+                        .get("request_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
                     let completes_auth_recovery = matches!(
                         &self.auth_recovery_state,
                         AuthRecoveryState::WaitingForMaster {
@@ -3044,6 +3101,7 @@ impl App {
                     if self.deferred_acp.is_none() {
                         tracing::warn!(
                             target: "helper",
+                            %operation_id,
                             %request_id,
                             "replacement master is ready but helper binding is unavailable"
                         );
@@ -3052,6 +3110,7 @@ impl App {
 
                     tracing::info!(
                         target: "helper",
+                        %operation_id,
                         %request_id,
                         "replacement master is ready; reconnecting retained helper"
                     );

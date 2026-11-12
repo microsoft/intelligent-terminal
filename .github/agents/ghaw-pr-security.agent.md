@@ -8,6 +8,8 @@ tools:
   - skill
   - mcpscripts/read_security_diff
   - mcpscripts/read_security_source
+  - mcpscripts/read_ci_security_findings
+  - mcpscripts/propose_ci_warning_decisions
   - mcpscripts/inspect_security_repair
   - mcpscripts/write_security_repair
   - mcpscripts/submit_security_report

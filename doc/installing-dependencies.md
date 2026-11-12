@@ -582,9 +582,9 @@ wta hooks status
 
 You should see `installed` for the agent you selected, followed by the
 installed hook version (for example `v0.1.5`). When a CLI's hooks were
-registered by a different build, the row also names the version this
-Intelligent Terminal ships — `v0.1.4 (bundle v0.1.5)` means the CLI is
-loading older hooks and should be reinstalled with `wta hooks install`.
+registered by a different build, use `wta hooks status --json` to compare
+`installed_version` with `bundle_version` and inspect `bundle_source`.
+If hooks need repair, run `wta hooks install`.
 If Session management is off, turn it on to retry automatic reconciliation.
 
 > [!TIP]

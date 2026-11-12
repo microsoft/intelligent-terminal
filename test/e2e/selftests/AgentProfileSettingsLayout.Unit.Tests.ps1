@@ -84,6 +84,28 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $header | Should -Match 'bool IsAgentProfile\(\) const \{ return !_profile\.AgentProfileId\(\)\.empty\(\); \}'
     }
 
+    It 'has no native-profile policy warning or launch-policy check' {
+        $base.SelectNodes('//*') | Where-Object {
+            $_.GetAttribute('Uid', $xamlNamespace) -eq 'Profile_AgentPolicyBlocked'
+        } | Should -BeNullOrEmpty
+        (Get-Content -LiteralPath (Join-Path $editorRoot 'MainPage.cpp') -Raw) |
+            Should -Not -Match '\bIsAgentProfilePolicyBlocked\b'
+        $idl = Get-Content -LiteralPath (Join-Path $editorRoot 'ProfileViewModel.idl') -Raw
+        $idl | Should -Match 'Boolean IsManagedAgentProfile \{ get; \};\s*Boolean IsAgentProfilePolicyBlocked \{ get; \};\s*String LaunchCommandline;'
+        (Get-Content -LiteralPath (Join-Path $editorRoot 'ProfileViewModel.h') -Raw) |
+            Should -Match 'bool IsAgentProfilePolicyBlocked\(\) const;'
+        $viewModel = Get-Content -LiteralPath (Join-Path $editorRoot 'ProfileViewModel.cpp') -Raw
+        $getter = [regex]::Match($viewModel, '(?s)bool ProfileViewModel::IsAgentProfilePolicyBlocked\(\) const\s*\{(?<body>.*?)\}')
+        $getter.Success | Should -BeTrue
+        $getter.Groups['body'].Value.Trim() | Should -BeExactly 'return false;'
+        $native = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\inc\AgentProfileUtils.h') -Raw
+        $page = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\TerminalPage.cpp') -Raw
+        $native | Should -Not -Match '\bCheckLaunchPolicy\b'
+        $page | Should -Not -Match '\bCheckLaunchPolicy\b'
+        $page | Should -Match 'Command\(profile, true\)'
+        $page | Should -Match 'if \(!Registry::SupportsNativeProfile\(std::wstring_view\{ profile.AgentProfileId\(\) \}\)\)'
+    }
+
     It 'removes unused permission and split picker projections without removing JSON settings' {
         foreach ($file in @('ProfileViewModel.idl', 'ProfileViewModel.h', 'ProfileViewModel.cpp')) {
             $viewModel = Get-Content -LiteralPath (Join-Path $editorRoot $file) -Raw
