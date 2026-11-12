@@ -1728,7 +1728,9 @@ namespace TerminalAppLocalTests
             {
                 Log::Comment(test.name);
                 tab->ClearAgentOverride();
+                tab->ClearDeferredAgentPaneRestore();
                 globals.AcpAgent(test.globalAgent);
+                globals.AcpAgentSource(L"host");
                 globals.AcpModel(L"new-settings-model");
                 globals.AcpCustomCommand(test.globalAgent == std::wstring_view{ L"custom:restore-test" } ? L"custom-agent --acp" : L"");
                 profile.AgentPaneBackend(test.profileBackend);
@@ -1742,9 +1744,21 @@ namespace TerminalAppLocalTests
                 args.SetContentType(winrt::hstring{ Restore::StashedPaneType });
                 args.Commandline(winrt::hstring{ Restore::BuildPaneCommandline(L"wta.exe", fields) });
 
-                // Stop at the existing prewarm gate after applying the real
-                // restore binding, without launching a helper or agent CLI.
-                VERIFY_IS_FALSE(page->_RestoreAgentPaneFromLayout(tab, args, SplitDirection::Automatic, 0.5f));
+                const auto deferred = std::wstring_view{ test.savedAgent }.starts_with(L"wsl:");
+                VERIFY_ARE_EQUAL(deferred, page->_RestoreAgentPaneFromLayout(tab, args, SplitDirection::Automatic, 0.5f));
+                VERIFY_ARE_EQUAL(deferred, tab->DeferredAgentPaneRestore().has_value());
+                if (deferred)
+                {
+                    VERIFY_IS_NULL(tab->FindAgentPane().get());
+                    const auto persisted = tab->BuildStartupActions(BuildStartupKind::Persist, true);
+                    const auto sessionsOff = tab->BuildStartupActions(BuildStartupKind::Persist, false);
+                    VERIFY_ARE_EQUAL(sessionsOff.size() + 1, persisted.size());
+                    VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, persisted.back().Action());
+                    const auto pendingArgs = _getTerminalArgs(persisted.back());
+                    VERIFY_IS_NOT_NULL(pendingArgs);
+                    VERIFY_ARE_EQUAL(args.Commandline(), pendingArgs.Commandline());
+                    VERIFY_ARE_EQUAL(args.Type(), pendingArgs.Type());
+                }
                 VERIFY_ARE_EQUAL(test.expectedOverride, tab->HasAgentOverride());
                 VERIFY_ARE_EQUAL(test.expectedOverride, tab->HasRestoredAgentOverride());
                 VERIFY_IS_FALSE(tab->HasExplicitAgentOverride());

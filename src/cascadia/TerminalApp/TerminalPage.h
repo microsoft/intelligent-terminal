@@ -541,6 +541,7 @@ namespace winrt::TerminalApp::implementation
             bool agentSessionManagementEnabled{ true };
             std::vector<std::wstring> allowedAgentIds;
             bool customAgentsAllowed{ true };
+            std::wstring acpAgentSource{ L"host" };
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -572,6 +573,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring globalAgentCliPath;
             std::wstring detectedGlobalAgentId;
             std::wstring customModelSelection;
+            std::wstring globalAgentSource{ L"host" };
         };
         struct AgentPaneSettingsBinding
         {
@@ -743,9 +745,13 @@ namespace winrt::TerminalApp::implementation
             std::wstring_view agentId,
             std::wstring_view agentSource,
             std::wstring_view modelOverride,
-            std::wstring_view globalAgentId) noexcept;
+            std::wstring_view globalAgentId,
+            std::wstring_view globalAgentSource = L"host") noexcept;
         static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
             const AgentPaneSettingsBindingRequest& request);
+        static bool _CanPrewarmAgentBinding(
+            const AgentPaneSettingsBinding& binding,
+            std::wstring_view globalAgentSource);
         AgentPaneSettingsBinding _ResolveAgentPaneSettingsBindingForTab(
             const winrt::com_ptr<Tab>& tab,
             bool forSettingsUpdate = false);
@@ -891,7 +897,8 @@ namespace winrt::TerminalApp::implementation
         bool _RestoreAgentPaneFromLayout(const winrt::com_ptr<Tab>& tab,
                                          const winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs& contentArgs,
                                          winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitDirection,
-                                         float splitSize);
+                                         float splitSize,
+                                         std::optional<bool> requestedSessionsView = std::nullopt);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

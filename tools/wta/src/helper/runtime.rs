@@ -119,6 +119,11 @@ pub(super) async fn run_default_tui_over_pipe(
         config.agent_source.as_deref(),
         config.agent_wsl_distro.as_deref(),
     )?;
+    super::config::ensure_startup_eligible(
+        &agent_source,
+        config.start_stashed,
+        config.allow_stashed_wsl_startup,
+    )?;
     config.agent_source_cwd =
         crate::agent_source::resolve_source_cwd(&agent_source, config.agent_source_cwd.as_deref())
             .await;

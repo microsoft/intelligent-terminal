@@ -41,6 +41,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(SidebarFilterSettingsRoundtrip);
         TEST_METHOD(SidebarCollapsedRoundtrip);
         TEST_METHOD(RenderAgentMarkdown);
+        TEST_METHOD(AgentExecutionSourcesRoundtrip);
         TEST_METHOD(Profile);
         TEST_METHOD(ColorScheme);
         TEST_METHOD(Actions);
@@ -263,6 +264,23 @@ namespace SettingsModelUnitTests
         const auto reloaded = implementation::GlobalAppSettings::FromJson(defaults->ToJson());
         VERIFY_IS_FALSE(reloaded->RenderAgentMarkdown());
         VERIFY_IS_TRUE(reloaded->HasRenderAgentMarkdown());
+    }
+
+    void SerializationTests::AgentExecutionSourcesRoundtrip()
+    {
+        RoundtripTest<implementation::GlobalAppSettings>(
+            R"({"actions":[],"keybindings":[],"acpAgent":"copilot","acpAgentSource":"wsl:Ubuntu","delegateAgent":"claude","delegateAgentSource":"host"})");
+        const auto defaults = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded("{}"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"host" }, defaults->AcpAgentSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"host" }, defaults->DelegateAgentSource());
+        VERIFY_IS_FALSE(defaults->HasAcpAgentSource());
+        VERIFY_IS_FALSE(defaults->HasDelegateAgentSource());
+        defaults->AcpAgentSource(L"wsl:Debian");
+        const auto copy = defaults->Copy();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Debian" }, copy->AcpAgentSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"host" }, copy->DelegateAgentSource());
+        VERIFY_IS_TRUE(implementation::IsAISettingChange("global.acpAgentSource"));
+        VERIFY_IS_TRUE(implementation::IsAISettingChange("global.delegateAgentSource"));
     }
 
     void SerializationTests::GlobalSettings()

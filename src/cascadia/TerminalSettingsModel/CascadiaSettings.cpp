@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "CascadiaSettings.h"
+#include "AgentProfileGenerator.h"
 #include "CascadiaSettings.g.cpp"
 #include "MatchProfilesEntry.h"
 
@@ -107,6 +108,17 @@ std::string_view Model::implementation::LoadStringResource(int resourceID)
 winrt::hstring CascadiaSettings::Hash() const noexcept
 {
     return _hash;
+}
+
+winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> CascadiaSettings::DiscoverWslAgentsAsync()
+{
+    co_await winrt::resume_background();
+    std::string payload;
+    auto sources = ::Microsoft::Terminal::AgentAvailability::ProbeWslAgentSources(true, &payload);
+    THROW_HR_IF_MSG(E_FAIL, !sources || payload.empty(), "WSL agent discovery failed");
+    const auto result = winrt::to_hstring(payload);
+    Model::AgentProfileGenerator::UpdateWslSources(std::move(*sources));
+    co_return result;
 }
 
 Model::CascadiaSettings CascadiaSettings::Copy() const
@@ -373,6 +385,7 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
     if (!source.AgentProfileId().empty())
     {
         duplicated->AgentProfileId(source.AgentProfileId());
+        duplicated->AgentProfileSource(source.AgentProfileSource());
         duplicated->AgentProfileModel(source.AgentProfileModel());
         duplicated->AgentProfilePermissionMode(source.AgentProfilePermissionMode());
         duplicated->AgentProfileArguments(source.AgentProfileArguments());

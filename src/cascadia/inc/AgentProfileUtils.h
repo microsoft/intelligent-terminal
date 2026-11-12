@@ -4,6 +4,7 @@
 #pragma once
 
 #include "AgentPaneRestore.h"
+#include "AgentPaneBackend.h"
 #include "AgentRegistry.h"
 #include <filesystem>
 #include <map>
@@ -169,6 +170,29 @@ namespace Microsoft::Terminal::AgentProfiles
         return command;
     }
 
+    inline std::wstring BuildWslCommand(const std::wstring_view distro,
+                                        const std::wstring_view id,
+                                        const std::wstring_view model,
+                                        const std::wstring_view permissionMode,
+                                        const std::wstring_view arguments)
+    {
+        THROW_HR_IF(E_INVALIDARG, !WslDistroName::IsSafe(distro));
+        const auto nativeCommand = BuildCommand(Settings::Model::AgentRegistry::CliExecutable(id), id, model, permissionMode, arguments);
+        std::wstring systemDirectory;
+        THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(systemDirectory));
+        std::wstring command;
+        AgentPaneRestore::AppendQuoted(command, systemDirectory + L"\\wsl.exe");
+        command.append(L" --distribution ");
+        AgentPaneRestore::AppendQuoted(command, distro);
+        // Login PATH includes user-installed CLIs. Pass arguments positionally,
+        // never as shell source, and do not involve an ACP adapter.
+        command.append(L" --exec bash -lc ");
+        AgentPaneRestore::AppendQuoted(command, L"exec \"$@\"");
+        command.append(L" bash ");
+        command.append(nativeCommand);
+        return command;
+    }
+
     template<typename Profile>
     bool IsManaged(Profile&& profile)
     {
@@ -184,6 +208,12 @@ namespace Microsoft::Terminal::AgentProfiles
     std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
+        const auto backend = Settings::Model::AgentPaneBackend::FromSettings(profile.AgentProfileId(), profile.AgentProfileSource());
+        THROW_HR_IF_MSG(E_INVALIDARG, !backend, "Invalid native agent execution source");
+        if (backend->source == Settings::Model::AgentPaneBackendSource::Wsl)
+        {
+            return BuildWslCommand(backend->wslDistro, profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments());
+        }
         std::filesystem::path executable;
         try
         {

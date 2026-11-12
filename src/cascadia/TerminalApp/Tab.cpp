@@ -846,6 +846,18 @@ namespace winrt::TerminalApp::implementation
             state.args.emplace_back(std::move(zoomPaneAction));
         }
 
+        if (_deferredAgentPaneRestore && (kind != BuildStartupKind::Persist || persistAgentPanes))
+        {
+            ActionAndArgs restoreAction{};
+            restoreAction.Action(ShortcutAction::SplitPane);
+            restoreAction.Args(SplitPaneArgs{
+                SplitType::Manual,
+                _deferredAgentPaneRestore->direction,
+                _deferredAgentPaneRestore->size,
+                _deferredAgentPaneRestore->args });
+            state.args.emplace_back(std::move(restoreAction));
+        }
+
         return state.args;
     }
 

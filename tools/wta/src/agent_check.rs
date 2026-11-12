@@ -216,8 +216,18 @@ fn find_configured_executable(
 /// PATH are rejected so a source is never advertised when it cannot run with
 /// Linux dependencies.
 pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
+    match find_wsl_exe_checked(distro, executable).await {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(target: "agent_source", distro, executable, %error, "WSL executable probe failed");
+            None
+        }
+    }
+}
+
+async fn find_wsl_exe_checked(distro: &str, executable: &str) -> anyhow::Result<Option<String>> {
     if !crate::agent_source::is_safe_wsl_distro_name(distro) || executable.trim().is_empty() {
-        return None;
+        anyhow::bail!("Invalid WSL executable probe target");
     }
 
     let mut output = None;
@@ -252,7 +262,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
                     %error,
                     "WSL agent availability probe failed to spawn"
                 );
-                return None;
+                return Err(error.into());
             }
             Err(_) if attempt < WSL_AGENT_PROBE_ATTEMPTS => {
                 tracing::warn!(
@@ -274,11 +284,12 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
                     max_attempts = WSL_AGENT_PROBE_ATTEMPTS,
                     "WSL agent availability probe timed out after retries"
                 );
-                return None;
+                anyhow::bail!("WSL executable probe timed out");
             }
         }
     }
-    let output = output?;
+    let output =
+        output.ok_or_else(|| anyhow::anyhow!("WSL executable probe produced no output"))?;
 
     let resolved = match parse_wsl_agent_probe_output(&output) {
         Ok(resolved) => resolved,
@@ -293,7 +304,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
                 reason,
                 "WSL agent availability is indeterminate"
             );
-            return None;
+            anyhow::bail!("{reason}");
         }
     };
     tracing::info!(
@@ -303,7 +314,7 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         available = resolved.is_some(),
         "WSL agent availability probe"
     );
-    resolved
+    Ok(resolved)
 }
 
 fn parse_wsl_agent_probe_output(
@@ -333,6 +344,19 @@ fn parse_wsl_agent_probe_output(
 
 /// Whether a known ACP agent can start inside `distro`.
 pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
+    match wsl_agent_available_checked(distro, agent_id).await {
+        Ok(available) => available,
+        Err(error) => {
+            tracing::warn!(target: "agent_source", distro, agent_id, %error, "WSL agent probe failed");
+            false
+        }
+    }
+}
+
+pub(crate) async fn wsl_agent_available_checked(
+    distro: &str,
+    agent_id: &str,
+) -> anyhow::Result<bool> {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
     let source = crate::agent_source::AgentSource::Wsl {
         distro: distro.to_string(),
@@ -343,15 +367,17 @@ pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
     } else {
         executable
     };
-    if find_wsl_exe(distro, executable).await.is_none() {
-        return profile.id == agent_registry::ANTIGRAVITY_AGENT_ID
-            && find_wsl_exe(distro, profile.cli_executable).await.is_some();
+    if find_wsl_exe_checked(distro, executable).await?.is_none() {
+        return Ok(profile.id == agent_registry::ANTIGRAVITY_AGENT_ID
+            && find_wsl_exe_checked(distro, profile.cli_executable)
+                .await?
+                .is_some());
     }
 
     if profile.acp_command_override(&source).starts_with("npx ") {
-        return find_wsl_exe(distro, "npx").await.is_some();
+        return Ok(find_wsl_exe_checked(distro, "npx").await?.is_some());
     }
-    true
+    Ok(true)
 }
 
 pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {

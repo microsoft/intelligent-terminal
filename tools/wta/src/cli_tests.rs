@@ -7,6 +7,37 @@ fn cli_schema_has_no_duplicate_short_flags() {
 }
 
 #[test]
+fn master_retains_default_wsl_source_and_rejects_invalid_distro() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "--master",
+        "test-pipe",
+        "--agent-source",
+        "wsl",
+        "--agent-wsl-distro",
+        "Ubuntu",
+    ])
+    .unwrap();
+    assert_eq!(
+        master_config(cli).unwrap().agent_source,
+        agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into()
+        }
+    );
+    let cli = Cli::try_parse_from([
+        "wta",
+        "--master",
+        "test-pipe",
+        "--agent-source",
+        "wsl",
+        "--agent-wsl-distro",
+        "Ubuntu;bad",
+    ])
+    .unwrap();
+    assert!(master_config(cli).is_err());
+}
+
+#[test]
 fn split_pane_horizontal_uses_uppercase_short_flag() {
     let cli = Cli::try_parse_from(["wta", "split-pane", "-H"])
         .expect("split-pane -H must parse without colliding with help");
@@ -497,6 +528,42 @@ fn process_label_subcommands() {
             .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());
+    assert!(Cli::try_parse_from(["wta", "probe-agent-sources", "--all-wsl"]).is_ok());
+    assert!(Cli::try_parse_from([
+        "wta",
+        "probe-agent-sources",
+        "--all-wsl",
+        "--start-stopped-wsl",
+    ])
+    .is_ok());
+    assert!(Cli::try_parse_from(["wta", "probe-agent-sources", "--start-stopped-wsl",]).is_err());
+    assert!(Cli::try_parse_from([
+        "wta",
+        "probe-agent-sources",
+        "--wsl-distro",
+        "Ubuntu",
+        "--start-stopped-wsl",
+    ])
+    .is_err());
+    assert!(Cli::try_parse_from([
+        "wta",
+        "probe-agent-sources",
+        "--all-wsl",
+        "--wsl-distro",
+        "Ubuntu"
+    ])
+    .is_err());
+    assert!(Cli::try_parse_from([
+        "wta",
+        "probe-models",
+        "--agent",
+        "copilot",
+        "--agent-id",
+        "copilot",
+        "--wsl-distro",
+        "Ubuntu"
+    ])
+    .is_ok());
 
     let probe_sessions =
         Cli::try_parse_from(["wta", "probe-sessions", "--agent", "copilot"]).unwrap();

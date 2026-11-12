@@ -30,6 +30,39 @@ pub(crate) struct HelperConfig {
     pub(crate) initial_load_cwd: Option<String>,
     pub(crate) initial_yolo_control_owner: Option<crate::app_contracts::YoloControlOwner>,
     pub(crate) start_stashed: bool,
+    pub(crate) allow_stashed_wsl_startup: bool,
+}
+
+pub(super) fn ensure_startup_eligible(
+    source: &crate::agent_source::AgentSource,
+    start_stashed: bool,
+    allow_stashed_wsl_startup: bool,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !start_stashed
+            || matches!(source, crate::agent_source::AgentSource::Host)
+            || allow_stashed_wsl_startup,
+        "Hidden WSL helper startup requires host authorization for a running or default source"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hidden_wsl_requires_authorization_before_any_distro_command() {
+        let wsl = crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        assert!(ensure_startup_eligible(&wsl, true, false).is_err());
+        assert!(ensure_startup_eligible(&wsl, true, true).is_ok());
+        assert!(ensure_startup_eligible(&wsl, false, false).is_ok());
+        assert!(
+            ensure_startup_eligible(&crate::agent_source::AgentSource::Host, true, false).is_ok()
+        );
+    }
 }
 
 impl HelperConfig {

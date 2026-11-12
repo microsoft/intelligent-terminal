@@ -17,6 +17,7 @@
 #include "WslDistroGenerator.h"
 #include "SshHostGenerator.h"
 #include "AgentProfileGenerator.h"
+#include "../inc/AgentProfileUtils.h"
 
 #include "ApplicationState.h"
 #include "../inc/AgentPolicy.h"
@@ -231,6 +232,7 @@ void SettingsLoader::GenerateProfiles()
     generateProfiles(WslDistroGenerator{});
     generateProfiles(AzureCloudShellGenerator{});
     generateProfiles(VisualStudioGenerator{});
+    AgentProfileGenerator::RestoreSavedWslProfiles(userSettings.profiles);
     generateProfiles(AgentProfileGenerator{});
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
@@ -1137,6 +1139,21 @@ void SettingsLoader::_addUserProfileParent(const winrt::com_ptr<implementation::
 
         it->second = child;
         userSettings.profiles.emplace_back(std::move(child));
+    }
+    if (profile->Source() == ::Microsoft::Terminal::AgentProfiles::Source &&
+        std::wstring_view{ profile->AgentProfileSource() }.starts_with(L"wsl:"))
+    {
+        // Persist source identity so stopped/uninstalled sources remain
+        // editable and an explicit saved launch never resolves a host CLI.
+        const auto& child = userSettings.profilesByGuid.at(profile->Guid());
+        if (!child->HasAgentProfileId())
+        {
+            child->AgentProfileId(profile->AgentProfileId());
+        }
+        if (!child->HasAgentProfileSource())
+        {
+            child->AgentProfileSource(profile->AgentProfileSource());
+        }
     }
 }
 

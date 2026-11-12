@@ -2685,6 +2685,10 @@ impl App {
                 .map(|(id, display_name)| {
                     let distro = distro.clone();
                     async move {
+                        if let Err(error) = crate::agent_source::ensure_wsl_running(&distro).await {
+                            tracing::debug!(target: "agent_source", distro, %error, "skipping inactive WSL source discovery");
+                            return None;
+                        }
                         crate::agent_check::wsl_agent_available(&distro, id)
                             .await
                             .then(|| {

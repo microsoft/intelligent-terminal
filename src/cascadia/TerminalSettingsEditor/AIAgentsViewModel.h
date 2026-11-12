@@ -10,6 +10,7 @@
 #include "ViewModelHelpers.h"
 #include "Utils.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentAvailability.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
@@ -100,6 +101,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         AIAgentsViewModel(Model::GlobalAppSettings globalSettings);
         ~AIAgentsViewModel();
         bool TryUpdateSettings(const Model::GlobalAppSettings& globalSettings);
+        void SetAvailableWslAgents(const std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot>& sources);
         bool IsAcpPreparing() const noexcept { return _acpPreparing; }
         bool AcpPreparationFailed() const noexcept { return _acpPreparationFailed; }
         winrt::hstring AcpPreparationErrorText() const { return _acpPreparationErrorText; }
@@ -213,6 +215,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> _autoErrorHandlingList;
 
         bool _isAddingCustomAcpAgent{ false };
+        bool _updatingAgentChoices{ false };
         bool _isAddingCustomDelegateAgent{ false };
         bool _isCustomModelProvidersExpanded{ false };
         bool _isAddingCustomModelProvider{ false };
@@ -250,11 +253,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // previous one).
         uint64_t _acpProbeGeneration{ 0 };
         void _TriggerAcpModelProbe(bool retryStartup = false);
-        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision, bool retryStartup);
+        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, std::wstring wslDistro, winrt::hstring cacheKey, uint64_t generation, uint64_t cacheRevision, bool retryStartup);
         // Mirror of TerminalPage::_ResolveEffectiveAgentCliPath. Kept
         // here (rather than in inc/) because the Settings UI sits in
         // a separate project and can't include TerminalApp headers.
         std::wstring _ResolveEffectiveAcpAgentCmdline() const;
+        bool _SupportsCustomModels() const;
+        static winrt::hstring _AgentSelectionId(const winrt::hstring& agentId, const winrt::hstring& source);
 
         static bool _IsKnownAgent(const winrt::hstring& id);
         static winrt::hstring _DeriveId(const winrt::hstring& command);

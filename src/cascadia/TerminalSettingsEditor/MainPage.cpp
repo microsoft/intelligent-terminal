@@ -26,6 +26,7 @@
 #include "NewTabMenu.h"
 #include "NavConstants.h"
 #include "..\inc\AgentAvailability.h"
+#include "..\inc\AgentPaneBackend.h"
 #include "..\inc\AgentProfileUtils.h"
 #include "..\types\inc\utils.hpp"
 #include <..\WinRTUtils\inc\Utils.h>
@@ -264,6 +265,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // - <none>
     void MainPage::UpdateSettings(const Model::CascadiaSettings& settings)
     {
+        const auto restoreUpdating = wil::scope_exit([this, previous = std::exchange(_updatingSettings, true)] {
+            _updatingSettings = previous;
+        });
         // Reset reuses the source object and must still discard page editing state.
         const auto externalReload = settings != _settingsSource;
         _settingsSource = settings;
@@ -901,6 +905,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _ApplyHostAgentAvailability(profile);
             contentFrame().Navigate(xaml_typename<Editor::Profiles_Base>(), winrt::make<NavigateToPageArgs>(profile, *this, elementToFocus));
+            _ProbeWslAgentAvailabilityAsync();
         }
         else if (page == ProfileSubPage::Appearance)
         {
@@ -1033,6 +1038,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             else if (*clickedItemTag == aiAgentsTag)
             {
                 auto aiAgentsVm = winrt::make<AIAgentsViewModel>(_settingsClone.GlobalSettings());
+                winrt::get_self<AIAgentsViewModel>(aiAgentsVm)->SetAvailableWslAgents(_availableWslAgents);
                 aiAgentsVm.InitShellIntegrationRequested([weak = get_weak()](auto&&, auto target) {
                     if (auto s = weak.get())
                     {
@@ -1041,6 +1047,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 });
                 contentFrame().Navigate(xaml_typename<Editor::AIAgents>(), winrt::make<NavigateToPageArgs>(aiAgentsVm, *this, elementToFocus));
                 _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_AIAgents/Content"), BreadcrumbSubPage::None));
+                _ProbeWslAgentAvailabilityAsync();
 
                 // Dismiss the "NEW" badge after the user visits the page
                 Model::ApplicationState::SharedInstance().DismissBadge(AIAgentsPageId);
@@ -1469,6 +1476,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void MainPage::_ApplyHostAgentAvailability(const Editor::ProfileViewModel& profile)
     {
         winrt::get_self<implementation::ProfileViewModel>(profile)->SetAvailableHostAgents(_availableHostAgents);
+        winrt::get_self<implementation::ProfileViewModel>(profile)->SetAvailableWslAgents(_availableWslAgents);
     }
 
     safe_void_coroutine MainPage::_ProbeHostAgentAvailabilityAsync()
@@ -1490,6 +1498,65 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             if (strongThis->_profileDefaultsVM)
             {
                 strongThis->_ApplyHostAgentAvailability(strongThis->_profileDefaultsVM);
+            }
+        }
+    }
+
+    safe_void_coroutine MainPage::_ProbeWslAgentAvailabilityAsync()
+    {
+        if (_updatingSettings || _wslAgentProbeInFlight)
+        {
+            co_return;
+        }
+        _wslAgentProbeInFlight = true;
+        const auto dispatcher = Dispatcher();
+        auto weakThis = get_weak();
+        co_await winrt::resume_background();
+        std::optional<std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot>> sources;
+        try
+        {
+            const auto payload = co_await Model::CascadiaSettings::DiscoverWslAgentsAsync();
+            sources = ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources(winrt::to_string(payload));
+            THROW_HR_IF_MSG(E_INVALIDARG, !sources, "Invalid WSL agent discovery response");
+        }
+        CATCH_LOG()
+        co_await wil::resume_foreground(dispatcher);
+        if (auto self = weakThis.get())
+        {
+            self->_wslAgentProbeInFlight = false;
+            if (!sources)
+            {
+                co_return;
+            }
+            for (const auto& profile : self->_settingsClone.AllProfiles())
+            {
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                    std::wstring_view{ profile.AgentProfileId() },
+                    std::wstring_view{ profile.AgentProfileSource() });
+                if (!backend || backend->source != ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+                {
+                    continue;
+                }
+                for (auto& source : *sources)
+                {
+                    if (til::compare_ordinal_insensitive(source.distro, backend->wslDistro) == 0 && (!source.running || source.probeFailed))
+                    {
+                        source.agentIds.emplace(backend->agentId);
+                    }
+                }
+            }
+            self->_availableWslAgents = std::move(*sources);
+            for (const auto& profile : self->_profileVMs)
+            {
+                winrt::get_self<implementation::ProfileViewModel>(profile)->SetAvailableWslAgents(self->_availableWslAgents);
+            }
+            if (self->_profileDefaultsVM)
+            {
+                winrt::get_self<implementation::ProfileViewModel>(self->_profileDefaultsVM)->SetAvailableWslAgents(self->_availableWslAgents);
+            }
+            if (const auto agentsPage = self->contentFrame().Content().try_as<Editor::AIAgents>())
+            {
+                winrt::get_self<AIAgentsViewModel>(agentsPage.ViewModel())->SetAvailableWslAgents(self->_availableWslAgents);
             }
         }
     }

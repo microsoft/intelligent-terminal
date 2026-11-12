@@ -232,6 +232,20 @@ and ACP wrapper prerequisites.
 
 The read-only `probe-host-agents` and `probe-agent-sources` availability commands
 only report readiness or bootstrap eligibility; they do not install dependencies.
+`probe-agent-sources --all-wsl` returns registered non-utility distributions as
+`{"sources":[{"wsl_distro":"Ubuntu","agents":[],"running":false}]}`.
+Only already-running distributions are probed; errors are included per source
+and never authorize starting a distribution. The existing
+`probe-agent-sources --wsl-distro Ubuntu` response shape is unchanged, and it
+also requires the distribution to be running. Both modes use bounded probing.
+`probe-models --agent "<ACP command>" --agent-id <provider> --wsl-distro Ubuntu`
+explicitly probes the selected WSL source using its home directory and the
+shared source-aware startup/cleanup lifecycle. Omitting `--wsl-distro` preserves
+host behavior. Existing WSL adapter preparation remains unchanged, including
+possible pinned npm adapter downloads at launch and Antigravity's managed ACP
+dependency preparation; availability discovery never performs preparation.
+Automatic history refresh does not restart a stopped WSL distribution. Windows
+eager resident discovery remains host-only.
 
 WSL ACP launches start Bash directly as the selected distribution's default user.
 The login-shell environment is loaded without sending the generated launch script

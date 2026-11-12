@@ -53,6 +53,7 @@
 #include <utility>
 #include <vector>
 
+#include "../inc/AgentProfileUtils.h"
 #include "../inc/ShellIntegration.h"
 #include "../inc/ShellIntegrationProfileGate.h"
 #include "AgentPaneLog.h"
@@ -126,6 +127,10 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
     // profiles all work uniformly with no parsing.
     inline std::wstring WslProfileCommandline(const Profile& profile)
     {
+        if (::Microsoft::Terminal::AgentProfiles::IsManaged(profile))
+        {
+            return {};
+        }
         // Check the predicate on a view first; only copy into std::wstring for
         // the (few) profiles that are actually WSL — this snapshot runs on the
         // UI thread for every profile.

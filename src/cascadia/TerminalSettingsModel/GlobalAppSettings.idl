@@ -207,5 +207,7 @@ namespace Microsoft.Terminal.Settings.Model
 
         INHERITABLE_SETTING(Boolean, RenderAgentMarkdown);
         INHERITABLE_SETTING(Boolean, SidebarCollapsed);
+        INHERITABLE_SETTING(String, AcpAgentSource);
+        INHERITABLE_SETTING(String, DelegateAgentSource);
     }
 }

@@ -166,16 +166,21 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
             .as_deref()
             .and_then(crate::app_contracts::YoloControlOwner::from_wire),
         start_stashed: cli.start_stashed,
+        allow_stashed_wsl_startup: cli.allow_stashed_wsl_startup,
     }
 }
 
-fn master_config(cli: Cli) -> master::config::MasterConfig {
-    master::config::MasterConfig {
+fn master_config(cli: Cli) -> anyhow::Result<master::config::MasterConfig> {
+    Ok(master::config::MasterConfig {
         agent: cli.agent,
         agent_id: cli.agent_id,
+        agent_source: crate::agent_source::AgentSource::from_wire(
+            cli.agent_source.as_deref(),
+            cli.agent_wsl_distro.as_deref(),
+        )?,
         allowed_agent_ids: cli.allowed_agent_ids,
         session_management_enabled: !cli.no_session_management,
-    }
+    })
 }
 
 #[tokio::main]
@@ -221,7 +226,7 @@ async fn main() -> Result<()> {
         Some(command) => cli::run(command, json_mode).await,
         None => {
             if let Some(pipe_name) = cli.master.clone() {
-                master::run_master_mode(master_config(cli), pipe_name).await
+                master::run_master_mode(master_config(cli)?, pipe_name).await
             } else if let Some(pipe_name) = cli.connect_master.clone() {
                 helper::run_helper_mode(helper_config(cli), pipe_name).await
             } else {

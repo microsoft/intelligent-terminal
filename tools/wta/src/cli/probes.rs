@@ -80,19 +80,25 @@ pub(crate) async fn run_verify_acp(
 pub(crate) async fn run_models(
     agent: &str,
     agent_id: Option<&str>,
+    wsl_distro: Option<&str>,
     retry_startup: bool,
 ) -> Result<()> {
     // Logging is initialized in `main()` (file, not stderr — the Settings UI
     // captures our stdout for the JSON payload and stderr would pollute it).
     tracing::info!("probe-models start: agent={}", agent);
+    let source =
+        crate::agent_source::AgentSource::from_wire(wsl_distro.map(|_| "wsl"), wsl_distro)?;
 
     let local = tokio::task::LocalSet::new();
     let result = match local
-        .run_until(crate::protocol::acp::probe::probe_models_with_intent(
-            agent,
-            agent_id,
-            retry_startup,
-        ))
+        .run_until(
+            crate::protocol::acp::probe::probe_models_for_source_with_intent(
+                agent,
+                agent_id,
+                &source,
+                retry_startup,
+            ),
+        )
         .await
     {
         Ok(r) => r,
@@ -199,22 +205,13 @@ pub(crate) fn run_host_agents() -> Result<()> {
 
 pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
     let distro = wsl_distro.trim();
-    anyhow::ensure!(!distro.is_empty(), "--wsl-distro must not be empty");
-
-    use futures::StreamExt as _;
-    let agents = futures::stream::iter(crate::agent_registry::KNOWN_AGENTS)
-        .map(|profile| async move {
-            crate::agent_check::wsl_agent_available(distro, profile.id)
-                .await
-                .then_some(AgentSourceProbeEntry {
-                    id: profile.id,
-                    display_name: profile.display_name,
-                })
-        })
-        .buffer_unordered(crate::agent_registry::KNOWN_AGENTS.len())
-        .filter_map(async move |entry| entry)
-        .collect()
-        .await;
+    anyhow::ensure!(
+        crate::agent_source::is_safe_wsl_distro_name(distro),
+        "Invalid --wsl-distro"
+    );
+    crate::agent_source::ensure_wsl_running(distro).await?;
+    let (agents, error) = probe_distro_agents(distro, false).await;
+    anyhow::ensure!(error.is_none(), "{}", error.unwrap_or_default());
 
     println!(
         "{}",
@@ -224,6 +221,121 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
         })
         .context("serialize agent source probe")?
     );
+    Ok(())
+}
+
+async fn probe_distro_agents(
+    distro: &str,
+    start_stopped_wsl: bool,
+) -> (Vec<AgentSourceProbeEntry>, Option<String>) {
+    use futures::StreamExt as _;
+    let results: Vec<_> = futures::stream::iter(crate::agent_registry::KNOWN_AGENTS)
+        .map(|profile| async move {
+            if !start_stopped_wsl {
+                // Passive callers must not turn a running-state failure into permission.
+                crate::agent_source::ensure_wsl_running(distro).await?;
+            }
+            Ok::<_, anyhow::Error>(
+                crate::agent_check::wsl_agent_available_checked(distro, profile.id)
+                    .await?
+                    .then_some(AgentSourceProbeEntry {
+                        id: profile.id,
+                        display_name: profile.display_name,
+                    }),
+            )
+        })
+        .buffer_unordered(4)
+        .collect()
+        .await;
+    let mut agents = Vec::new();
+    let mut errors = Vec::new();
+    for result in results {
+        match result {
+            Ok(Some(agent)) => agents.push(agent),
+            Ok(None) => {}
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    agents.sort_by_key(|agent| agent.id);
+    errors.sort();
+    errors.dedup();
+    (agents, (!errors.is_empty()).then(|| errors.join("; ")))
+}
+
+#[derive(serde::Serialize)]
+struct WslSourceProbeResult {
+    wsl_distro: String,
+    agents: Vec<AgentSourceProbeEntry>,
+    running: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+async fn collect_wsl_source_probes<F, Fut>(
+    registered: Vec<String>,
+    running: Result<Vec<String>>,
+    start_stopped_wsl: bool,
+    probe: F,
+) -> Vec<WslSourceProbeResult>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = (Vec<AgentSourceProbeEntry>, Option<String>)>,
+{
+    use futures::StreamExt as _;
+    let probe = &probe;
+    // Both levels are bounded: at most two distributions, four agents each.
+    let mut sources: Vec<_> = futures::stream::iter(registered)
+        .map(|distro| {
+            let running = &running;
+            async move {
+                let (is_running, error) = match running {
+                    Ok(names) => (
+                        names.iter().any(|name| name.eq_ignore_ascii_case(&distro)),
+                        None,
+                    ),
+                    Err(error) => (
+                        false,
+                        Some(format!("Running-state query failed: {error:#}")),
+                    ),
+                };
+                let (agents, error) = if is_running || start_stopped_wsl {
+                    probe(distro.clone()).await
+                } else {
+                    (Vec::new(), error)
+                };
+                WslSourceProbeResult {
+                    wsl_distro: distro,
+                    // A completed active path probe also establishes running state.
+                    running: is_running
+                        || (start_stopped_wsl && (error.is_none() || !agents.is_empty())),
+                    agents,
+                    error,
+                }
+            }
+        })
+        .buffer_unordered(2)
+        .collect()
+        .await;
+    sources.sort_by_key(|source| {
+        (
+            source.wsl_distro.to_ascii_lowercase(),
+            source.wsl_distro.clone(),
+        )
+    });
+    sources
+}
+
+pub(crate) async fn run_all_agent_sources(start_stopped_wsl: bool) -> Result<()> {
+    let registered = crate::agent_source::list_wsl_distros(false).await?;
+    let running = crate::agent_source::list_wsl_distros(true).await;
+    let sources = collect_wsl_source_probes(
+        registered,
+        running,
+        start_stopped_wsl,
+        |distro| async move { probe_distro_agents(&distro, start_stopped_wsl).await },
+    )
+    .await;
+    println!("{}", serde_json::json!({ "sources": sources }));
     Ok(())
 }
 
@@ -340,6 +452,148 @@ pub(crate) async fn run_host_sessions(agent: &str, retry_startup: bool) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn all_wsl_active_discovery_probes_stopped_sources_only_with_explicit_permission() {
+        for start_stopped_wsl in [false, true] {
+            let calls = std::cell::Cell::new(0);
+            let sources = collect_wsl_source_probes(
+                vec!["Ubuntu".into(), "Debian".into()],
+                Ok(Vec::new()),
+                start_stopped_wsl,
+                |_| {
+                    calls.set(calls.get() + 1);
+                    async {
+                        (
+                            vec![AgentSourceProbeEntry {
+                                id: "copilot",
+                                display_name: "GitHub Copilot",
+                            }],
+                            None,
+                        )
+                    }
+                },
+            )
+            .await;
+            assert_eq!(calls.get(), if start_stopped_wsl { 2 } else { 0 });
+            for source in sources {
+                assert_eq!(source.running, start_stopped_wsl);
+                assert_eq!(source.agents.len(), usize::from(start_stopped_wsl));
+                assert!(source.error.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn all_wsl_active_permission_is_independent_of_running_query_failure() {
+        let sources = collect_wsl_source_probes(
+            vec!["Ubuntu".into()],
+            Err(anyhow::anyhow!("query failed")),
+            true,
+            |_| async { (Vec::new(), None) },
+        )
+        .await;
+        assert!(sources[0].running);
+        assert!(sources[0].error.is_none());
+    }
+
+    #[tokio::test]
+    async fn all_wsl_active_partial_success_preserves_running_evidence_and_source_errors() {
+        let sources = collect_wsl_source_probes(
+            vec!["Ubuntu".into(), "Debian".into()],
+            Ok(Vec::new()),
+            true,
+            |distro| async move {
+                let agents = if distro == "Ubuntu" {
+                    vec![AgentSourceProbeEntry {
+                        id: "copilot",
+                        display_name: "GitHub Copilot",
+                    }]
+                } else {
+                    Vec::new()
+                };
+                (agents, Some("another executable probe failed".into()))
+            },
+        )
+        .await;
+        assert_eq!(sources[0].wsl_distro, "Debian");
+        assert!(!sources[0].running);
+        assert!(sources[0].error.is_some());
+        assert_eq!(sources[1].wsl_distro, "Ubuntu");
+        assert!(sources[1].running);
+        assert_eq!(sources[1].agents.len(), 1);
+        assert!(sources[1].error.is_some());
+    }
+
+    #[tokio::test]
+    async fn all_wsl_probes_only_running_distros_and_preserves_partial_errors() {
+        let sources = collect_wsl_source_probes(
+            vec!["Ubuntu".into(), "Debian".into(), "Fedora".into()],
+            Ok(vec!["Ubuntu".into(), "Fedora".into()]),
+            false,
+            |distro| async move {
+                assert_ne!(
+                    distro, "Debian",
+                    "stopped distro must never execute a probe"
+                );
+                if distro == "Fedora" {
+                    (Vec::new(), Some("probe timed out".into()))
+                } else {
+                    (
+                        vec![AgentSourceProbeEntry {
+                            id: "copilot",
+                            display_name: "GitHub Copilot",
+                        }],
+                        None,
+                    )
+                }
+            },
+        )
+        .await;
+        let payload = serde_json::to_value(sources).unwrap();
+        assert_eq!(payload[0]["wsl_distro"], "Debian");
+        assert_eq!(payload[0]["running"], false);
+        assert_eq!(payload[0]["agents"], serde_json::json!([]));
+        assert!(payload[0].get("error").is_none());
+        assert_eq!(payload[1]["error"], "probe timed out");
+        assert_eq!(payload[2]["agents"][0]["id"], "copilot");
+    }
+
+    #[tokio::test]
+    async fn failed_running_query_never_authorizes_a_distro_probe() {
+        let sources = collect_wsl_source_probes(
+            vec!["Ubuntu".into()],
+            Err(anyhow::anyhow!("query failed")),
+            false,
+            |_| async { panic!("unknown running state must not start a distro") },
+        )
+        .await;
+        assert!(!sources[0].running);
+        assert!(sources[0].agents.is_empty());
+        assert!(sources[0]
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("query failed"));
+    }
+
+    #[tokio::test]
+    async fn all_wsl_distribution_probe_concurrency_is_bounded() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let names: Vec<_> = (0..8).map(|i| format!("Distro{i}")).collect();
+        let sources = collect_wsl_source_probes(names.clone(), Ok(names), false, |_| async {
+            let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(count, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            active.fetch_sub(1, Ordering::SeqCst);
+            (Vec::new(), None)
+        })
+        .await;
+        assert_eq!(sources.len(), 8);
+        assert_eq!(peak.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn host_agent_probe_keeps_strict_agents_and_adds_fre_availability() {

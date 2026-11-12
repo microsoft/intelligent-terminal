@@ -228,7 +228,9 @@ namespace Microsoft::Terminal::AgentSource
         const std::wstring_view windowCwd,
         const std::wstring_view profileCwd,
         const std::wstring_view homeCwd,
-        IsWindowsDirectory&& isWindowsDirectory)
+        IsWindowsDirectory&& isWindowsDirectory,
+        const std::wstring_view agentWslDistro = {},
+        const std::wstring_view paneShell = {})
     {
         std::wstring helperCwd;
         for (const auto candidate : { paneCwd, windowCwd, profileCwd, homeCwd })
@@ -243,6 +245,12 @@ namespace Microsoft::Terminal::AgentSource
         auto agentCwd = agentRunsInWsl ?
                             ResolveCwd(paneCwd, windowCwd, profileCwd, homeCwd) :
                             helperCwd;
+        if (agentRunsInWsl && !agentWslDistro.empty() &&
+            agentCwd.starts_with(L'/') &&
+            paneShell != L"wsl:" + std::wstring{ agentWslDistro })
+        {
+            agentCwd = L"~";
+        }
         return { std::move(agentCwd), std::move(helperCwd) };
     }
 }

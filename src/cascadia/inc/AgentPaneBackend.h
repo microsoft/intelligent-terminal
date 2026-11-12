@@ -22,6 +22,44 @@ namespace Microsoft::Terminal::Settings::Model
         std::wstring agentId;
         std::wstring wslDistro;
 
+        static std::optional<AgentPaneBackend> FromSettings(
+            const std::wstring_view agentId,
+            const std::wstring_view source)
+        {
+            if (agentId.empty())
+            {
+                return std::nullopt;
+            }
+            if (source.empty() || source == L"host")
+            {
+                return AgentPaneBackend{ AgentPaneBackendSource::Host, std::wstring{ agentId }, {} };
+            }
+            if (source.starts_with(L"wsl:") &&
+                ::Microsoft::Terminal::WslDistroName::IsSafe(source.substr(4)) &&
+                !agentId.starts_with(L"custom:"))
+            {
+                return AgentPaneBackend{ AgentPaneBackendSource::Wsl, std::wstring{ agentId }, std::wstring{ source.substr(4) } };
+            }
+            return std::nullopt;
+        }
+
+        static std::optional<AgentPaneBackend> FromSelection(const std::wstring_view selection)
+        {
+            return selection.starts_with(L"host:") || selection.starts_with(L"wsl:") ?
+                       Parse(selection) :
+                       FromSettings(selection, L"host");
+        }
+
+        std::wstring SettingsSource() const
+        {
+            return source == AgentPaneBackendSource::Wsl ? L"wsl:" + wslDistro : L"host";
+        }
+
+        std::wstring SelectionId() const
+        {
+            return source == AgentPaneBackendSource::Wsl ? Wsl(wslDistro, agentId) : agentId;
+        }
+
         static std::optional<AgentPaneBackend> Parse(const std::wstring_view value)
         {
             constexpr std::wstring_view hostPrefix{ L"host:" };
