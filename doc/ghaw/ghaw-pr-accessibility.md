@@ -201,8 +201,8 @@ When changing this workflow, check its own policy/transport contracts and
 regenerate the lockfile:
 
 ```powershell
-python .github\skills\pr-accessibility\tests\test_accessibility_review.py
-python .github\skills\pr-accessibility\tests\test_accessibility_handoff.py
+python -m unittest discover -s .github/skills/pr-accessibility/tests -p "test_*.py"
+python build/scripts/test_ci_accessibility_payload.py
 node --test .github/actions/accessibility-ci-admission/admission.test.mjs
 gh aw compile ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility-summary --no-check-update
 gh aw validate ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility-summary --no-check-update
@@ -213,5 +213,7 @@ mocked GitHub APIs (identity, status, freshness, attempts, duplicates and manual
 guards); the Python tests inspect the compiled graph and existing repair policy.
 They do not establish hosted Actions pickup or end-to-end dispatch behavior.
 
+The payload fixture tests cover archive traversal/collisions, wrong identity,
+missing/changed runtime files, framework versions and portable recipe mappings.
 These commands validate the workflow implementation; they do not run product
 builds/tests on a PR repair.

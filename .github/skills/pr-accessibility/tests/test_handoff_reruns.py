@@ -75,7 +75,7 @@ class PartialRerunTests(unittest.TestCase):
                 for field in ("run=$GITHUB_RUN_ID", "attempt=$GITHUB_RUN_ATTEMPT",
                               "head=$PRODUCER_HEAD", "workflow=$PRODUCER_WORKFLOW"):
                     self.assertIn(field, provenance["run"])
-                self.assertEqual("${{ github.event.pull_request.head.sha }}",
+                self.assertEqual("${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
                                  provenance["env"]["PRODUCER_HEAD"])
                 self.assertIn(f"/{stage}-producer.txt", provenance["run"])
                 # Same run/stage key is replaced, not a guessed attempt-2 key.
