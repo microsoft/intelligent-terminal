@@ -24,18 +24,13 @@ pub(crate) fn acp_session_to_agent_session(
         .as_deref()
         .and_then(parse_iso_to_system_time)
         .unwrap_or(SystemTime::UNIX_EPOCH);
-    let title = info
-        .title
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| short_id(&key, cli_label(cli)));
     AgentSession {
         key,
         cli_source: cli.clone(),
         pane_session_id: None,
         window_id: None,
         tab_id: None,
-        title,
+        title: info.title.clone().unwrap_or_default(),
         cwd: info.cwd.clone(),
         started_at: last,
         last_activity_at: last,
@@ -125,13 +120,6 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds, parsed.nanosecond()))
 }
 
-/// Fallback display label for a session the agent listed without a title:
-/// the CLI name plus the first 8 characters of its session id.
-pub(crate) fn short_id(id: &str, cli: &str) -> String {
-    let head: String = id.chars().take(8).collect();
-    format!("{} {}", cli, head)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +167,8 @@ mod tests {
                     3,
                     "the inference inventory keeps untitled rows"
                 );
+                assert!(result[0].title.is_empty());
+                assert!(result[1].title.is_empty());
                 retain_titled_history(&mut result, &rows);
                 assert_eq!(result.len(), 1, "{cli:?} {location:?}");
                 assert_eq!(result[0].key, "named");
