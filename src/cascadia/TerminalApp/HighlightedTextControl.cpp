@@ -570,7 +570,7 @@ namespace winrt::TerminalApp::implementation
         };
         const auto compactName = [&](const std::wstring_view value, const bool branch) {
             EllipsisResult best{ hstring{ value }, _identityOffsets(value.size()) };
-            if (fits(best.text) || value.size() < 3)
+            if (fits(best.text) || value.empty())
             {
                 return best;
             }
@@ -610,7 +610,11 @@ namespace winrt::TerminalApp::implementation
             }
 
             const auto fallbackValue = value.substr(fallbackStart);
-            best = { hstring{ fallbackValue }, _identityOffsets(fallbackValue.size()) };
+            best = middleCandidate(fallbackValue, 0, fallbackValue.size());
+            if (!fits(best.text))
+            {
+                best = { hstring{ fallbackValue }, _identityOffsets(fallbackValue.size()) };
+            }
             size_t low = 2;
             size_t high = fallbackValue.size() - 1;
             while (low <= high)

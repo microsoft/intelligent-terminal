@@ -29685,7 +29685,23 @@ namespace TerminalAppLocalTests
                     layout(width);
                     verifyUtf16(textBlock.Text());
                     VERIFY_ARE_EQUAL(static_cast<double>(width), control.ActualWidth());
+                    if (width == 10.0f && std::string_view{ test.field } != "workingDirectory")
+                    {
+                        VERIFY_ARE_EQUAL(winrt::hstring{ L"\u2026" }, textBlock.Text());
+                    }
                 }
+            }
+
+            for (const auto field : { "repository", "branch" })
+            {
+                Presentation presentation;
+                presentation.text = L"WW";
+                presentation.fieldRanges = { { field, 0, presentation.text.size() } };
+                control.Text(winrt::hstring{ presentation.text });
+                control.EllipsisRanges(Header::BuildMetadataEllipsisRanges(presentation));
+                layout(10);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\u2026" }, textBlock.Text());
+                VERIFY_ARE_EQUAL(winrt::hstring{ presentation.text }, control.Text());
             }
 
             const winrt::hstring name{ L"microsoft-very-long-shared-repository-name-tools" };
@@ -29700,6 +29716,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(FontWeights::Bold().Weight, textBlock.Inlines().GetAt(0).as<Documents::Run>().FontWeight().Weight);
             VERIFY_ARE_EQUAL(1u, textBlock.TextHighlighters().Size());
             VERIFY_ARE_EQUAL(gsl::narrow<int32_t>(textBlock.Text().size()), textBlock.TextHighlighters().GetAt(0).Ranges().GetAt(0).Length);
+            layout(10);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\u2026" }, textBlock.Text());
+            VERIFY_ARE_EQUAL(1u, textBlock.TextHighlighters().Size());
+            VERIFY_ARE_EQUAL(1, textBlock.TextHighlighters().GetAt(0).Ranges().GetAt(0).Length);
 
             control.HighlightedRuns(nullptr);
             control.ColorHighlight(TextHighlightColor::None);
