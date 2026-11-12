@@ -11,7 +11,12 @@ on:
       - 'dep/**'
       - '.cargo/**'
       - '.github/workflows/pr-ci.yml'
-      - '*'
+      - '*.props'
+      - '*.targets'
+      - '*.sln*'
+      - 'NuGet.Config'
+      - 'vcpkg.json'
+      - 'dirs'
   push:
     branches: [main]
   workflow_dispatch:

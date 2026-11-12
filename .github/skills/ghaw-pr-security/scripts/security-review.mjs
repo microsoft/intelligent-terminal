@@ -986,15 +986,14 @@ export function validateCiPull(pull, run, identity) {
 }
 
 export function validateCiArtifacts(artifacts, run) {
-  return ['cpp', 'rust'].flatMap(language => {
+  return ['cpp', 'rust'].map(language => {
     const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
     const matches = artifacts.filter(item => item.name === name);
-    if (!matches.length) return [];
     if (matches.length !== 1 || matches[0].expired !== false ||
         !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
         matches[0].workflow_run?.id !== run.id ||
         matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
-    return [{ language, id: matches[0].id, name }];
+    return { language, id: matches[0].id, name };
   });
 }
 

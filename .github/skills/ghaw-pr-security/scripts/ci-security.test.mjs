@@ -70,23 +70,6 @@ test('security analysis keeps high/medium warnings without source snippets or un
   assert.equal(collectSarif(duplicate, { ...CI, language: 'rust' }).counts.duplicates, 1);
 });
 
-test('consumer reads available evidence without knowing CI job names or build selection', () => {
-  for (const languages of [['rust'], ['cpp'], []]) {
-    fixture(directory => {
-      for (const language of ['cpp', 'rust'].filter(item => !languages.includes(item))) {
-        rmSync(resolve(directory, language), { recursive: true });
-      }
-      const read = readCiWarnings(directory, scope);
-      assert.deepEqual(read.analyzers.map(item => item.language), languages);
-      assert.equal(read.findings.length, languages.includes('rust') ? 2 : 0);
-      const page = readWarningPage(directory, scope);
-      assert.deepEqual(page.analyzers.map(item => item.language), languages);
-      assert.match(page.caution, /absent analyses are not clean scans/);
-      if (!languages.includes('rust')) assert.equal(completedWarningReview(directory, scope).findings.length, 0);
-    });
-  }
-});
-
 test('pack-grouped action SARIF preserves warnings and accepts a clean scan with rule metadata', () => {
   const grouped = sarif();
   const run = grouped.runs[0];

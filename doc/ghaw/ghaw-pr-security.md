@@ -33,13 +33,12 @@ better vulnerability detection.
    warnings, not build failures; analyzer execution errors remain failures.
    The security controller starts only after successful matching PR CI.
    PR triggering uses GitHub's native `paths` includes in `pr-ci.yml` for
-   source/build folders, Cargo configuration, the CI workflow and root files.
+   source/build folders, Cargo configuration, the CI workflow and root build files.
    Assets/localization inside included folders also trigger CI. Both language
    jobs run whenever CI is triggered.
    The security controller checks the successful workflow result, not its
-   internal build-job names or selection decisions. It consumes available
-   CodeQL artifacts with matching head/run/attempt bindings; absent analysis
-   is not a clean scan.
+   internal build-job names. It validates CodeQL artifacts against the matching
+   head/run/attempt.
    It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from

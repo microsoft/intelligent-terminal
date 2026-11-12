@@ -969,9 +969,10 @@ test('CI admission requires successful exact-head same-repo workflow and attempt
     { ...pull, base: { ...pull.base, sha: HEAD } }]) {
     assert.throws(() => validateCiPull(badPull, run, identity), /CI pull request/);
   }
-  for (const badArtifacts of [[...artifacts, artifacts[0]],
+  for (const badArtifacts of [artifacts.slice(1), [...artifacts, artifacts[0]],
     artifacts.map(item => ({ ...item, expired: true })),
-    artifacts.map(item => ({ ...item, workflow_run: { id: 91, head_sha: BASE } }))]) {
+    artifacts.map(item => ({ ...item, workflow_run: { id: 91, head_sha: BASE } })),
+    artifacts.map(item => ({ ...item, name: item.name.replace('-2', '-1') }))]) {
     assert.throws(() => validateCiArtifacts(badArtifacts, run));
   }
 });
@@ -997,11 +998,6 @@ test('native CI verification rechecks live PR and trusted workflow before return
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
     { runId: '91', runAttempt: 2, headSha: HEAD });
-  responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts: artifacts.slice(0, 1) };
-  const partial = verifyCiSecurity({ environment, request });
-  assert.deepEqual(partial.artifacts.map(item => item.language), ['cpp']);
-  assert.equal(partial.artifacts.length, 1);
-  responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts };
   const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
   const preInferenceStep = markdown.split('  - name: Revalidate successful exact-head CI immediately before inference')[1]
     .split('    run: |')[0];
@@ -1025,14 +1021,6 @@ test('native CI verification rechecks live PR and trusted workflow before return
   responses['actions/workflows/pr-ci.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
-});
-
-test('analysis artifacts are optional but any published evidence must have valid immutable bindings', () => {
-  const { run, artifacts } = ciFixture();
-  for (const languages of [['cpp'], ['rust'], []]) {
-    const available = artifacts.filter(item => languages.some(language => item.name.includes(`-${language}-`)));
-    assert.deepEqual(validateCiArtifacts(available, run).map(item => item.language), languages);
-  }
 });
 
 test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {
