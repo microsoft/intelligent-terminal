@@ -7396,11 +7396,18 @@ async fn sync_host_history(
         let mut ever = agent.listed_ever.lock().await;
         // A full inference inventory may have populated rows beyond page one.
         // A later ordinary first-page refresh cannot prove those rows deleted.
-        let prunable = if refresh.query.last_response_complete() {
+        let mut prunable: HashSet<_> = if refresh.query.last_response_complete() {
             ever.difference(&listed_ids).cloned().collect()
         } else {
             HashSet::new()
         };
+        // An explicitly untitled row is rejected even when later pages are unknown.
+        prunable.extend(
+            inference_inventory
+                .iter()
+                .map(|row| row.session_id.to_string())
+                .filter(|id| !listed_ids.contains(id)),
+        );
         let previous = ever.clone();
         ever.extend(
             inference_inventory
@@ -7596,9 +7603,9 @@ async fn refresh_titles_from_listing(
 
 /// Whether a registry row is stale history to drop during reconcile:
 /// a terminal (Historical / Ended) shell row belonging to
-/// `listing_cli` whose id is in `prunable_ids` — the set the listing agent
-/// previously returned from `session/list` and no longer returns. Live rows
-/// (Working / Idle) and agent panes (ACP-driven) are never reconciled away.
+/// `listing_cli` whose id is in `prunable_ids` — previously listed IDs absent
+/// from a complete inventory, or observed entries rejected by the title filter.
+/// Live rows (Working / Idle) and agent panes (ACP-driven) are never reconciled away.
 /// The caller must additionally enforce exact provider, source, and universe
 /// ownership with `row_belongs_to_agent`, including for WSL. Pure for unit testing.
 ///

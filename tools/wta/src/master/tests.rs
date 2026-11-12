@@ -19108,6 +19108,69 @@ async fn untitled_history_filter_preserves_native_inference_ambiguity() {
     assert_native_list_inference_ingestion(None, false, true).await;
 }
 
+#[tokio::test]
+async fn untitled_history_filter_prunes_explicit_rejections_from_partial_listing() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionOrigin};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let agent = listing_agent(
+                CliSource::Copilot,
+                &["missing", "empty", "unlisted", "live", "pane"],
+            );
+            assert_eq!(seed_host_and_broadcast(&state, &agent).await, Some(5));
+            for mut row in state.registry.snapshot().await {
+                match row.session_id.0.as_ref() {
+                    "live" => row.status = Some(AgentStatus::Idle),
+                    "pane" => row.origin = Some(SessionOrigin::AgentPane),
+                    _ => continue,
+                }
+                state.registry.upsert(row).await;
+            }
+            let rejected = ["missing", "empty", "live", "pane"]
+                .into_iter()
+                .map(|id| {
+                    let mut row = history_row(id, "");
+                    if id != "empty" {
+                        row.title = None;
+                    }
+                    row
+                })
+                .collect();
+            let mut page = acp::schema::v1::ListSessionsResponse::new(rejected);
+            page.next_cursor = Some("unread-page".into());
+            let (partial_agent, mut requests) =
+                paged_history_agent("copilot", HashMap::from([(None, page)]));
+            let mut refresh = agent.history_refresh.gate.lock().await;
+            std::mem::swap(
+                &mut refresh.query,
+                &mut partial_agent.history_refresh.gate.lock().await.query,
+            );
+            assert_eq!(
+                sync_host_history(&state, &agent, &mut refresh)
+                    .await
+                    .unwrap(),
+                (true, 0)
+            );
+            assert!(!refresh.query.last_response_complete());
+            assert_eq!(requests.try_recv().unwrap(), None);
+            assert!(requests.try_recv().is_err());
+            for id in ["missing", "empty"] {
+                assert!(
+                    state.registry.lookup(&SessionId::new(id)).await.is_none(),
+                    "explicitly untitled history must be removed: {id}"
+                );
+            }
+            for id in ["unlisted", "live", "pane"] {
+                assert!(
+                    state.registry.lookup(&SessionId::new(id)).await.is_some(),
+                    "partial listing and ownership guards must preserve: {id}"
+                );
+            }
+        })
+        .await;
+}
+
 async fn assert_native_list_inference_ingestion(
     next_cursor: Option<String>,
     later_page: bool,
