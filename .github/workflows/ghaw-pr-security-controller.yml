@@ -3,7 +3,7 @@ run-name: Security Review after CI ${{ github.event.workflow_run.id }}
 
 on:
   workflow_run:
-    workflows: ['PR build and security analysis']
+    workflows: ['PR CI']
     types: [completed]
 
 permissions: {}
@@ -70,12 +70,10 @@ jobs:
               repositoryId: context.payload.repository.id, runId: String(source.id),
               runAttempt: source.run_attempt, headSha: source.head_sha,
               defaultBranch: context.payload.repository.default_branch };
-            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
-              { ...context.repo, run_id: run.id, attempt_number: identity.runAttempt, per_page: 100 });
-            validateCiRun(run, jobs, identity);
+            validateCiRun(run, identity);
             const workflow = (await github.rest.actions.getWorkflow({
-              ...context.repo, workflow_id: 'pr-build-security.yml' })).data;
-            if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
+              ...context.repo, workflow_id: 'pr-ci.yml' })).data;
+            if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
                 workflow.state !== 'active') throw Error('CI workflow is not the active trusted workflow.');
             const comparison = (await github.rest.repos.compareCommits({
               ...context.repo, base: trustedSha, head: run.head_sha, per_page: 1 })).data;

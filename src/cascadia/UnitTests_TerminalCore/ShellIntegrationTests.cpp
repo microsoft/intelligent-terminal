@@ -131,6 +131,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_EmptyPath_Fails);
     TEST_METHOD(Install_ProfileMissing_CreatesProfileAndScript);
     TEST_METHOD(Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
+    TEST_METHOD(Install_LeavesAuthenticodeSignedPowerShellProfileUntouched);
+    TEST_METHOD(Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched);
     TEST_METHOD(Install_PreservesCrlfFromExistingProfile);
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
@@ -149,6 +151,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Uninstall_EmptyPath_Fails);
     TEST_METHOD(Uninstall_ProfileMissing_NoOp);
     TEST_METHOD(Uninstall_ProfileWithoutBlock_NoOp);
+    TEST_METHOD(Uninstall_LeavesSignedPowerShellProfilesUntouched);
     TEST_METHOD(Uninstall_StripsModernBlockCleanly);
     TEST_METHOD(Uninstall_StripsBlockInMiddleOfFile);
     TEST_METHOD(Uninstall_StripsLegacyDotSourceLine);
@@ -332,6 +335,30 @@ private:
         std::filesystem::create_directories(p.parent_path(), ec);
         std::ofstream out{ p, std::ios::binary | std::ios::trunc };
         out.write(contents.data(), contents.size());
+    }
+
+    static std::string _EncodeAsciiWithBom(std::string_view contents, size_t codeUnitSize, bool littleEndian)
+    {
+        std::string encoded;
+        if (codeUnitSize == 2)
+        {
+            encoded.append(littleEndian ? "\xff\xfe" : "\xfe\xff", 2);
+        }
+        else
+        {
+            encoded.append(littleEndian ? "\xff\xfe\x00\x00" : "\x00\x00\xfe\xff", 4);
+        }
+        encoded.reserve(codeUnitSize + contents.size() * codeUnitSize);
+        for (const auto ch : contents)
+        {
+            const auto codepoint = static_cast<unsigned char>(ch);
+            for (size_t index = 0; index < codeUnitSize; ++index)
+            {
+                const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                encoded.push_back(static_cast<char>((codepoint >> shift) & 0xff));
+            }
+        }
+        return encoded;
     }
 
     static bool _Contains(std::string_view haystack, std::string_view needle)
@@ -1193,6 +1220,49 @@ void ShellIntegrationTests::Install_ProfileWithoutBlock_AppendsBlockPreservesOri
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockCloseMarker));
 }
 
+void ShellIntegrationTests::Install_LeavesAuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    _WriteFile(profile, original);
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_FALSE(result.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                     result.errorMessage);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+}
+
+void ShellIntegrationTests::Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            const auto original = _EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian);
+            _WriteFile(profile, original);
+
+            const auto result = Install(profile.wstring());
+            VERIFY_IS_FALSE(result.success);
+            VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                             result.errorMessage);
+            VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+            VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+        }
+    }
+}
+
 void ShellIntegrationTests::Install_PreservesCrlfFromExistingProfile()
 {
     const auto profile = _ProfilePath();
@@ -1481,6 +1551,43 @@ void ShellIntegrationTests::Uninstall_ProfileWithoutBlock_NoOp()
     VERIFY_IS_TRUE(r.success);
     VERIFY_IS_TRUE(r.alreadyInstalled);
     VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Uninstall_LeavesSignedPowerShellProfilesUntouched()
+{
+    const auto profile = _ProfilePath();
+    const auto script = profile.parent_path() / ShellIntegrationScriptFileName();
+    const std::string scriptContents = "integration script sentinel";
+    _WriteFile(script, scriptContents);
+
+    const auto integrationBlock = BuildShellIntegrationBlock(L"PowerShell", "\r\n");
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n" + integrationBlock +
+        "\r\n# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    const std::wstring expectedError{
+        L"Automatic shell integration removal was skipped: Refusing to modify an Authenticode-signed PowerShell profile"
+    };
+    std::vector<std::string> signedProfiles{ utf8Original };
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            signedProfiles.emplace_back(_EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian));
+        }
+    }
+
+    for (const auto& original : signedProfiles)
+    {
+        _WriteFile(profile, original);
+
+        const auto result = Uninstall(profile.wstring());
+        VERIFY_IS_FALSE(result.success);
+        VERIFY_ARE_EQUAL(expectedError, result.errorMessage);
+        VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+        VERIFY_ARE_EQUAL(scriptContents, _ReadFile(script));
+    }
 }
 
 void ShellIntegrationTests::Uninstall_StripsModernBlockCleanly()

@@ -27,18 +27,19 @@ better vulnerability detection.
 
 ## Current flow and ownership
 
-1. `PR build and security analysis` runs on GitHub Windows runners. Its C++ and
+1. `PR CI` (`.github/workflows/pr-ci.yml`) runs on GitHub Windows runners. Its C++ and
    Rust jobs build and run unit tests in parallel; the C++ test host is included,
    but Dev-package build, signing and deployment are not. Analyzer findings are
    warnings, not build failures; analyzer execution errors remain failures.
    The security controller starts only after successful matching PR CI.
+   PR triggering is limited by the `paths` includes in `pr-ci.yml`.
    It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from
    GitHub's automatic `github.workflow_sha`, never the PR's potentially older
    base. The recorded PR base/head still govern comparison and live identity;
    no commit ID is hardcoded.
-   CI event, workflow, job outcomes, run attempt and current PR head are checked
+   CI event, workflow outcome, run attempt and current PR head are checked
    through GitHub APIs before inference. Fork AI reviews are skipped. The
    worker-code revision is separate from the PR's comparison base, so an older
    PR base need not contain the worker. Workers are dispatched from the

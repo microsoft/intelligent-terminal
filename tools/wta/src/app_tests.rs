@@ -20595,6 +20595,65 @@ fn render_permission_compact_shows_hint() {
 }
 
 #[test]
+fn pending_permission_hides_slash_autocomplete_until_queue_is_empty() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.command_popup_state().is_some());
+    assert_eq!(app.current_tab().input, "/");
+
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("FIRST_PERMISSION"));
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("SECOND_PERMISSION"));
+
+    let first_pending = render_to_text(&mut app, 80, 7);
+    assert!(
+        first_pending.contains("FIRST_PERMISSION") || first_pending.contains("Y/N"),
+        "the short pane must keep the approval prompt or its compact hint visible; rendered:\n{first_pending}"
+    );
+    assert!(
+        !first_pending.contains("/help"),
+        "slash autocomplete must yield to the approval prompt; rendered:\n{first_pending}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "the slash draft must be preserved"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().permission.len(), 1);
+    let second_pending = render_to_text(&mut app, 80, 7);
+    assert!(
+        !second_pending.contains("/help"),
+        "autocomplete must stay hidden until the last permission is resolved; rendered:\n{second_pending}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "resolving a permission must preserve the draft"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert!(app.current_tab().permission.is_empty());
+    let after_resolution = render_to_text(&mut app, 80, 7);
+    assert!(
+        after_resolution.contains("/help"),
+        "slash autocomplete must return after the permission queue clears; rendered:\n{after_resolution}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "the draft must remain unchanged"
+    );
+}
+
+#[test]
 fn render_permission_queue_keeps_one_actionable_and_previews_the_rest() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
