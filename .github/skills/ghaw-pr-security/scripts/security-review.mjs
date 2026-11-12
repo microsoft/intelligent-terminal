@@ -969,12 +969,19 @@ export function validateCiRun(run, jobs, identity) {
       run.head_sha !== headSha || run.status !== 'completed' || run.conclusion !== 'success') {
     fail('CI run identity or successful conclusion is invalid');
   }
-  for (const name of ['C++ build and unit tests', 'Rust build and unit tests']) {
+  const selection = jobs.filter(job => job.name === 'Select CI jobs');
+  if (selection.length !== 1 || selection[0].run_id !== run.id ||
+      selection[0].run_attempt !== runAttempt || selection[0].status !== 'completed' ||
+      selection[0].conclusion !== 'success') fail('CI requires successful build selection');
+  const languages = [];
+  for (const [language, name] of [['cpp', 'C++ build and unit tests'], ['rust', 'Rust build and unit tests']]) {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1 || matches[0].run_id !== run.id ||
         matches[0].run_attempt !== runAttempt || matches[0].status !== 'completed' ||
-        matches[0].conclusion !== 'success') fail('CI requires successful matching build and analysis jobs');
+        !['success', 'skipped'].includes(matches[0].conclusion)) fail('CI requires successful matching build and analysis jobs');
+    if (matches[0].conclusion === 'success') languages.push(language);
   }
+  return languages;
 }
 
 export function validateCiPull(pull, run, identity) {
@@ -991,8 +998,15 @@ export function validateCiPull(pull, run, identity) {
   }
 }
 
-export function validateCiArtifacts(artifacts, run) {
-  return ['cpp', 'rust'].map(language => {
+export function validateCiArtifacts(artifacts, run, languages = ['cpp', 'rust']) {
+  if (!Array.isArray(languages) || new Set(languages).size !== languages.length ||
+      languages.some(language => !['cpp', 'rust'].includes(language))) fail('invalid CI analysis selection');
+  for (const language of ['cpp', 'rust'].filter(language => !languages.includes(language))) {
+    if (artifacts.some(item => item.name === `ci-security-${language}-${run.id}-${run.run_attempt}`)) {
+      fail('unexpected analyzer artifact for a skipped CI job');
+    }
+  }
+  return languages.map(language => {
     const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
     const matches = artifacts.filter(item => item.name === name);
     if (matches.length !== 1 || matches[0].expired !== false ||
@@ -1033,7 +1047,7 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
     fail('CI API list exceeds admission limit');
   };
   const jobs = collect(`actions/runs/${identity.runId}/attempts/${identity.runAttempt}/jobs`, 'jobs');
-  validateCiRun(run, jobs, identity);
+  const languages = validateCiRun(run, jobs, identity);
   const workflow = api('actions/workflows/pr-ci.yml');
   if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
       workflow.state !== 'active') fail('CI source workflow is not trusted');
@@ -1042,8 +1056,8 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   validateCiDefinition(api(`git/trees/${identity.headSha}?recursive=1`),
     api(`git/trees/${comparison.merge_base_commit.sha}?recursive=1`));
   validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
-  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
-  return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
+  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run, languages);
+  return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha, languages } };
 }
 
 export function validatePublicationRun(run, jobs, identity) {

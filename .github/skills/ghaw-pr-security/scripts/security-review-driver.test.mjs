@@ -485,12 +485,13 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
 }
 
 test('CI warning proposals require complete reads and owner-action proposals before trusted completion', () => {
-  for (const variant of ['complete', 'reordered-data', 'unread', 'missing-proposal']) {
+  for (const variant of ['complete', 'reordered-data', 'rust-only', 'no-analysis', 'unread', 'missing-proposal']) {
     withFixture(fixture => {
       const directory = resolve(fixture.scopePath, '..', 'ci-security');
       mkdirSync(directory);
+      const languages = variant === 'no-analysis' ? [] : variant === 'rust-only' ? ['rust'] : ['cpp', 'rust'];
       writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
-        runId: '123', runAttempt: 1, headSha: HEAD,
+        runId: '123', runAttempt: 1, headSha: HEAD, languages,
       }));
       const sarif = {
         version: '2.1.0', runs: [{
@@ -503,7 +504,7 @@ test('CI warning proposals require complete reads and owner-action proposals bef
           } }] }],
         }],
       };
-      for (const language of ['cpp', 'rust']) {
+      for (const language of languages) {
         mkdirSync(resolve(directory, language));
         const input = structuredClone(sarif);
         if (language === 'cpp') input.runs[0].results = [];
@@ -528,7 +529,7 @@ test('CI warning proposals require complete reads and owner-action proposals bef
           findings: page.findings.map(item => Object.fromEntries(Object.entries(item).reverse())),
         } : page;
         const events = variant === 'unread' ? [] : call('mcpscripts-read_ci_security_findings', readResult);
-        if (variant !== 'missing-proposal') {
+        if (variant !== 'missing-proposal' && page.findings.length) {
           const decisions = JSON.stringify(page.findings.map(item => ({
             id: item.id, decision: 'fix', relatedToPr: 'uncertain',
             reason: 'Confirm ownership at the changed caller before applying a fix.',
@@ -540,12 +541,15 @@ test('CI warning proposals require complete reads and owner-action proposals bef
         result.stdout = output([...events, ...result.stdout.trim().split('\n').map(line => JSON.parse(line))]);
         return result;
       };
-      if (['complete', 'reordered-data'].includes(variant)) {
+      if (['complete', 'reordered-data', 'rust-only', 'no-analysis'].includes(variant)) {
         assert.equal(runSecurityReviewDriver(options).reviewed, false);
         const finalReport = JSON.parse(readFileSync(fixture.reportPath, 'utf8'));
         const warningBytes = readFileSync(resolve(fixture.reportPath, '..', 'security-ci-warning-dispositions.json'));
         assert.equal(finalReport.ciWarningDispositionsSha256, createHash('sha256').update(warningBytes).digest('hex'));
-        assert.equal(JSON.parse(warningBytes).findings[0].decision, 'fix');
+        const warnings = JSON.parse(warningBytes);
+        assert.deepEqual(warnings.ci.languages, languages);
+        if (variant === 'no-analysis') assert.equal(warnings.findings.length, 0);
+        else assert.equal(warnings.findings[0].decision, 'fix');
         assert.match(JSON.parse(warningBytes).ownerAction, /decides/);
       } else {
         assert.throws(() => runSecurityReviewDriver(options),

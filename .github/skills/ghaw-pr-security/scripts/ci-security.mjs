@@ -23,11 +23,13 @@ export function readCiWarnings(directory, scope) {
   const ci = readJson(resolve(directory, 'identity.json'), 4096);
   if (!ci || !/^[0-9a-f]{40}$/.test(ci.headSha ?? '') ||
       typeof ci.runId !== 'string' || !/^[1-9][0-9]*$/.test(ci.runId) ||
-      !Number.isSafeInteger(ci.runAttempt) || ci.runAttempt < 1) fail('invalid CI identity');
+      !Number.isSafeInteger(ci.runAttempt) || ci.runAttempt < 1 ||
+      !Array.isArray(ci.languages) || new Set(ci.languages).size !== ci.languages.length ||
+      ci.languages.some(language => !['cpp', 'rust'].includes(language))) fail('invalid CI identity');
   if (ci.headSha !== scope.headSha) fail('CI evidence does not match the reviewed head');
   const findings = [], analyzers = [], suppressedFindings = [];
   const counts = analysisCounts();
-  for (const language of ['cpp', 'rust']) {
+  for (const language of ci.languages) {
     const report = validateAnalysisReport(readJson(resolve(directory, language, 'findings.json')), {
       language, headSha: ci.headSha, ciRunId: ci.runId, ciRunAttempt: ci.runAttempt,
     });
@@ -74,7 +76,7 @@ export function readWarningPage(directory, scope, offset = 0, limit = 20) {
     ci, analyzers, counts, total: findings.length, findings: findings.slice(offset, offset + limit),
     nextOffset: offset + limit < findings.length ? offset + limit : null,
     reviewed: existingDecisions(directory).length,
-    caution: 'Suppressed baseline instances remain in the CI artifact and counts, not asserted clean. A warning outside changed lines is not necessarily unrelated. All active warning decisions remain proposals for the owner.',
+    caution: 'ci.languages lists only completed analyses; other languages were not analyzed, not clean. Suppressed baseline instances remain auditable. A warning outside changed lines is not necessarily unrelated. All active decisions remain proposals for the owner.',
   };
 }
 

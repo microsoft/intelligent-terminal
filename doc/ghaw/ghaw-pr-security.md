@@ -39,6 +39,15 @@ better vulnerability detection.
    but Dev-package build, signing and deployment are not. Analyzer findings are
    warnings, not build failures; analyzer execution errors remain failures.
    The security controller starts only after successful matching PR CI.
+   For PRs, a small selection job in `pr-ci.yml` chooses builds by folder:
+   `src/` selects C++; `tools/wta/` and `installer/bootstrap/` select Rust.
+   Plain documentation, `Assets` folders, native localized
+   `.resw` resources and WTA `locales/` select neither. This intentionally skips
+   build validation of localization changes; it does not assert they compile.
+   Shared headers, Cargo/build configuration, unknown paths and renamed/deleted
+   source files conservatively select both; mixed changes select the union.
+   Push/manual runs select both. Selected builds retain all their unit tests
+   and CodeQL analysis. Skipped analyses are explicitly absent, not clean scans.
    It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from

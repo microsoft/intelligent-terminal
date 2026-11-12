@@ -50,7 +50,7 @@ function fixture(run) {
         JSON.stringify(collectSarif(input, { ...CI, language })));
     }
     writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
-      headSha: HEAD, runId: '123', runAttempt: 2,
+      headSha: HEAD, runId: '123', runAttempt: 2, languages: ['cpp', 'rust'],
     }));
     run(directory);
   } finally {
@@ -68,6 +68,29 @@ test('security analysis keeps high/medium warnings without source snippets or un
   duplicate.runs[0].results.push(duplicate.runs[0].results[2]);
   assert.equal(collectSarif(duplicate, { ...CI, language: 'rust' }).findings.length, 2);
   assert.equal(collectSarif(duplicate, { ...CI, language: 'rust' }).counts.duplicates, 1);
+});
+
+test('intentionally skipped analyses remain explicit and require no fabricated clean report', () => {
+  fixture(directory => {
+    for (const languages of [['rust'], ['cpp'], []]) {
+      writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
+        headSha: HEAD, runId: '123', runAttempt: 2, languages,
+      }));
+      const read = readCiWarnings(directory, scope);
+      assert.deepEqual(read.analyzers.map(item => item.language), languages);
+      assert.equal(read.findings.length, languages.includes('rust') ? 2 : 0);
+      const page = readWarningPage(directory, scope);
+      assert.deepEqual(page.ci.languages, languages);
+      assert.match(page.caution, /not analyzed, not clean/);
+      if (!languages.includes('rust')) assert.equal(completedWarningReview(directory, scope).findings.length, 0);
+    }
+    for (const languages of [null, ['go'], ['rust', 'rust']]) {
+      writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
+        headSha: HEAD, runId: '123', runAttempt: 2, languages,
+      }));
+      assert.throws(() => readCiWarnings(directory, scope), /invalid CI identity/);
+    }
+  });
 });
 
 test('pack-grouped action SARIF preserves warnings and accepts a clean scan with rule metadata', () => {

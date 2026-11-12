@@ -908,7 +908,7 @@ function ciFixture() {
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
     path: '.github/workflows/pr-ci.yml', name: 'PR CI',
     workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
-  const jobs = ['C++ build and unit tests', 'Rust build and unit tests'].map(name =>
+  const jobs = ['Select CI jobs', 'C++ build and unit tests', 'Rust build and unit tests'].map(name =>
     ({ name, run_id: 91, run_attempt: 2, status: 'completed', conclusion: 'success' }));
   const pull = { number: 17, state: 'open', head: { sha: HEAD, ref: 'topic',
     repo: { id: 42, full_name: 'owner/repo' } },
@@ -947,7 +947,7 @@ test('unchanged older PRs inherit trusted CI even when their comparison base lac
   assert.throws(() => validateCiDefinition(ciDefinitionTree(), older), /CI implementation differs/);
 });
 
-test('CI admission requires successful exact-head same-repo workflow, attempt and both unit jobs', () => {
+test('CI admission requires successful exact-head same-repo workflow, attempt and selected unit jobs', () => {
   const { identity, run, jobs, pull, artifacts } = ciFixture();
   assert.doesNotThrow(() => validateCiRun(run, jobs, identity));
   assert.doesNotThrow(() => validateCiPull(pull, run, identity));
@@ -1005,7 +1005,15 @@ test('native CI verification rechecks live PR and trusted workflow before return
     return responses[endpoint];
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
-    { runId: '91', runAttempt: 2, headSha: HEAD });
+    { runId: '91', runAttempt: 2, headSha: HEAD, languages: ['cpp', 'rust'] });
+  const rustJob = jobs.find(job => job.name === 'Rust build and unit tests');
+  rustJob.conclusion = 'skipped';
+  responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts: artifacts.slice(0, 1) };
+  const partial = verifyCiSecurity({ environment, request });
+  assert.deepEqual(partial.identity.languages, ['cpp']);
+  assert.equal(partial.artifacts.length, 1);
+  rustJob.conclusion = 'success';
+  responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts };
   const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
   const preInferenceStep = markdown.split('  - name: Revalidate successful exact-head CI immediately before inference')[1]
     .split('    run: |')[0];
@@ -1016,7 +1024,7 @@ test('native CI verification rechecks live PR and trusted workflow before return
     stepEnvironment[match[1]] = inputs[match[2]];
   }
   assert.deepEqual(verifyCiSecurity({ environment: stepEnvironment, request }).identity,
-    { runId: '91', runAttempt: 2, headSha: HEAD }, 'actual pre-inference step supplies every admission binding');
+    { runId: '91', runAttempt: 2, headSha: HEAD, languages: ['cpp', 'rust'] }, 'actual pre-inference step supplies every admission binding');
   pull.base.ref = 'untrusted-target';
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI pull request/);
   pull.base.ref = 'main';
@@ -1029,6 +1037,23 @@ test('native CI verification rechecks live PR and trusted workflow before return
   responses['actions/workflows/pr-ci.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
+});
+
+test('successful selection admits only completed analyses and rejects failed or missing jobs', () => {
+  const { identity, run, jobs, artifacts } = ciFixture();
+  for (const languages of [['cpp'], ['rust'], []]) {
+    const selected = jobs.map(job => ({ ...job,
+      conclusion: job.name === 'Select CI jobs' ||
+        languages.includes(job.name.startsWith('C++') ? 'cpp' : 'rust') ? 'success' : 'skipped' }));
+    assert.deepEqual(validateCiRun(run, selected, identity), languages);
+    const available = artifacts.filter(item => languages.some(language => item.name.includes(`-${language}-`)));
+    assert.equal(validateCiArtifacts(available, run, languages).length, languages.length);
+    if (languages.length < 2) assert.throws(() => validateCiArtifacts(artifacts, run, languages), /skipped CI job/);
+  }
+  for (const conclusion of ['failure', 'cancelled', 'timed_out', 'neutral']) {
+    assert.throws(() => validateCiRun(run,
+      jobs.map(job => job.name === 'Rust build and unit tests' ? { ...job, conclusion } : job), identity));
+  }
 });
 
 test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {
