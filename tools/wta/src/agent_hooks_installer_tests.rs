@@ -2962,13 +2962,27 @@ fn copilot_config_lookup_handles_disabled_plugin() {
 /// disk and the env override is unset.
 #[test]
 fn bundle_resolve_source_returns_none_when_nothing_resolves() {
+    let _env = crate::test_support::lock_env();
     // Save & clear WTA_HOOKS_BUNDLE_DIR so the test doesn't pick up
     // the dev tree's bundle via a leftover env var.
     let saved = std::env::var_os("WTA_HOOKS_BUNDLE_DIR");
-    // SAFETY: tests run with --test-threads=1 in CI, but even without
-    // serialization, every other test that touches this env var
-    // restores it; collisions would manifest as flakes here, not data
-    // corruption. We accept the small risk.
+    struct RestoreBundleDir(Option<std::ffi::OsString>);
+    impl Drop for RestoreBundleDir {
+        fn drop(&mut self) {
+            // SAFETY: this test holds the shared environment lock until after
+            // this guard is dropped, serializing process-wide env mutation.
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("WTA_HOOKS_BUNDLE_DIR", value),
+                    None => std::env::remove_var("WTA_HOOKS_BUNDLE_DIR"),
+                }
+            }
+        }
+    }
+    let _restore = RestoreBundleDir(saved);
+
+    // SAFETY: this test holds the shared environment lock while changing the
+    // process-wide environment variable.
     unsafe {
         std::env::set_var(
             "WTA_HOOKS_BUNDLE_DIR",
@@ -2985,14 +2999,6 @@ fn bundle_resolve_source_returns_none_when_nothing_resolves() {
     // env path didn't trip the false-positive).
     let info = bundle::resolve_source();
     assert_ne!(info.kind, "env", "nonexistent env path must not match");
-
-    // Restore.
-    unsafe {
-        match saved {
-            Some(v) => std::env::set_var("WTA_HOOKS_BUNDLE_DIR", v),
-            None => std::env::remove_var("WTA_HOOKS_BUNDLE_DIR"),
-        }
-    }
 }
 
 /// Schema versions are stable contracts with the Settings UI and
