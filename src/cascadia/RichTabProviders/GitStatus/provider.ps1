@@ -151,7 +151,7 @@ function Find-LocalGitRepository([string]$WorkingDirectory) {
                 }
             }
             $gitfile = Read-GitControlFile $gitPath
-            if ($gitfile -notmatch '\Agitdir: (.+)\z') {
+            if ($gitfile -notmatch '^gitdir: (.+)\z') {
                 return $null
             }
             $privateDirectory = Resolve-LocalGitPath $Matches[1] $current.FullName
@@ -271,6 +271,8 @@ try {
             $objectPackPath = Join-Path $objectsPath 'pack'
             $objectInfoPath = Join-Path $objectsPath 'info'
             $infoPath = Join-Path $commonDirectory 'info'
+            $privateInfoPath = Join-Path $gitDirectory 'info'
+            $sparseCheckoutPath = Join-Path $privateInfoPath 'sparse-checkout'
             $headPath = Join-Path $gitDirectory 'HEAD'
             $indexPath = Join-Path $gitDirectory 'index'
             $packedRefsPath = Join-Path $commonDirectory 'packed-refs'
@@ -294,7 +296,12 @@ try {
                 $infoPath
             )
             if ($repository.IsLinkedWorktree) {
-                $gitAccessPaths += @( (Join-Path $gitDirectory 'refs'), (Join-Path $gitDirectory 'logs') )
+                $gitAccessPaths += @(
+                    (Join-Path $gitDirectory 'refs')
+                    (Join-Path $gitDirectory 'logs')
+                    $privateInfoPath
+                    $sparseCheckoutPath
+                )
             }
             $unsafeGitAccessPath = $gitAccessPaths |
                 Where-Object {
@@ -310,7 +317,8 @@ try {
                 -not (Test-BoundedTreeWithoutReparsePoint $logsPath 32768) -or
                 ($repository.IsLinkedWorktree -and
                     (-not (Test-BoundedTreeWithoutReparsePoint (Join-Path $gitDirectory 'refs') 32768) -or
-                     -not (Test-BoundedTreeWithoutReparsePoint (Join-Path $gitDirectory 'logs') 32768)))
+                     -not (Test-BoundedTreeWithoutReparsePoint (Join-Path $gitDirectory 'logs') 32768) -or
+                     -not (Test-BoundedTreeWithoutReparsePoint $privateInfoPath 1024)))
             if (($config -and $config.Length -gt 1MB) -or
                 ($worktreeConfig -and $worktreeConfig.Length -gt 1MB) -or
                 $unsafeGitAccessPath -or

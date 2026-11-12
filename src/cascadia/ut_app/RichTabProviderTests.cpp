@@ -1626,6 +1626,30 @@ else {
         const auto nested = inspect(linked / L"nested");
         VERIFY_ARE_EQUAL(std::string{ "linked" }, field(nested, "branch"));
 
+        const auto privateInfo = main / L".git" / L"worktrees" / L"linked" / L"info";
+        const auto externalInfo = fixture / L"external-info";
+        std::filesystem::create_directory(externalInfo);
+        wchar_t systemDirectory[MAX_PATH]{};
+        const auto systemDirectoryLength = GetSystemDirectoryW(systemDirectory, MAX_PATH);
+        VERIFY_IS_TRUE(systemDirectoryLength > 0 && systemDirectoryLength < MAX_PATH);
+        _RunGit(std::filesystem::path{ systemDirectory } / L"cmd.exe",
+                L"/d /c mklink /J \"" + privateInfo.wstring() + L"\" \"" + externalInfo.wstring() + L"\"");
+        VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
+        VERIFY_IS_TRUE(std::filesystem::remove(privateInfo));
+        std::filesystem::create_directory(privateInfo);
+        const auto sparseCheckout = privateInfo / L"sparse-checkout";
+        _WriteFile(sparseCheckout, "/*\n");
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(inspect(linked), "branch"));
+        VERIFY_IS_TRUE(std::filesystem::remove(sparseCheckout));
+        const auto externalSparseCheckout = fixture / L"external-sparse-checkout";
+        _WriteFile(externalSparseCheckout, "/*\n");
+        VERIFY_WIN32_BOOL_SUCCEEDED(CreateSymbolicLinkW(
+            sparseCheckout.c_str(), externalSparseCheckout.c_str(), SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE));
+        VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
+        VERIFY_IS_TRUE(std::filesystem::remove(sparseCheckout));
+        _WriteFile(sparseCheckout, "/*\n");
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(inspect(linked), "branch"));
+
         request.firstPartyFields.emplace("agentCwdActive", "true");
         request.firstPartyFields.emplace("agentWorkingDirectory", (linked / L"nested").string());
         const auto agentWorktree = inspect(main);
