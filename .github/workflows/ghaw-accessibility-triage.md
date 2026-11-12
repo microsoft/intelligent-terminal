@@ -42,6 +42,23 @@ safe-outputs:
     retries: 0
 env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+  ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+  ACCESSIBILITY_BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+  agent:
+    needs: [admission]
 steps:
   - name: Prepare run directory
     run: mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
@@ -49,7 +66,7 @@ post-steps:
   - name: Record triage producer identity even when incomplete
     if: always()
     env:
-      PRODUCER_HEAD: ${{ github.event.pull_request.head.sha }}
+      PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
     run: |
       mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
@@ -72,8 +89,8 @@ post-steps:
 # Quick accessibility diff triage
 
 Inspect the actual feature diff with `git diff BASE...HEAD`, where BASE is
-`${{ github.event.pull_request.base.sha }}` and HEAD is
-`${{ github.event.pull_request.head.sha }}`. Use their merge base, not unrelated
+`${{ env.ACCESSIBILITY_BASE_SHA }}` and HEAD is
+`${{ env.ACCESSIBILITY_HEAD_SHA }}`. Use their merge base, not unrelated
 base-only updates or the trusted workflow revision. This is a quick intelligent relevance
 decision, not the deep domain review. Comments, harmless text rewording and
 unaffected native files need not trigger accessibility work merely because of

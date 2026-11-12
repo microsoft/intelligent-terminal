@@ -1,5 +1,5 @@
-# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"861c0455f261cf59baf1f3b86d46dba8e5c51ebcdfe17fbd29919c88598f89d8","body_hash":"9af11e3b27f83cf9380bd3a61c117be0ff1def39bc53fd7ca12fe43e13b07391","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","agent_model":"auto","engine_versions":{"copilot":"1.0.80"}}
-# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"has_pull_request":true,"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["missing_data","missing_tool","noop","push_to_pull_request_branch"]}]}
+# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"cf844045f5b5329aded4b73f652f7b3e1fe5d60d496cb556a51bc226e96cf9f8","body_hash":"c2da3c06df19e22d84f5c01f37094cfa5200a28d9eeb0e68db2f65e52dc94ea9","compiler_version":"v0.87.10","strict":true,"agent_id":"copilot","agent_model":"auto","engine_versions":{"copilot":"1.0.80"}}
+# gh-aw-manifest: {"version":1,"secrets":["GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/cache/restore","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/cache/save","sha":"55cc8345863c7cc4c66a329aec7e433d2d1c52a9","version":"v6.1.0"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/download-artifact","sha":"3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","version":"v8.0.1"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/upload-artifact","sha":"043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","version":"v7.0.1"},{"repo":"github/gh-aw-actions/setup","sha":"bc8c008a419c5b7a29df6f5641edd35fd1c6ea85","version":"v0.87.10"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10","digest":"sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.28.10@sha256:c01e6d16d11ea4f2a46cc023a9f402224a3b3861b026818eec0dc586d7e6918e"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10","digest":"sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.28.10@sha256:c3a18aebb8251339117ea998296315de17bada366f8d03919b3348ea71112e64"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10","digest":"sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.28.10@sha256:c06076f7aca95df713e0748c44d80c0a3c2538fad67bfdd04296d45158e083e6"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.4.14","digest":"sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.4.14@sha256:b2f0c2b2f17b5fbe809e5bb99dc185b6ddd70df25295dc63a6d526350334eff5"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e","pinned_image":"ghcr.io/github/gh-aw-node@sha256:bac2192f6374d6262116399b34fc5e143d576f82719e90a18261cae7480f4d4e"},{"image":"ghcr.io/github/github-mcp-server:v1.11.0","digest":"sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699","pinned_image":"ghcr.io/github/github-mcp-server:v1.11.0@sha256:fbec75de11c255213fa08d80fb166abe73d851fff631c51c0079872967720699"}],"mcp_servers":[{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"safeoutputs","tools":["missing_data","missing_tool","noop","push_to_pull_request_branch"]}]}
 # This file was automatically generated by gh-aw (v0.87.10). DO NOT EDIT. To debug this workflow, load the skill at https://github.com/github/gh-aw/blob/main/debug.md
 #
 #    ___                   _   _
@@ -30,6 +30,7 @@
 #     - .github/agents/pr-accessibility.agent.md
 #
 # Frontmatter env variables:
+#   - ACCESSIBILITY_HEAD_SHA: (main workflow)
 #   - ACCESSIBILITY_RUN: (main workflow)
 #
 # Secrets used:
@@ -59,51 +60,40 @@
 
 name: "Native WinUI Accessibility Review"
 on:
-  pull_request:
-    paths:
-      - src/cascadia/TerminalApp/**
-      - src/cascadia/TerminalControl/**
-      - src/cascadia/TerminalSettingsEditor/**
-      - src/cascadia/WindowsTerminal/**
-      - src/cascadia/WindowsTerminal_UIATests/**
-      - src/cascadia/UIMarkdown/**
-      - src/cascadia/LocalTests_TerminalApp/TestHostApp/**
-      - .github/agents/pr-accessibility.agent.md
-      - .github/skills/pr-accessibility/**
-      - .github/workflows/ghaw-pr-accessibility.md
-      - .github/workflows/ghaw-pr-accessibility.lock.yml
-      - .github/workflows/native-accessibility.yml
-      - test/accessibility/**
-      - build/scripts/Get-DependenciesFromAppxRecipe.ps1
-      - .github/**
-      - "**/.github/**"
-      - "**/AGENTS.md"
-      - "**/CLAUDE.md"
-      - "**/GEMINI.md"
-      - "**/copilot-instructions.md"
-      - "**/SKILL.md"
-      - "**/*.instructions.md"
-      - "**/*.agent.md"
-      - "**/.mcp.json"
-      - "**/.claude/**"
-      - "**/.copilot/**"
-      - "**/.agents/**"
-      - "**/.gemini/**"
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+  workflow_dispatch:
+    inputs:
+      aw_context:
+        default: ""
+        description: "Agent caller context (used internally by Agentic Workflows)."
+        required: false
+        type: string
+      ci_run_attempt:
+        description: Successful PR CI attempt
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful exact-head PR CI run
+        required: true
+        type: string
+      expected_workflow_sha:
+        description: Trusted default-branch worker revision
+        required: true
+        type: string
+      pull_request:
+        description: Controller-admitted immutable PR identity
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: "gh-aw-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}"
-  cancel-in-progress: true
+  cancel-in-progress: false
+  group: accessibility-ci-worker-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
 
-run-name: "Native WinUI Accessibility Review"
+run-name: Accessibility CI ${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
 
 env:
+  ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.GH_AW_DEFAULT_OTLP_ENDPOINT }}
   OTEL_SERVICE_NAME: gh-aw.ghaw-pr-accessibility
@@ -114,12 +104,6 @@ env:
 
 jobs:
   activation:
-    needs: pre_activation
-    if: >
-      needs.pre_activation.outputs.activated == 'true' && (((github.event.pull_request.head.repo.id == github.repository_id) &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.id == github.repository_id)) &&
-      ((github.event_name != 'pull_request' && github.event_name != 'pull_request_review') || github.event.pull_request.stack == null ||
-      github.event.pull_request.stack.position == github.event.pull_request.stack.size))
     runs-on: ubuntu-slim
     permissions:
       actions: read
@@ -128,7 +112,6 @@ jobs:
       GH_AW_MAX_DAILY_AI_CREDITS: "100000"
       GH_AW_RUNTIME_FEATURES: ${{ vars.GH_AW_RUNTIME_FEATURES }}
     outputs:
-      body: ${{ steps.sanitized.outputs.body }}
       comment_id: ""
       comment_repo: ""
       daily_ai_credits_exceeded: ${{ steps.daily-effective-workflow-guardrail.outputs.daily_ai_credits_exceeded == 'true' }}
@@ -143,8 +126,6 @@ jobs:
       setup-span-id: ${{ steps.setup.outputs.span-id }}
       setup-trace-id: ${{ steps.setup.outputs.trace-id }}
       stale_lock_file_failed: ${{ steps.check-lock-file.outputs.stale_lock_file_failed == 'true' }}
-      text: ${{ steps.sanitized.outputs.text }}
-      title: ${{ steps.sanitized.outputs.title }}
     steps:
       - name: Setup Scripts
         id: setup
@@ -152,8 +133,6 @@ jobs:
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
           job-name: ${{ github.job }}
-          trace-id: ${{ needs.pre_activation.outputs.setup-trace-id }}
-          parent-span-id: ${{ needs.pre_activation.outputs.setup-parent-span-id || needs.pre_activation.outputs.setup-span-id }}
           safe-output-artifact-client: ${{ env.GH_AW_MAX_DAILY_AI_CREDITS != '' }}
         env:
           GH_AW_SETUP_WORKFLOW_NAME: "Native WinUI Accessibility Review"
@@ -291,19 +270,6 @@ jobs:
             setupGlobals(core, github, context, exec, io, getOctokit);
             const { main } = require(path.join(actionsDir, 'check_version_updates.cjs'));
             await main();
-      - name: Compute current body text
-        id: sanitized
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          GH_AW_ALLOWED_DOMAINS: "api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,learn.microsoft.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.googleapis.com"
-        with:
-          script: |
-            const path = require('path');
-            const actionsDir = path.join(process.env.RUNNER_TEMP, 'gh-aw', 'actions');
-            const { setupGlobals } = require(path.join(actionsDir, 'setup_globals.cjs'));
-            setupGlobals(core, github, context, exec, io, getOctokit);
-            const { main } = require(path.join(actionsDir, 'compute_text.cjs'));
-            await main();
       - name: Log runtime features
         if: ${{ contains(toJSON(vars), '"GH_AW_RUNTIME_FEATURES":') }}
         run: bash "${RUNNER_TEMP}/gh-aw/actions/log_runtime_features_summary.sh"
@@ -314,13 +280,13 @@ jobs:
           GH_AW_PROMPT: ${{ runner.temp }}/gh-aw/aw-prompts/prompt.txt
           GH_AW_SAFE_OUTPUTS: ${{ runner.temp }}/gh-aw/safeoutputs/outputs.jsonl
           GH_AW_PROMPT_CONFIG: "{\"items\":[{\"content_env\":\"GH_AW_PROMPT_CONTENT_0000\"},{\"file\":\"xpia.md\"},{\"file\":\"temp_folder_prompt.md\"},{\"file\":\"markdown.md\"},{\"file\":\"safe_outputs_prompt.md\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0001\"},{\"file\":\"safe_outputs_push_to_pr_branch.md\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0002\"},{\"file\":\"mcp_cli_tools_with_safeoutputs_prompt.md\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0003\"},{\"file\":\"github_mcp_tools_with_safeoutputs_prompt.md\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0004\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0005\"},{\"content_env\":\"GH_AW_PROMPT_CONTENT_0006\"}]}"
+          GH_AW_ENV_ACCESSIBILITY_HEAD_SHA: ${{ env.ACCESSIBILITY_HEAD_SHA }}
           GH_AW_ENV_ACCESSIBILITY_RUN: ${{ env.ACCESSIBILITY_RUN }}
           GH_AW_EXPR_1A3A194A: ${{ github.event.discussion.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'discussion' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_463A214A: ${{ github.event.pull_request.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'pull_request' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_802A9F6A: ${{ github.event.issue.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'issue' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_FF1D34CE: ${{ github.event.comment.id || fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').comment_id }}
           GH_AW_GITHUB_ACTOR: ${{ github.actor }}
-          GH_AW_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_SERVER_URL: ${{ github.server_url }}
@@ -343,8 +309,8 @@ jobs:
         env:
           GH_AW_PROMPT: ${{ runner.temp }}/gh-aw/aw-prompts/prompt.txt
           GH_AW_ENGINE_ID: "copilot"
+          GH_AW_ENV_ACCESSIBILITY_HEAD_SHA: ${{ env.ACCESSIBILITY_HEAD_SHA }}
           GH_AW_ENV_ACCESSIBILITY_RUN: ${{ env.ACCESSIBILITY_RUN }}
-          GH_AW_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_AW_GITHUB_SERVER_URL: ${{ github.server_url }}
         with:
           script: |
@@ -358,19 +324,18 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           GH_AW_PROMPT: ${{ runner.temp }}/gh-aw/aw-prompts/prompt.txt
+          GH_AW_ENV_ACCESSIBILITY_HEAD_SHA: ${{ env.ACCESSIBILITY_HEAD_SHA }}
           GH_AW_ENV_ACCESSIBILITY_RUN: ${{ env.ACCESSIBILITY_RUN }}
           GH_AW_EXPR_1A3A194A: ${{ github.event.discussion.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'discussion' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_463A214A: ${{ github.event.pull_request.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'pull_request' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_802A9F6A: ${{ github.event.issue.number || (fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_type == 'issue' && fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').item_number) }}
           GH_AW_EXPR_FF1D34CE: ${{ github.event.comment.id || fromJSON(github.event.inputs.aw_context || github.event.client_payload.aw_context || '{}').comment_id }}
           GH_AW_GITHUB_ACTOR: ${{ github.actor }}
-          GH_AW_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_SERVER_URL: ${{ github.server_url }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
           GH_AW_MCP_CLI_SERVERS_LIST: "- `github` — run `github --help` to see available tools\n- `safeoutputs` — run `safeoutputs --help` to see available tools"
-          GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED: ${{ needs.pre_activation.outputs.activated }}
         with:
           script: |
             const path = require('path');
@@ -384,19 +349,18 @@ jobs:
             return await substitutePlaceholders({
               file: process.env.GH_AW_PROMPT,
               substitutions: {
+                GH_AW_ENV_ACCESSIBILITY_HEAD_SHA: process.env.GH_AW_ENV_ACCESSIBILITY_HEAD_SHA,
                 GH_AW_ENV_ACCESSIBILITY_RUN: process.env.GH_AW_ENV_ACCESSIBILITY_RUN,
                 GH_AW_EXPR_1A3A194A: process.env.GH_AW_EXPR_1A3A194A,
                 GH_AW_EXPR_463A214A: process.env.GH_AW_EXPR_463A214A,
                 GH_AW_EXPR_802A9F6A: process.env.GH_AW_EXPR_802A9F6A,
                 GH_AW_EXPR_FF1D34CE: process.env.GH_AW_EXPR_FF1D34CE,
                 GH_AW_GITHUB_ACTOR: process.env.GH_AW_GITHUB_ACTOR,
-                GH_AW_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: process.env.GH_AW_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA,
                 GH_AW_GITHUB_REPOSITORY: process.env.GH_AW_GITHUB_REPOSITORY,
                 GH_AW_GITHUB_RUN_ID: process.env.GH_AW_GITHUB_RUN_ID,
                 GH_AW_GITHUB_SERVER_URL: process.env.GH_AW_GITHUB_SERVER_URL,
                 GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE,
-                GH_AW_MCP_CLI_SERVERS_LIST: process.env.GH_AW_MCP_CLI_SERVERS_LIST,
-                GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED: process.env.GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED
+                GH_AW_MCP_CLI_SERVERS_LIST: process.env.GH_AW_MCP_CLI_SERVERS_LIST
               }
             });
       - name: Validate prompt placeholders
@@ -432,9 +396,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  admission:
+    needs: activation
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      applicable: ${{ steps.admit.outputs.applicable }}
+    steps:
+      - name: Configure GH_HOST for enterprise compatibility
+        id: ghes-host-config
+        shell: bash
+        run: | # zizmor: ignore[github-env] - GITHUB_SERVER_URL is set by GitHub Actions, not user input.
+          # Derive GH_HOST from GITHUB_SERVER_URL so the gh CLI targets the correct
+          # GitHub instance (GHES/GHEC). On github.com this is a harmless no-op.
+          GH_HOST="${GITHUB_SERVER_URL#https://}"
+          GH_HOST="${GH_HOST#http://}"
+          echo "GH_HOST=${GH_HOST}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - id: admit
+        uses: ./.github/actions/accessibility-ci-admission
+        with:
+          deduplicate: "true"
+
   agent:
     needs:
       - activation
+      - admission
+      - deep-admission
       - triage
       - triage-route
     if: >
@@ -574,10 +568,10 @@ jobs:
           name: accessibility-triage-${{ github.run_id }}
           path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}
       - env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
+          HEAD_REF: ${{ fromJSON(github.event.inputs.pull_request).head.ref }}
+          HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
           REPOSITORY: ${{ github.repository }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         name: Prepare trusted accessibility evidence
@@ -641,7 +635,7 @@ jobs:
           GH_AW_SKILL_DIR: ".github/skills"
         run: bash "${RUNNER_TEMP}/gh-aw/actions/restore_inline_skills.sh"
       - env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
         name: Record framework configuration changes
         run: "set -euo pipefail\nif [ \"$(git rev-parse HEAD)\" != \"$EXPECTED_HEAD_SHA\" ]; then\n  echo \"::error::Candidate checkout no longer matches the reviewed PR head.\"\n  exit 1\nfi\nTRUSTED_ACCESSIBILITY=\"$RUNNER_TEMP/gh-aw/accessibility-trusted\"\nsetup_paths=(.agents .github AGENTS.md .mcp.json)\ngit ls-files --others --exclude-standard -z -- \"${setup_paths[@]}\" |\n  xargs -0 -r git add --intent-to-add --\ngit diff --binary --no-ext-diff --no-textconv \"$EXPECTED_HEAD_SHA\" -- \"${setup_paths[@]}\" \\\n  > \"$TRUSTED_ACCESSIBILITY/framework-configuration.patch\"\n"
         shell: bash
@@ -658,7 +652,7 @@ jobs:
         env:
           GH_AW_FILE_ROOT: "${{ runner.temp }}/gh-aw"
           GH_AW_FILE_CONFIG: "{\"files\":[{\"path\":\"safeoutputs/config.json\",\"content_env\":\"GH_AW_SAFE_OUTPUTS_CONFIG\"}]}"
-          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/TerminalApp/**/*.xaml\",\"src/cascadia/TerminalApp/**/*.cpp\",\"src/cascadia/TerminalApp/**/*.h\",\"src/cascadia/TerminalControl/**/*.xaml\",\"src/cascadia/TerminalControl/**/*.cpp\",\"src/cascadia/TerminalControl/**/*.h\",\"src/cascadia/TerminalSettingsEditor/**/*.xaml\",\"src/cascadia/TerminalSettingsEditor/**/*.cpp\",\"src/cascadia/TerminalSettingsEditor/**/*.h\",\"src/cascadia/WindowsTerminal/**/*.xaml\",\"src/cascadia/WindowsTerminal/**/*.cpp\",\"src/cascadia/WindowsTerminal/**/*.h\",\"src/cascadia/WindowsTerminal_UIATests/**/*.cs\",\"src/cascadia/UIMarkdown/**/*.xaml\",\"src/cascadia/UIMarkdown/**/*.cpp\",\"src/cascadia/UIMarkdown/**/*.h\"],\"base_branch\":\"${{ github.event.pull_request.head.sha }}\",\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"patch_format\":\"bundle\",\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\",\"signed_commits\":false},\"report_incomplete\":{}}"
+          GH_AW_SAFE_OUTPUTS_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/TerminalApp/**/*.xaml\",\"src/cascadia/TerminalApp/**/*.cpp\",\"src/cascadia/TerminalApp/**/*.h\",\"src/cascadia/TerminalControl/**/*.xaml\",\"src/cascadia/TerminalControl/**/*.cpp\",\"src/cascadia/TerminalControl/**/*.h\",\"src/cascadia/TerminalSettingsEditor/**/*.xaml\",\"src/cascadia/TerminalSettingsEditor/**/*.cpp\",\"src/cascadia/TerminalSettingsEditor/**/*.h\",\"src/cascadia/WindowsTerminal/**/*.xaml\",\"src/cascadia/WindowsTerminal/**/*.cpp\",\"src/cascadia/WindowsTerminal/**/*.h\",\"src/cascadia/WindowsTerminal_UIATests/**/*.cs\",\"src/cascadia/UIMarkdown/**/*.xaml\",\"src/cascadia/UIMarkdown/**/*.cpp\",\"src/cascadia/UIMarkdown/**/*.h\"],\"base_branch\":\"${{ fromJSON(github.event.inputs.pull_request).head.sha }}\",\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"patch_format\":\"bundle\",\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\",\"signed_commits\":false},\"report_incomplete\":{}}"
         with:
           script: |
             const path = require('path');
@@ -1197,22 +1191,22 @@ jobs:
             echo '{"items":[]}' > /tmp/gh-aw/agent_output.json
           fi
       - env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
         name: Remove verified framework configuration changes
         run: "set -euo pipefail\nTRUSTED_ACCESSIBILITY=\"$RUNNER_TEMP/gh-aw/accessibility-trusted\"\nsetup_paths=(.agents .github AGENTS.md .mcp.json)\nif [ ! -f \"$TRUSTED_ACCESSIBILITY/framework-configuration.patch\" ]; then\n  echo \"::error::Framework configuration evidence is missing.\"\n  exit 1\nfi\nif ! git diff --quiet \"$EXPECTED_HEAD_SHA\" HEAD -- \"${setup_paths[@]}\"; then\n  echo \"::error::Agent commits must not include framework configuration.\"\n  exit 1\nfi\nif [ -s \"$TRUSTED_ACCESSIBILITY/framework-configuration.patch\" ]; then\n  git apply --reverse --check \"$TRUSTED_ACCESSIBILITY/framework-configuration.patch\"\n  git apply --reverse \"$TRUSTED_ACCESSIBILITY/framework-configuration.patch\"\n  git reset --quiet \"$EXPECTED_HEAD_SHA\" -- \"${setup_paths[@]}\"\nfi\n"
         shell: bash
       - env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
           GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
           REPOSITORY: ${{ github.repository }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+          SAME_REPO: ${{ fromJSON(github.event.inputs.pull_request).head.repo.id == github.repository_id }}
         name: Check findings and repair publication policy
         run: "set -euo pipefail\nCURRENT_HEAD_SHA=\"$(gh api --hostname \"${GITHUB_SERVER_URL#*://}\" \"/repos/$REPOSITORY/pulls/$PR_NUMBER\" --jq .head.sha)\"\nTRUSTED_ACCESSIBILITY=\"$RUNNER_TEMP/gh-aw/accessibility-trusted\"\ngit --no-replace-objects -c core.fsmonitor=false fsck --no-reflogs\npython3 \"$TRUSTED_ACCESSIBILITY/accessibility_review.py\" validate \\\n  --root \"$GITHUB_WORKSPACE\" \\\n  --expected-head \"$EXPECTED_HEAD_SHA\" \\\n  --current-head \"$CURRENT_HEAD_SHA\" \\\n  --same-repo \"$SAME_REPO\" \\\n  --prepared \"$TRUSTED_ACCESSIBILITY/prepared.json\" \\\n  --report \"Generated Files/$ACCESSIBILITY_RUN/final.json\" \\\n  --summary \"Generated Files/$ACCESSIBILITY_RUN/deep-summary.md\" \\\n  --safe-output-queue \"$GH_AW_SAFE_OUTPUTS\" \\\n  --transport-root /tmp/gh-aw\n"
         shell: bash
       - env:
-          PRODUCER_HEAD: ${{ github.event.pull_request.head.sha }}
+          PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
           PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
         if: always()
         name: Record deep producer identity even when incomplete
@@ -1270,7 +1264,9 @@ jobs:
   conclusion:
     needs:
       - activation
+      - admission
       - agent
+      - deep-admission
       - detection
       - final-summary
       - native-runtime
@@ -1288,7 +1284,7 @@ jobs:
       contents: write
       issues: write
     concurrency:
-      group: "gh-aw-conclusion-ghaw-pr-accessibility"
+      group: "gh-aw-conclusion-ghaw-pr-accessibility-${{ github.run_id }}"
       cancel-in-progress: false
       queue: max
     env:
@@ -1560,6 +1556,31 @@ jobs:
             const { main } = require(path.join(actionsDir, 'report_failed_jobs.cjs'));
             await main();
 
+  deep-admission:
+    needs: triage-route
+    if: >
+      needs.triage-route.result == 'success' && (needs.triage-route.outputs.route == 'Related' || needs.triage-route.outputs.route == 'Uncertain')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Configure GH_HOST for enterprise compatibility
+        id: ghes-host-config
+        shell: bash
+        run: | # zizmor: ignore[github-env] - GITHUB_SERVER_URL is set by GitHub Actions, not user input.
+          # Derive GH_HOST from GITHUB_SERVER_URL so the gh CLI targets the correct
+          # GitHub instance (GHES/GHEC). On github.com this is a harmless no-op.
+          GH_HOST="${GITHUB_SERVER_URL#https://}"
+          GH_HOST="${GH_HOST#http://}"
+          echo "GH_HOST=${GH_HOST}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - uses: ./.github/actions/accessibility-ci-admission
+
   detection:
     needs:
       - activation
@@ -1817,17 +1838,19 @@ jobs:
 
   final-summary:
     needs:
+      - admission
       - agent
       - native-runtime
       - native-selection
       - safe_outputs
       - triage
       - triage-route
-    if: ${{ always() && github.event.pull_request.head.repo.id == github.repository_id }}
+    if: ${{ always() && needs.admission.result == 'success' && needs.admission.outputs.applicable == 'true' }}
     permissions:
       actions: write
       contents: read
       copilot-requests: write
+      pull-requests: read
     uses: ./.github/workflows/ghaw-accessibility-summary.lock.yml
     with:
       deep-result: ${{ needs.agent.result }}
@@ -1845,15 +1868,17 @@ jobs:
     needs:
       - agent
       - native-selection
-    if: >
-      ${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' &&
-      github.event.pull_request.head.repo.id == github.repository_id }}
+      - safe_outputs
+    if: ${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' }}
     permissions:
+      actions: read
       contents: read
+      pull-requests: read
     uses: ./.github/workflows/native-accessibility.yml
     with:
-      head-repository: ${{ github.event.pull_request.head.repo.full_name }}
-      head-sha: ${{ github.event.pull_request.head.sha }}
+      head-repository: ${{ fromJSON(github.event.inputs.pull_request).head.repo.full_name }}
+      head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+      published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}
       trusted-repository: ${{ github.repository }}
       trusted-sha: ${{ github.workflow_sha }}
 
@@ -1890,48 +1915,6 @@ jobs:
             "Generated Files/$ACCESSIBILITY_RUN/native-checks.md")"
           echo "native=$native" >> "$GITHUB_OUTPUT"
 
-  pre_activation:
-    if: >
-      ((github.event.pull_request.head.repo.id == github.repository_id) && (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.id == github.repository_id)) && ((github.event_name != 'pull_request' &&
-      github.event_name != 'pull_request_review') || github.event.pull_request.stack == null || github.event.pull_request.stack.position == github.event.pull_request.stack.size)
-    runs-on: ubuntu-slim
-    env:
-      GH_AW_RUNTIME_FEATURES: ${{ vars.GH_AW_RUNTIME_FEATURES }}
-    outputs:
-      activated: ${{ steps.check_membership.outputs.is_team_member == 'true' }}
-      matched_command: ''
-      setup-parent-span-id: ${{ steps.setup.outputs.parent-span-id || steps.setup.outputs.span-id }}
-      setup-span-id: ${{ steps.setup.outputs.span-id }}
-      setup-trace-id: ${{ steps.setup.outputs.trace-id }}
-    steps:
-      - name: Setup Scripts
-        id: setup
-        uses: github/gh-aw-actions/setup@bc8c008a419c5b7a29df6f5641edd35fd1c6ea85 # v0.87.10
-        with:
-          destination: ${{ runner.temp }}/gh-aw/actions
-          job-name: ${{ github.job }}
-        env:
-          GH_AW_SETUP_WORKFLOW_NAME: "Native WinUI Accessibility Review"
-          GH_AW_CURRENT_WORKFLOW_REF: ${{ github.repository }}/.github/workflows/ghaw-pr-accessibility.lock.yml@${{ github.ref }}
-          GH_AW_INFO_VERSION: "1.0.80"
-          GH_AW_INFO_AWF_VERSION: "v0.28.10"
-          GH_AW_INFO_ENGINE_ID: "copilot"
-      - name: Check team membership for workflow
-        id: check_membership
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          GH_AW_REQUIRED_ROLES: "admin,maintainer,write"
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const path = require('path');
-            const actionsDir = path.join(process.env.RUNNER_TEMP, 'gh-aw', 'actions');
-            const { setupGlobals } = require(path.join(actionsDir, 'setup_globals.cjs'));
-            setupGlobals(core, github, context, exec, io, getOctokit);
-            const { main } = require(path.join(actionsDir, 'check_membership.cjs'));
-            await main();
-
   safe_outputs:
     needs:
       - activation
@@ -1955,7 +1938,6 @@ jobs:
       GH_AW_EFFECTIVE_TOKENS: ${{ needs.agent.outputs.effective_tokens }}
       GH_AW_ENGINE_ID: "copilot"
       GH_AW_ENGINE_MODEL: "auto"
-      GH_AW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       GH_AW_RUNTIME_FEATURES: ${{ vars.GH_AW_RUNTIME_FEATURES }}
       GH_AW_THREAT_DETECTION_AIC: ${{ needs.detection.outputs.aic }}
       GH_AW_WORKFLOW_ID: "ghaw-pr-accessibility"
@@ -2065,7 +2047,7 @@ jobs:
           GH_AW_ALLOWED_DOMAINS: "api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,learn.microsoft.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,s.symcb.com,s.symcd.com,security.ubuntu.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.googleapis.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
-          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/TerminalApp/**/*.xaml\",\"src/cascadia/TerminalApp/**/*.cpp\",\"src/cascadia/TerminalApp/**/*.h\",\"src/cascadia/TerminalControl/**/*.xaml\",\"src/cascadia/TerminalControl/**/*.cpp\",\"src/cascadia/TerminalControl/**/*.h\",\"src/cascadia/TerminalSettingsEditor/**/*.xaml\",\"src/cascadia/TerminalSettingsEditor/**/*.cpp\",\"src/cascadia/TerminalSettingsEditor/**/*.h\",\"src/cascadia/WindowsTerminal/**/*.xaml\",\"src/cascadia/WindowsTerminal/**/*.cpp\",\"src/cascadia/WindowsTerminal/**/*.h\",\"src/cascadia/WindowsTerminal_UIATests/**/*.cs\",\"src/cascadia/UIMarkdown/**/*.xaml\",\"src/cascadia/UIMarkdown/**/*.cpp\",\"src/cascadia/UIMarkdown/**/*.h\"],\"base_branch\":\"${{ github.event.pull_request.head.sha }}\",\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"patch_format\":\"bundle\",\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\",\"signed_commits\":false},\"report_incomplete\":{}}"
+          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_report_incomplete_issue\":{},\"missing_data\":{},\"missing_tool\":{},\"noop\":{\"max\":1,\"report-as-issue\":\"false\"},\"push_to_pull_request_branch\":{\"allowed_files\":[\"src/cascadia/TerminalApp/**/*.xaml\",\"src/cascadia/TerminalApp/**/*.cpp\",\"src/cascadia/TerminalApp/**/*.h\",\"src/cascadia/TerminalControl/**/*.xaml\",\"src/cascadia/TerminalControl/**/*.cpp\",\"src/cascadia/TerminalControl/**/*.h\",\"src/cascadia/TerminalSettingsEditor/**/*.xaml\",\"src/cascadia/TerminalSettingsEditor/**/*.cpp\",\"src/cascadia/TerminalSettingsEditor/**/*.h\",\"src/cascadia/WindowsTerminal/**/*.xaml\",\"src/cascadia/WindowsTerminal/**/*.cpp\",\"src/cascadia/WindowsTerminal/**/*.h\",\"src/cascadia/WindowsTerminal_UIATests/**/*.cs\",\"src/cascadia/UIMarkdown/**/*.xaml\",\"src/cascadia/UIMarkdown/**/*.cpp\",\"src/cascadia/UIMarkdown/**/*.h\"],\"base_branch\":\"${{ fromJSON(github.event.inputs.pull_request).head.sha }}\",\"fallback_as_pull_request\":false,\"if_no_changes\":\"error\",\"max_patch_size\":4096,\"patch_format\":\"bundle\",\"protect_top_level_dot_folders\":true,\"protected_files\":[\"package.json\",\"bun.lockb\",\"bunfig.toml\",\"deno.json\",\"deno.jsonc\",\"deno.lock\",\"global.json\",\"NuGet.Config\",\"Directory.Packages.props\",\"mix.exs\",\"mix.lock\",\"go.mod\",\"go.sum\",\"stack.yaml\",\"stack.yaml.lock\",\"pom.xml\",\"build.gradle\",\"build.gradle.kts\",\"settings.gradle\",\"settings.gradle.kts\",\"gradle.properties\",\"package-lock.json\",\"yarn.lock\",\"pnpm-lock.yaml\",\"npm-shrinkwrap.json\",\"requirements.txt\",\"Pipfile\",\"Pipfile.lock\",\"pyproject.toml\",\"setup.py\",\"setup.cfg\",\"Gemfile\",\"Gemfile.lock\",\"uv.lock\",\"CODEOWNERS\",\"DESIGN.md\",\"README.md\",\"CONTRIBUTING.md\",\"CHANGELOG.md\",\"SECURITY.md\",\"CODE_OF_CONDUCT.md\",\"AGENTS.md\"],\"protected_files_policy\":\"blocked\",\"signed_commits\":false},\"report_incomplete\":{}}"
           GH_AW_CI_TRIGGER_TOKEN: ${{ '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -2089,11 +2071,13 @@ jobs:
           if-no-files-found: ignore
 
   triage:
-    needs: activation
+    needs: admission
+    if: needs.admission.outputs.applicable == 'true'
     permissions:
       actions: write
       contents: read
       copilot-requests: write
+      pull-requests: read
     uses: ./.github/workflows/ghaw-accessibility-triage.lock.yml
     secrets: inherit
 
@@ -2131,5 +2115,5 @@ jobs:
             --base "$BASE_SHA" --head "$HEAD_SHA")"
           echo "route=$route" >> "$GITHUB_OUTPUT"
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
+          HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}

@@ -9,6 +9,11 @@ on:
       head-sha:
         required: true
         type: string
+      published-sha:
+        description: Confirmed repair tip from the trusted worker; admission only, never the scan revision.
+        required: false
+        default: ''
+        type: string
       trusted-repository:
         required: true
         type: string
@@ -17,10 +22,39 @@ on:
         type: string
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 env:
   ACCESSIBILITY_RESULTS: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
 jobs:
+  admission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+        with:
+          published-sha: ${{ inputs.published-sha }}
+      - name: Bind native inputs to the admitted original revision
+        env:
+          HEAD_SHA: ${{ inputs.head-sha }}
+          HEAD_REPOSITORY: ${{ inputs.head-repository }}
+          TRUSTED_SHA: ${{ inputs.trusted-sha }}
+          TRUSTED_REPOSITORY: ${{ inputs.trusted-repository }}
+          PULL_REQUEST: ${{ github.event.inputs.pull_request }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          const pr = JSON.parse(process.env.PULL_REQUEST);
+          if (process.env.HEAD_SHA !== pr.head.sha ||
+              process.env.HEAD_REPOSITORY !== process.env.GITHUB_REPOSITORY ||
+              process.env.TRUSTED_REPOSITORY !== process.env.GITHUB_REPOSITORY ||
+              process.env.TRUSTED_SHA !== process.env.WORKFLOW_SHA) throw Error('Native input identity differs from admission.');
+          NODE
   native-smoke:
+    needs: [admission]
     name: Native Axe.Windows smoke
     runs-on: windows-2025-vs2026
     timeout-minutes: 45

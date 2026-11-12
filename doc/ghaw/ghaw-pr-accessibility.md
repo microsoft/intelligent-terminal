@@ -16,6 +16,42 @@ The original daily AI-credit cap is 100,000.
 PR automation runs only for branches in the receiving repository. External-fork
 PRs are skipped.
 
+## Original-revision CI prerequisite
+
+The default-branch `ghaw-pr-accessibility-controller.yml` wakes on completed
+GitHub Actions **PR CI** runs. Only a successful `pull_request` run for the
+current open, non-draft, same-repository PR targeting the default branch can
+dispatch review. A green unrelated check, a push/manual CI run, a merge SHA,
+an earlier head, or a stale run attempt is not sufficient.
+
+The thin `accessibility-ci-admission` action reuses security review's
+`validateCiRun`, `validateCiPull` and `validateCiDefinition` foundation
+(#1361, with CI path scoping from #1380). It re-reads the run and active workflow
+identity, immutable CI implementation trees, commit-associated PR and live
+head/base. It does not trust the webhook's PR list or download candidate artifacts.
+Path eligibility remains additive: no relevant paths means no model work.
+Relevant paths still receive Related / None / Uncertain delta triage; CI
+success alone never selects deep review or native discovery.
+
+The worker is dispatched on the default branch with exact CI run/attempt,
+minimal PR identity and trusted workflow SHA. Admission rechecks before triage,
+deep review, native discovery and final summary, including reusable entrypoints.
+Calls from another workflow, candidate workflow revisions, rerunning the same
+worker, and duplicate dispatches for an already admitted CI attempt fail closed.
+A fresh successful CI attempt has a distinct identity. If the default branch or
+PR moves across admission/dispatch, admission fails rather than reviewing a
+substituted revision. As with publication, these live checks are not atomic.
+Native discovery admission and the final summary may accept this trusted worker's
+confirmed repair tip while retaining the original CI identity; that is not CI
+validation of the repairs. Unrelated live head changes still fail admission.
+
+PR CI currently publishes `ci-security-cpp-*` and `ci-security-rust-*` findings,
+not a supported TestHost package, Axe result or accessibility static report.
+Accessibility does not consume those unrelated artifacts or claim CI certified
+Axe. Selected native discovery therefore still builds TestHost from the exact
+original head, under read-only permissions. No new build artifact contract is
+introduced here, and no proposed-fix build/test gate is added.
+
 ## Responsibilities
 
 | Owner | Responsibility |
@@ -55,17 +91,15 @@ Uncertain or unsupported repairs stay `remaining` or `blocked`.
 
 ## Trust and publication
 
-The `pull_request` trigger uses the workflow definition from the PR merge
-commit, so contributors with access to create same-repository branches are
-trusted to change that definition. Fork PRs are skipped.
+The `workflow_run` controller and dispatched worker use default-branch
+definitions, never a PR merge commit's operating code. Fork PRs are skipped.
 Preparation reads immutable Git blobs from `github.workflow_sha`, records that
 code revision as `trusted_base_sha` separately from feature `comparison_base_sha`,
 and stages its skill/analyzer in gh-aw's read-only runtime mount. The Windows
 harness uses the same workflow revision. A PR event's older base commit can
 predate installation of this workflow and must not select its trusted code.
-Preparation receives the PR base separately for feature comparison, because the
-workflow merge revision already contains the reviewed head. Using that merge
-revision as the comparison input would hide all feature changes.
+Preparation receives the PR base separately for feature comparison. The trusted
+workflow revision is control code, not the feature's comparison ancestor.
 PR instructions and artifacts are review data, never operating instructions.
 
 After preparation, the agent inspects the verified PR head branch. Operating
@@ -111,10 +145,13 @@ page reached through production Frame navigation. Native errors, blocked startup
 remain failures. Its artifacts and job outcome are separate from the source
 agent's Markdown and source-only runtime records.
 
-As in the pre-simplification workflow, native discovery follows the source
-agent, independently of branch publication. The publication job does not
-depend on native discovery, and the native job scans the event's original
-head, not a proposed repair commit. It is not post-fix validation.
+Native discovery follows the source agent and waits for safe-output publication
+to finish, avoiding a live-head admission race with this worker's own repairs.
+Only the publisher's confirmed `push_commit_sha` reaches native admission.
+Failed or skipped publication does not suppress selected discovery; cancellation
+does. The publication job does not depend on native discovery, and the native
+job still scans the event's original head, not a proposed repair commit.
+It is not post-fix validation.
 
 This smoke is not complete keyboard, Narrator, high-contrast or 200% scaling
 coverage. Axe output uses its supported no-screenshot format; JSON is not an
@@ -133,9 +170,16 @@ regenerate the lockfile:
 
 ```powershell
 python .github\skills\pr-accessibility\tests\test_accessibility_review.py
-gh aw compile ghaw-pr-accessibility --no-check-update
-gh aw validate ghaw-pr-accessibility --no-check-update
+python .github\skills\pr-accessibility\tests\test_accessibility_handoff.py
+node --test .github/actions/accessibility-ci-admission/admission.test.mjs
+gh aw compile ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility-summary --no-check-update
+gh aw validate ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility-summary --no-check-update
 ```
+
+Use gh-aw v0.87.10 and commit all three generated lockfiles. The Node tests use
+mocked GitHub APIs (identity, status, freshness, attempts, duplicates and manual
+guards); the Python tests inspect the compiled graph and existing repair policy.
+They do not establish hosted Actions pickup or end-to-end dispatch behavior.
 
 These commands validate the workflow implementation; they do not run product
 builds/tests on a PR repair.

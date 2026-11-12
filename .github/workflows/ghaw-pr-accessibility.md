@@ -1,46 +1,37 @@
 ---
 name: Native WinUI Accessibility Review
+run-name: 'Accessibility CI ${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}'
 description: 'Reviews native UI accessibility with Windows Axe smoke checks and proposes narrowly scoped HIGH fixes without requiring post-fix builds or tests.'
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    paths:
-      - 'src/cascadia/TerminalApp/**'
-      - 'src/cascadia/TerminalControl/**'
-      - 'src/cascadia/TerminalSettingsEditor/**'
-      - 'src/cascadia/WindowsTerminal/**'
-      - 'src/cascadia/WindowsTerminal_UIATests/**'
-      - 'src/cascadia/UIMarkdown/**'
-      - 'src/cascadia/LocalTests_TerminalApp/TestHostApp/**'
-      - '.github/agents/pr-accessibility.agent.md'
-      - '.github/skills/pr-accessibility/**'
-      - '.github/workflows/ghaw-pr-accessibility.md'
-      - '.github/workflows/ghaw-pr-accessibility.lock.yml'
-      - '.github/workflows/native-accessibility.yml'
-      - 'test/accessibility/**'
-      - 'build/scripts/Get-DependenciesFromAppxRecipe.ps1'
-      - '.github/**'
-      - '**/.github/**'
-      - '**/AGENTS.md'
-      - '**/CLAUDE.md'
-      - '**/GEMINI.md'
-      - '**/copilot-instructions.md'
-      - '**/SKILL.md'
-      - '**/*.instructions.md'
-      - '**/*.agent.md'
-      - '**/.mcp.json'
-      - '**/.claude/**'
-      - '**/.copilot/**'
-      - '**/.agents/**'
-      - '**/.gemini/**'
-
-if: github.event.pull_request.head.repo.id == github.repository_id
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: 'Controller-admitted immutable PR identity'
+        required: true
+        type: string
+      ci_run_id:
+        description: 'Successful exact-head PR CI run'
+        required: true
+        type: string
+      ci_run_attempt:
+        description: 'Successful PR CI attempt'
+        required: true
+        type: string
+      expected_workflow_sha:
+        description: 'Trusted default-branch worker revision'
+        required: true
+        type: string
 
 permissions:
   contents: read
   pull-requests: read
   copilot-requests: write
+
+concurrency:
+  group: accessibility-ci-worker-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
+  job-discriminator: ${{ github.run_id }}
+  cancel-in-progress: false
 
 engine:
   id: copilot
@@ -56,6 +47,7 @@ imports:
 
 env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+  ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
 
 checkout:
   repository: ${{ github.repository }}
@@ -78,11 +70,32 @@ tools:
     - 'git status:*'
 
 jobs:
+  admission:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      applicable: ${{ steps.admit.outputs.applicable }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+        id: admit
+        with:
+          deduplicate: 'true'
+
   triage:
+    needs: [admission]
+    if: needs.admission.outputs.applicable == 'true'
     uses: ./.github/workflows/ghaw-accessibility-triage.lock.yml
     permissions:
       actions: write # gh-aw artifact conclusion handler; model jobs remain read-only.
       contents: read
+      pull-requests: read
       copilot-requests: write
     secrets: inherit
 
@@ -105,8 +118,8 @@ jobs:
           path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}
       - id: route
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
+          HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
         run: |
           set -euo pipefail
           route="$(python3 .github/skills/pr-accessibility/scripts/accessibility_handoff.py triage \
@@ -114,8 +127,23 @@ jobs:
             --base "$BASE_SHA" --head "$HEAD_SHA")"
           echo "route=$route" >> "$GITHUB_OUTPUT"
 
-  agent:
+  deep-admission:
     needs: [triage-route]
+    if: needs.triage-route.result == 'success' && (needs.triage-route.outputs.route == 'Related' || needs.triage-route.outputs.route == 'Uncertain')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+
+  agent:
+    needs: [admission, triage-route, deep-admission]
     if: needs.triage-route.result == 'success' && (needs.triage-route.outputs.route == 'Related' || needs.triage-route.outputs.route == 'Uncertain')
 
   native-selection:
@@ -147,24 +175,28 @@ jobs:
 
   native-runtime:
     name: Native Axe.Windows smoke
-    needs: [agent, native-selection]
-    if: ${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' && github.event.pull_request.head.repo.id == github.repository_id }}
+    needs: [agent, native-selection, safe_outputs]
+    if: ${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' }}
     uses: ./.github/workflows/native-accessibility.yml
     permissions:
       contents: read
+      actions: read
+      pull-requests: read
     with:
-      head-repository: ${{ github.event.pull_request.head.repo.full_name }}
-      head-sha: ${{ github.event.pull_request.head.sha }}
+      head-repository: ${{ fromJSON(github.event.inputs.pull_request).head.repo.full_name }}
+      head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+      published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}
       trusted-repository: ${{ github.repository }}
       trusted-sha: ${{ github.workflow_sha }}
 
   final-summary:
-    needs: [triage, triage-route, agent, native-selection, native-runtime, safe_outputs]
-    if: ${{ always() && github.event.pull_request.head.repo.id == github.repository_id }}
+    needs: [admission, triage, triage-route, agent, native-selection, native-runtime, safe_outputs]
+    if: ${{ always() && needs.admission.result == 'success' && needs.admission.outputs.applicable == 'true' }}
     uses: ./.github/workflows/ghaw-accessibility-summary.lock.yml
     permissions:
       actions: write # gh-aw artifact conclusion handler; model jobs remain read-only.
       contents: read
+      pull-requests: read
       copilot-requests: write
     secrets: inherit
     with:
@@ -188,11 +220,11 @@ steps:
     shell: bash
     env:
       WORKFLOW_SHA: ${{ github.workflow_sha }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
+      HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+      HEAD_REF: ${{ fromJSON(github.event.inputs.pull_request).head.ref }}
       REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
     run: |
       set -euo pipefail
       test "$WORKFLOW_SHA" = "$(git rev-parse HEAD)"
@@ -223,7 +255,7 @@ pre-agent-steps:
   - name: Record framework configuration changes
     shell: bash
     env:
-      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
     run: |
       set -euo pipefail
       if [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD_SHA" ]; then
@@ -243,7 +275,7 @@ safe-outputs:
     max-ai-credits: 30
     retries: 0
   push-to-pull-request-branch:
-    base-branch: ${{ github.event.pull_request.head.sha }}
+    base-branch: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
     github-token-for-extra-empty-commit: "${{ '' }}"
     allowed-files:
       - 'src/cascadia/TerminalApp/**/*.xaml'
@@ -272,7 +304,7 @@ post-steps:
   - name: Remove verified framework configuration changes
     shell: bash
     env:
-      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
     run: |
       set -euo pipefail
       TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
@@ -294,10 +326,10 @@ post-steps:
   - name: Check findings and repair publication policy
     shell: bash
     env:
-      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      SAME_REPO: ${{ github.event.pull_request.head.repo.id == github.repository_id }}
+      EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+      SAME_REPO: ${{ fromJSON(github.event.inputs.pull_request).head.repo.id == github.repository_id }}
       GH_TOKEN: ${{ github.token }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
       REPOSITORY: ${{ github.repository }}
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: |
@@ -319,7 +351,7 @@ post-steps:
   - name: Record deep producer identity even when incomplete
     if: always()
     env:
-      PRODUCER_HEAD: ${{ github.event.pull_request.head.sha }}
+      PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
     run: |
       mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
@@ -355,7 +387,7 @@ as gaps; source-only/comment/text changes need not run native jobs.
 Write all domain reports/handoffs under this run-specific Generated Files
 directory; never stage or commit them.
 
-Review immutable PR head `${{ github.event.pull_request.head.sha }}`. First read
+Review immutable PR head `${{ env.ACCESSIBILITY_HEAD_SHA }}`. First read
 the trusted prepared evidence and skill in
 `$RUNNER_TEMP/gh-aw/accessibility-trusted`; resolve that directory with
 `echo "$RUNNER_TEMP/gh-aw/accessibility-trusted"`, then use the read tool.

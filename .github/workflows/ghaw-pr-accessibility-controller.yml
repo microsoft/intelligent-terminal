@@ -1,0 +1,50 @@
+name: Accessibility Review after CI
+on:
+  workflow_run:
+    workflows: ['PR CI']
+    types: [completed]
+permissions: {}
+concurrency:
+  group: accessibility-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+jobs:
+  admit:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+        id: admission
+        with:
+          deduplicate: 'true'
+      - name: Dispatch trusted accessibility worker
+        if: steps.admission.outputs.applicable == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PULL_REQUEST: ${{ steps.admission.outputs.pull_request }}
+          CI_RUN_ID: ${{ steps.admission.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.admission.outputs.ci_run_attempt }}
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+        with:
+          script: |
+            const pr = JSON.parse(process.env.PULL_REQUEST);
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'ghaw-pr-accessibility.lock.yml',
+              ref: context.payload.repository.default_branch,
+              inputs: {
+                pull_request: process.env.PULL_REQUEST,
+                ci_run_id: process.env.CI_RUN_ID,
+                ci_run_attempt: process.env.CI_RUN_ATTEMPT,
+                expected_workflow_sha: process.env.TRUSTED_SHA,
+                aw_context: JSON.stringify({ item_type: 'pull_request', item_number: pr.number,
+                  repo: `${context.repo.owner}/${context.repo.repo}`, event_type: 'pull_request',
+                  head_sha: pr.head.sha, base_sha: pr.base.sha }),
+              },
+            });

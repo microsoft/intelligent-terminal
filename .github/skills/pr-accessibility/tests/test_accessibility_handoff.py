@@ -75,11 +75,11 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertEqual("agent", selector["needs"])
         self.assertIn("steps.selection.outputs.native", selector["outputs"]["native"])
         native = self.jobs["native-runtime"]
-        self.assertEqual({"agent", "native-selection"}, set(native["needs"]))
+        self.assertEqual({"agent", "native-selection", "safe_outputs"}, set(native["needs"]))
         self.assertIn("needs.native-selection.result == 'success'", native["if"])
         self.assertIn("needs.native-selection.outputs.native == 'true'", native["if"])
         self.assertNotIn("triage", native["if"])
-        self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}",
+        self.assertIn("head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
                       (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8"))
 
     def test_native_selection_survives_failed_deep_validation_but_not_skip_or_cancel(self):
@@ -106,18 +106,61 @@ class CompiledGraphTests(unittest.TestCase):
         summary = self.jobs["final-summary"]
         self.assertIn("always()", summary["if"])
         self.assertEqual(
-            {"agent", "native-runtime", "native-selection", "safe_outputs", "triage", "triage-route"},
+            {"admission", "agent", "native-runtime", "native-selection", "safe_outputs", "triage", "triage-route"},
             set(summary["needs"]),
         )
         for key in ("deep-result", "native-result", "publication-result", "triage-result",
                     "native-selection-result", "route"):
             self.assertIn(key, summary["with"])
+        self.assertIn("needs.admission.result == 'success'", summary["if"])
+        self.assertIn("needs.admission.outputs.applicable == 'true'", summary["if"])
+
+    def test_all_costly_entrypoints_require_ci_admission(self):
+        self.assertIn("admission", self.jobs["triage"]["needs"])
+        self.assertIn("needs.admission.outputs.applicable == 'true'", self.jobs["triage"]["if"])
+        self.assertIn("deep-admission", self.jobs["agent"]["needs"])
+        self.assertIn("triage-route", self.jobs["deep-admission"]["needs"])
+        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml",
+                     "native-accessibility.yml"):
+            jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
+            costly = jobs.get("agent", jobs.get("native-smoke"))
+            self.assertIn("admission", costly["needs"])
+            self.assertTrue(any(step.get("uses") == "./.github/actions/accessibility-ci-admission"
+                                for step in jobs["admission"]["steps"]))
+        controller = yaml.safe_load((ROOT / ".github/workflows/ghaw-pr-accessibility-controller.yml").read_text())
+        # PyYAML's YAML 1.1 parser represents the Actions `on` key as True.
+        self.assertEqual(["PR CI"], controller[True]["workflow_run"]["workflows"])
+        worker = yaml.safe_load((ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8"))
+        self.assertNotIn("pull_request", worker[True])
+        self.assertIn("workflow_dispatch", worker[True])
 
     def test_native_never_gates_repair_publication(self):
         dependencies = self.jobs["safe_outputs"]["needs"]
         self.assertNotIn("native-runtime", dependencies)
         self.assertNotIn("native-selection", dependencies)
         self.assertNotIn("final-summary", dependencies)
+
+    def test_native_admits_confirmed_publication_but_scans_original_head(self):
+        native = self.jobs["native-runtime"]
+        # A status function retains discovery after failed/skipped publication.
+        self.assertEqual(
+            "${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' }}",
+            native["if"],
+        )
+        self.assertEqual("${{ needs.safe_outputs.outputs.push_commit_sha }}",
+                         native["with"]["published-sha"])
+        self.assertEqual("${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
+                         native["with"]["head-sha"])
+        workflow = yaml.safe_load((ROOT / ".github/workflows/native-accessibility.yml").read_text(
+            encoding="utf-8"))
+        declared = workflow[True]["workflow_call"]["inputs"]["published-sha"]
+        self.assertFalse(declared["required"])
+        self.assertEqual("", declared["default"])
+        admission = next(step for step in workflow["jobs"]["admission"]["steps"]
+                         if step.get("uses") == "./.github/actions/accessibility-ci-admission")
+        self.assertEqual("${{ inputs.published-sha }}", admission["with"]["published-sha"])
+        checkout = workflow["jobs"]["native-smoke"]["steps"][0]
+        self.assertEqual("${{ inputs.head-sha }}", checkout["with"]["ref"])
 
     def test_reusable_workflow_permissions_fit_callers(self):
         levels = {"none": 0, "read": 1, "write": 2}

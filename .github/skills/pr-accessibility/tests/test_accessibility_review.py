@@ -1676,15 +1676,17 @@ class WorkflowContractTests(unittest.TestCase):
         summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
         self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
 
-    def test_support_paths_trigger_trusted_base_validation(self):
+    def test_support_paths_are_classified_by_trusted_ci_admission(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         trigger = workflow.split("\npermissions:", 1)[0]
-        for path in ("src/cascadia/LocalTests_TerminalApp/TestHostApp/**",
-                     ".github/agents/pr-accessibility.agent.md", ".github/skills/pr-accessibility/**",
-                     ".github/workflows/ghaw-pr-accessibility.lock.yml", "test/accessibility/**",
-                     "build/scripts/Get-DependenciesFromAppxRecipe.ps1"):
-            self.assertIn(path, trigger)
+        self.assertIn("workflow_dispatch:", trigger)
+        self.assertNotIn("\n  pull_request:", trigger)
+        self.assertIn("uses: ./.github/actions/accessibility-ci-admission", workflow)
+        admission = (root / ".github/actions/accessibility-ci-admission/admission.mjs").read_text()
+        self.assertIn("files.some(file => relevantPath(file.filename)", admission)
+        self.assertIn("relevantPath(file.previous_filename", admission)
+        self.assertIn("validateCiDefinition(...trees)", admission)
 
     def test_agent_and_detection_have_explicit_spend_caps(self):
         root = Path(__file__).parents[4]
@@ -1742,12 +1744,12 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
             self.assertIn('--base "$BASE_SHA"', workflow.replace('\\"', '"'))
             self.assertIn('--trusted-sha "$WORKFLOW_SHA"', workflow.replace('\\"', '"'))
-            self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", workflow)
+            self.assertIn("BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}", workflow)
 
     def test_preparation_preserves_named_pr_branch_for_transport(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("HEAD_REF: ${{ github.event.pull_request.head.ref }}", workflow)
+        self.assertIn("HEAD_REF: ${{ fromJSON(github.event.inputs.pull_request).head.ref }}", workflow)
         self.assertLess(workflow.index('git check-ref-format --branch "$HEAD_REF"'),
                         workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'))
         self.assertIn("one separate commit per eligible HIGH finding", workflow)
