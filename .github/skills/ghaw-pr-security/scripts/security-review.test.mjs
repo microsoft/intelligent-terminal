@@ -908,14 +908,12 @@ function ciFixture() {
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
     path: '.github/workflows/pr-ci.yml', name: 'PR CI',
     workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
-  const jobs = ['Select CI jobs', 'C++ build and unit tests', 'Rust build and unit tests'].map(name =>
-    ({ name, run_id: 91, run_attempt: 2, status: 'completed', conclusion: 'success' }));
   const pull = { number: 17, state: 'open', head: { sha: HEAD, ref: 'topic',
     repo: { id: 42, full_name: 'owner/repo' } },
     base: { sha: BASE, ref: 'main', repo: { id: 42, full_name: 'owner/repo' } } };
   const artifacts = ['cpp', 'rust'].map((language, index) => ({ id: 100 + index,
     name: `ci-security-${language}-91-2`, expired: false, workflow_run: { id: 91, head_sha: HEAD } }));
-  return { identity, run, jobs, pull, artifacts };
+  return { identity, run, pull, artifacts };
 }
 
 function ciDefinitionTree() {
@@ -947,9 +945,9 @@ test('unchanged older PRs inherit trusted CI even when their comparison base lac
   assert.throws(() => validateCiDefinition(ciDefinitionTree(), older), /CI implementation differs/);
 });
 
-test('CI admission requires successful exact-head same-repo workflow, attempt and selected unit jobs', () => {
-  const { identity, run, jobs, pull, artifacts } = ciFixture();
-  assert.doesNotThrow(() => validateCiRun(run, jobs, identity));
+test('CI admission requires successful exact-head same-repo workflow and attempt, not internal job names', () => {
+  const { identity, run, pull, artifacts } = ciFixture();
+  assert.doesNotThrow(() => validateCiRun(run, identity));
   assert.doesNotThrow(() => validateCiPull(pull, run, identity));
   assert.equal(validateCiArtifacts(artifacts, run).length, 2);
   for (const extra of [
@@ -959,14 +957,9 @@ test('CI admission requires successful exact-head same-repo workflow, attempt an
     { path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis' },
     { repository: { id: 99, full_name: 'owner/repo' } },
     { head_repository: { id: 99, full_name: 'fork/repo' } },
-  ]) assert.throws(() => validateCiRun({ ...run, ...extra }, jobs, identity));
+  ]) assert.throws(() => validateCiRun({ ...run, ...extra }, identity));
   for (const extra of [{ runAttempt: 1 }, { repositoryId: 99 }, { headSha: BASE }]) {
-    assert.throws(() => validateCiRun(run, jobs, { ...identity, ...extra }));
-  }
-  for (const badJobs of [jobs.slice(1), [...jobs, jobs[0]],
-    jobs.map(job => ({ ...job, run_attempt: 1 })), jobs.map(job => ({ ...job, conclusion: 'failure' })),
-    jobs.map(job => ({ ...job, conclusion: 'skipped' }))]) {
-    assert.throws(() => validateCiRun(run, badJobs, identity));
+    assert.throws(() => validateCiRun(run, { ...identity, ...extra }));
   }
   for (const badPull of [{ ...pull, state: 'closed' },
     { ...pull, head: { ...pull.head, sha: BASE } },
@@ -976,23 +969,21 @@ test('CI admission requires successful exact-head same-repo workflow, attempt an
     { ...pull, base: { ...pull.base, sha: HEAD } }]) {
     assert.throws(() => validateCiPull(badPull, run, identity), /CI pull request/);
   }
-  for (const badArtifacts of [artifacts.slice(1), [...artifacts, artifacts[0]],
+  for (const badArtifacts of [[...artifacts, artifacts[0]],
     artifacts.map(item => ({ ...item, expired: true })),
-    artifacts.map(item => ({ ...item, workflow_run: { id: 91, head_sha: BASE } })),
-    artifacts.map(item => ({ ...item, name: item.name.replace('-2', '-1') }))]) {
+    artifacts.map(item => ({ ...item, workflow_run: { id: 91, head_sha: BASE } }))]) {
     assert.throws(() => validateCiArtifacts(badArtifacts, run));
   }
 });
 
 test('native CI verification rechecks live PR and trusted workflow before returning protected artifact identities', () => {
-  const { run, jobs, pull, artifacts } = ciFixture();
+  const { run, pull, artifacts } = ciFixture();
   const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
     CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
     PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
   const responses = {
     '': { default_branch: 'main' },
     'actions/runs/91': run,
-    'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
     'actions/workflows/pr-ci.yml': { id: 7, path: run.path, state: 'active' },
     'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
   };
@@ -1005,14 +996,11 @@ test('native CI verification rechecks live PR and trusted workflow before return
     return responses[endpoint];
   };
   assert.deepEqual(verifyCiSecurity({ environment, request }).identity,
-    { runId: '91', runAttempt: 2, headSha: HEAD, languages: ['cpp', 'rust'] });
-  const rustJob = jobs.find(job => job.name === 'Rust build and unit tests');
-  rustJob.conclusion = 'skipped';
+    { runId: '91', runAttempt: 2, headSha: HEAD });
   responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts: artifacts.slice(0, 1) };
   const partial = verifyCiSecurity({ environment, request });
-  assert.deepEqual(partial.identity.languages, ['cpp']);
+  assert.deepEqual(partial.artifacts.map(item => item.language), ['cpp']);
   assert.equal(partial.artifacts.length, 1);
-  rustJob.conclusion = 'success';
   responses['actions/runs/91/artifacts?per_page=100&page=1'] = { artifacts };
   const markdown = readFileSync(new URL('../../../workflows/ghaw-pr-security.md', import.meta.url), 'utf8');
   const preInferenceStep = markdown.split('  - name: Revalidate successful exact-head CI immediately before inference')[1]
@@ -1024,7 +1012,7 @@ test('native CI verification rechecks live PR and trusted workflow before return
     stepEnvironment[match[1]] = inputs[match[2]];
   }
   assert.deepEqual(verifyCiSecurity({ environment: stepEnvironment, request }).identity,
-    { runId: '91', runAttempt: 2, headSha: HEAD, languages: ['cpp', 'rust'] }, 'actual pre-inference step supplies every admission binding');
+    { runId: '91', runAttempt: 2, headSha: HEAD }, 'actual pre-inference step supplies every admission binding');
   pull.base.ref = 'untrusted-target';
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI pull request/);
   pull.base.ref = 'main';
@@ -1039,25 +1027,16 @@ test('native CI verification rechecks live PR and trusted workflow before return
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
 });
 
-test('successful selection admits only completed analyses and rejects failed or missing jobs', () => {
-  const { identity, run, jobs, artifacts } = ciFixture();
+test('analysis artifacts are optional but any published evidence must have valid immutable bindings', () => {
+  const { run, artifacts } = ciFixture();
   for (const languages of [['cpp'], ['rust'], []]) {
-    const selected = jobs.map(job => ({ ...job,
-      conclusion: job.name === 'Select CI jobs' ||
-        languages.includes(job.name.startsWith('C++') ? 'cpp' : 'rust') ? 'success' : 'skipped' }));
-    assert.deepEqual(validateCiRun(run, selected, identity), languages);
     const available = artifacts.filter(item => languages.some(language => item.name.includes(`-${language}-`)));
-    assert.equal(validateCiArtifacts(available, run, languages).length, languages.length);
-    if (languages.length < 2) assert.throws(() => validateCiArtifacts(artifacts, run, languages), /skipped CI job/);
-  }
-  for (const conclusion of ['failure', 'cancelled', 'timed_out', 'neutral']) {
-    assert.throws(() => validateCiRun(run,
-      jobs.map(job => job.name === 'Rust build and unit tests' ? { ...job, conclusion } : job), identity));
+    assert.deepEqual(validateCiArtifacts(available, run).map(item => item.language), languages);
   }
 });
 
 test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {
-  const { run, jobs } = ciFixture();
+  const { run } = ciFixture();
   const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
     PR_NUMBER: '17', RUN_ID: '123', EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE,
     EXPECTED_WORKFLOW_SHA: '3'.repeat(40), SAME_REPO: 'true', HEAD_REF: 'topic',
@@ -1065,7 +1044,6 @@ test('publication native API adapter reaches CI validation through the canonical
   const responses = {
     '/repos/owner/repo': { default_branch: 'main' },
     '/repos/owner/repo/actions/runs/91': { ...run, conclusion: 'failure' },
-    '/repos/owner/repo/actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
   };
   const requests = [];
   const command = t.mock.method(childProcess, 'execFileSync', (program, args) => {
@@ -1093,7 +1071,7 @@ test('actual controller admission uses trusted commit association when workflow_
     'github', 'context', 'core', 'process', 'require', script);
   for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
     'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr', 'untrusted-target']) {
-    const { run, pull, jobs } = ciFixture();
+    const { run, pull } = ciFixture();
     const source = structuredClone(run);
     source.pull_requests = [];
     if (variant === 'failed') run.conclusion = 'failure';
@@ -1106,7 +1084,6 @@ test('actual controller admission uses trusted commit association when workflow_
     if (variant === 'ambiguous') associated.push({ ...associated[0], number: 18 });
     const github = { rest: { actions: {
       getWorkflowRun: async () => ({ data: run }),
-      listJobsForWorkflowRunAttempt: 'jobs',
       getWorkflow: async () => ({ data: { id: 7, path: run.path, state: 'active' } }),
     }, repos: { listPullRequestsAssociatedWithCommit: 'associated',
       compareCommits: async ({ base, head }) => {
@@ -1127,7 +1104,7 @@ test('actual controller admission uses trusted commit association when workflow_
       return { data: tree };
     } },
     pulls: { get: async () => ({ data: pull }) } },
-    paginate: async endpoint => endpoint === 'jobs' ? jobs : associated };
+    paginate: async () => associated };
     const output = {};
     const invoke = () => execute(github, { repo: { owner: 'owner', repo: 'repo' },
       runAttempt: variant === 'controller-retry' ? 2 : 1,

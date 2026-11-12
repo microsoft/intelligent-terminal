@@ -47,7 +47,11 @@ better vulnerability detection.
    Shared headers, Cargo/build configuration, unknown paths and renamed/deleted
    source files conservatively select both; mixed changes select the union.
    Push/manual runs select both. Selected builds retain all their unit tests
-   and CodeQL analysis. Skipped analyses are explicitly absent, not clean scans.
+   and CodeQL analysis. These selection rules belong only to CI.
+   The security controller checks the successful workflow result, not its
+   internal build-job names or selection decisions. It consumes available
+   CodeQL artifacts with matching head/run/attempt bindings; absent analysis
+   is not a clean scan. Other reviewers can consume their own CI artifacts.
    It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from

@@ -956,7 +956,7 @@ export function validateCiDefinition(sourceTree, comparisonBaseTree) {
   }
 }
 
-export function validateCiRun(run, jobs, identity) {
+export function validateCiRun(run, identity) {
   const { repository, repositoryId, runId, runAttempt, headSha } = identity;
   if (!SHA.test(headSha ?? '') || !/^[1-9][0-9]*$/.test(String(runId)) ||
       !Number.isSafeInteger(runAttempt) || runAttempt < 1 ||
@@ -969,19 +969,6 @@ export function validateCiRun(run, jobs, identity) {
       run.head_sha !== headSha || run.status !== 'completed' || run.conclusion !== 'success') {
     fail('CI run identity or successful conclusion is invalid');
   }
-  const selection = jobs.filter(job => job.name === 'Select CI jobs');
-  if (selection.length !== 1 || selection[0].run_id !== run.id ||
-      selection[0].run_attempt !== runAttempt || selection[0].status !== 'completed' ||
-      selection[0].conclusion !== 'success') fail('CI requires successful build selection');
-  const languages = [];
-  for (const [language, name] of [['cpp', 'C++ build and unit tests'], ['rust', 'Rust build and unit tests']]) {
-    const matches = jobs.filter(job => job.name === name);
-    if (matches.length !== 1 || matches[0].run_id !== run.id ||
-        matches[0].run_attempt !== runAttempt || matches[0].status !== 'completed' ||
-        !['success', 'skipped'].includes(matches[0].conclusion)) fail('CI requires successful matching build and analysis jobs');
-    if (matches[0].conclusion === 'success') languages.push(language);
-  }
-  return languages;
 }
 
 export function validateCiPull(pull, run, identity) {
@@ -998,22 +985,16 @@ export function validateCiPull(pull, run, identity) {
   }
 }
 
-export function validateCiArtifacts(artifacts, run, languages = ['cpp', 'rust']) {
-  if (!Array.isArray(languages) || new Set(languages).size !== languages.length ||
-      languages.some(language => !['cpp', 'rust'].includes(language))) fail('invalid CI analysis selection');
-  for (const language of ['cpp', 'rust'].filter(language => !languages.includes(language))) {
-    if (artifacts.some(item => item.name === `ci-security-${language}-${run.id}-${run.run_attempt}`)) {
-      fail('unexpected analyzer artifact for a skipped CI job');
-    }
-  }
-  return languages.map(language => {
+export function validateCiArtifacts(artifacts, run) {
+  return ['cpp', 'rust'].flatMap(language => {
     const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
     const matches = artifacts.filter(item => item.name === name);
+    if (!matches.length) return [];
     if (matches.length !== 1 || matches[0].expired !== false ||
         !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
         matches[0].workflow_run?.id !== run.id ||
         matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
-    return { language, id: matches[0].id, name };
+    return [{ language, id: matches[0].id, name }];
   });
 }
 
@@ -1046,8 +1027,7 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
     }
     fail('CI API list exceeds admission limit');
   };
-  const jobs = collect(`actions/runs/${identity.runId}/attempts/${identity.runAttempt}/jobs`, 'jobs');
-  const languages = validateCiRun(run, jobs, identity);
+  validateCiRun(run, identity);
   const workflow = api('actions/workflows/pr-ci.yml');
   if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
       workflow.state !== 'active') fail('CI source workflow is not trusted');
@@ -1056,8 +1036,8 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   validateCiDefinition(api(`git/trees/${identity.headSha}?recursive=1`),
     api(`git/trees/${comparison.merge_base_commit.sha}?recursive=1`));
   validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
-  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run, languages);
-  return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha, languages } };
+  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
+  return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
 }
 
 export function validatePublicationRun(run, jobs, identity) {
