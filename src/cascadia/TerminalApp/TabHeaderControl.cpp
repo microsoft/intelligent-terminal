@@ -17,22 +17,26 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& text,
         const winrt::hstring& automationName,
         const TerminalApp::TextHighlightColor color,
-        const Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun>& ranges)
+        const Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun>& ranges,
+        const Windows::Foundation::Collections::IVector<TerminalApp::TextEllipsisRange>& ellipsisRanges)
     {
         const auto textChanged = MetadataText() != text;
         const auto automationChanged = MetadataAutomationName() != automationName;
         const auto colorChanged = MetadataHighlightColor() != color;
         const auto rangesChanged = MetadataHighlightRanges() != ranges;
+        const auto ellipsisChanged = MetadataEllipsisRanges() != ellipsisRanges;
         // Every subscriber must see the complete text/color/range revision.
         _setMetadataText(text);
         _setMetadataAutomationName(automationName);
         _setMetadataHighlightColor(color);
         _setMetadataHighlightRanges(ranges);
+        _setMetadataEllipsisRanges(ellipsisRanges);
         for (const auto& [changed, name] : {
                  std::pair{ textChanged, L"MetadataText" },
                  std::pair{ automationChanged, L"MetadataAutomationName" },
                  std::pair{ colorChanged, L"MetadataHighlightColor" },
-                 std::pair{ rangesChanged, L"MetadataHighlightRanges" } })
+                 std::pair{ rangesChanged, L"MetadataHighlightRanges" },
+                 std::pair{ ellipsisChanged, L"MetadataEllipsisRanges" } })
         {
             if (changed)
             {
@@ -230,7 +234,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto self = weakThis.get())
             {
                 const auto name = args.PropertyName();
-                if (name.empty() || name == L"MetadataText" || name == L"MetadataHighlightColor" || name == L"MetadataHighlightRanges")
+                if (name.empty() || name == L"MetadataText" || name == L"MetadataHighlightColor" || name == L"MetadataHighlightRanges" || name == L"MetadataEllipsisRanges")
                 {
                     self->_UpdateMetadataPresentation();
                 }
@@ -303,6 +307,27 @@ namespace winrt::TerminalApp::implementation
         {
             THROW_HR_IF(E_INVALIDARG, range.length == 0 || range.start >= presentation.text.size() || range.length > presentation.text.size() - range.start);
             ranges.push_back({ range.start, range.start + range.length - 1 });
+        }
+        return winrt::single_threaded_vector(std::move(ranges));
+    }
+
+    Windows::Foundation::Collections::IVector<TerminalApp::TextEllipsisRange> TabHeaderControl::BuildMetadataEllipsisRanges(
+        const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation)
+    {
+        if (presentation.fieldRanges.empty())
+        {
+            return nullptr;
+        }
+        std::vector<TerminalApp::TextEllipsisRange> ranges;
+        ranges.reserve(presentation.fieldRanges.size());
+        for (const auto& range : presentation.fieldRanges)
+        {
+            THROW_HR_IF(E_INVALIDARG, range.length == 0 || range.start >= presentation.text.size() || range.length > presentation.text.size() - range.start);
+            const auto kind = range.field == "workingDirectory" ? TerminalApp::TextEllipsisKind::Path :
+                              range.field == "repository"       ? TerminalApp::TextEllipsisKind::Middle :
+                              range.field == "branch"           ? TerminalApp::TextEllipsisKind::Branch :
+                                                                  TerminalApp::TextEllipsisKind::None;
+            ranges.push_back({ range.start, range.start + range.length - 1, kind });
         }
         return winrt::single_threaded_vector(std::move(ranges));
     }
@@ -463,7 +488,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (_metadataTextBlock)
         {
-            _metadataTextBlock.SetTextAndColor(MetadataText(), MetadataHighlightColor(), MetadataHighlightRanges());
+            _metadataTextBlock.SetMetadata(MetadataText(), MetadataHighlightColor(), MetadataHighlightRanges(), _presentation.MetadataEllipsisRanges());
         }
     }
 

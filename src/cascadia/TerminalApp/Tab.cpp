@@ -692,6 +692,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring tooltip;
         std::wstring accessibilityText;
         Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> highlightRanges{ nullptr };
+        Windows::Foundation::Collections::IVector<TerminalApp::TextEllipsisRange> ellipsisRanges{ nullptr };
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
             if (_richTabPresentation)
@@ -700,6 +701,7 @@ namespace winrt::TerminalApp::implementation
                 tooltip = _richTabPresentation->tooltip;
                 accessibilityText = _richTabPresentation->accessibilityText;
                 highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*_richTabPresentation);
+                ellipsisRanges = TabHeaderControl::BuildMetadataEllipsisRanges(*_richTabPresentation);
             }
         }
 
@@ -707,7 +709,7 @@ namespace winrt::TerminalApp::implementation
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
         const auto highlightColor = _richTabPresentation ? TabHeaderControl::AgentStatusHighlightColor(_richTabPresentation->agentStatus) : TerminalApp::TextHighlightColor::None;
-        winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges);
+        winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges, ellipsisRanges);
         _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
 
         _UpdateAutomationName();

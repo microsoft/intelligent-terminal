@@ -107,6 +107,7 @@ namespace TerminalApp
         IVector<HighlightedRun> MetadataHighlightRanges;
         Windows.UI.Xaml.Visibility CloseVisibility;
         Boolean HasUnreadActivity;
+        IVector<TextEllipsisRange> MetadataEllipsisRanges;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

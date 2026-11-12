@@ -16,7 +16,8 @@ namespace winrt::TerminalApp::implementation
         void SetMetadata(const winrt::hstring& text,
                          const winrt::hstring& automationName,
                          winrt::TerminalApp::TextHighlightColor color,
-                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges);
+                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges,
+                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange>& ellipsisRanges = nullptr);
 
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
@@ -29,6 +30,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, AutomationName, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, MetadataHighlightRanges, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange>, MetadataEllipsisRanges, PropertyChanged.raise, nullptr);
         WINRT_OBSERVABLE_PROPERTY(bool, HasUnreadActivity, PropertyChanged.raise, false);
         WINRT_OBSERVABLE_PROPERTY(bool, UnreadActivityProjectedToPaneRows, PropertyChanged.raise, false);
     };
@@ -57,6 +59,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::Grid ProgressRingPresenter() const noexcept { return _progressRingPresenter; }
         static winrt::TerminalApp::TextHighlightColor AgentStatusHighlightColor(std::string_view status) noexcept;
         static winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun> BuildMetadataHighlightRanges(const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange> BuildMetadataEllipsisRanges(const ::Microsoft::Terminal::RichTab::Provider::Presentation& presentation);
 
         til::event<TerminalApp::TitleChangeRequestedArgs> TitleChangeRequested;
         til::typed_event<> RenameEnded;

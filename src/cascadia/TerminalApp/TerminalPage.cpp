@@ -16193,6 +16193,7 @@ namespace winrt::TerminalApp::implementation
                     const auto& value = *presentation->second.presentation;
                     itemImpl->MetadataText(winrt::hstring{ value.text });
                     itemImpl->MetadataHighlightRanges(TabHeaderControl::BuildMetadataHighlightRanges(value));
+                    itemImpl->MetadataEllipsisRanges(TabHeaderControl::BuildMetadataEllipsisRanges(value));
                     itemImpl->MetadataHighlightColor(TabHeaderControl::AgentStatusHighlightColor(value.agentStatus));
                     itemImpl->MetadataVisibility(value.text.empty() ? Visibility::Collapsed : Visibility::Visible);
                     if (!value.accessibilityText.empty())
