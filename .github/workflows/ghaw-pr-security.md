@@ -322,6 +322,7 @@ jobs:
           retention-days: 14
 
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
   staged: true
   threat-detection:
     post-steps:
@@ -351,6 +352,7 @@ safe-outputs:
           if-no-files-found: error
           retention-days: 14
   report-failure-as-issue: false
+  report-failed-jobs: false
   create-check-run:
     max: 1
     staged: true
