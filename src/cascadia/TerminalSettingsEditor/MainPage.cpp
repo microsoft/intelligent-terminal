@@ -1528,6 +1528,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 co_return;
             }
+            for (auto& source : *sources)
+            {
+                if (source.probeFailed)
+                {
+                    const auto previous = std::ranges::find_if(self->_availableWslAgents, [&](const auto& known) {
+                        return til::compare_ordinal_insensitive(source.distro, known.distro) == 0;
+                    });
+                    if (previous != self->_availableWslAgents.end())
+                    {
+                        source.RetainKnownAgents(*previous);
+                    }
+                }
+            }
             for (const auto& profile : self->_settingsClone.AllProfiles())
             {
                 const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
@@ -1541,7 +1554,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 {
                     if (til::compare_ordinal_insensitive(source.distro, backend->wslDistro) == 0 && (!source.running || source.probeFailed))
                     {
-                        source.agentIds.emplace(backend->agentId);
+                        if (!source.interactiveAgentIds)
+                        {
+                            source.interactiveAgentIds = source.agentIds;
+                        }
+                        if (source.interactiveAgentIds->emplace(backend->agentId).second)
+                        {
+                            source.cachedInteractiveAgentIds.emplace(backend->agentId);
+                        }
                     }
                 }
             }

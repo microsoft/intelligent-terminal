@@ -190,7 +190,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         namespace Backend = ::Microsoft::Terminal::Settings::Model;
         _updatingAgentChoices = true;
         auto restoreUpdating = wil::scope_exit([&]() { _updatingAgentChoices = false; });
-        const auto update = [&](const auto& list, const auto& allowed, const auto& agentId, const auto& sourceId) {
+        const auto update = [&](const auto& list, const auto& allowed, const auto& agentId, const auto& sourceId, const bool interactive) {
             for (uint32_t i = 0; i < list.Size();)
             {
                 if (std::wstring_view{ list.GetAt(i).Id() }.starts_with(L"wsl:"))
@@ -218,11 +218,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 for (const auto& agent : allowed)
                 {
-                    if (source.agentIds.contains(std::wstring{ agent.id }))
+                    if (source.AgentIds(interactive).contains(std::wstring{ agent.id }))
                     {
                         append(Backend::AgentPaneBackend::Wsl(source.distro, agent.id),
                                RS_fmt(L"Profile_AgentPaneBackend_AgentFormat", std::wstring{ agent.displayName }, source.distro),
-                               source.running && !source.probeFailed);
+                               source.IsAvailable(std::wstring{ agent.id }, interactive));
                     }
                 }
             }
@@ -243,8 +243,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }
         };
-        update(_acpAgentList, Reg::FilteredAcpAgents(), _GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource());
-        update(_delegateAgentList, Reg::FilteredDelegateAgents(), _GlobalSettings.DelegateAgent(), _GlobalSettings.DelegateAgentSource());
+        update(_acpAgentList, Reg::FilteredAcpAgents(), _GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource(), false);
+        update(_delegateAgentList, Reg::FilteredDelegateAgents(), _GlobalSettings.DelegateAgent(), _GlobalSettings.DelegateAgentSource(), true);
         _NotifyChanges(L"AcpAgentList", L"DelegateAgentList", L"CurrentAcpAgent", L"CurrentDelegateAgent", L"ShowGeminiYoloInfo");
     }
 

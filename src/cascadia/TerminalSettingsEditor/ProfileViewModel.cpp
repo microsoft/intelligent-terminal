@@ -86,7 +86,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const std::wstring_view selected,
         const std::unordered_set<std::wstring>& availableHostAgents,
         const std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot>& availableWslAgents,
-        const std::vector<::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAgent>& allowedAgents)
+        const std::vector<::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAgent>& allowedAgents,
+        const bool interactive)
     {
         namespace Backend = ::Microsoft::Terminal::Settings::Model;
 
@@ -124,7 +125,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             for (const auto& agent : allowedAgents)
             {
-                if (source.agentIds.contains(std::wstring{ agent.id }))
+                if (source.AgentIds(interactive).contains(std::wstring{ agent.id }))
                 {
                     entries.emplace_back(winrt::make<implementation::AgentEntry>(
                         winrt::hstring{ Backend::AgentPaneBackend::Wsl(source.distro, agent.id) },
@@ -132,7 +133,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                             L"Profile_AgentPaneBackend_AgentFormat",
                             std::wstring{ agent.displayName },
                             source.distro) },
-                        source.running && !source.probeFailed));
+                        source.IsAvailable(std::wstring{ agent.id }, interactive)));
                 }
             }
         }
@@ -386,7 +387,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             std::wstring_view{ AgentPaneBackend() },
             _availableHostAgents,
             _availableWslAgents,
-            Registry::FilteredAcpAgents());
+            Registry::FilteredAcpAgents(),
+            false);
         _RebuildAgentBackendList(
             _commandPaletteAgentList,
             std::wstring_view{ globals.EffectiveDelegateAgent() },
@@ -394,7 +396,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             std::wstring_view{ CommandPaletteAgent() },
             _availableHostAgents,
             _availableWslAgents,
-            Registry::FilteredDelegateAgents());
+            Registry::FilteredDelegateAgents(),
+            true);
         _NotifyChanges(
             L"AgentPaneBackendList",
             L"CurrentAgentPaneBackend",

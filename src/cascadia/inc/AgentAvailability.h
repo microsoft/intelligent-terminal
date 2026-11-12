@@ -26,6 +26,43 @@ namespace Microsoft::Terminal::AgentAvailability
         std::unordered_set<std::wstring> agentIds;
         bool running{ false };
         bool probeFailed{ false };
+        // Absent only for legacy snapshots, whose single list served both uses.
+        std::optional<std::unordered_set<std::wstring>> interactiveAgentIds;
+        std::unordered_set<std::wstring> cachedAgentIds;
+        std::unordered_set<std::wstring> cachedInteractiveAgentIds;
+
+        const std::unordered_set<std::wstring>& AgentIds(const bool interactive = false) const noexcept
+        {
+            return interactive && interactiveAgentIds ? *interactiveAgentIds : agentIds;
+        }
+
+        bool IsAvailable(const std::wstring& id, const bool interactive = false) const
+        {
+            const auto& cached = interactive ? cachedInteractiveAgentIds : cachedAgentIds;
+            return running && AgentIds(interactive).contains(id) && !cached.contains(id);
+        }
+
+        void RetainKnownAgents(const AgentSourceSnapshot& previous)
+        {
+            if (!interactiveAgentIds)
+            {
+                interactiveAgentIds = agentIds;
+            }
+            for (const auto& id : previous.agentIds)
+            {
+                if (agentIds.emplace(id).second)
+                {
+                    cachedAgentIds.emplace(id);
+                }
+            }
+            for (const auto& id : previous.AgentIds(true))
+            {
+                if (interactiveAgentIds->emplace(id).second)
+                {
+                    cachedInteractiveAgentIds.emplace(id);
+                }
+            }
+        }
     };
 
     inline std::optional<std::vector<AgentSourceSnapshot>> ParseWslAgentSources(const std::string_view payload)
@@ -60,22 +97,39 @@ namespace Microsoft::Terminal::AgentAvailability
             {
                 LOG_HR_MSG(E_FAIL, "WSL agent discovery failed for a distribution");
                 snapshot.probeFailed = true;
-                sources.emplace_back(std::move(snapshot));
-                continue;
             }
-            for (const auto& agent : source["agents"])
+            if (source.isMember("interactive_agents") && !source["interactive_agents"].isArray())
             {
-                if (!agent.isObject() || !agent["id"].isString())
+                return std::nullopt;
+            }
+            const auto parseAgents = [](const auto& agents, auto& ids) {
+                for (const auto& agent : agents)
+                {
+                    if (!agent.isObject() || !agent["id"].isString())
+                    {
+                        return false;
+                    }
+                    const auto id = winrt::to_hstring(agent["id"].asString());
+                    for (const auto& known : Settings::Model::AgentRegistry::BuiltinAcpAgents)
+                    {
+                        if (Settings::Model::AgentRegistry::AgentIdEquals(known.id, id))
+                        {
+                            ids.emplace(known.id);
+                        }
+                    }
+                }
+                return true;
+            };
+            if (!parseAgents(source["agents"], snapshot.agentIds))
+            {
+                return std::nullopt;
+            }
+            if (source.isMember("interactive_agents"))
+            {
+                snapshot.interactiveAgentIds.emplace();
+                if (!parseAgents(source["interactive_agents"], *snapshot.interactiveAgentIds))
                 {
                     return std::nullopt;
-                }
-                const auto id = winrt::to_hstring(agent["id"].asString());
-                for (const auto& known : Settings::Model::AgentRegistry::BuiltinAcpAgents)
-                {
-                    if (Settings::Model::AgentRegistry::AgentIdEquals(known.id, id))
-                    {
-                        snapshot.agentIds.emplace(known.id);
-                    }
                 }
             }
             sources.emplace_back(std::move(snapshot));

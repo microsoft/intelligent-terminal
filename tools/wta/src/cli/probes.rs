@@ -147,6 +147,7 @@ struct AgentSourceProbeEntry {
 struct AgentSourceProbeResult {
     wsl_distro: String,
     agents: Vec<AgentSourceProbeEntry>,
+    interactive_agents: Vec<AgentSourceProbeEntry>,
 }
 
 #[derive(serde::Serialize)]
@@ -210,7 +211,7 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
         "Invalid --wsl-distro"
     );
     crate::agent_source::ensure_wsl_running(distro).await?;
-    let (agents, error) = probe_distro_agents(distro, false).await;
+    let (agents, interactive_agents, error) = probe_distro_agents(distro, false).await;
     anyhow::ensure!(error.is_none(), "{}", error.unwrap_or_default());
 
     println!(
@@ -218,6 +219,7 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
         serde_json::to_string(&AgentSourceProbeResult {
             wsl_distro: distro.to_string(),
             agents,
+            interactive_agents,
         })
         .context("serialize agent source probe")?
     );
@@ -227,7 +229,11 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
 async fn probe_distro_agents(
     distro: &str,
     start_stopped_wsl: bool,
-) -> (Vec<AgentSourceProbeEntry>, Option<String>) {
+) -> (
+    Vec<AgentSourceProbeEntry>,
+    Vec<AgentSourceProbeEntry>,
+    Option<String>,
+) {
     use futures::StreamExt as _;
     let results: Vec<_> = futures::stream::iter(crate::agent_registry::KNOWN_AGENTS)
         .map(|profile| async move {
@@ -236,36 +242,94 @@ async fn probe_distro_agents(
                 crate::agent_source::ensure_wsl_running(distro).await?;
             }
             Ok::<_, anyhow::Error>(
-                crate::agent_check::wsl_agent_available_checked(distro, profile.id)
-                    .await?
-                    .then_some(AgentSourceProbeEntry {
-                        id: profile.id,
-                        display_name: profile.display_name,
-                    }),
+                probe_agent_capabilities(profile, distro, |executable| async move {
+                    crate::agent_check::find_wsl_exe_checked(distro, executable)
+                        .await
+                        .map(|path| path.is_some())
+                })
+                .await,
             )
         })
-        .buffer_unordered(4)
+        // Keep registry order when associating the completed results below.
+        .buffered(4)
         .collect()
         .await;
     let mut agents = Vec::new();
+    let mut interactive_agents = Vec::new();
     let mut errors = Vec::new();
-    for result in results {
+    for (profile, result) in crate::agent_registry::KNOWN_AGENTS.iter().zip(results) {
         match result {
-            Ok(Some(agent)) => agents.push(agent),
-            Ok(None) => {}
+            Ok((acp, interactive, failures)) => {
+                if acp {
+                    agents.push(AgentSourceProbeEntry {
+                        id: profile.id,
+                        display_name: profile.display_name,
+                    });
+                }
+                if interactive {
+                    interactive_agents.push(AgentSourceProbeEntry {
+                        id: profile.id,
+                        display_name: profile.display_name,
+                    });
+                }
+                errors.extend(failures);
+            }
             Err(error) => errors.push(error.to_string()),
         }
     }
     agents.sort_by_key(|agent| agent.id);
+    interactive_agents.sort_by_key(|agent| agent.id);
     errors.sort();
     errors.dedup();
-    (agents, (!errors.is_empty()).then(|| errors.join("; ")))
+    (
+        agents,
+        interactive_agents,
+        (!errors.is_empty()).then(|| errors.join("; ")),
+    )
+}
+
+async fn probe_agent_capabilities<F, Fut>(
+    profile: &crate::agent_registry::AgentProfile,
+    distro: &str,
+    probe: F,
+) -> (bool, bool, Vec<String>)
+where
+    F: Fn(&'static str) -> Fut,
+    Fut: std::future::Future<Output = Result<bool>>,
+{
+    let source = crate::agent_source::AgentSource::Wsl {
+        distro: distro.to_string(),
+    };
+    let mut errors = Vec::new();
+    let mut record = |result: Result<bool>| match result {
+        Ok(found) => found,
+        Err(error) => {
+            errors.push(format!("{}: {error:#}", profile.id));
+            false
+        }
+    };
+    let interactive = record(probe(profile.cli_executable).await);
+    let executable = profile.acp_executable(&source);
+    let mut acp = if executable == profile.cli_executable {
+        interactive
+    } else {
+        record(probe(executable).await)
+    };
+    if acp && profile.acp_command_override(&source).starts_with("npx ") {
+        acp = record(probe("npx").await);
+    }
+    // Antigravity's native CLI can bootstrap its ACP dependency on demand.
+    if profile.id == crate::agent_registry::ANTIGRAVITY_AGENT_ID {
+        acp |= interactive;
+    }
+    (acp, interactive, errors)
 }
 
 #[derive(serde::Serialize)]
 struct WslSourceProbeResult {
     wsl_distro: String,
     agents: Vec<AgentSourceProbeEntry>,
+    interactive_agents: Vec<AgentSourceProbeEntry>,
     running: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -279,7 +343,13 @@ async fn collect_wsl_source_probes<F, Fut>(
 ) -> Vec<WslSourceProbeResult>
 where
     F: Fn(String) -> Fut,
-    Fut: std::future::Future<Output = (Vec<AgentSourceProbeEntry>, Option<String>)>,
+    Fut: std::future::Future<
+        Output = (
+            Vec<AgentSourceProbeEntry>,
+            Vec<AgentSourceProbeEntry>,
+            Option<String>,
+        ),
+    >,
 {
     use futures::StreamExt as _;
     let probe = &probe;
@@ -298,17 +368,21 @@ where
                         Some(format!("Running-state query failed: {error:#}")),
                     ),
                 };
-                let (agents, error) = if is_running || start_stopped_wsl {
+                let (agents, interactive_agents, error) = if is_running || start_stopped_wsl {
                     probe(distro.clone()).await
                 } else {
-                    (Vec::new(), error)
+                    (Vec::new(), Vec::new(), error)
                 };
                 WslSourceProbeResult {
                     wsl_distro: distro,
                     // A completed active path probe also establishes running state.
                     running: is_running
-                        || (start_stopped_wsl && (error.is_none() || !agents.is_empty())),
+                        || (start_stopped_wsl
+                            && (error.is_none()
+                                || !agents.is_empty()
+                                || !interactive_agents.is_empty())),
                     agents,
+                    interactive_agents,
                     error,
                 }
             }
@@ -454,6 +528,53 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn wsl_capabilities_keep_native_adapters_without_npx_interactive() {
+        for id in ["claude", "codex"] {
+            let profile = crate::agent_registry::lookup_profile_by_id(id);
+            let (acp, interactive, errors) =
+                probe_agent_capabilities(profile, "Ubuntu", |executable| async move {
+                    Ok(executable == profile.cli_executable)
+                })
+                .await;
+            assert!(!acp, "{id} needs npx for ACP");
+            assert!(interactive, "{id} does not need npx interactively");
+            assert!(errors.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn wsl_capabilities_separate_antigravity_server_from_native_cli() {
+        let profile = crate::agent_registry::lookup_profile_by_id("antigravity");
+        for native in [false, true] {
+            let (acp, interactive, errors) =
+                probe_agent_capabilities(profile, "Ubuntu", |executable| async move {
+                    Ok(if executable == "agy" { native } else { !native })
+                })
+                .await;
+            assert!(acp, "server or native bootstrap remains selectable");
+            assert_eq!(interactive, native);
+            assert!(errors.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn wsl_capabilities_keep_native_success_when_adapter_probe_fails() {
+        let profile = crate::agent_registry::lookup_profile_by_id("claude");
+        let (acp, interactive, errors) =
+            probe_agent_capabilities(profile, "Ubuntu", |executable| async move {
+                if executable == "npx" {
+                    anyhow::bail!("probe timed out");
+                }
+                Ok(true)
+            })
+            .await;
+        assert!(!acp);
+        assert!(interactive);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("probe timed out"));
+    }
+
+    #[tokio::test]
     async fn all_wsl_active_discovery_probes_stopped_sources_only_with_explicit_permission() {
         for start_stopped_wsl in [false, true] {
             let calls = std::cell::Cell::new(0);
@@ -469,6 +590,7 @@ mod tests {
                                 id: "copilot",
                                 display_name: "GitHub Copilot",
                             }],
+                            Vec::new(),
                             None,
                         )
                     }
@@ -490,7 +612,7 @@ mod tests {
             vec!["Ubuntu".into()],
             Err(anyhow::anyhow!("query failed")),
             true,
-            |_| async { (Vec::new(), None) },
+            |_| async { (Vec::new(), Vec::new(), None) },
         )
         .await;
         assert!(sources[0].running);
@@ -512,12 +634,26 @@ mod tests {
                 } else {
                     Vec::new()
                 };
-                (agents, Some("another executable probe failed".into()))
+                let interactive_agents = if distro == "Debian" {
+                    vec![AgentSourceProbeEntry {
+                        id: "claude",
+                        display_name: "Claude",
+                    }]
+                } else {
+                    Vec::new()
+                };
+                (
+                    agents,
+                    interactive_agents,
+                    Some("another executable probe failed".into()),
+                )
             },
         )
         .await;
         assert_eq!(sources[0].wsl_distro, "Debian");
-        assert!(!sources[0].running);
+        assert!(sources[0].running);
+        assert!(sources[0].agents.is_empty());
+        assert_eq!(sources[0].interactive_agents.len(), 1);
         assert!(sources[0].error.is_some());
         assert_eq!(sources[1].wsl_distro, "Ubuntu");
         assert!(sources[1].running);
@@ -537,13 +673,14 @@ mod tests {
                     "stopped distro must never execute a probe"
                 );
                 if distro == "Fedora" {
-                    (Vec::new(), Some("probe timed out".into()))
+                    (Vec::new(), Vec::new(), Some("probe timed out".into()))
                 } else {
                     (
                         vec![AgentSourceProbeEntry {
                             id: "copilot",
                             display_name: "GitHub Copilot",
                         }],
+                        Vec::new(),
                         None,
                     )
                 }
@@ -588,7 +725,7 @@ mod tests {
             peak.fetch_max(count, Ordering::SeqCst);
             tokio::task::yield_now().await;
             active.fetch_sub(1, Ordering::SeqCst);
-            (Vec::new(), None)
+            (Vec::new(), Vec::new(), None)
         })
         .await;
         assert_eq!(sources.len(), 8);

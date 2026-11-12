@@ -59,7 +59,9 @@ pub(crate) async fn build_cwd_attempts(
     }
 
     let posix_input = value.to_string_lossy().starts_with('/');
-    let windows = if value.is_absolute() && (native_host || !posix_input) {
+    let windows = if value.is_absolute()
+        && (native_host || detected == Some(CwdNamespace::Windows) || !posix_input)
+    {
         value.to_path_buf()
     } else {
         windows_home()
@@ -270,6 +272,48 @@ mod tests {
         .await;
         assert_eq!(attempts, vec![windows_home()]);
         assert!(attempts[0].is_absolute());
+    }
+
+    #[tokio::test]
+    async fn opaque_host_windows_consensus_preserves_absolute_unc_cwd() {
+        let detected = detect_namespace([Path::new(r"C:\repo"), Path::new(r"D:\work")]);
+        for cwd in [
+            "//server/share/project",
+            r"\\server\share\project",
+            "//wsl$/Ubuntu/home/me/project",
+        ] {
+            let value = Path::new(cwd);
+            assert_eq!(
+                build_cwd_attempts(value, &AgentSource::Host, false, detected).await[0],
+                value,
+                "{cwd}"
+            );
+        }
+        assert_eq!(
+            build_cwd_attempts(
+                Path::new("/home/me/project"),
+                &AgentSource::Host,
+                false,
+                detected,
+            )
+            .await,
+            vec![windows_home(), PathBuf::from("/home/me/project")]
+        );
+    }
+
+    #[tokio::test]
+    async fn opaque_host_unc_without_windows_consensus_keeps_posix_first() {
+        for detected in [
+            None,
+            detect_namespace([Path::new(r"C:\repo"), Path::new("/home/me")]),
+            Some(CwdNamespace::Posix),
+        ] {
+            let value = Path::new("//server/share/project");
+            assert_eq!(
+                build_cwd_attempts(value, &AgentSource::Host, false, detected).await,
+                vec![value.to_path_buf(), windows_home()]
+            );
+        }
     }
 
     #[tokio::test]

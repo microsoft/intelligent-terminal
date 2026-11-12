@@ -89,6 +89,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileWslGeneration);
         TEST_METHOD(AgentProfileWslExplicitSnapshot);
         TEST_METHOD(AgentProfileWslFailedDiscovery);
+        TEST_METHOD(AgentProfileWslDiscoveryParsing);
         TEST_METHOD(AgentProfileWslSavedMetadataRecovery);
         TEST_METHOD(AgentProfileWslSavedMetadataCaseInsensitiveRetention);
         TEST_METHOD(AgentProfileWslGenerationUsesSavedMetadata);
@@ -936,13 +937,18 @@ namespace SettingsModelUnitTests
             { L"Debian", { L"codex" }, true },
         };
         Snapshot sources{
-            { L"Ubuntu", {}, true, true },
+            { L"Ubuntu", { L"claude" }, true, true },
             { L"Fresh", {}, true, true },
             { L"Stopped", {}, false, true },
             { L"Debian", {}, true, false },
         };
         AgentProfileGenerator::RetainKnownWslAgents(sources, &previous);
         VERIFY_IS_TRUE(sources[0].agentIds.contains(L"copilot"));
+        VERIFY_IS_TRUE(sources[0].agentIds.contains(L"claude"));
+        VERIFY_IS_TRUE(sources[0].IsAvailable(L"claude"));
+        VERIFY_IS_FALSE(sources[0].IsAvailable(L"copilot"));
+        VERIFY_IS_TRUE(sources[0].IsAvailable(L"claude", true));
+        VERIFY_IS_FALSE(sources[0].IsAvailable(L"copilot", true));
         VERIFY_IS_TRUE(sources[0].running);
         VERIFY_IS_TRUE(sources[0].probeFailed);
         VERIFY_IS_TRUE(sources[1].agentIds.empty());
@@ -951,7 +957,90 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(sources[3].agentIds.empty());
         Snapshot firstFailure{ { L"Ubuntu", { L"claude" }, true, true } };
         AgentProfileGenerator::RetainKnownWslAgents(firstFailure, nullptr);
-        VERIFY_IS_TRUE(firstFailure.front().agentIds.empty());
+        VERIFY_IS_TRUE(firstFailure.front().IsAvailable(L"claude"));
+
+        SetPolicy(MakePolicy());
+        const auto capabilities = ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources(R"({"sources":[
+            {"wsl_distro":"Ubuntu","agents":[{"id":"antigravity"}],
+             "interactive_agents":[{"id":"claude"},{"id":"codex"}],"running":true,"error":"another provider failed"}
+        ]})");
+        VERIFY_IS_TRUE(capabilities.has_value());
+        std::vector<winrt::com_ptr<implementation::Profile>> profiles;
+        AgentProfileGenerator::GenerateProfiles(profiles, {}, *capabilities);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, profiles.size());
+        VERIFY_IS_TRUE(std::ranges::all_of(profiles, [](const auto& profile) {
+            return profile->AgentProfileId() == L"claude" || profile->AgentProfileId() == L"codex";
+        }));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslDiscoveryParsing()
+    {
+        struct TestCase
+        {
+            const char* payload;
+            bool valid;
+            bool failed{ false };
+            bool explicitInteractive{ false };
+            std::unordered_set<std::wstring> acpIds;
+            std::unordered_set<std::wstring> interactiveIds;
+        };
+        const TestCase cases[]{
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"interactive_agents":[{"id":"claude"}],"running":true,"error":"another provider failed"}]})",
+              true,
+              true,
+              true,
+              { L"copilot" },
+              { L"claude" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{"id":"claude"}],"running":true}]})",
+              true,
+              false,
+              true,
+              {},
+              { L"claude" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"antigravity"}],"interactive_agents":[],"running":true}]})",
+              true,
+              false,
+              true,
+              { L"antigravity" },
+              {} },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"running":true}]})",
+              true,
+              false,
+              false,
+              { L"copilot" },
+              { L"copilot" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"interactive_agents":[],"running":true}]})",
+              true,
+              false,
+              true,
+              { L"copilot" },
+              {} },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":null,"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":{},"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{}],"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{}],"interactive_agents":[],"running":true,"error":"failed"}]})", false },
+        };
+        for (const auto& test : cases)
+        {
+            const auto sources = ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources(test.payload);
+            VERIFY_ARE_EQUAL(test.valid, sources.has_value());
+            if (!sources)
+            {
+                continue;
+            }
+            VERIFY_ARE_EQUAL(size_t{ 1 }, sources->size());
+            const auto& source = sources->front();
+            VERIFY_ARE_EQUAL(test.failed, source.probeFailed);
+            VERIFY_ARE_EQUAL(test.explicitInteractive, source.interactiveAgentIds.has_value());
+            VERIFY_IS_TRUE(source.agentIds == test.acpIds);
+            VERIFY_IS_TRUE(source.AgentIds(true) == test.interactiveIds);
+            for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+            {
+                const std::wstring id{ agent.id };
+                VERIFY_ARE_EQUAL(test.acpIds.contains(id), source.IsAvailable(id));
+                VERIFY_ARE_EQUAL(test.interactiveIds.contains(id), source.IsAvailable(id, true));
+            }
+        }
     }
 
     void CustomAgentAndPolicyTests::AgentProfileWslSavedMetadataRecovery()

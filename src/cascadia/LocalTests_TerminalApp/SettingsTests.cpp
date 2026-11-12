@@ -2611,16 +2611,31 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(sources->at(1).agentIds.contains(L"copilot"));
         VERIFY_IS_FALSE(sources->at(1).agentIds.contains(L"unknown"));
         const auto failedSource = ParseWslAgentSources(R"({"sources":[
-            {"wsl_distro":"Ubuntu","agents":[],"running":true,"error":"probe timed out"}
+            {"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],
+             "interactive_agents":[{"id":"claude"},{"id":"codex"}],"running":true,"error":"probe timed out"}
         ]})");
         VERIFY_IS_TRUE(failedSource.has_value());
         VERIFY_ARE_EQUAL(size_t{ 1 }, failedSource->size());
         VERIFY_IS_TRUE(failedSource->front().probeFailed);
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"copilot"));
+        VERIFY_IS_FALSE(failedSource->front().AgentIds(true).contains(L"copilot"));
+        VERIFY_IS_FALSE(failedSource->front().agentIds.contains(L"claude"));
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"claude", true));
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"codex", true));
+        auto retained = failedSource->front();
+        retained.RetainKnownAgents(sources->at(1));
+        VERIFY_IS_TRUE(retained.IsAvailable(L"copilot"));
+        VERIFY_IS_TRUE(retained.AgentIds(true).contains(L"copilot"));
+        VERIFY_IS_FALSE(retained.IsAvailable(L"copilot", true));
+        VERIFY_IS_TRUE(retained.IsAvailable(L"claude", true));
         VERIFY_ARE_EQUAL(std::wstring{ L"Ubuntu" }, failedSource->front().distro);
         for (const auto payload : {
                  R"({})",
                  R"({"sources":[{"wsl_distro":"Ubuntu;echo","agents":[],"running":true}]})",
                  R"({"sources":[{"wsl_distro":"Ubuntu","agents":[]}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{}],"running":true,"error":"failed"}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":null,"running":true}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{}],"running":true}]})",
                  R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"running":true},{"wsl_distro":"Ubuntu","agents":[],"running":false}]})" })
         {
             VERIFY_IS_FALSE(ParseWslAgentSources(payload).has_value());

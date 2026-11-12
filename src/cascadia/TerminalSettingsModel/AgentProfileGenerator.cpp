@@ -43,9 +43,8 @@ void AgentProfileGenerator::RetainKnownWslAgents(WslSnapshot& sources, const Wsl
     {
         if (source.probeFailed)
         {
-            // Explicit discovery can start a stopped source. Only failed probes
-            // lack authoritative installation evidence.
-            source.agentIds.clear();
+            // Partial failures retain prior evidence without replacing newly
+            // confirmed capabilities or marking cached entries available.
             if (previous)
             {
                 const auto found = std::ranges::find_if(*previous, [&](const auto& candidate) {
@@ -53,7 +52,7 @@ void AgentProfileGenerator::RetainKnownWslAgents(WslSnapshot& sources, const Wsl
                 });
                 if (found != previous->end())
                 {
-                    source.agentIds = found->agentIds;
+                    source.RetainKnownAgents(*found);
                 }
             }
         }
@@ -177,7 +176,7 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         {
             if (::Microsoft::Terminal::WslDistroName::IsSafe(std::wstring_view{ source.distro }) &&
                 !source.distro.starts_with(L"docker-desktop") && !source.distro.starts_with(L"rancher-desktop") &&
-                source.agentIds.contains(std::wstring{ agent.id }) && emitted.emplace(source.distro).second)
+                source.AgentIds(true).contains(std::wstring{ agent.id }) && emitted.emplace(source.distro).second)
             {
                 append(agent, source.distro, {});
             }

@@ -225,7 +225,10 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
     }
 }
 
-async fn find_wsl_exe_checked(distro: &str, executable: &str) -> anyhow::Result<Option<String>> {
+pub(crate) async fn find_wsl_exe_checked(
+    distro: &str,
+    executable: &str,
+) -> anyhow::Result<Option<String>> {
     if !crate::agent_source::is_safe_wsl_distro_name(distro) || executable.trim().is_empty() {
         anyhow::bail!("Invalid WSL executable probe target");
     }

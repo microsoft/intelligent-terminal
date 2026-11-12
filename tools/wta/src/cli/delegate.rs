@@ -286,11 +286,19 @@ fn select_wsl_delegate_cwd<'a>(
     explicit_cwd: Option<&'a str>,
     active_distro: Option<&str>,
     target_distro: &str,
+    split_pane: Option<&str>,
 ) -> Option<&'a str> {
+    // Split cwd and source came from the same validated target session, not
+    // the active pane. Ordinary delegation still needs active-pane evidence.
+    let (active_pane_cwd, cwd_distro) = if split_pane.is_some() {
+        (None, Some(target_distro))
+    } else {
+        (active_pane_cwd, active_distro)
+    };
     let valid_cwd = |candidate: &'a str| -> Option<&'a str> {
         let trimmed = candidate.trim();
         let same_distro =
-            active_distro.is_some_and(|distro| distro.eq_ignore_ascii_case(target_distro));
+            cwd_distro.is_some_and(|distro| distro.eq_ignore_ascii_case(target_distro));
         let windows = trimmed.starts_with('\\')
             || trimmed.starts_with("//")
             || (trimmed.as_bytes().get(1) == Some(&b':'));
@@ -481,6 +489,7 @@ async fn delegate_with_context(
             cwd,
             crate::agent_source::active_pane_wsl_distro(active.as_ref()),
             distro,
+            split_pane,
         );
         let wsl_cwd = crate::agent_source::resolve_source_cwd(requested_source, candidate).await;
         let wsl_commandline = match wsl_cwd.as_deref() {
@@ -1196,7 +1205,8 @@ mod tests {
                 Some("/home/active"),
                 Some("/home/explicit"),
                 Some("Ubuntu"),
-                "Ubuntu"
+                "Ubuntu",
+                None
             ),
             Some("/home/active")
         );
@@ -1205,7 +1215,13 @@ mod tests {
     #[test]
     fn select_wsl_delegate_cwd_falls_back_to_explicit_cwd() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(None, Some("/home/explicit"), Some("Ubuntu"), "Ubuntu"),
+            super::select_wsl_delegate_cwd(
+                None,
+                Some("/home/explicit"),
+                Some("Ubuntu"),
+                "Ubuntu",
+                None
+            ),
             Some("/home/explicit")
         );
     }
@@ -1217,7 +1233,8 @@ mod tests {
                 Some("  /home/active  "),
                 None,
                 Some("Ubuntu"),
-                "Ubuntu"
+                "Ubuntu",
+                None
             ),
             Some("/home/active")
         );
@@ -1226,20 +1243,63 @@ mod tests {
     #[test]
     fn select_wsl_delegate_cwd_translates_windows_but_rejects_unknown_posix_namespace() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), None, None, "Ubuntu"),
+            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), None, None, "Ubuntu", None),
             Some("C:\\Users\\me")
         );
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("/home/me"), None, Some("Debian"), "Ubuntu"),
+            super::select_wsl_delegate_cwd(Some("/home/me"), None, Some("Debian"), "Ubuntu", None),
             None
         );
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("/home/me"), Some("D:\\work"), None, "Ubuntu"),
+            super::select_wsl_delegate_cwd(
+                Some("/home/me"),
+                Some("D:\\work"),
+                None,
+                "Ubuntu",
+                None
+            ),
             Some("D:\\work")
         );
         assert_eq!(
-            super::select_wsl_delegate_cwd(None, Some("/home/unknown"), None, "Ubuntu"),
+            super::select_wsl_delegate_cwd(None, Some("/home/unknown"), None, "Ubuntu", None),
             None
         );
+    }
+
+    #[test]
+    fn select_wsl_delegate_cwd_split_preserves_validated_target_namespace() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let mut row =
+            crate::session_registry::SessionInfo::new("sid".into(), "/home/me/project".into());
+        row.provider_id = Some("copilot".into());
+        row.pane_session_id = Some("pane".into());
+        row.status = Some(AgentStatus::Idle);
+        row.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let rows = [row];
+        let target = super::resolve_split_session(&rows, "pane", "sid", "copilot").unwrap();
+        let SessionLocation::Wsl { distro } = &target.location else {
+            panic!("expected WSL target");
+        };
+        let cwd = target.cwd.to_string_lossy();
+        for (active_cwd, active_distro) in
+            [(None, None), (Some("/home/other/project"), Some("Debian"))]
+        {
+            assert_eq!(
+                super::select_wsl_delegate_cwd(
+                    active_cwd,
+                    Some(&cwd),
+                    active_distro,
+                    distro,
+                    Some("pane"),
+                ),
+                Some("/home/me/project")
+            );
+            assert_eq!(
+                super::select_wsl_delegate_cwd(active_cwd, Some(&cwd), active_distro, distro, None,),
+                None
+            );
+        }
     }
 }
