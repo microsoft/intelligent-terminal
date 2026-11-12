@@ -1,6 +1,7 @@
 //! Response-only in-use evidence for native Copilot sessions without a live IT registration.
 
 use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+use crate::session_history::copilot::session_root;
 use crate::session_registry::SessionInfo;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -21,16 +22,6 @@ pub(crate) enum ProbeError {
 struct Process {
     created: SystemTime,
     image: PathBuf,
-}
-
-fn session_root() -> Option<PathBuf> {
-    let home = std::env::var_os("COPILOT_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".copilot"))
-        })?;
-    home.is_absolute().then(|| home.join("session-state"))
 }
 
 fn native_process(pid: u32) -> Result<Option<Process>, ProbeError> {

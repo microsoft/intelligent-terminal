@@ -7171,7 +7171,7 @@ async fn host_history_via_acp(
     state: &MasterStateInner,
     agent: &AgentCli,
     sessions: &[acp::schema::v1::SessionInfo],
-) -> Option<Vec<crate::agent_sessions::AgentSession>> {
+) -> Option<(Vec<crate::agent_sessions::AgentSession>, HashSet<String>)> {
     let cli = agent.cli_source.clone().unwrap_or_else(|| {
         crate::agent_sessions::CliSource::Unknown(agent.resolved_agent_id.clone())
     });
@@ -7180,10 +7180,18 @@ async fn host_history_via_acp(
     // session/list before its index line exists, leaking a phantom historical row.
     // Master routes every session/new, so its live `session_to_helper` keys are the
     // authoritative live-pane set — union them in to close that race.
-    let mut idx = match tokio::task::spawn_blocking(crate::agent_pane_origin::load_default_index)
-        .await
+    let candidates = sessions.to_vec();
+    let location = agent.source.session_location();
+    let scan_cli = cli.clone();
+    let (mut idx, closed_startup_ids) = match tokio::task::spawn_blocking(move || {
+        (
+            crate::agent_pane_origin::load_default_index(),
+            crate::session_history::copilot::closed_startup_ids(&candidates, &location, &scan_cli),
+        )
+    })
+    .await
     {
-        Ok(index) => index,
+        Ok(result) => result,
         Err(error) => {
             tracing::warn!(target: "master_history", %error, "could not load agent-pane origin index");
             return None;
@@ -7198,7 +7206,7 @@ async fn host_history_via_acp(
         agent.source.session_location(),
     );
     drop(routes);
-    Some(crate::session_history::classify_and_map(
+    let mut rows = crate::session_history::classify_and_map(
         sessions,
         &idx,
         // Where this agent's sessions actually live. Blanket-stamping `Host`
@@ -7209,7 +7217,9 @@ async fn host_history_via_acp(
         // the historical path catching up.
         agent.source.session_location(),
         &cli,
-    ))
+    );
+    rows.retain(|row| !closed_startup_ids.contains(&row.key));
+    Some((rows, closed_startup_ids))
 }
 
 fn extend_live_origin_index_for_agent(
@@ -7360,7 +7370,7 @@ async fn sync_host_history(
         .iter()
         .map(|row| row.session_id.to_string())
         .collect();
-    let rows = host_history_via_acp(state, agent, &sessions)
+    let (rows, closed_startup_ids) = host_history_via_acp(state, agent, &sessions)
         .await
         .ok_or(HistoryRefreshFailure::Other)?;
     let _mutation = agent.history_refresh.mutation_gate.lock().await;
@@ -7389,11 +7399,15 @@ async fn sync_host_history(
         let mut ever = agent.listed_ever.lock().await;
         // A full inference inventory may have populated rows beyond page one.
         // A later ordinary first-page refresh cannot prove those rows deleted.
-        let prunable = if refresh.query.last_response_complete() {
+        let mut prunable: HashSet<_> = if refresh.query.last_response_complete() {
             ever.difference(&listed_ids).cloned().collect()
         } else {
             HashSet::new()
         };
+        // A hook may have recorded the startup before ACP first listed it.
+        // Positive transcript evidence can prune that terminal row too; the
+        // ordinary reconcile below still protects live and agent-pane rows.
+        prunable.extend(closed_startup_ids);
         let previous = ever.clone();
         ever.extend(listed_ids.iter().cloned());
         (prunable, previous)

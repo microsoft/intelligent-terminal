@@ -12,6 +12,8 @@ use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+pub(crate) mod copilot;
+
 pub(crate) fn acp_session_to_agent_session(
     info: &agent_client_protocol::schema::v1::SessionInfo,
     location: SessionLocation,
