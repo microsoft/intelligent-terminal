@@ -11,17 +11,19 @@ permissions:
   contents: read
   pull-requests: write
 
-concurrency:
-  group: ghaw-pr-performance-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   performance-review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id
+    if: ${{ !cancelled() && github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id }}
     runs-on: ubuntu-latest
     timeout-minutes: 175
+    concurrency:
+      group: ghaw-pr-performance-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     outputs:
+      applicable: ${{ steps.gate.outputs.applicable }}
       worker_run_id: ${{ steps.worker.outputs.run_id }}
+      worker_run_url: ${{ steps.worker.outputs.run_url }}
+      worker_conclusion: ${{ steps.worker.outputs.conclusion }}
       comparison_base_sha: ${{ steps.gate.outputs.comparison_base_sha }}
     steps:
       - name: Checkout trusted workflow revision
@@ -219,16 +221,31 @@ jobs:
             await cancelWorker();
             throw new Error(`${worker} run ${run.id} exceeded 150 minutes.`);
 
+  publish-report:
+    needs: performance-review
+    if: ${{ !cancelled() && needs.performance-review.outputs.applicable == 'true' && (needs.performance-review.result == 'success' || needs.performance-review.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: ghaw-pr-performance-publish-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Checkout trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
       - name: Publish linked PR run report
-        if: always() && steps.gate.outputs.applicable == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          RUN_OUTCOME: ${{ job.status }}
+          RUN_OUTCOME: ${{ needs.performance-review.result }}
           REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          WORKER_RUN_URL: ${{ steps.worker.outputs.run_url }}
-          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
-          WORKER_RUN_ID: ${{ steps.worker.outputs.run_id }}
+          WORKER_RUN_URL: ${{ needs.performance-review.outputs.worker_run_url }}
+          WORKER_CONCLUSION: ${{ needs.performance-review.outputs.worker_conclusion }}
+          WORKER_RUN_ID: ${{ needs.performance-review.outputs.worker_run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         with:
