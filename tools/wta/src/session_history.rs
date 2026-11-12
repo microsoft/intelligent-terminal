@@ -12,8 +12,6 @@ use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-pub(crate) mod copilot;
-
 pub(crate) fn acp_session_to_agent_session(
     info: &agent_client_protocol::schema::v1::SessionInfo,
     location: SessionLocation,
@@ -68,6 +66,7 @@ pub(crate) fn classify_and_map(
     let provider_id = cli.canonical_provider_id().unwrap_or_default();
     sessions
         .iter()
+        .filter(|s| s.title.as_deref().is_some_and(|title| !title.is_empty()))
         .filter(|s| {
             !s.title
                 .as_deref()
@@ -129,10 +128,45 @@ mod tests {
     use std::path::PathBuf;
 
     fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
-        acp::schema::v1::SessionInfo::new(
+        let mut session = acp::schema::v1::SessionInfo::new(
             acp::schema::v1::SessionId::new(id.to_string()),
             PathBuf::from(cwd),
-        )
+        );
+        session.title = Some(id.to_string());
+        session
+    }
+
+    #[test]
+    fn classify_requires_a_provider_title_across_agents_and_locations() {
+        let mut untitled = info("untitled", "C:\\project");
+        untitled.title = None;
+        let mut empty = info("empty", "C:\\project");
+        empty.title = Some(String::new());
+        let named = info("named", "C:\\project");
+        let rows = [untitled, empty, named];
+        let index = crate::agent_pane_origin::OriginIndex::default();
+        for cli in [
+            CliSource::Copilot,
+            CliSource::Claude,
+            CliSource::Codex,
+            CliSource::Gemini,
+            CliSource::OpenCode,
+            CliSource::Antigravity,
+            CliSource::Unknown("custom:agent".into()),
+        ] {
+            for location in [
+                SessionLocation::Host,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+                SessionLocation::Unknown,
+            ] {
+                let result = classify_and_map(&rows, &index, location.clone(), &cli);
+                assert_eq!(result.len(), 1, "{cli:?} {location:?}");
+                assert_eq!(result[0].key, "named");
+                assert_eq!(result[0].title, "named");
+            }
+        }
     }
 
     #[test]

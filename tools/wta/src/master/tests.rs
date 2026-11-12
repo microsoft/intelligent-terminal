@@ -15475,6 +15475,7 @@ async fn sidebar_history_discovery_reuses_resident_agents_and_preserves_live_row
             );
             live.provider_id = Some("copilot".to_string());
             live.cli_source = Some(CliSource::Copilot);
+            live.title = Some("shared-raw-id".to_string());
             live.location = crate::agent_sessions::SessionLocation::Host;
             live.origin = Some(SessionOrigin::Unknown);
             live.status = Some(AgentStatus::Attention);
@@ -16318,6 +16319,7 @@ fn client_connection_to_listing_agent_with_cursor(
                                 acp::schema::v1::SessionId::new(id.clone()),
                                 std::path::PathBuf::from("C:\\repo"),
                             );
+                            row.title = Some(id.clone());
                             row.updated_at = activity.clone();
                             row
                         })

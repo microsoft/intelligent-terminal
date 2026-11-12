@@ -294,24 +294,13 @@ pub(crate) async fn run_host_sessions(agent: &str, retry_startup: bool) -> Resul
                 tracing::info!("probe-host-sessions: session/list unavailable ({e}); returning []");
                 Vec::new()
             });
-            tokio::task::spawn_blocking(move || {
-                let idx = crate::agent_pane_origin::load_default_index();
-                let closed_startup_ids = crate::session_history::copilot::closed_startup_ids(
-                    &sessions,
-                    &SessionLocation::Host,
-                    &cli_source,
-                );
-                let mut rows = crate::session_history::classify_and_map(
-                    &sessions,
-                    &idx,
-                    SessionLocation::Host,
-                    &cli_source,
-                );
-                rows.retain(|row| !closed_startup_ids.contains(&row.key));
-                rows
-            })
-            .await
-            .context("classify host session history")
+            let idx = crate::agent_pane_origin::load_default_index();
+            Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
+                &sessions,
+                &idx,
+                SessionLocation::Host,
+                &cli_source,
+            ))
         })
         .await
     {
