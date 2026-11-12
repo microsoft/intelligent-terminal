@@ -149,9 +149,16 @@ function Test-CopilotReviewHasNoNewFindings {
         $line
     }
     $summary = ($summaryLines -join "`n") -replace '\*\*', ''
-    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<openCount>\d+)[ \t]+open[ \t]+findings?\b)(?<tail>[^\r\n]*)$')
+    $fields = [regex]::Matches($summary, '(?im)^[ \t]*(?:[-+*][ \t]+)?(?:Findings:[ \t]*(?<count>None|\d+)\b|Comments generated:[ \t]*(?<count>\d+)[ \t]+new\b|(?<openCount>\d+)[ \t]+open[ \t]+findings?\b|(?<noIssues>No open issues)\b)(?<tail>[^\r\n]*)$')
     # Every explicit summary constrains the result; none can override another.
     foreach ($field in $fields) {
+        if ($field.Groups['noIssues'].Success) {
+            # The v2 field reports code findings, not acceptance of runtime-validation warnings.
+            if ($summary -notmatch '(?m)^<!-- ccr-overview-v2 -->[ \t]*$' -or
+                $field.Groups['tail'].Value.Trim() -notmatch '^(?:\uD83C\uDF89)?$' -or
+                $summary -match '(?im)\b[1-9]\d*[ \t]+(?:open|new|unresolved)[ \t]+(?:issues?|actions?)\b|^[ \t]*(?:#{1,6}[ \t]+|[-+*][ \t]+)?(?:Actions? required|Required actions?|Open actions?|Unresolved actions?|Changes requested|Must fix)[ \t]*(?::|$)') { return $false }
+            continue
+        }
         $count = if ($field.Groups['openCount'].Success) { $field.Groups['openCount'].Value } else { $field.Groups['count'].Value }
         if ($count -notmatch '^(?:None|0+)$' -or $field.Groups['tail'].Value.Trim()) { return $false }
     }

@@ -31,6 +31,10 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(WindowLayoutSidebarCollapsedRoundtrip);
+        TEST_METHOD(RecentSessionsExpansionPersistsAcrossInstances);
+        TEST_METHOD(RecentSessionsExpansionSurvivesStaleStateWrites);
+        TEST_METHOD(RecentSessionsExpansionRetriesFailedWrite);
         TEST_METHOD(SidebarMigrationPersistsAndRespectsLaterHorizontal);
         TEST_METHOD(SidebarMigrationFailedSaveDoesNotComplete);
         TEST_METHOD(SidebarMigrationFailedStateSaveRestoresLayout);
@@ -231,6 +235,83 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::WindowLayoutSidebarCollapsedRoundtrip()
+    {
+        const auto oldLayout = WindowLayout::FromJson(L"{\"tabLayout\":[]}");
+        VERIFY_IS_NULL(oldLayout.SidebarCollapsed());
+
+        for (const auto collapsed : { false, true })
+        {
+            const auto layout = _makeLayout();
+            layout.SidebarCollapsed({ collapsed });
+            const auto restored = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+            VERIFY_IS_NOT_NULL(restored.SidebarCollapsed());
+            VERIFY_ARE_EQUAL(collapsed, restored.SidebarCollapsed().Value());
+            VERIFY_IS_NOT_NULL(restored.TabLayout());
+        }
+    }
+
+    void ApplicationStateTests::RecentSessionsExpansionPersistsAcrossInstances()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        auto state = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_FALSE(state->SidebarRecentSessionsExpanded());
+        for (const auto expanded : { true, false })
+        {
+            state->SidebarRecentSessionsExpanded(expanded);
+            state->Flush();
+            auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+            VERIFY_ARE_EQUAL(expanded, restarted->SidebarRecentSessionsExpanded());
+            state = std::move(restarted);
+        }
+    }
+
+    void ApplicationStateTests::RecentSessionsExpansionSurvivesStaleStateWrites()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto writer = winrt::make_self<implementation::ApplicationState>(root);
+        for (const auto expanded : { true, false })
+        {
+            writer->SidebarRecentSessionsExpanded(!expanded);
+            writer->Flush();
+            const auto stale = winrt::make_self<implementation::ApplicationState>(root);
+            writer->SidebarRecentSessionsExpanded(expanded);
+            writer->Flush();
+
+            stale->SettingsHash(L"unrelated-save");
+            stale->Flush();
+            auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+            VERIFY_ARE_EQUAL(expanded, restarted->SidebarRecentSessionsExpanded());
+            VERIFY_ARE_EQUAL(expanded, stale->SidebarRecentSessionsExpanded());
+
+            stale->SidebarRecentSessionsExpanded(!expanded);
+            stale->Flush();
+            restarted = winrt::make_self<implementation::ApplicationState>(root);
+            VERIFY_ARE_EQUAL(!expanded, restarted->SidebarRecentSessionsExpanded());
+        }
+    }
+
+    void ApplicationStateTests::RecentSessionsExpansionRetriesFailedWrite()
+    {
+        const auto root = _sidebarRoot();
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto state = winrt::make_self<implementation::ApplicationState>(root);
+        state->SidebarRecentSessionsExpanded(false);
+        state->Flush();
+        auto locked = _denyReplacement(root / L"state.json");
+        state->SidebarRecentSessionsExpanded(true);
+        state->Flush();
+        VERIFY_IS_FALSE(_readFixture(root / L"state.json")["sidebarRecentSessionsExpanded"].asBool());
+
+        locked.reset();
+        state->SettingsHash(L"retry-pending-preference");
+        state->Flush();
+        const auto restarted = winrt::make_self<implementation::ApplicationState>(root);
+        VERIFY_IS_TRUE(restarted->SidebarRecentSessionsExpanded());
     }
 
     void ApplicationStateTests::SidebarMigrationPersistsAndRespectsLaterHorizontal()

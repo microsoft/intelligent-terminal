@@ -21,7 +21,7 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    static constexpr double SidebarToggleIconSize = 14.0;
+    static constexpr double SidebarToggleIconSize = 16.0;
 
     static void _removeChild(const WUX::Controls::Panel& panel, const WUX::UIElement& child)
     {
@@ -108,9 +108,10 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto actionExtent = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
         WUX::Controls::Grid titlebarGrid;
         titlebarGrid.Height(40);
-        titlebarGrid.MinWidth(40);
+        titlebarGrid.MinWidth(actionExtent);
         titlebarGrid.HorizontalAlignment(WUX::HorizontalAlignment::Left);
 
         WUX::Controls::ColumnDefinition toggleColumn;
@@ -123,10 +124,10 @@ namespace winrt::TerminalApp::implementation
 
         _verticalRailToggleButton = WUX::Controls::Button{};
         const auto& railToggle = _verticalRailToggleButton;
-        railToggle.Width(40);
+        railToggle.Width(actionExtent);
         railToggle.Height(40);
         railToggle.Padding(WUX::Thickness{});
-        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+        railToggle.HorizontalAlignment(WUX::HorizontalAlignment::Left);
         railToggle.VerticalAlignment(WUX::VerticalAlignment::Center);
         railToggle.Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
         railToggle.BorderThickness(WUX::Thickness{});
@@ -208,9 +209,9 @@ namespace winrt::TerminalApp::implementation
         // the horizontal button leaves its automation peer attached to the
         // old subtree and hides the client UIA tree after a layout round trip.
         _verticalNewTabButton = MUX::Controls::SplitButton{};
-        const auto actionExtent = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionCellExtent")));
         const auto actionSpacing = unbox_value<double>(Resources().Lookup(box_value(L"SidebarActionColumnSpacing")));
         const auto glyphSize = unbox_value<double>(Resources().Lookup(box_value(L"SidebarNewTabGlyphSize")));
+        const auto hoverExtent = unbox_value<double>(Resources().Lookup(box_value(L"SidebarHoverBackgroundExtent")));
         // Scope native template sizing to this button, leaving horizontal chrome unchanged.
         _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonPrimaryButtonSize"), box_value(actionExtent));
         _verticalNewTabButton.Resources().Insert(box_value(L"SplitButtonSecondaryButtonSize"), box_value(actionExtent));
@@ -235,15 +236,24 @@ namespace winrt::TerminalApp::implementation
         WUX::Automation::AutomationProperties::SetHelpText(_verticalNewTabButton, newTabHelpText);
         WUX::Controls::ToolTipService::SetToolTip(_verticalNewTabButton, box_value(newTabName));
         _verticalNewTabButton.DragOver({ get_weak(), &TabRowControl::OnNewTabButtonDragOver });
-        _verticalNewTabButton.Loaded([newTabName, newTabMenuName, glyphSize](const auto& sender, const auto&) {
+        _verticalNewTabButton.Loaded([newTabName, newTabMenuName, glyphSize, hoverExtent](const auto& sender, const auto&) {
             const auto button = sender.template as<MUX::Controls::SplitButton>();
             button.ApplyTemplate();
             if (const auto root = WUX::Media::VisualTreeHelper::GetChild(button, 0).template try_as<WUX::Controls::Grid>())
             {
+                if (const auto touchPlacement = root.FindName(L"SecondaryButtonSpan").template try_as<WUX::VisualState>())
+                {
+                    // Keep the new-tab and menu actions independently hit-testable for touch.
+                    touchPlacement.Setters().Clear();
+                }
                 for (const auto name : { L"PrimaryBackgroundGrid", L"SecondaryBackgroundGrid" })
                 {
                     if (const auto background = root.FindName(name).template try_as<WUX::Controls::Grid>())
                     {
+                        background.Width(hoverExtent);
+                        background.Height(hoverExtent);
+                        background.HorizontalAlignment(WUX::HorizontalAlignment::Center);
+                        background.VerticalAlignment(WUX::VerticalAlignment::Center);
                         background.CornerRadius(button.CornerRadius());
                     }
                 }

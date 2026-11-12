@@ -131,15 +131,18 @@ namespace winrt::Microsoft::Terminal::Settings
             // Override commandline, starting directory if they exist in newTerminalArgs
             if (!newTerminalArgs.Commandline().empty())
             {
-                defaultSettings->_UsesManagedAgentCommand = false;
                 if (!newTerminalArgs.AppendCommandLine())
                 {
                     defaultSettings->_Commandline = newTerminalArgs.Commandline();
                 }
                 else
                 {
-                    defaultSettings->_Commandline = defaultSettings->Commandline() + L" " + newTerminalArgs.Commandline();
+                    const auto command = defaultSettings->Commandline() + L" " + newTerminalArgs.Commandline();
+                    THROW_HR_IF_MSG(E_INVALIDARG, defaultSettings->UsesManagedAgentCommand() && std::wstring_view{ command }.find(L'\0') != std::wstring_view::npos,
+                                    "Native agent command contains an embedded NUL.");
+                    defaultSettings->_Commandline = command;
                 }
+                defaultSettings->_UsesManagedAgentCommand = false;
             }
             if (!newTerminalArgs.StartingDirectory().empty())
             {

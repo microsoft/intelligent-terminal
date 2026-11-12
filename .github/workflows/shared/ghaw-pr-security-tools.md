@@ -1,5 +1,49 @@
 ---
 mcp-scripts:
+  read-ci-security-findings:
+    description: 'Read one bounded page of matching-CI high/medium warnings. Changed-line flags do not establish whether a warning is related to the PR.'
+    inputs:
+      offset:
+        type: integer
+        default: 0
+      limit:
+        type: integer
+        default: 20
+    env:
+      SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
+      SECURITY_REVIEW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SECURITY_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+    script: |
+      const { readFileSync } = await import("node:fs");
+      const { pathToFileURL } = await import("node:url");
+      const directory = process.env.SECURITY_NATIVE_DIR;
+      const validator = await import(pathToFileURL(`${directory}/ci-security.mjs`).href);
+      const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
+      const page = validator.readWarningPage(`${directory}/ci-security`, scope, offset, limit);
+      return {
+        ...page,
+        ciRunUrl: `${process.env.SECURITY_REPOSITORY_URL}/actions/runs/${page.ci.runId}`,
+        proposalArtifact: "security-ci-warning-dispositions.json",
+        reviewRunUrl: process.env.SECURITY_REVIEW_RUN_URL,
+      };
+
+  propose-ci-warning-decisions:
+    description: 'Record fix-or-ignore proposals for one to twenty known CI warnings. These are owner/coding-agent handoff proposals, not applied fixes or suppressions.'
+    inputs:
+      decisions_json:
+        type: string
+        required: true
+        description: 'JSON array with id, decision (fix/ignore), relatedToPr (introduced/existing-related/unrelated/uncertain), reason and proposal. Maximum 10 KiB.'
+    env:
+      SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
+    script: |
+      const { readFileSync } = await import("node:fs");
+      const { pathToFileURL } = await import("node:url");
+      const directory = process.env.SECURITY_NATIVE_DIR;
+      const validator = await import(pathToFileURL(`${directory}/ci-security.mjs`).href);
+      const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
+      return validator.proposeWarningDecisions(`${directory}/ci-security`, scope, decisions_json);
+
   submit-security-report:
     description: 'Validate and write one guidance report or pending source-fix proposal before build/test to its fixed native destination; accepts data, never commands.'
     inputs:

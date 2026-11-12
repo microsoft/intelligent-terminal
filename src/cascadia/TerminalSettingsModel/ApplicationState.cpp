@@ -20,6 +20,7 @@ static constexpr std::string_view TabLayoutKey{ "tabLayout" };
 static constexpr std::string_view InitialPositionKey{ "initialPosition" };
 static constexpr std::string_view InitialSizeKey{ "initialSize" };
 static constexpr std::string_view LaunchModeKey{ "launchMode" };
+static constexpr std::string_view SidebarCollapsedKey{ "sidebarCollapsed" };
 
 namespace Microsoft::Terminal::Settings::Model::JsonUtils
 {
@@ -36,6 +37,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, InitialPositionKey, layout->_InitialPosition);
             GetValueForKey(json, LaunchModeKey, layout->_LaunchMode);
             GetValueForKey(json, InitialSizeKey, layout->_InitialSize);
+            GetValueForKey(json, SidebarCollapsedKey, layout->_SidebarCollapsed);
 
             return *layout;
         }
@@ -53,6 +55,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, InitialPositionKey, val.InitialPosition());
             SetValueForKey(json, LaunchModeKey, val.LaunchMode());
             SetValueForKey(json, InitialSizeKey, val.InitialSize());
+            SetValueForKey(json, SidebarCollapsedKey, val.SidebarCollapsed());
 
             return json;
         }
@@ -219,6 +222,25 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
         CATCH_LOG();
         Json::StreamWriterBuilder wbuilder;
+        const auto [pendingExpansion, expansionRevision] = [&]() {
+            const auto state = _state.lock_shared();
+            return std::pair{ state->PendingSidebarRecentSessionsExpanded, state->SidebarRecentSessionsExpansionRevision };
+        }();
+        auto expanded = pendingExpansion;
+        // Unrelated saves retain the latest preference read under the state-file lock.
+        if (!expanded && previous["sidebarRecentSessionsExpanded"].isBool())
+        {
+            expanded = previous["sidebarRecentSessionsExpanded"].asBool();
+        }
+        const auto expansionWritten = [&]() {
+            const auto state = _state.lock();
+            // Do not acknowledge a newer toggle, even if it returned to the same value.
+            if (state->SidebarRecentSessionsExpansionRevision == expansionRevision)
+            {
+                state->SidebarRecentSessionsExpanded = expanded;
+                state->PendingSidebarRecentSessionsExpanded.reset();
+            }
+        };
 
         // When we're elevated, we've got to be tricky. We don't want to write
         // our window state, allowed commandlines, and other Local properties
@@ -254,7 +276,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             // Layer our shared properties on top of the blob from state.json,
             // and write it back out.
             _toJsonWithBlob(root, FileSource::Shared);
-            _preserveSidebarFlags(root, previous);
+            _preserveSidebarFlags(root, previous, expanded);
             if (_sidebarIntroductionPresented)
             {
                 root["sidebarIntroductionShown"] = true;
@@ -264,6 +286,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 root["agentProfilesIntroductionShown"] = true;
             }
             _writeSharedContents(Json::writeString(wbuilder, root));
+            expansionWritten();
 
             // Finally, write our Local properties back to elevated-state.json
             _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local)));
@@ -272,7 +295,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             // We're unelevated, this is easy. Just write everything back out.
             auto root = ToJson(FileSource::Local | FileSource::Shared);
-            _preserveSidebarFlags(root, previous);
+            _preserveSidebarFlags(root, previous, expanded);
             if (_sidebarIntroductionPresented)
             {
                 root["sidebarIntroductionShown"] = true;
@@ -282,6 +305,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 root["agentProfilesIntroductionShown"] = true;
             }
             _writeLocalContents(Json::writeString(wbuilder, root));
+            expansionWritten();
         }
         if (_sidebarIntroductionLock && _sidebarIntroductionPresented)
         {
@@ -348,7 +372,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         return root;
     }
 
-    void ApplicationState::_preserveSidebarFlags(Json::Value& root, const Json::Value& previous)
+    void ApplicationState::_preserveSidebarFlags(Json::Value& root, const Json::Value& previous, const std::optional<bool> expanded)
     {
         // A stale window (or the other elevation level) must never erase a
         // completed once-only operation when it saves unrelated state.
@@ -365,6 +389,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             {
                 root[key] = previous[key];
             }
+        }
+        if (expanded)
+        {
+            root["sidebarRecentSessionsExpanded"] = *expanded;
+        }
+        else
+        {
+            root.removeMember("sidebarRecentSessionsExpanded");
         }
     }
 
@@ -804,22 +836,27 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     }
 
     // Generate all getter/setters
-#define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \
-    type ApplicationState::name() const noexcept                 \
-    {                                                            \
-        const auto state = _state.lock_shared();                 \
-        const auto& value = state->name;                         \
-        return value ? *value : type{ __VA_ARGS__ };             \
-    }                                                            \
-                                                                 \
-    void ApplicationState::name(const type& value) noexcept      \
-    {                                                            \
-        {                                                        \
-            const auto state = _state.lock();                    \
-            state->name.emplace(value);                          \
-        }                                                        \
-                                                                 \
-        _throttler();                                            \
+#define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...)                                    \
+    type ApplicationState::name() const noexcept                                                    \
+    {                                                                                               \
+        const auto state = _state.lock_shared();                                                    \
+        const auto& value = state->name;                                                            \
+        return value ? *value : type{ __VA_ARGS__ };                                                \
+    }                                                                                               \
+                                                                                                    \
+    void ApplicationState::name(const type& value) noexcept                                         \
+    {                                                                                               \
+        {                                                                                           \
+            const auto state = _state.lock();                                                       \
+            state->name.emplace(value);                                                             \
+            if constexpr (std::string_view{ key } == "sidebarRecentSessionsExpanded")               \
+            {                                                                                       \
+                state->PendingSidebarRecentSessionsExpanded = state->SidebarRecentSessionsExpanded; \
+                ++state->SidebarRecentSessionsExpansionRevision;                                    \
+            }                                                                                       \
+        }                                                                                           \
+                                                                                                    \
+        _throttler();                                                                               \
     }
 #define COMMA ,
     MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)

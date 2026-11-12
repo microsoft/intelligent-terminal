@@ -56,6 +56,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestCopy);
         TEST_METHOD(TestCloneInheritanceTree);
         TEST_METHOD(TestValidDefaults);
+        TEST_METHOD(AcrylicDefaults);
+        TEST_METHOD(AcrylicExplicitOverrides);
         TEST_METHOD(TestInheritedCommand);
         TEST_METHOD(TestOverwriteParentCommandAndKeybinding);
         TEST_METHOD(LoadFragmentsWithMultipleUpdates);
@@ -1960,6 +1962,77 @@ namespace SettingsModelUnitTests
         // defaults now contain 3 profiles total (2 active + 1 hidden).
         VERIFY_ARE_EQUAL(2u, settings.ActiveProfiles().Size());
         VERIFY_ARE_EQUAL(3u, settings.AllProfiles().Size());
+    }
+
+    void DeserializationTests::AcrylicDefaults()
+    {
+        const auto defaults = CascadiaSettings::LoadDefaults();
+        VERIFY_IS_TRUE(defaults.GlobalSettings().UseAcrylicInTabRow());
+        VERIFY_IS_TRUE(defaults.GlobalSettings().EnableUnfocusedAcrylic());
+        for (const auto& profile : defaults.AllProfiles())
+        {
+            VERIFY_IS_TRUE(profile.DefaultAppearance().UseAcrylic(), profile.Name().c_str());
+        }
+
+        auto inbox = VerifyParseSucceeded(implementation::LoadStringResource(IDR_DEFAULTS));
+        inbox["profiles"].append(VerifyParseSucceeded(R"({
+            "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "name": "Generated",
+            "source": "Terminal.App.UnitTest"
+        })"));
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(
+            std::string_view{ R"({"profiles": [{"name": "Custom"}]})" }, toString(inbox));
+        VERIFY_IS_TRUE(settings->ProfileDefaults().DefaultAppearance().UseAcrylic());
+        VERIFY_ARE_EQUAL(5u, settings->AllProfiles().Size());
+        for (const auto& profile : settings->AllProfiles())
+        {
+            VERIFY_IS_TRUE(profile.DefaultAppearance().UseAcrylic(), profile.Name().c_str());
+        }
+    }
+
+    void DeserializationTests::AcrylicExplicitOverrides()
+    {
+        const auto inbox = implementation::LoadStringResource(IDR_DEFAULTS);
+        for (const auto useAcrylic : { false, true })
+        {
+            auto json = VerifyParseSucceeded(R"({
+                "useAcrylicInTabRow": false,
+                "compatibility.enableUnfocusedAcrylic": false,
+                "profiles": {
+                    "defaults": {},
+                    "list": [
+                        {"name": "Inherited"},
+                        {"name": "Disabled", "useAcrylic": false, "opacity": 80},
+                        {"name": "Enabled", "useAcrylic": true},
+                        {
+                            "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
+                            "name": "Windows PowerShell",
+                            "useAcrylic": false
+                        }
+                    ]
+                }
+            })");
+            json["profiles"]["defaults"]["useAcrylic"] = useAcrylic;
+            const auto settings = winrt::make_self<implementation::CascadiaSettings>(toString(json), inbox);
+            const auto verify = [&](const auto& loaded) {
+                VERIFY_IS_FALSE(loaded->GlobalSettings().UseAcrylicInTabRow());
+                VERIFY_IS_FALSE(loaded->GlobalSettings().EnableUnfocusedAcrylic());
+                VERIFY_ARE_EQUAL(useAcrylic, loaded->ProfileDefaults().DefaultAppearance().UseAcrylic());
+                VERIFY_ARE_EQUAL(useAcrylic, loaded->GetProfileByName(L"Inherited").DefaultAppearance().UseAcrylic());
+                VERIFY_ARE_EQUAL(useAcrylic, loaded->GetProfileByName(L"Command Prompt").DefaultAppearance().UseAcrylic());
+                VERIFY_IS_FALSE(loaded->GetProfileByName(L"Disabled").DefaultAppearance().UseAcrylic());
+                VERIFY_ARE_EQUAL(0.8f, loaded->GetProfileByName(L"Disabled").DefaultAppearance().Opacity());
+                VERIFY_IS_TRUE(loaded->GetProfileByName(L"Enabled").DefaultAppearance().UseAcrylic());
+                VERIFY_IS_FALSE(loaded->GetProfileByName(L"Windows PowerShell").DefaultAppearance().UseAcrylic());
+            };
+            verify(settings);
+            const auto saved = settings->ToJson();
+            VERIFY_IS_TRUE(saved.isMember("useAcrylicInTabRow"));
+            VERIFY_IS_FALSE(saved["useAcrylicInTabRow"].asBool());
+            VERIFY_IS_TRUE(saved.isMember("compatibility.enableUnfocusedAcrylic"));
+            VERIFY_IS_FALSE(saved["compatibility.enableUnfocusedAcrylic"].asBool());
+            verify(winrt::make_self<implementation::CascadiaSettings>(toString(saved), inbox));
+        }
     }
 
     void DeserializationTests::TestInheritedCommand()

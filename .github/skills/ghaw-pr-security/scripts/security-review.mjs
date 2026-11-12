@@ -20,6 +20,7 @@ const SHA = /^[0-9a-f]{40}$/;
 const REPORT_KEYS = new Set([
   'version', 'prNumber', 'baseSha', 'headSha', 'scopeSha256',
   'repositoryRelation', 'mode', 'summary', 'checks', 'review', 'findings', 'patch', 'summaryMarkdown',
+  'ciWarningDispositionsSha256',
 ]);
 const SAFE_RULE = /^[a-z][a-z0-9-]{2,63}$/;
 const CATEGORIES = new Set([
@@ -44,6 +45,7 @@ function fail(message) {
   throw new Error(message);
 }
 
+export { text as validatePublicReportText };
 function text(value, name, max = 600) {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
     fail(`${name} must be a non-empty string of at most ${max} characters; received ${typeof value === 'string' ? value.length : 'non-string'} characters`);
@@ -335,7 +337,8 @@ export function validateReport(report, scope, phase = 'final') {
   if (Reflect.ownKeys(report).some(key => !REPORT_KEYS.has(key))) {
     fail('report envelope contains unsupported fields');
   }
-  if ([...REPORT_KEYS].some(key => key !== 'summaryMarkdown' && !Object.hasOwn(report, key)) || report.version !== 1) {
+  if ([...REPORT_KEYS].some(key => !['summaryMarkdown', 'ciWarningDispositionsSha256'].includes(key) &&
+      !Object.hasOwn(report, key)) || report.version !== 1) {
     fail('report envelope is invalid');
   }
   for (const key of ['baseSha', 'headSha']) {
@@ -496,6 +499,8 @@ export function validateReport(report, scope, phase = 'final') {
     if (!repairPaths.has(item.path)) fail(`patch path ${item.path} has no proposed finding`);
   }
   if (report.summaryMarkdown !== undefined) text(report.summaryMarkdown, 'agent-authored summary Markdown', 10 * 1024);
+  if (report.ciWarningDispositionsSha256 !== undefined &&
+      !/^[0-9a-f]{64}$/.test(report.ciWarningDispositionsSha256)) fail('invalid CI warning proposal digest');
   return {
     version: report.version,
     prNumber: report.prNumber,
@@ -506,6 +511,9 @@ export function validateReport(report, scope, phase = 'final') {
     mode: report.mode,
     summary, checks, review, findings, patch,
     ...(report.summaryMarkdown === undefined ? {} : { summaryMarkdown: report.summaryMarkdown }),
+    ...(report.ciWarningDispositionsSha256 === undefined ? {} : {
+      ciWarningDispositionsSha256: report.ciWarningDispositionsSha256,
+    }),
   };
 }
 
@@ -538,6 +546,7 @@ export function submitSecurityReport(json, scope, outputPath, summaryMarkdown) {
     fail('report input must be JSON text of at most 10 KiB');
   }
   const input = JSON.parse(json);
+  if (Object.hasOwn(input, 'ciWarningDispositionsSha256')) fail('model submission cannot claim trusted CI warning completion');
   input.summaryMarkdown = summaryMarkdown ?? input.summaryMarkdown;
   if (input?.review?.status === 'source-pass') {
     fail('model submission cannot claim trusted independent SOURCE_PASS');
@@ -918,12 +927,125 @@ export function publicationDecision(report) {
   return 'none';
 }
 
+export const CI_DEFINITION_PATHS = [
+  '.github/workflows/pr-ci.yml',
+  'build/scripts/Run-Tests.ps1',
+  'tools/razzle.cmd',
+  'tools/.razzlerc.cmd',
+  'build/scripts/ci-security-analysis.mjs',
+  'build/config/codeql-accepted-warnings.json',
+];
+
+export function validateCiDefinition(sourceTree, comparisonBaseTree) {
+  const definitions = [sourceTree, comparisonBaseTree].map(tree => {
+    if (tree?.truncated !== false || !Array.isArray(tree.tree)) fail('CI implementation requires complete immutable trees');
+    return CI_DEFINITION_PATHS.map(path => {
+      const entries = tree.tree.filter(file => file?.path === path);
+      if (entries.length > 1 || entries.some(file => file.type !== 'blob' ||
+          !['100644', '100755'].includes(file.mode) || !SHA.test(file.sha ?? ''))) {
+        fail('CI implementation requires immutable regular-file identities');
+      }
+      return entries.length ? [entries[0].mode, entries[0].type, entries[0].sha] : null;
+    });
+  });
+  for (const path of CI_DEFINITION_PATHS) {
+    const index = CI_DEFINITION_PATHS.indexOf(path);
+    if (stableJson(definitions[0][index]) !== stableJson(definitions[1][index])) {
+      fail('CI implementation differs from the trusted workflow revision; manual review is required');
+    }
+  }
+}
+
+export function validateCiRun(run, identity) {
+  const { repository, repositoryId, runId, runAttempt, headSha } = identity;
+  if (!SHA.test(headSha ?? '') || !/^[1-9][0-9]*$/.test(String(runId)) ||
+      !Number.isSafeInteger(runAttempt) || runAttempt < 1 ||
+      !Number.isSafeInteger(repositoryId) || repositoryId < 1 ||
+      String(run.id) !== String(runId) || run.run_attempt !== runAttempt ||
+      run.repository?.id !== repositoryId || run.repository?.full_name !== repository ||
+      run.head_repository?.id !== repositoryId || run.head_repository?.full_name !== repository ||
+      run.path !== '.github/workflows/pr-ci.yml' ||
+      run.name !== 'PR CI' || run.event !== 'pull_request' ||
+      run.head_sha !== headSha || run.status !== 'completed' || run.conclusion !== 'success') {
+    fail('CI run identity or successful conclusion is invalid');
+  }
+}
+
+export function validateCiPull(pull, run, identity) {
+  if (pull.state !== 'open' || pull.number !== Number(identity.prNumber) ||
+      pull.head?.sha !== identity.headSha || pull.head?.ref !== run.head_branch ||
+      pull.head?.repo?.id !== identity.repositoryId || pull.head?.repo?.full_name !== identity.repository ||
+      pull.base?.repo?.id !== identity.repositoryId || pull.base?.repo?.full_name !== identity.repository ||
+      typeof identity.defaultBranch !== 'string' || !identity.defaultBranch ||
+      pull.base?.ref !== identity.defaultBranch ||
+      !SHA.test(pull.base?.sha ?? '') || typeof pull.base?.ref !== 'string' ||
+      (identity.baseSha !== undefined && pull.base.sha !== identity.baseSha) ||
+      (identity.headRef !== undefined && pull.head.ref !== identity.headRef)) {
+    fail('stale, foreign or non-default-target CI pull request identity');
+  }
+}
+
+export function validateCiArtifacts(artifacts, run) {
+  return ['cpp', 'rust'].map(language => {
+    const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
+    const matches = artifacts.filter(item => item.name === name);
+    if (matches.length !== 1 || matches[0].expired !== false ||
+        !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
+        matches[0].workflow_run?.id !== run.id ||
+        matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
+    return { language, id: matches[0].id, name };
+  });
+}
+
+export function verifyCiSecurity({ environment = process.env, request } = {}) {
+  const repository = environment.GITHUB_REPOSITORY;
+  const identity = {
+    repository, repositoryId: Number(environment.GITHUB_REPOSITORY_ID),
+    runId: environment.CI_RUN_ID, runAttempt: Number(environment.CI_RUN_ATTEMPT),
+    headSha: environment.EXPECTED_HEAD_SHA, prNumber: environment.PR_NUMBER,
+    baseSha: environment.EXPECTED_BASE_SHA, headRef: environment.HEAD_REF,
+  };
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
+      !/^[1-9][0-9]*$/.test(identity.runId ?? '') ||
+      !/^[1-9][0-9]*$/.test(environment.CI_RUN_ATTEMPT ?? '') ||
+      !/^[1-9][0-9]*$/.test(identity.prNumber ?? '') ||
+      !SHA.test(identity.baseSha ?? '') || !identity.headRef ||
+      !SHA.test(environment.EXPECTED_WORKFLOW_SHA ?? '')) fail('CI admission inputs are invalid');
+  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`], {
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
+  })));
+  identity.defaultBranch = api('').default_branch;
+  const run = api(`actions/runs/${identity.runId}`);
+  const collect = (endpoint, key) => {
+    const items = [];
+    for (let page = 1; page <= 20; page++) {
+      const batch = api(`${endpoint}?per_page=100&page=${page}`)[key];
+      if (!Array.isArray(batch)) fail('invalid CI API list');
+      items.push(...batch);
+      if (batch.length < 100) return items;
+    }
+    fail('CI API list exceeds admission limit');
+  };
+  validateCiRun(run, identity);
+  const workflow = api('actions/workflows/pr-ci.yml');
+  if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
+      workflow.state !== 'active') fail('CI source workflow is not trusted');
+  const comparison = api(`compare/${environment.EXPECTED_WORKFLOW_SHA}...${identity.headSha}?per_page=1`);
+  if (!SHA.test(comparison.merge_base_commit?.sha ?? '')) fail('CI comparison base is invalid');
+  validateCiDefinition(api(`git/trees/${identity.headSha}?recursive=1`),
+    api(`git/trees/${comparison.merge_base_commit.sha}?recursive=1`));
+  validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
+  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
+  return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
+}
+
 export function validatePublicationRun(run, jobs, identity) {
   if (identity.sameRepo !== true) fail('publication worker identity requires a same-repository PR');
   const worker = 'ghaw-pr-security.lock.yml';
   const title = `Security Repair ${identity.dispatchId}`;
   if (String(run.id) !== identity.runId || run.repository?.full_name !== identity.repository ||
-      run.head_sha !== identity.baseSha || run.path !== `.github/workflows/${worker}` ||
+      !SHA.test(identity.expectedWorkflowSha ?? '') ||
+      run.head_sha !== identity.expectedWorkflowSha || run.path !== `.github/workflows/${worker}` ||
       run.event !== 'workflow_dispatch' || run.display_title !== title ||
       run.status !== 'completed' || run.conclusion !== 'success' ||
       !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
@@ -968,7 +1090,7 @@ export function createDetectorPublicationProof(environment, scope, reportBytes, 
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
       !/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(attempt ?? '') ||
       !Number.isSafeInteger(Number(attempt)) || !SHA.test(environment.TRUSTED_SHA ?? '') ||
-      environment.TRUSTED_SHA !== environment.EXPECTED_BASE_SHA ||
+      environment.TRUSTED_SHA !== environment.EXPECTED_WORKFLOW_SHA ||
       !/^[1-9][0-9]*$/.test(environment.PR_NUMBER ?? '') ||
       scope.prNumber !== Number(environment.PR_NUMBER) || scope.headSha !== environment.EXPECTED_HEAD_SHA ||
       scope.observedBaseSha !== environment.EXPECTED_BASE_SHA ||
@@ -1016,7 +1138,7 @@ export function validateDetectorPublicationProof(proof, run, scope, reportBytes,
   const expected = createDetectorPublicationProof({
     DETECTION_SUCCESS: 'true', DETECTION_CONCLUSION: 'success', GITHUB_REPOSITORY: repository,
     GITHUB_RUN_ID: String(run.id), GITHUB_RUN_ATTEMPT: String(run.run_attempt),
-    TRUSTED_SHA: run.head_sha, EXPECTED_BASE_SHA: scope.observedBaseSha,
+    TRUSTED_SHA: run.head_sha, EXPECTED_WORKFLOW_SHA: run.head_sha, EXPECTED_BASE_SHA: scope.observedBaseSha,
     EXPECTED_HEAD_SHA: scope.headSha, COMPARISON_BASE_SHA: scope.baseSha, PR_NUMBER: String(scope.prNumber),
   }, scope, reportBytes, patchBytes, { executionOutcome: 'success', conclusionOutcome: 'success', consumed: binding,
     result: { prompt_injection: false, secret_leak: false, malicious_patch: false, reasons: [], warnings: [] } });
@@ -1119,20 +1241,46 @@ export function createRepairCommits(input, scope, patch, workspace) {
   }
 }
 
+export function validateCiWarningProposals(bytes, report, scope, environment = process.env) {
+  if (typeof bytes !== 'string' || Buffer.byteLength(bytes, 'utf8') > 16 * 1024 * 1024 ||
+      createHash('sha256').update(bytes).digest('hex') !== report.ciWarningDispositionsSha256) {
+    fail('CI warning proposals do not match the completed review');
+  }
+  const proposals = JSON.parse(bytes);
+  if (proposals.version !== 1 || proposals.ci?.headSha !== scope.headSha ||
+      proposals.ci.runId !== environment.CI_RUN_ID ||
+      proposals.ci.runAttempt !== Number(environment.CI_RUN_ATTEMPT) ||
+      !Array.isArray(proposals.findings)) fail('CI warning proposal identity does not match');
+  const ids = new Set();
+  for (const item of proposals.findings) {
+    if (!/^CISEC-[0-9A-F]{16}$/.test(item.id ?? '') || ids.has(item.id) ||
+        !['fix', 'ignore'].includes(item.decision) ||
+        !['introduced', 'existing-related', 'unrelated', 'uncertain'].includes(item.relatedToPr)) {
+      fail('invalid or duplicate CI warning proposal');
+    }
+    ids.add(item.id);
+    text(item.reason, 'CI warning reason', 500);
+    text(item.proposal, 'CI warning proposal', 600);
+  }
+  return proposals;
+}
+
 export function preparePublication({ environment = process.env, request, paths = option, workspace } = {}) {
   const repository = environment.GITHUB_REPOSITORY;
   const pr = environment.PR_NUMBER;
   const runId = environment.RUN_ID;
   const head = environment.EXPECTED_HEAD_SHA;
   const base = environment.EXPECTED_BASE_SHA;
+  const expectedWorkflowSha = environment.EXPECTED_WORKFLOW_SHA;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
       !/^[1-9][0-9]*$/.test(pr ?? '') || !/^[1-9][0-9]*$/.test(runId ?? '') ||
-      !SHA.test(head ?? '') || !SHA.test(base ?? '') ||
+      !SHA.test(head ?? '') || !SHA.test(base ?? '') || !SHA.test(expectedWorkflowSha ?? '') ||
       !['true', 'false'].includes(environment.SAME_REPO)) fail('publication inputs are invalid');
-  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}/${endpoint}`], {
+  const api = request ?? (endpoint => JSON.parse(capturedCommand('gh', ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`], {
     encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
   })));
   const sameRepo = environment.SAME_REPO === 'true';
+  if (environment.CI_RUN_ID) verifyCiSecurity({ environment, request: api });
   const validateLivePublicationIdentity = pull => {
     if (pull.head?.sha !== head || pull.base?.sha !== base ||
         (pull.head?.repo?.full_name === repository) !== sameRepo ||
@@ -1148,7 +1296,7 @@ export function preparePublication({ environment = process.env, request, paths =
     if (batch.length < 100) break;
   }
   validatePublicationRun(run, jobs, {
-    repository, runId, baseSha: base, sameRepo, dispatchId: environment.DISPATCH_ID,
+    repository, runId, expectedWorkflowSha, sameRepo, dispatchId: environment.DISPATCH_ID,
   });
   const scope = JSON.parse(readFileSync(paths('--scope'), 'utf8'));
   if (scope.prNumber !== Number(pr) || scope.headSha !== head || scope.observedBaseSha !== base ||
@@ -1159,6 +1307,11 @@ export function preparePublication({ environment = process.env, request, paths =
   const reportBytes = readFileSync(resolve(directory, 'security-findings.validated.json'), 'utf8');
   const input = JSON.parse(reportBytes);
   const report = validateReport(input, scope);
+  let ciWarningBytes;
+  if (environment.CI_RUN_ID) {
+    ciWarningBytes = readFileSync(resolve(directory, 'security-ci-warning-dispositions.json'), 'utf8');
+    validateCiWarningProposals(ciWarningBytes, report, scope, environment);
+  }
   const patchPath = resolve(directory, 'security-repair.patch');
   let patch = '';
   if (sameRepo) patch = readFileSync(patchPath, 'utf8');
@@ -1172,7 +1325,7 @@ export function preparePublication({ environment = process.env, request, paths =
   const detectorName = `ghaw-pr-security-detector-proof-${runId}-${run.run_attempt}-${pr}`;
   const detectorArtifacts = artifacts.filter(item => item.name === detectorName && !item.expired);
   if (detectorArtifacts.length !== 1 || detectorArtifacts[0].workflow_run?.id !== run.id ||
-      detectorArtifacts[0].workflow_run?.head_sha !== base) fail('trusted detector proof artifact is missing or mismatched');
+      detectorArtifacts[0].workflow_run?.head_sha !== expectedWorkflowSha) fail('trusted detector proof artifact is missing or mismatched');
   const detectorProof = JSON.parse(readFileSync(paths('--detector-proof'), 'utf8'));
   validateDetectorPublicationProof(detectorProof, run, scope, reportBytes, patch, repository);
   if (report.patch.length > 0) {
@@ -1204,10 +1357,12 @@ export function preparePublication({ environment = process.env, request, paths =
   const decision = publicationDecision(report);
   writeFileSync(resolve(output, 'security-scope.json'), `${JSON.stringify(scope, null, 2)}\n`, { flag: 'wx' });
   writeFileSync(resolve(output, 'security-findings.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
+  if (ciWarningBytes !== undefined) writeFileSync(resolve(output, 'security-ci-warning-dispositions.json'), ciWarningBytes, { flag: 'wx' });
   writeFileSync(resolve(output, 'security-summary.md'), validateSummaryMarkdown(report), { flag: 'wx' });
   writeFileSync(resolve(output, 'security-repair.patch'), patch, { flag: 'wx' });
-  writeFileSync(resolve(output, 'security-status.txt'), report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'proposed') ? 'blocking\n' : 'pass\n', { flag: 'wx' });
-  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\ndetector_attested=true\n`);
+  const blocking = report.findings.some(f => f.severity === 'high' && f.fixDisposition.state !== 'proposed');
+  writeFileSync(resolve(output, 'security-status.txt'), blocking ? 'blocking\n' : 'pass\n', { flag: 'wx' });
+  appendFileSync(environment.GITHUB_OUTPUT, `publication=${decision}\npatch_sha256=${createHash('sha256').update(patch).digest('hex')}\ndetector_attested=true\nreview_blocking=${blocking}\n`);
 }
 
 function option(name) {
@@ -1218,6 +1373,27 @@ function option(name) {
 
 function main() {
   const command = process.argv[2];
+  if (command === 'check-ci-warning-proposals') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const report = validateProposal(JSON.parse(readFileSync(option('--report'), 'utf8')), scope);
+    validateCiWarningProposals(readFileSync(option('--warnings'), 'utf8'), report, scope);
+    return;
+  }
+  if (command === 'check-driver-completion') {
+    const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
+    const reportBytes = readFileSync(option('--report'));
+    const completionPath = option('--completion');
+    const stat = lstatSync(completionPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || realpathSync(completionPath) !== resolve(completionPath) ||
+        stat.size > 1024) fail('driver completion must be a bounded regular file');
+    const completion = JSON.parse(readFileSync(completionPath, 'utf8'));
+    if (stableJson(completion) !== stableJson({
+      version: 1, headSha: scope.headSha, scopeSha256: scope.scopeSha256,
+      reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
+    })) fail('successful driver completion does not match the report and scope');
+    validateProposal(JSON.parse(reportBytes), scope);
+    return;
+  }
   if (command === 'commit-repairs') {
     const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
     const report = JSON.parse(readFileSync(option('--report'), 'utf8'));
@@ -1267,6 +1443,9 @@ function main() {
   if (command === 'validate') {
     const scope = JSON.parse(readFileSync(option('--scope'), 'utf8'));
     const report = validateReport(JSON.parse(readFileSync(option('--report'), 'utf8')), scope);
+    if (process.env.CI_RUN_ID) {
+      validateCiWarningProposals(readFileSync(option('--ci-warnings'), 'utf8'), report, scope);
+    }
     if (scope.mode === 'repair') {
       const modified = git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', scope.headSha]).split('\0').filter(Boolean);
       const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
@@ -1333,7 +1512,7 @@ function main() {
     }
     return;
   }
-  fail('expected scope, init-report, check-report, validate-proposal, validate-repair-scope, stage-repair, commit-repairs, validate, validate-output, or enforce command');
+  fail('expected scope, init-report, check-report, check-driver-completion, validate-proposal, validate-repair-scope, stage-repair, commit-repairs, validate, validate-output, or enforce command');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

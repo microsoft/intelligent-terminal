@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 //
-// Unit tests for src/cascadia/inc/ShellIntegration.h.
+// Unit tests for shell integration installers and CMD cwd reporting.
 //
-// These tests exercise the path-taking Install / Uninstall overloads only.
+// Installer tests exercise the path-taking Install / Uninstall overloads only.
 // They NEVER call DiscoverProfilePath / InstallForTarget / UninstallForTarget,
 // so the developer's real $PROFILE is never touched. Each test operates
 // inside a unique per-test temp directory under std::filesystem::temp_directory_path().
+// CMD tests configure only the child process environment.
 
 #include "pch.h"
 #include <WexTestClass.h>
@@ -21,7 +22,10 @@
 #include <thread>
 #include <vector>
 
+#include "../inc/CmdShellIntegration.h"
 #include "../inc/ShellIntegration.h"
+#include "../TerminalCore/Terminal.hpp"
+#include "../../renderer/inc/DummyRenderer.hpp"
 
 using namespace WEX::Common;
 using namespace WEX::Logging;
@@ -93,6 +97,11 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
 {
     TEST_CLASS(ShellIntegrationTests);
 
+    TEST_METHOD(CmdCwdReporting_OnlyCmdLaunches);
+    TEST_METHOD(CmdCwdReporting_PreservesPromptAndParentEnvironment);
+    TEST_METHOD(CmdCwdReporting_IsIdempotent);
+    TEST_METHOD(CmdCwdReporting_TracksDirectoryChanges);
+
     // FindShellIntegrationBlock — pure parser.
     TEST_METHOD(FindBlock_EmptyContent_ReturnsNpos);
     TEST_METHOD(FindBlock_UnrelatedContent_ReturnsNpos);
@@ -109,6 +118,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_DriveSwitchErrors_PreserveHandledSuccess);
     TEST_METHOD(PowerShell_ResumeCommand_EmitsOscBeforeExecution);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
@@ -121,6 +131,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_EmptyPath_Fails);
     TEST_METHOD(Install_ProfileMissing_CreatesProfileAndScript);
     TEST_METHOD(Install_ProfileWithoutBlock_AppendsBlockPreservesOriginalContent);
+    TEST_METHOD(Install_LeavesAuthenticodeSignedPowerShellProfileUntouched);
+    TEST_METHOD(Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched);
     TEST_METHOD(Install_PreservesCrlfFromExistingProfile);
     TEST_METHOD(Install_PreservesLfFromExistingProfile);
     TEST_METHOD(Install_AppendsEolWhenProfileMissingTrailingNewline);
@@ -139,6 +151,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Uninstall_EmptyPath_Fails);
     TEST_METHOD(Uninstall_ProfileMissing_NoOp);
     TEST_METHOD(Uninstall_ProfileWithoutBlock_NoOp);
+    TEST_METHOD(Uninstall_LeavesSignedPowerShellProfilesUntouched);
     TEST_METHOD(Uninstall_StripsModernBlockCleanly);
     TEST_METHOD(Uninstall_StripsBlockInMiddleOfFile);
     TEST_METHOD(Uninstall_StripsLegacyDotSourceLine);
@@ -324,6 +337,30 @@ private:
         out.write(contents.data(), contents.size());
     }
 
+    static std::string _EncodeAsciiWithBom(std::string_view contents, size_t codeUnitSize, bool littleEndian)
+    {
+        std::string encoded;
+        if (codeUnitSize == 2)
+        {
+            encoded.append(littleEndian ? "\xff\xfe" : "\xfe\xff", 2);
+        }
+        else
+        {
+            encoded.append(littleEndian ? "\xff\xfe\x00\x00" : "\x00\x00\xfe\xff", 4);
+        }
+        encoded.reserve(codeUnitSize + contents.size() * codeUnitSize);
+        for (const auto ch : contents)
+        {
+            const auto codepoint = static_cast<unsigned char>(ch);
+            for (size_t index = 0; index < codeUnitSize; ++index)
+            {
+                const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                encoded.push_back(static_cast<char>((codepoint >> shift) & 0xff));
+            }
+        }
+        return encoded;
+    }
+
     static bool _Contains(std::string_view haystack, std::string_view needle)
     {
         return haystack.find(needle) != std::string_view::npos;
@@ -367,6 +404,119 @@ private:
         return result;
     }
 };
+
+void ShellIntegrationTests::CmdCwdReporting_OnlyCmdLaunches()
+{
+    for (const auto commandline : { L"cmd", L"cmd.exe /d", L"  CMD.EXE /q", LR"("C:\Windows\System32\cmd.exe" /k echo ready)" })
+    {
+        til::env environment;
+        ApplyCmdCwdReporting(environment, commandline);
+        VERIFY_ARE_EQUAL(L"$e]9;9;$P$e\\$P$G", environment.as_map().at(L"PROMPT"));
+    }
+
+    for (const auto commandline : { L"", L"pwsh.exe", L"pwsh.exe -Command cmd.exe", L"wsl.exe --exec cmd", L"test_cmd.exe", L"cmd.exe.bat" })
+    {
+        til::env environment;
+        ApplyCmdCwdReporting(environment, commandline);
+        VERIFY_IS_TRUE(environment.as_map().empty());
+    }
+}
+
+void ShellIntegrationTests::CmdCwdReporting_PreservesPromptAndParentEnvironment()
+{
+    til::env parent;
+    parent.as_map().insert_or_assign(L"pRoMpT", L"[$T] $e[32m$P$G$e[0m");
+    parent.as_map().insert_or_assign(L"PATH", L"preserved");
+    auto child = parent;
+    ApplyCmdCwdReporting(child, L"cmd.exe");
+
+    VERIFY_ARE_EQUAL(L"$e]9;9;$P$e\\[$T] $e[32m$P$G$e[0m", child.as_map().at(L"PROMPT"));
+    VERIFY_ARE_EQUAL(L"[$T] $e[32m$P$G$e[0m", parent.as_map().at(L"PROMPT"));
+    VERIFY_ARE_EQUAL(L"preserved", child.as_map().at(L"PATH"));
+    VERIFY_ARE_EQUAL(size_t{ 2 }, child.as_map().size());
+
+    child.as_map().insert_or_assign(L"PROMPT", L"");
+    ApplyCmdCwdReporting(child, L"cmd.exe");
+    VERIFY_ARE_EQUAL(L"$e]9;9;$P$e\\$P$G", child.as_map().at(L"PROMPT"));
+}
+
+void ShellIntegrationTests::CmdCwdReporting_IsIdempotent()
+{
+    for (const auto prompt : { L"$P$G", L"$e]9;9;$P$e\\custom$G", L"$E]9;9;$p$E\\custom$G" })
+    {
+        til::env environment;
+        environment.as_map().insert_or_assign(L"PROMPT", prompt);
+        ApplyCmdCwdReporting(environment, L"cmd.exe");
+        const auto first = environment.as_map().at(L"PROMPT");
+        ApplyCmdCwdReporting(environment, L"cmd.exe");
+        VERIFY_ARE_EQUAL(first, environment.as_map().at(L"PROMPT"));
+        if (std::wstring_view{ prompt }.starts_with(L"$e]") || std::wstring_view{ prompt }.starts_with(L"$E]"))
+        {
+            VERIFY_ARE_EQUAL(prompt, first);
+        }
+    }
+}
+
+void ShellIntegrationTests::CmdCwdReporting_TracksDirectoryChanges()
+{
+    const auto workspace = _scratchDir / L"workspace \u4e2d\u6587 & more;semicolon";
+    std::filesystem::create_directories(workspace);
+    const auto inputPath = _scratchDir / L"cmd-input.txt";
+    const auto outputPath = _scratchDir / L"cmd-output.txt";
+    _WriteFile(inputPath, "cd /d \"%IT_CMD_CWD_TEST%\"\r\nexit\r\n");
+
+    SECURITY_ATTRIBUTES security{ sizeof(security), nullptr, TRUE };
+    wil::unique_handle input{ CreateFileW(inputPath.c_str(), GENERIC_READ, FILE_SHARE_READ, &security, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+    wil::unique_handle output{ CreateFileW(outputPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+    VERIFY_IS_TRUE(input.is_valid());
+    VERIFY_IS_TRUE(output.is_valid());
+
+    const auto executable = wil::GetSystemDirectoryW<std::wstring>() + L"\\cmd.exe";
+    auto environment = til::env::from_current_environment();
+    environment.as_map().insert_or_assign(L"PROMPT", L"[custom] $P$G");
+    environment.as_map().insert_or_assign(L"IT_CMD_CWD_TEST", workspace.native());
+    ApplyCmdCwdReporting(environment, executable);
+    auto environmentBlock = environment.to_string();
+    std::wstring commandline = L"\"" + executable + L"\" /d /q /u /v:off";
+    STARTUPINFOW startup{ sizeof(startup) };
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = input.get();
+    startup.hStdOutput = output.get();
+    startup.hStdError = output.get();
+    wil::unique_process_information process;
+    VERIFY_WIN32_BOOL_SUCCEEDED(CreateProcessW(executable.c_str(), commandline.data(), nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW, environmentBlock.data(), _scratchDir.c_str(), &startup, &process));
+    const auto cleanup = wil::scope_exit([&]() noexcept {
+        if (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT)
+        {
+            LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(process.hProcess, 1));
+            WaitForSingleObject(process.hProcess, 10000);
+        }
+    });
+    VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, WaitForSingleObject(process.hProcess, 10000));
+    DWORD exitCode{};
+    VERIFY_WIN32_BOOL_SUCCEEDED(GetExitCodeProcess(process.hProcess, &exitCode));
+    VERIFY_ARE_EQUAL(DWORD{ 0 }, exitCode);
+    input.reset();
+    output.reset();
+
+    const auto bytes = _ReadFile(outputPath);
+    VERIFY_ARE_EQUAL(size_t{ 0 }, bytes.size() % sizeof(wchar_t));
+    std::wstring text(bytes.size() / sizeof(wchar_t), L'\0');
+    memcpy(text.data(), bytes.data(), bytes.size());
+    for (const auto& directory : { _scratchDir, workspace })
+    {
+        const auto expected = L"\x1b]9;9;" + directory.native() + L"\x1b\\[custom] " + directory.native() + L">";
+        VERIFY_IS_TRUE(text.find(expected) != std::wstring::npos);
+    }
+
+    Microsoft::Terminal::Core::Terminal terminal{ Microsoft::Terminal::Core::Terminal::TestDummyMarker{} };
+    DummyRenderer renderer{ &terminal };
+    terminal.Create({ 120, 25 }, 0, renderer);
+    terminal.SetInitialWorkingDirectory(_scratchDir.native());
+    terminal.Write(text);
+    VERIFY_ARE_EQUAL(workspace.native(), terminal.GetWorkingDirectory());
+    VERIFY_IS_TRUE(terminal.IsWorkingDirectoryReportedByShell());
+}
 
 // ─── FindShellIntegrationBlock ────────────────────────────────────────────────
 
@@ -701,6 +851,138 @@ foreach ($case in $cases) {
     }
 }
 
+void ShellIntegrationTests::PowerShell_DriveSwitchErrors_PreserveHandledSuccess()
+{
+    const auto runner = _scratchDir / L"drive-switch-test.ps1";
+    const auto script = std::string{ "\xef\xbb\xbf" } +
+                        R"($ErrorActionPreference = 'Continue'
+$Global:__DriveTestHistoryId = 0
+function Global:Get-History { param($Count) [pscustomobject]@{ Id = $Global:__DriveTestHistoryId } }
+function Global:PSConsoleHostReadLine { return $Global:__DriveTestLine }
+function Global:prompt { 'PS> ' }
+)" +
+                        ShellIntegrationScriptContent() +
+                        R"PS(
+function Assert-DriveMark {
+    param([string]$line, [int]$expected, [switch]$suppressed)
+    $Global:__DriveTestLine = $line
+    $Global:__DriveTestHistoryId++
+    $returned = PSConsoleHostReadLine
+    if ($returned -cne $line) { throw 'ReadLine changed the submitted command' }
+    $commandOutput = Invoke-Expression $line 2>&1
+    $rendered = prompt
+    if ($suppressed -and @($commandOutput).Count -ne 0) {
+        throw "ErrorAction default did not suppress the error for: $line"
+    }
+    $marks = [regex]::Matches($rendered, '\x1b]133;D;(-?\d+)\x07')
+    if ($marks.Count -ne 1 -or [int]$marks[0].Groups[1].Value -ne $expected) {
+        throw "Incorrect command-finished mark for: $line (expected $expected)"
+    }
+    $redraw = prompt
+    if ($redraw -match '\x1b]133;D;') { throw "Duplicate command-finished mark for: $line" }
+}
+
+$missing = $null
+foreach ($code in 90..65) {
+    $letter = [char]$code
+    $name = "${letter}:"
+    $function = Get-Command -Name $name -ErrorAction Ignore
+    if (-not (Get-PSDrive -Name $letter -ErrorAction Ignore) -and
+        $function -is [System.Management.Automation.FunctionInfo] -and
+        $function.Definition.Trim() -ceq 'Set-Location $MyInvocation.MyCommand.Name') {
+        $missing = $name
+        break
+    }
+}
+if ($null -eq $missing) { throw 'No missing drive with a default drive-switch function is available' }
+$existing = (Get-Location).Drive.Name + ':'
+$originalFunction = (Get-Command -Name $missing).ScriptBlock
+[void](prompt)
+
+Assert-DriveMark $missing -1
+Assert-DriveMark $missing -1
+Assert-DriveMark $existing 0
+Assert-DriveMark 'Write-Output ok' 0
+Assert-DriveMark "'$missing'" 0
+Assert-DriveMark "$missing; Write-Output recovered" 0
+Assert-DriveMark "$missing | Out-Null" 0
+Assert-DriveMark "$missing 2>`$null" 0
+Assert-DriveMark "try { Set-Location '$missing' -ErrorAction Stop } catch { 'handled' }" 0
+Assert-DriveMark "Get-Item '$missing' -ErrorAction SilentlyContinue; Write-Output ok" 0
+
+$ErrorActionPreference = 'SilentlyContinue'
+Assert-DriveMark $missing 0
+$ErrorActionPreference = 'Continue'
+foreach ($parameter in @('ErrorAction', 'ea', 'ErrorAct*', '[e]a')) {
+    $PSDefaultParameterValues["Set-Location:$parameter"] = 'SilentlyContinue'
+    Assert-DriveMark $missing 0 -suppressed
+    $PSDefaultParameterValues.Clear()
+}
+$PSDefaultParameterValues['Set-Location:ErrorAct`*'] = 'SilentlyContinue'
+Assert-DriveMark $missing -1
+$PSDefaultParameterValues.Clear()
+Assert-DriveMark $missing -1
+
+try {
+    $replacement = [scriptblock]::Create("Set-Location '$missing'; Write-Output recovered")
+    Set-Item -LiteralPath "Function:\global:$missing" -Value $replacement
+    Assert-DriveMark $missing 0
+}
+finally {
+    Set-Item -LiteralPath "Function:\global:$missing" -Value $originalFunction
+}
+Assert-DriveMark $missing -1
+
+# Without history advancement, a fresh drive error still needs one mark.
+$Global:__DriveTestLine = $missing
+$returned = PSConsoleHostReadLine
+$commandOutput = Invoke-Expression $missing 2>&1
+$rendered = prompt
+if ([regex]::Matches($rendered, '\x1b]133;D;-1\x07').Count -ne 1) {
+    throw 'Missing command-finished mark for an unhistoried drive error'
+}
+$redraw = prompt
+if ($redraw -match '\x1b]133;D;') { throw 'Duplicate unhistoried drive-error mark' }
+
+$Global:LASTEXITCODE = 0
+$PSDefaultParameterValues['Disabled'] = $false
+try {
+    Set-StrictMode -Version Latest
+    Assert-DriveMark $missing -1
+    $PSDefaultParameterValues['Disabled'] = $true
+    Assert-DriveMark $missing -1
+}
+finally {
+    Set-StrictMode -Off
+    $PSDefaultParameterValues.Clear()
+}
+'passed'
+)PS";
+    _WriteFile(runner, script);
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
 {
     const auto script = ShellIntegrationScriptContent();
@@ -936,6 +1218,49 @@ void ShellIntegrationTests::Install_ProfileWithoutBlock_AppendsBlockPreservesOri
     VERIFY_IS_TRUE(contents.rfind(original, 0) == 0, L"Original content must remain at start of file");
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockOpenMarker));
     VERIFY_IS_TRUE(_Contains(contents, kShellIntegrationBlockCloseMarker));
+}
+
+void ShellIntegrationTests::Install_LeavesAuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    _WriteFile(profile, original);
+
+    const auto result = Install(profile.wstring());
+    VERIFY_IS_FALSE(result.success);
+    VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                     result.errorMessage);
+    VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+    VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+}
+
+void ShellIntegrationTests::Install_LeavesBomEncodedAuthenticodeSignedPowerShellProfileUntouched()
+{
+    const auto profile = _ProfilePath();
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n"
+        "# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            const auto original = _EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian);
+            _WriteFile(profile, original);
+
+            const auto result = Install(profile.wstring());
+            VERIFY_IS_FALSE(result.success);
+            VERIFY_ARE_EQUAL(std::wstring{ L"Refusing to modify an Authenticode-signed PowerShell profile" },
+                             result.errorMessage);
+            VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+            VERIFY_IS_FALSE(std::filesystem::exists(profile.parent_path() / ShellIntegrationScriptFileName()));
+        }
+    }
 }
 
 void ShellIntegrationTests::Install_PreservesCrlfFromExistingProfile()
@@ -1226,6 +1551,43 @@ void ShellIntegrationTests::Uninstall_ProfileWithoutBlock_NoOp()
     VERIFY_IS_TRUE(r.success);
     VERIFY_IS_TRUE(r.alreadyInstalled);
     VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+}
+
+void ShellIntegrationTests::Uninstall_LeavesSignedPowerShellProfilesUntouched()
+{
+    const auto profile = _ProfilePath();
+    const auto script = profile.parent_path() / ShellIntegrationScriptFileName();
+    const std::string scriptContents = "integration script sentinel";
+    _WriteFile(script, scriptContents);
+
+    const auto integrationBlock = BuildShellIntegrationBlock(L"PowerShell", "\r\n");
+    const std::string utf8Original =
+        "Set-Alias ll Get-ChildItem\r\n" + integrationBlock +
+        "\r\n# SIG # Begin signature block\r\n"
+        "# MIIC...signature-data...\r\n"
+        "# SIG # End signature block\r\n";
+    const std::wstring expectedError{
+        L"Automatic shell integration removal was skipped: Refusing to modify an Authenticode-signed PowerShell profile"
+    };
+    std::vector<std::string> signedProfiles{ utf8Original };
+    for (const auto codeUnitSize : { size_t{ 2 }, size_t{ 4 } })
+    {
+        for (const auto littleEndian : { true, false })
+        {
+            signedProfiles.emplace_back(_EncodeAsciiWithBom(utf8Original, codeUnitSize, littleEndian));
+        }
+    }
+
+    for (const auto& original : signedProfiles)
+    {
+        _WriteFile(profile, original);
+
+        const auto result = Uninstall(profile.wstring());
+        VERIFY_IS_FALSE(result.success);
+        VERIFY_ARE_EQUAL(expectedError, result.errorMessage);
+        VERIFY_ARE_EQUAL(original, _ReadFile(profile));
+        VERIFY_ARE_EQUAL(scriptContents, _ReadFile(script));
+    }
 }
 
 void ShellIntegrationTests::Uninstall_StripsModernBlockCleanly()

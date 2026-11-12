@@ -287,13 +287,18 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     // keeps the popup glued to the input regardless of how much empty space
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
-    if let Some(popup_state) = app.command_popup_state() {
-        let popup_area = command_popup::render_popup(frame, popup_state, input_area);
-        if recommendation_area
-            .zip(popup_area)
-            .is_some_and(|(card, popup)| card.intersects(popup))
-        {
-            app.recommendation_rendered = false;
+    // Permission requests are modal. The autocomplete popup grows upward from
+    // the input and can cover the approval choices in a short pane, so let the
+    // slash menu reappear only after the pending permission is resolved.
+    if app.current_tab().permission.is_empty() {
+        if let Some(popup_state) = app.command_popup_state() {
+            let popup_area = command_popup::render_popup(frame, popup_state, input_area);
+            if recommendation_area
+                .zip(popup_area)
+                .is_some_and(|(card, popup)| card.intersects(popup))
+            {
+                app.recommendation_rendered = false;
+            }
         }
     }
 

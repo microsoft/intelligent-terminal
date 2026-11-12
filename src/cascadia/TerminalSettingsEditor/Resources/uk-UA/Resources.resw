@@ -2582,16 +2582,12 @@ Alt+Shift+/ введіть запит; Alt+Shift+B запустіть без п�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows. Аргументи, що суперечать керованим налаштуванням або політикам, відхиляються. Команди оболонки не підтримуються.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Для значень із пробілами використовуйте правила взяття в лапки командного рядка Windows.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Використовувати налаштування розділення профілю</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Ваша організація блокує керований запуск нативних агентів. Агент має бути дозволений, а політика має дозволяти автоматичне схвалення, оскільки нативні агенти самі керують власними налаштуваннями схвалення.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="Globals_TabLayout.HelpText" xml:space="preserve">
     <value>Перемикайтеся між новою бічною панеллю та класичним горизонтальним поданням вкладок</value>

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
   buildScope, createReportTemplate, submitSecurityReport, validateCandidate, validateProposal, validateReport,
@@ -11,6 +11,8 @@ import {
   readImmutableHunks, inspectSecurityRepair, writeSecurityRepair,
 } from './security-review.mjs';
 import { restoreTrustedInputs } from './restore-security-review-trusted-inputs.mjs';
+import { proposeWarningDecisions, readWarningPage } from './ci-security.mjs';
+import { collectSarif } from '../../../../build/scripts/ci-security-analysis.mjs';
 import {
   buildPhaseArguments, parseTranscript, runSecurityReviewDriver, validateCompleteDiffCoverage,
   validateReviewerTranscript as validateTranscript,
@@ -482,6 +484,136 @@ function driverOptions(fixture, events = reviewerEvents(), hooks = {}) {
   };
 }
 
+test('CI warning proposals require complete reads and owner-action proposals before trusted completion', () => {
+  for (const variant of ['complete', 'reordered-data', 'unread', 'missing-proposal']) {
+    withFixture(fixture => {
+      const directory = resolve(fixture.scopePath, '..', 'ci-security');
+      mkdirSync(directory);
+      writeFileSync(resolve(directory, 'identity.json'), JSON.stringify({
+        runId: '123', runAttempt: 1, headSha: HEAD,
+      }));
+      const sarif = {
+        version: '2.1.0', runs: [{
+          tool: { driver: { name: 'CodeQL', semanticVersion: '2.27.4', rules: [{
+            id: 'rust/example', shortDescription: { text: 'Example warning' },
+            properties: { 'security-severity': '7.5' },
+          }] } }, invocations: [{ executionSuccessful: true }],
+          results: [{ ruleId: 'rust/example', locations: [{ physicalLocation: {
+            artifactLocation: { uri: PATH }, region: { startLine: 1 },
+          } }] }],
+        }],
+      };
+      for (const language of ['cpp', 'rust']) {
+        mkdirSync(resolve(directory, language));
+        const input = structuredClone(sarif);
+        if (language === 'cpp') input.runs[0].results = [];
+        writeFileSync(resolve(directory, language, 'findings.json'), JSON.stringify(collectSarif(input, {
+          language, headSha: HEAD, ciRunId: '123', ciRunAttempt: 1,
+        })));
+      }
+      const report = { ...createReportTemplate(scope), summary: 'No independently established finding.',
+        summaryMarkdown: `${SUMMARY_MD}\nCI warning: proposed fix; owner or coding agent must decide.\n` };
+      const options = driverOptions(fixture, [], { candidate: () => report });
+      options.ciSecurityDirectory = directory;
+      options.inspect = () => ({
+        headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
+      });
+      const primary = options.runChild;
+      options.runChild = (...args) => {
+        const result = primary(...args);
+        const page = readWarningPage(directory, scope);
+        const readResult = variant === 'reordered-data' ? {
+          ...page,
+          ci: Object.fromEntries(Object.entries(page.ci).reverse()),
+          findings: page.findings.map(item => Object.fromEntries(Object.entries(item).reverse())),
+        } : page;
+        const events = variant === 'unread' ? [] : call('mcpscripts-read_ci_security_findings', readResult);
+        if (variant !== 'missing-proposal') {
+          const decisions = JSON.stringify(page.findings.map(item => ({
+            id: item.id, decision: 'fix', relatedToPr: 'uncertain',
+            reason: 'Confirm ownership at the changed caller before applying a fix.',
+            proposal: 'The PR owner or their coding agent should inspect and decide whether to add the guard.',
+          })));
+          events.push(...call('mcpscripts-propose_ci_warning_decisions',
+            proposeWarningDecisions(directory, scope, decisions), { decisions_json: decisions }));
+        }
+        result.stdout = output([...events, ...result.stdout.trim().split('\n').map(line => JSON.parse(line))]);
+        return result;
+      };
+      if (['complete', 'reordered-data'].includes(variant)) {
+        assert.equal(runSecurityReviewDriver(options).reviewed, false);
+        const finalReport = JSON.parse(readFileSync(fixture.reportPath, 'utf8'));
+        const warningBytes = readFileSync(resolve(fixture.reportPath, '..', 'security-ci-warning-dispositions.json'));
+        assert.equal(finalReport.ciWarningDispositionsSha256, createHash('sha256').update(warningBytes).digest('hex'));
+        assert.equal(JSON.parse(warningBytes).findings[0].decision, 'fix');
+        assert.match(JSON.parse(warningBytes).ownerAction, /decides/);
+      } else {
+        assert.throws(() => runSecurityReviewDriver(options),
+          variant === 'unread' ? /must be read/ : /fix-or-ignore proposal/);
+        assert.equal(existsSync(resolve(fixture.reportPath, '..', 'security-driver-completion.json')), false);
+      }
+    });
+  }
+});
+
+test('a submitted report and noop cannot authorize publication after driver coverage failure', () => {
+  withFixture(fixture => {
+    const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', summaryMarkdown: SUMMARY_MD };
+    const options = driverOptions(fixture, [], { candidate: () => report });
+    const stages = [];
+    options.logger = message => stages.push(message);
+    const primary = options.runChild;
+    options.runChild = (...args) => {
+      const result = primary(...args);
+      result.stdout = output(result.stdout.trim().split('\n').map(line => JSON.parse(line))
+        .filter(event => event.data?.toolCallId !== 'mcpscripts-read_security_diff'));
+      return result;
+    };
+    assert.throws(() => runSecurityReviewDriver(options), /complete immutable original diff/);
+    assert.equal(stages.at(-1), '[security-review-driver] stage=diff-coverage');
+    assert.equal(validateProposal(JSON.parse(readFileSync(fixture.reportPath, 'utf8')), scope).patch.length, 0);
+    const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
+    assert.equal(existsSync(completion), false);
+    assert.throws(() => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', completion,
+    ], { encoding: 'utf8', stdio: 'pipe' }));
+  });
+});
+
+test('successful no-patch driver completion binds the exact report and scope before publication', () => {
+  withFixture(fixture => {
+    const report = { ...createReportTemplate(scope), summary: 'No repair proposed.', summaryMarkdown: SUMMARY_MD };
+    const options = driverOptions(fixture, [], { candidate: () => report });
+    options.inspect = () => ({
+      headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
+    });
+    assert.equal(runSecurityReviewDriver(options).reviewed, false);
+    const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
+    const bytes = readFileSync(fixture.reportPath);
+    const binding = JSON.parse(readFileSync(completion, 'utf8'));
+    assert.deepEqual(binding, {
+      version: 1, headSha: HEAD, scopeSha256: scope.scopeSha256,
+      reportSha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    const check = () => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', completion,
+    ], { encoding: 'utf8', stdio: 'pipe' });
+    assert.doesNotThrow(check);
+    writeFileSync(fixture.reportPath, Buffer.concat([bytes, Buffer.from('\n')]));
+    assert.throws(check);
+    writeFileSync(fixture.reportPath, bytes);
+    for (const extra of [{ headSha: BASE }, { scopeSha256: '0'.repeat(64) }, { version: 2 },
+      { reportSha256: '0'.repeat(64) }, { status: 'failed' }]) {
+      writeFileSync(completion, JSON.stringify({ ...binding, ...extra }));
+      assert.throws(check);
+    }
+  });
+});
+
 test('pending candidates are accepted only at native repair submission, never proposal/final', () => {
   const report = candidate();
   assert.equal(validateCandidate(report, scope).review.status, 'pending');
@@ -559,6 +691,11 @@ test('deterministic fake children prove sequential fixed routing, exact native e
     assert.equal(report.findings[0].fixDisposition.state, 'proposed');
     assert(!report.checks.some(check => check.name === 'wta-tests' && check.status === 'pass'));
     assert(!report.checks.some(check => check.name !== 'deterministic-scope' && check.status === 'pass'));
+    assert.doesNotThrow(() => execFileSync(process.execPath, [
+      fileURLToPath(new URL('./security-review.mjs', import.meta.url)),
+      'check-driver-completion', '--scope', fixture.scopePath, '--report', fixture.reportPath,
+      '--completion', join(fixture.reportPath, '..', 'security-driver-completion.json'),
+    ], { encoding: 'utf8', stdio: 'pipe' }));
   });
 });
 
@@ -629,7 +766,7 @@ test('fixed transition diagnostics precede each bounded child without exposing m
       return runChild(...args);
     };
     assert.equal(runSecurityReviewDriver(options).reviewed, true);
-    assert.deepEqual(observed.filter(message => !message.includes('output bytes=')), [
+    assert.deepEqual(observed.filter(message => message === 'child-start' || message.includes('starting ')), [
       '[security-review-driver] starting primary', 'child-start',
       '[security-review-driver] starting fixed independent reviewer', 'child-start',
     ]);
@@ -1198,17 +1335,28 @@ test('source-bearing transcripts stay in memory across repair, guide, no-patch, 
         }
         return { ...result, stderr: sentinel };
       };
+      let completed = false;
       if (scenario.includes('failure') || scenario.includes('rejection') || scenario.endsWith('-timeout') ||
           ['malformed-primary', 'source-mismatch'].includes(scenario)) {
         assert.throws(() => runSecurityReviewDriver(options));
       } else {
         assert.equal(runSecurityReviewDriver(options).reviewed, !noPatch);
+        completed = true;
       }
       assert(launches <= 2);
       assert(!emitted.includes(sentinel));
       assert(!diagnostics.join('\n').includes(sentinel));
       const files = readdirSync(resolve(fixture.reportPath, '..'));
-      assert(!files.some(path => path.startsWith('security-driver-')));
+      assert(!files.some(path => path.startsWith('security-driver-') && path !== 'security-driver-completion.json'));
+      const completionPath = join(fixture.reportPath, '..', 'security-driver-completion.json');
+      assert.equal(existsSync(completionPath), completed);
+      if (completed) {
+        const completionBytes = readFileSync(completionPath, 'utf8');
+        const completion = JSON.parse(completionBytes);
+        assert.deepEqual(Object.keys(completion).sort(), ['headSha', 'reportSha256', 'scopeSha256', 'version']);
+        assert.equal(completion.reportSha256, createHash('sha256').update(readFileSync(fixture.reportPath)).digest('hex'));
+        assert(!completionBytes.includes(sentinel));
+      }
       assert(!readFileSync(fixture.reportPath, 'utf8').includes(sentinel));
       if (emitted) {
         const messages = emitted.trim().split('\n').map(line => JSON.parse(line));

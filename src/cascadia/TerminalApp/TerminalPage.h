@@ -214,6 +214,7 @@ namespace winrt::TerminalApp::implementation
         void RequestSetMaximized(bool newMaximized);
 
         void SetStartupActions(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions);
+        void SetStartupSidebarCollapsed(std::optional<bool> collapsed) noexcept { _startupSidebarCollapsed = collapsed; }
         void SetStartupTransfer(uint64_t transferId) noexcept { _startupTransferId = transferId; }
         void ContentTransferReceiverReady();
         void SetStartupConnection(winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection);
@@ -361,6 +362,7 @@ namespace winrt::TerminalApp::implementation
         bool _tabLayoutTransitionPreviousVertical{ false };
         bool _isVerticalRailVisible{ true };
         bool _isVerticalRailCollapsed{ false };
+        std::optional<bool> _startupSidebarCollapsed;
         Windows::UI::Xaml::Controls::Button _sidebarPaneFocusStop{ nullptr };
         winrt::weak_ref<Microsoft::Terminal::Control::TermControl> _sidebarPaneFocusShell;
         TerminalApp::TabStripFilterMode _tabFilterMode{ TerminalApp::TabStripFilterMode::AllTabs };

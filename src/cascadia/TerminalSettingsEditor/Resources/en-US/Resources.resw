@@ -3111,16 +3111,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>Use Windows command-line quoting for values containing spaces. Arguments that conflict with managed settings or policy are rejected. Shell commands are not supported.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>Use Windows command-line quoting for values containing spaces.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>Use profile split preference</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>Your organization blocks managed native agent launches. The agent must be allowed, and policy must permit automatic approval because native agents control their own approval settings.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
     <value>Agent profiles added automatically</value>

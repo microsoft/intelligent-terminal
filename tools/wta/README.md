@@ -101,12 +101,10 @@ the host agent, WTA puts the current package family's alias directory first on
 therefore use short `wta.exe` commands without selecting another installed
 branding or reproducing a protected package path.
 
-### Native interactive Agent Profiles (Windows host)
+### Native CLI utilities (Windows host)
 
-Automatically generated Terminal Agent profiles now discover and launch the
-native CLI directly through C++, without these WTA commands. The commands below
-remain available as standalone CLI utilities; their native flag/argument
-contract is also used by Terminal's managed profile command builder.
+`probe-profile-agents` lists installed native CLIs; `launch-agent` runs one in
+the current terminal.
 
 ```powershell
 wta probe-profile-agents
@@ -184,12 +182,12 @@ Both commands read current policy at invocation under
 `Software\Policies\Microsoft\IntelligentTerminal`, preferring HKLM over HKCU
 independently for each value. `AllowedAgents` (`REG_MULTI_SZ`) is case-insensitive:
 absent means all built-ins, empty means none. Discovery filters disallowed IDs;
-launch checks again. Invalid/unreadable policy fails explicitly rather than
-reporting “not installed”. `AllowAutomaticApproval=0` blocks **all native profile
-launches**, even with no permission override: a native CLI's configuration,
-environment or in-session toggles cannot be reliably constrained by this
-wrapper. Use the policy-enforced ACP agent pane instead. Discovery remains an
-availability probe and does not hide installed agents for this approval policy.
+`wta launch-agent` checks again. Invalid/unreadable policy fails explicitly rather
+than reporting “not installed”. `AllowAutomaticApproval=0` blocks all
+`wta launch-agent` invocations, even with no permission override: a native CLI's
+configuration, environment or in-session toggles cannot be reliably constrained
+by this wrapper. Discovery remains an availability probe and does not hide
+installed agents for this approval policy.
 
 `probe-profile-agents` emits exactly one stdout JSON object, with no resolved
 paths and no authentication/model probe:
