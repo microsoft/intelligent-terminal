@@ -933,6 +933,9 @@ export const CI_DEFINITION_PATHS = [
   'tools/razzle.cmd',
   'tools/.razzlerc.cmd',
   'build/scripts/ci-security-analysis.mjs',
+  'build/scripts/Invoke-CiPerformanceAnalysis.ps1',
+  '.cargo/config.toml',
+  'src/common.build.pre.props',
   'build/config/codeql-accepted-warnings.json',
 ];
 
