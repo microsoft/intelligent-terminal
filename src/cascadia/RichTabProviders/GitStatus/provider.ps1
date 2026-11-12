@@ -103,19 +103,80 @@ function Test-BoundedTreeWithoutReparsePoint([string]$Path, [int]$MaximumEntries
     }
 }
 
+function Read-GitControlFile([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if (-not $item -or $item.PSIsContainer -or $item.Length -gt 4096 -or
+        -not (Test-LocalPathWithoutReparsePoint $Path)) {
+        return $null
+    }
+    $value = [IO.File]::ReadAllText($item.FullName) -replace '\r?\n\z', ''
+    if ([string]::IsNullOrWhiteSpace($value) -or $value -match '[\x00\r\n]') {
+        return $null
+    }
+    return $value
+}
+
+function Resolve-LocalGitPath([string]$Path, [string]$BaseDirectory) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or
+        $Path -match '\A(?:[\\/]|[A-Za-z]:[^\\/])') {
+        return $null
+    }
+    $fullPath = [IO.Path]::GetFullPath([IO.Path]::Combine($BaseDirectory, $Path))
+    if ($fullPath -notmatch '\A[A-Za-z]:[\\/]') {
+        return $null
+    }
+    $drive = Get-PSDrive -Name $fullPath.Substring(0, 1) -PSProvider FileSystem -ErrorAction SilentlyContinue
+    if (-not $drive -or -not [string]::IsNullOrWhiteSpace([string]$drive.DisplayRoot) -or
+        -not (Test-LocalPathWithoutReparsePoint $fullPath)) {
+        return $null
+    }
+    return $fullPath
+}
+
 function Find-LocalGitRepository([string]$WorkingDirectory) {
     $current = Get-Item -LiteralPath $WorkingDirectory -Force -ErrorAction SilentlyContinue
-    while ($current -and $current.PSIsContainer) {
+    while ($current -is [IO.DirectoryInfo]) {
         $gitPath = Join-Path $current.FullName '.git'
         $gitItem = Get-Item -LiteralPath $gitPath -Force -ErrorAction SilentlyContinue
         if ($gitItem) {
-            if (-not $gitItem.PSIsContainer -or
-                ($gitItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            if (($gitItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $null
+            }
+            if ($gitItem.PSIsContainer) {
+                return @{
+                    Root = $current.FullName
+                    GitDirectory = $gitItem.FullName
+                    CommonDirectory = $gitItem.FullName
+                    IsLinkedWorktree = $false
+                }
+            }
+            $gitfile = Read-GitControlFile $gitPath
+            if ($gitfile -notmatch '\Agitdir: (.+)\z') {
+                return $null
+            }
+            $privateDirectory = Resolve-LocalGitPath $Matches[1] $current.FullName
+            if (-not $privateDirectory -or -not (Test-Path -LiteralPath $privateDirectory -PathType Container) -or
+                [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($privateDirectory)) -ne 'worktrees') {
+                return $null
+            }
+            $commonDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($privateDirectory))
+            if ([IO.Path]::GetFileName($commonDirectory) -ne '.git' -or
+                -not (Test-Path -LiteralPath $commonDirectory -PathType Container) -or
+                -not (Test-LocalPathWithoutReparsePoint $commonDirectory)) {
+                return $null
+            }
+            $commonReference = Read-GitControlFile (Join-Path $privateDirectory 'commondir')
+            $backReference = Read-GitControlFile (Join-Path $privateDirectory 'gitdir')
+            if (-not $commonReference -or -not $backReference -or
+                (Resolve-LocalGitPath $commonReference $privateDirectory) -ne $commonDirectory -or
+                (Resolve-LocalGitPath $backReference $privateDirectory) -ne $gitItem.FullName) {
                 return $null
             }
             return @{
                 Root = $current.FullName
-                GitDirectory = $gitItem.FullName
+                GitDirectory = $privateDirectory
+                CommonDirectory = $commonDirectory
+                IsLinkedWorktree = $true
             }
         }
         $current = $current.Parent
@@ -201,23 +262,29 @@ try {
         else {
             $root = [string]$repository.Root
             $gitDirectory = [string]$repository.GitDirectory
-            $configPath = Join-Path $gitDirectory 'config'
+            $commonDirectory = [string]$repository.CommonDirectory
+            $configPath = Join-Path $commonDirectory 'config'
             $worktreeConfigPath = Join-Path $gitDirectory 'config.worktree'
             $commonDirectoryPath = Join-Path $gitDirectory 'commondir'
-            $alternatesPath = Join-Path $gitDirectory 'objects\info\alternates'
-            $objectsPath = Join-Path $gitDirectory 'objects'
+            $alternatesPath = Join-Path $commonDirectory 'objects\info\alternates'
+            $objectsPath = Join-Path $commonDirectory 'objects'
             $objectPackPath = Join-Path $objectsPath 'pack'
             $objectInfoPath = Join-Path $objectsPath 'info'
-            $infoPath = Join-Path $gitDirectory 'info'
+            $infoPath = Join-Path $commonDirectory 'info'
             $headPath = Join-Path $gitDirectory 'HEAD'
             $indexPath = Join-Path $gitDirectory 'index'
-            $packedRefsPath = Join-Path $gitDirectory 'packed-refs'
-            $refsPath = Join-Path $gitDirectory 'refs'
-            $logsPath = Join-Path $gitDirectory 'logs'
+            $packedRefsPath = Join-Path $commonDirectory 'packed-refs'
+            $refsPath = Join-Path $commonDirectory 'refs'
+            $logsPath = Join-Path $commonDirectory 'logs'
             $config = Get-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue
+            $worktreeConfig = Get-Item -LiteralPath $worktreeConfigPath -Force -ErrorAction SilentlyContinue
             $gitAccessPaths = @(
                 $gitDirectory
+                $commonDirectory
                 $configPath
+                $worktreeConfigPath
+                $commonDirectoryPath
+                (Join-Path $gitDirectory 'gitdir')
                 $headPath
                 $indexPath
                 $packedRefsPath
@@ -226,6 +293,9 @@ try {
                 $objectsPath
                 $infoPath
             )
+            if ($repository.IsLinkedWorktree) {
+                $gitAccessPaths += @( (Join-Path $gitDirectory 'refs'), (Join-Path $gitDirectory 'logs') )
+            }
             $unsafeGitAccessPath = $gitAccessPaths |
                 Where-Object {
                     (Test-Path -LiteralPath $_) -and
@@ -237,12 +307,17 @@ try {
                 -not (Test-BoundedTreeWithoutReparsePoint $objectPackPath 8192) -or
                 -not (Test-BoundedTreeWithoutReparsePoint $objectInfoPath 1024) -or
                 -not (Test-BoundedTreeWithoutReparsePoint $refsPath 32768) -or
-                -not (Test-BoundedTreeWithoutReparsePoint $logsPath 32768)
+                -not (Test-BoundedTreeWithoutReparsePoint $logsPath 32768) -or
+                ($repository.IsLinkedWorktree -and
+                    (-not (Test-BoundedTreeWithoutReparsePoint (Join-Path $gitDirectory 'refs') 32768) -or
+                     -not (Test-BoundedTreeWithoutReparsePoint (Join-Path $gitDirectory 'logs') 32768)))
             if (($config -and $config.Length -gt 1MB) -or
+                ($worktreeConfig -and $worktreeConfig.Length -gt 1MB) -or
                 $unsafeGitAccessPath -or
                 $unsafeGitTraversal -or
-                (Test-Path -LiteralPath $commonDirectoryPath) -or
-                (Test-Path -LiteralPath $worktreeConfigPath) -or
+                (-not $repository.IsLinkedWorktree -and
+                    ((Test-Path -LiteralPath $commonDirectoryPath) -or
+                     (Test-Path -LiteralPath $worktreeConfigPath))) -or
                 (Test-Path -LiteralPath $alternatesPath)) {
                 $response = New-EmptyResponse $requestId $baseFields
             }
@@ -250,8 +325,12 @@ try {
                 $configText = if ($config) {
                     [IO.File]::ReadAllText($config.FullName)
                 }
+                $worktreeConfigText = if ($worktreeConfig) {
+                    [IO.File]::ReadAllText($worktreeConfig.FullName)
+                }
                 if ($configText -match '(?im)^\s*\[\s*include(?:if)?(?:\s|\])' -or
-                    $configText -match '(?im)^\s*worktreeconfig\s*=') {
+                    $worktreeConfigText -match '(?im)^\s*\[\s*include(?:if)?(?:\s|\])' -or
+                    (-not $repository.IsLinkedWorktree -and $configText -match '(?im)^\s*worktreeconfig\s*=')) {
                     $response = New-EmptyResponse $requestId $baseFields
                 }
                 else {
@@ -315,9 +394,15 @@ try {
                             "--git-dir=$gitDirectory"
                             "--work-tree=$root"
                         )
+                        if ($repository.IsLinkedWorktree) {
+                            $configScope = @()
+                        }
+                        else {
+                            $configScope = @('--local')
+                        }
                         try {
                             $localAutoCrlf = @(
-                                & $gitPath @gitOptions config --local --get core.autocrlf 2>$null
+                                & $gitPath @gitOptions config @configScope --get core.autocrlf 2>$null
                             ) | Select-Object -Last 1
                             $autoCrlfExitCode = $LASTEXITCODE
                             if ($autoCrlfExitCode -ne 0 -and $autoCrlfExitCode -ne 1) {
@@ -328,7 +413,7 @@ try {
                             }
                             $gitOptions += @('-c', "core.autocrlf=$localAutoCrlf")
                             $filters = @(
-                                & $gitPath @gitOptions config --local --get-regexp `
+                                & $gitPath @gitOptions config @configScope --get-regexp `
                                     '^filter\..*\.(clean|process)$' 2>$null
                             )
                             $filterExitCode = $LASTEXITCODE

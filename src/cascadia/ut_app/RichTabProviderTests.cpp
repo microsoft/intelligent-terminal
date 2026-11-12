@@ -36,6 +36,21 @@ namespace
         stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
         VERIFY_IS_TRUE(stream.good());
     }
+
+    void _RunGit(const std::filesystem::path& git, const std::wstring& arguments)
+    {
+        auto commandLine = L"\"" + git.wstring() + L"\" " + arguments;
+        STARTUPINFOW startup{ sizeof(startup) };
+        PROCESS_INFORMATION process{};
+        VERIFY_WIN32_BOOL_SUCCEEDED(CreateProcessW(
+            git.c_str(), commandLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process));
+        wil::unique_handle processHandle{ process.hProcess };
+        wil::unique_handle threadHandle{ process.hThread };
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, WaitForSingleObject(processHandle.get(), 30000));
+        DWORD exitCode{};
+        VERIFY_WIN32_BOOL_SUCCEEDED(GetExitCodeProcess(processHandle.get(), &exitCode));
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, exitCode);
+    }
 }
 
 namespace TerminalAppUnitTests
@@ -62,6 +77,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ResolveGitUsesExplicitPathAndDetectsMissingExecutable);
         TEST_METHOD(GitStatusProviderHandlesMissingGitGracefully);
         TEST_METHOD(GitStatusProviderUsesDisplayedDirectoryForGit);
+        TEST_METHOD(GitStatusProviderRecognizesLinkedWorktree);
         TEST_METHOD(BrokerInjectsImmutableGitAvailabilityIntoRequests);
         TEST_METHOD(GitStatusProviderKnownMissingGitDoesNotFallBack);
         TEST_METHOD(GitStatusProviderInvokesLiteralApplicationPath);
@@ -1529,12 +1545,129 @@ else {
         VERIFY_IS_TRUE(remote.fields.find("repository") == remote.fields.end());
         VERIFY_ARE_EQUAL(firstGitRun, std::filesystem::file_size(invocations));
 
+        request.firstPartyFields.insert_or_assign("agentWorkingDirectory", "/home/agent/worktree");
+        const auto wsl = inspect();
+        VERIFY_ARE_EQUAL(std::string{ "/home/agent/worktree" }, field(wsl, "workingDirectory"));
+        VERIFY_IS_FALSE(wsl.fields.contains("repository"));
+        VERIFY_IS_FALSE(wsl.fields.contains("branch"));
+        VERIFY_ARE_EQUAL(firstGitRun, std::filesystem::file_size(invocations));
+
         request.firstPartyFields.erase("agentCwdActive");
         const auto shell = inspect();
         VERIFY_ARE_EQUAL(shellRoot.string(), field(shell, "workingDirectory"));
         VERIFY_ARE_EQUAL(std::string{ "shell" }, field(shell, "repository"));
         VERIFY_ARE_EQUAL(std::string{ "shell-branch" }, field(shell, "branch"));
         VERIFY_ARE_EQUAL(std::string{ "~1 +0 -0" }, field(shell, "changes"));
+    }
+
+    void RichTabProviderTests::GitStatusProviderRecognizesLinkedWorktree()
+    {
+        const auto git = CommandRunner::ResolveGit();
+        VERIFY_IS_TRUE(git.has_value());
+        const auto fixture = std::filesystem::temp_directory_path() /
+                             (L"RichTabWorktree-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(fixture, error);
+        });
+        std::filesystem::create_directories(fixture);
+        const auto main = fixture / L"main";
+        const auto linked = fixture / L"linked";
+        _RunGit(*git, L"init -q -b main \"" + main.wstring() + L"\"");
+        _RunGit(*git, L"-C \"" + main.wstring() + L"\" -c user.name=Test -c user.email=test@example.com "
+                                                  L"-c commit.gpgsign=false -c core.hooksPath=NUL commit -q --allow-empty -m initial");
+        _RunGit(*git, L"-C \"" + main.wstring() + L"\" worktree add -q -b linked \"" + linked.wstring() + L"\"");
+        std::filesystem::create_directory(main / L"nested");
+        std::filesystem::create_directory(linked / L"nested");
+        _WriteFile(linked / L"change.txt", "change\n");
+
+        Manifest manifest;
+        manifest.id = "com.microsoft.intelligent-terminal.git-status";
+        manifest.runtime.kind = RuntimeKind::PowerShellV1;
+        manifest.runtime.entrypoint = L"provider.ps1";
+        manifest.extensionRoot = _TestModuleDirectory() / L"RichTabProviders" / L"GitStatus";
+        manifest.activationEvents.emplace_back(ActivationEvent::ManualRefresh);
+        manifest.fields = {
+            { "workingDirectory", "Directory", FieldType::String, true },
+            { "repository", "Repository", FieldType::String, true },
+            { "branch", "Branch", FieldType::String, true },
+            { "changes", "Changes", FieldType::String, true },
+        };
+        Request request;
+        request.requestId = "linked-worktree";
+        request.providerId = manifest.id;
+        request.processEpoch = 1;
+        request.sessionId = "session";
+        request.reason = ActivationEvent::ManualRefresh;
+        request.workingDirectoryAuthoritative = true;
+        request.firstPartyFields.emplace("gitBinary", git->string());
+        const auto inspect = [&](const std::filesystem::path& directory) {
+            request.workingDirectory = directory;
+            const auto serialized = SerializeRequest(request, manifest);
+            VERIFY_IS_TRUE(static_cast<bool>(serialized));
+            const auto result = CommandRunner{}.Run(manifest, *serialized.value, std::chrono::seconds{ 10 });
+            VERIFY_IS_TRUE(result.status == CommandResult::Status::Completed);
+            VERIFY_ARE_EQUAL(0u, result.exitCode);
+            const auto parsed = ParseSnapshot(result.standardOutput, manifest, request.requestId);
+            VERIFY_IS_TRUE(static_cast<bool>(parsed));
+            return *parsed.value;
+        };
+        const auto field = [](const Snapshot& snapshot, const std::string& name) {
+            return std::get<std::string>(snapshot.fields.at(name));
+        };
+        const auto primary = inspect(main);
+        VERIFY_ARE_EQUAL(std::string{ "main" }, field(primary, "branch"));
+        VERIFY_ARE_EQUAL(std::string{ "main" }, field(inspect(main / L"nested"), "branch"));
+        const auto worktree = inspect(linked);
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(worktree, "repository"));
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(worktree, "branch"));
+        VERIFY_ARE_EQUAL(std::string{ "~1 +0 -0" }, field(worktree, "changes"));
+        const auto nested = inspect(linked / L"nested");
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(nested, "branch"));
+
+        request.firstPartyFields.emplace("agentCwdActive", "true");
+        request.firstPartyFields.emplace("agentWorkingDirectory", (linked / L"nested").string());
+        const auto agentWorktree = inspect(main);
+        VERIFY_ARE_EQUAL((linked / L"nested").string(), field(agentWorktree, "workingDirectory"));
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(agentWorktree, "branch"));
+        request.firstPartyFields.erase("agentWorkingDirectory");
+        VERIFY_IS_TRUE(inspect(main).fields.empty());
+        request.firstPartyFields.emplace("agentWorkingDirectory", main.string());
+        VERIFY_ARE_EQUAL(std::string{ "main" }, field(inspect(linked), "branch"));
+        request.firstPartyFields.erase("agentCwdActive");
+        request.firstPartyFields.erase("agentWorkingDirectory");
+
+        _RunGit(*git, L"-C \"" + main.wstring() + L"\" config extensions.worktreeConfig true");
+        _RunGit(*git, L"-C \"" + linked.wstring() + L"\" config --worktree core.autocrlf false");
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(inspect(linked), "branch"));
+        const auto worktreeConfig = main / L".git" / L"worktrees" / L"linked" / L"config.worktree";
+        const auto originalConfig = [&]() {
+            std::ifstream stream{ worktreeConfig, std::ios::binary };
+            return std::string{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        }();
+        VERIFY_IS_TRUE(std::filesystem::remove(worktreeConfig));
+        _WriteFile(worktreeConfig, "[include]\n\tpath = C:/missing-config\n");
+        VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
+        VERIFY_IS_TRUE(std::filesystem::remove(worktreeConfig));
+        _WriteFile(worktreeConfig, originalConfig);
+        VERIFY_ARE_EQUAL(std::string{ "linked" }, field(inspect(linked), "branch"));
+
+        const auto backlink = main / L".git" / L"worktrees" / L"linked" / L"gitdir";
+        const auto originalBacklink = [&]() {
+            std::ifstream stream{ backlink, std::ios::binary };
+            return std::string{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        }();
+        _WriteFile(backlink, "C:\\missing\\.git\n");
+        VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
+        _WriteFile(backlink, originalBacklink);
+
+        VERIFY_IS_TRUE(std::filesystem::remove(linked / L".git"));
+        _WriteFile(linked / L".git", "gitdir: C:\\missing\\worktrees\\linked\n");
+        const auto invalid = inspect(linked);
+        VERIFY_IS_TRUE(invalid.fields.contains("workingDirectory"));
+        VERIFY_IS_FALSE(invalid.fields.contains("repository"));
+        VERIFY_IS_FALSE(invalid.fields.contains("branch"));
     }
 
     void RichTabProviderTests::GitStatusProviderKnownMissingGitDoesNotFallBack()
