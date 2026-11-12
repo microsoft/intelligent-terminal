@@ -9,6 +9,8 @@ on:
       - 'installer/**'
       - 'build/**'
       - 'dep/**'
+      - 'oss/**'
+      - 'res/**'
       - '.cargo/**'
       - '.github/workflows/pr-ci.yml'
       - '*.props'
