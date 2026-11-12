@@ -906,7 +906,7 @@ function ciFixture() {
     headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic', defaultBranch: 'main' };
   const run = { id: 91, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
-    path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis',
+    path: '.github/workflows/pr-ci.yml', name: 'PR CI',
     workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
   const jobs = ['C++ build and unit tests', 'Rust build and unit tests'].map(name =>
     ({ name, run_id: 91, run_attempt: 2, status: 'completed', conclusion: 'success' }));
@@ -956,6 +956,7 @@ test('CI admission requires successful exact-head same-repo workflow, attempt an
     { conclusion: 'failure' }, { conclusion: 'cancelled' }, { status: 'in_progress' },
     { head_sha: BASE }, { run_attempt: 3 }, { path: '.github/workflows/forged.yml' },
     { name: 'another workflow' }, { event: 'push' }, { id: 92 },
+    { path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis' },
     { repository: { id: 99, full_name: 'owner/repo' } },
     { head_repository: { id: 99, full_name: 'fork/repo' } },
   ]) assert.throws(() => validateCiRun({ ...run, ...extra }, jobs, identity));
@@ -992,7 +993,7 @@ test('native CI verification rechecks live PR and trusted workflow before return
     '': { default_branch: 'main' },
     'actions/runs/91': run,
     'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
-    'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
+    'actions/workflows/pr-ci.yml': { id: 7, path: run.path, state: 'active' },
     'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
   };
   responses[`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`] =
@@ -1023,9 +1024,9 @@ test('native CI verification rechecks live PR and trusted workflow before return
   workflowFile.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
   workflowFile.sha = '4'.repeat(40);
-  responses['actions/workflows/pr-build-security.yml'] = { id: 8, path: run.path, state: 'active' };
+  responses['actions/workflows/pr-ci.yml'] = { id: 8, path: run.path, state: 'active' };
   assert.throws(() => verifyCiSecurity({ environment, request }), /source workflow/);
-  responses['actions/workflows/pr-build-security.yml'].id = 7;
+  responses['actions/workflows/pr-ci.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
 });
@@ -1093,7 +1094,7 @@ test('actual controller admission uses trusted commit association when workflow_
       for (const file of tree.tree) {
         const path = file.path;
         const substituted = tree_sha === HEAD && (
-          (variant === 'no-op-builds' && path === '.github/workflows/pr-build-security.yml') ||
+          (variant === 'no-op-builds' && path === '.github/workflows/pr-ci.yml') ||
           (variant === 'changed-test-runner' && path === 'build/scripts/Run-Tests.ps1') ||
           (variant === 'changed-analyzer-policy' && path === 'build/config/codeql-accepted-warnings.json'));
         if (substituted) file.sha = BASE;
@@ -2109,7 +2110,7 @@ test('CI-completed controller preserves instruction classification without Rust 
   const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
   const controller = workflow('ghaw-pr-security-controller.yml');
   assert(controller.includes('workflow_run:'));
-  assert(controller.includes("workflows: ['PR build and security analysis']"));
+  assert(controller.includes("workflows: ['PR CI']"));
   assert(!controller.includes('  pull_request:'));
   for (const name of ['ghaw-pr-security.lock.yml']) {
     const worker = workflow(name);

@@ -1,4 +1,4 @@
-name: PR build and security analysis
+name: PR CI
 
 on:
   pull_request:

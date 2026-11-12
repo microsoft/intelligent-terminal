@@ -27,7 +27,14 @@ better vulnerability detection.
 
 ## Current flow and ownership
 
-1. `PR build and security analysis` runs on GitHub Windows runners. Its C++ and
+1. `PR CI` (`.github/workflows/pr-ci.yml`) is the single shared build/test and
+   analysis workflow on GitHub Windows runners, not a security-specific CI.
+   It currently includes security analysis; future performance and accessibility
+   checks belong in the same CI. CI produces check-specific artifacts without
+   invoking gh-aw; downstream reviewers consume only the artifacts they need.
+   The CodeQL collector and accepted-warning baseline remain security-specific,
+   not a required format for future performance or accessibility output.
+   Its C++ and
    Rust jobs build and run unit tests in parallel; the C++ test host is included,
    but Dev-package build, signing and deployment are not. Analyzer findings are
    warnings, not build failures; analyzer execution errors remain failures.
