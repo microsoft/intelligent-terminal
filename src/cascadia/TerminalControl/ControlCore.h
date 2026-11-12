@@ -284,6 +284,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         TerminalConnection::ITerminalConnection Connection();
         void Connection(const TerminalConnection::ITerminalConnection& connection);
         void HardResetWithoutErase();
+        hstring ProgramStatusJson();
+        void AcknowledgeProgramStatus(uint64_t revision);
+        void AcknowledgeProgramStatusForUserInput();
 
         void AnchorContextMenu(til::point viewportRelativeCharacterPosition);
 
@@ -324,6 +327,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         til::typed_event<IInspectable, Control::ShowNotificationEventArgs> ShowNotification;
         til::typed_event<> RefreshQuickFixUI;
         til::typed_event<IInspectable, Control::WindowSizeChangedEventArgs> WindowSizeChanged;
+        til::typed_event<> ProgramStatusChanged;
 
         til::typed_event<> CloseTerminalRequested;
         til::typed_event<> RestartTerminalRequested;
@@ -339,6 +343,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             std::shared_ptr<ThrottledFunc<Control::ScrollPositionChangedArgs>> updateScrollBar;
         };
 
+        struct ProgramStatusNotification
+        {
+            std::shared_ptr<ThrottledFunc<uint64_t>> callback;
+            std::atomic<bool> pending{ false };
+        };
+
         void _setupDispatcherAndCallbacks();
         void _closeConnection();
 
@@ -350,6 +360,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         void _handleControlC();
         void _sendInputToConnection(std::wstring_view wstr);
+        void _terminalProgramStatusChanged();
 
 #pragma region TerminalCoreCallbacks
         void _terminalWarningBell();
@@ -455,6 +466,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         std::atomic<bool> _initializedTerminal{ false };
         bool _isReadOnly{ false };
         std::atomic<bool> _closing{ false };
+        std::atomic<uint64_t> _programStatusGeneration{ 0 };
+        std::atomic<uint64_t> _lastProgramStatusSnapshotRevision{ 0 };
+        std::atomic<uint64_t> _programStatusPublication{ 0 };
+        std::atomic<std::shared_ptr<ProgramStatusNotification>> _programStatusNotification;
+        std::optional<std::string> _programStatusRepresentativeId;
 
         struct StashedColorScheme
         {

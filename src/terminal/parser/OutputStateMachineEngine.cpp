@@ -762,6 +762,18 @@ IStateMachineEngine::StringHandler OutputStateMachineEngine::ActionDcsDispatch(c
 // - true if we handled the dispatch.
 bool OutputStateMachineEngine::ActionOscDispatch(const size_t parameter, const std::wstring_view string)
 {
+    // Program status is a bounded, validated typed input, not a raw context
+    // observation. In particular, never broadcast discarded/invalid reports.
+    if (parameter == 7501)
+    {
+        if (const auto command = ProgramStatus::Parse(string))
+        {
+            _dispatch->DoProgramStatus(*command);
+        }
+        _ClearLastChar();
+        return true;
+    }
+
     // Forward raw OSC to protocol clients for terminal context streaming.
     // Format: "osc:<param>;<payload>" — fired before the switch so even
     // unrecognized OSC numbers (default: break) are captured.

@@ -15,6 +15,9 @@
     <ClCompile Include="inputTest.cpp" />
     <ClCompile Include="kittyKeyboardProtocol.cpp" />
     <ClCompile Include="MouseInputTest.cpp" />
+    <ClCompile Include="ProgramStatusModelTests.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="TestHook.cpp" />
     <ClCompile Include="..\precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>

@@ -137,6 +137,8 @@ agents.status.active: "Ag obair"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
 agents.status.idle: "Na thàmh"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Deiseil"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Ga chleachdadh"
 

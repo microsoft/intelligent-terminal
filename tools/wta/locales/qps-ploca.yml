@@ -137,6 +137,8 @@ agents.status.active: "[!!_Ŵöŕķïñĝ_!!]"
 agents.status.waiting_for_input: "[!!_Waiting for input_!!]"
 agents.status.error: "[!!_Error_!!]"
 agents.status.idle: "[!!_Idle_!!]"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "[!!_Ćőмρĺéťéđ_!!]"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "[!!_Îñ ûśé_!!]"
 

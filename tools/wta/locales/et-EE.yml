@@ -137,6 +137,8 @@ agents.status.active: "Töötab"
 agents.status.waiting_for_input: "Ootab sisendit"
 agents.status.error: "Viga"
 agents.status.idle: "Jõude"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Lõpetatud"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Kasutusel"
 

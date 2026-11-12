@@ -459,6 +459,17 @@ public:
         return true;
     }
 
+    TEST_METHOD(ProgramStatusUnsupportedEndpoint)
+    {
+        // The default host capability must not advertise a consumer merely
+        // because the shared dispatch recognizes the OSC number.
+        _testGetSet->_returnResponseResult = true;
+        VERIFY_IS_FALSE(_testGetSet->SupportsProgramStatus());
+        _stateMachine->ProcessString(L"\x1b]7501;?\x1b\\");
+        _stateMachine->ProcessString(L"\x1b]7501;state=working:id=build\a");
+        VERIFY_IS_TRUE(_testGetSet->_response.empty());
+    }
+
     TEST_METHOD(CursorMovementTest)
     {
         BEGIN_TEST_METHOD_PROPERTIES()

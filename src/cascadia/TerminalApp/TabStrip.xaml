@@ -1095,7 +1095,7 @@
                                                             BorderThickness="0"
                                                             Click="OnPaneActivateClick"
                                                             FocusVisualMargin="{StaticResource SidebarPaneFocusInset}"
-                                                            ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
+                                                            ToolTipService.ToolTip="{x:Bind ProgramStatusDetails, Mode=OneWay}">
                                                         <Button.Resources>
                                                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                              Color="Transparent" />

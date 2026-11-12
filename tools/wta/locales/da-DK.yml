@@ -138,6 +138,8 @@ agents.status.active: "Arbejder"
 agents.status.waiting_for_input: "Venter på input"
 agents.status.error: "Fejl"
 agents.status.idle: "Inaktiv"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Fuldført"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "I brug"
 

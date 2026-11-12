@@ -16,6 +16,9 @@
     <ClCompile Include="..\InteractDispatch.cpp" />
     <ClCompile Include="..\MacroBuffer.cpp" />
     <ClCompile Include="..\PageManager.cpp" />
+    <ClCompile Include="..\ProgramStatus.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\SixelParser.cpp" />
     <ClCompile Include="..\adaptDispatchGraphics.cpp" />
     <ClCompile Include="..\terminalOutput.cpp" />
@@ -32,6 +35,7 @@
     <ClInclude Include="..\ITerminalApi.hpp" />
     <ClInclude Include="..\MacroBuffer.hpp" />
     <ClInclude Include="..\PageManager.hpp" />
+    <ClInclude Include="..\ProgramStatus.hpp" />
     <ClInclude Include="..\SixelParser.hpp" />
     <ClInclude Include="..\precomp.h" />
     <ClInclude Include="..\terminalOutput.hpp" />

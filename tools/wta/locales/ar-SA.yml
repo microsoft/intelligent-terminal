@@ -151,6 +151,8 @@ agents.status.active: "جارٍ العمل"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"
 agents.status.idle: "خامل"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "مكتمل"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "قيد الاستخدام"
 

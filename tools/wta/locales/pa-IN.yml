@@ -150,6 +150,8 @@ agents.status.active: "ਕੰਮ ਕਰ ਰਿਹਾ ਹੈ"
 agents.status.waiting_for_input: "ਇਨਪੁਟ ਦੀ ਉਡੀਕ"
 agents.status.error: "ਗਲਤੀ"
 agents.status.idle: "ਵਿਹਲਾ"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "ਪੂਰਾ ਹੋਇਆ"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "ਵਰਤੋਂ ਵਿੱਚ"
 

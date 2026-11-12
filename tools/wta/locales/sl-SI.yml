@@ -146,6 +146,8 @@ agents.status.active: "Dela"
 agents.status.waiting_for_input: "Čaka na vnos"
 agents.status.error: "Napaka"
 agents.status.idle: "Nedejavno"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Dokončano"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "V uporabi"
 

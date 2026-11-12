@@ -150,6 +150,8 @@ agents.status.active: "עובד"
 agents.status.waiting_for_input: "ממתין לקלט"
 agents.status.error: "שגיאה"
 agents.status.idle: "לא פעיל"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "הושלם"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "בשימוש"
 

@@ -137,6 +137,8 @@ agents.status.active: "Llamk'achkan"
 agents.status.waiting_for_input: "Yaykuyta suyachkan"
 agents.status.error: "Pantay"
 agents.status.idle: "Samachkan"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Tukusqa"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Llamk'achisqa"
 

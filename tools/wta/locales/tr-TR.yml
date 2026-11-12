@@ -150,6 +150,8 @@ agents.status.active: "Çalışıyor"
 agents.status.waiting_for_input: "Giriş bekleniyor"
 agents.status.error: "Hata"
 agents.status.idle: "Boşta"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Tamamlandı"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Kullanımda"
 
