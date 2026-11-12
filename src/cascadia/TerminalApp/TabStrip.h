@@ -672,6 +672,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
         bool _historyExpanded{ false };
+        bool _historySearchExpanded{ true };
         bool _syncingHistorySection{ false };
         winrt::Windows::UI::Xaml::FrameworkElement _historyElement(const wchar_t* name)
         {
@@ -765,6 +766,7 @@ namespace winrt::TerminalApp::implementation
         bool _updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
+        bool _isHistoryExpanded() const noexcept;
         void _updateHistoryVisualState();
         void _syncViewportItems();
         void _activateHistoryItem(TerminalApp::TabStripHistoryItem const& item);

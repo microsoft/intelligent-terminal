@@ -732,6 +732,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistorySingleViewportCollapseAndSizing);
         TEST_METHOD(VerticalTabHistoryTreeActivationGuards);
         TEST_METHOD(VerticalTabHistoryRestoresExpansionChoice);
+        TEST_METHOD(VerticalTabHistorySearchExpansionPreservesChoice);
         TEST_METHOD(VerticalTabHistoryRejectsVirtualizedTabDrop);
         TEST_METHOD(VerticalTabHistoryTemplateInstancesOwnDistinctVisuals);
         TEST_METHOD(AgentsViewTabVectorChangesKeepViewportInSync);
@@ -19032,10 +19033,73 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(group.Children().GetAt(0) == node);
             strip.SearchQuery(L"Tree");
             group.IsExpanded(false);
-            VERIFY_IS_TRUE(group.IsExpanded());
+            VERIFY_IS_FALSE(group.IsExpanded());
             VERIFY_ARE_EQUAL(1u, activations);
             strip.SearchQuery(L"");
             VERIFY_IS_TRUE(impl->_historyExpanded);
+        });
+    }
+
+    void TabTests::VerticalTabHistorySearchExpansionPreservesChoice()
+    {
+        TestOnUIThread([&]() {
+            const auto state = ApplicationState::SharedInstance();
+            const auto previousHistoryExpanded = state.SidebarRecentSessionsExpanded();
+            const auto restore = wil::scope_exit([&]() { state.SidebarRecentSessionsExpanded(previousHistoryExpanded); });
+            for (const auto expanded : { false, true })
+            {
+                state.SidebarRecentSessionsExpanded(expanded);
+                winrt::TerminalApp::TabStrip strip;
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+                strip.HistoryActive(true);
+                winrt::MUX::Controls::TabViewItem tab;
+                tab.Header(winrt::box_value(L"Search tab"));
+                strip.TabItems().Append(tab);
+                strip.SelectedItem(tab);
+                const auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.SessionId(L"search-expansion");
+                item.Title(L"Search history");
+                item.Status(L"Idle");
+                impl->CommitHistorySnapshot({ item }, true);
+
+                strip.SidebarFilters().SearchQuery(L"Search");
+                VERIFY_IS_TRUE(impl->_historyNode.IsExpanded());
+                impl->_historyNode.IsExpanded(false);
+                VERIFY_IS_FALSE(impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(expanded, state.SidebarRecentSessionsExpanded());
+                VERIFY_ARE_EQUAL(expanded, impl->_historyExpanded);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"Search" }, strip.SearchQuery());
+                VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+                VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+
+                strip.SearchQuery(L"Search history");
+                impl->CommitHistorySnapshot({ item }, true);
+                impl->HistoryLoading(true);
+                impl->_syncViewportItems();
+                VERIFY_IS_FALSE(impl->_historyNode.IsExpanded());
+                impl->HistoryLoading(false);
+                strip.IsRailCollapsed(true);
+                strip.IsRailCollapsed(false);
+                VERIFY_IS_FALSE(impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(expanded, state.SidebarRecentSessionsExpanded());
+
+                impl->_historyNode.IsExpanded(true);
+                VERIFY_IS_TRUE(impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(expanded, state.SidebarRecentSessionsExpanded());
+                impl->_historyNode.IsExpanded(false);
+                strip.SearchQuery(L"");
+                VERIFY_ARE_EQUAL(expanded, impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(expanded, state.SidebarRecentSessionsExpanded());
+
+                strip.SearchQuery(L"Search");
+                VERIFY_IS_TRUE(impl->_historyNode.IsExpanded());
+                impl->_historyNode.IsExpanded(false);
+                strip.SearchActive(true);
+                strip.SearchActive(false);
+                VERIFY_IS_TRUE(strip.SearchQuery().empty());
+                VERIFY_ARE_EQUAL(expanded, impl->_historyNode.IsExpanded());
+                VERIFY_ARE_EQUAL(expanded, state.SidebarRecentSessionsExpanded());
+            }
         });
     }
 
@@ -19188,6 +19252,22 @@ namespace TerminalAppLocalTests
             strip.UpdateLayout();
             VERIFY_IS_TRUE(strip.SidebarFilters().ShowRecentAgentSessions());
             VERIFY_IS_TRUE(stripImpl->HistoryHeaderButton().IsExpanded());
+            VERIFY_ARE_EQUAL(2u, list.Items().Size());
+            const auto searchProvider = Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(stripImpl->HistoryHeaderButton())
+                                            .GetPattern(Automation::Peers::PatternInterface::ExpandCollapse)
+                                            .as<Automation::Provider::IExpandCollapseProvider>();
+            searchProvider.Collapse();
+            VERIFY_ARE_EQUAL(Automation::ExpandCollapseState::Collapsed, searchProvider.ExpandCollapseState());
+            VERIFY_IS_FALSE(stripImpl->_historyNode.IsExpanded());
+            VERIFY_ARE_EQUAL(1u, list.Items().Size());
+            VERIFY_ARE_EQUAL(1u, strip.HistoryItems().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Recent" }, strip.SearchQuery());
+            stripImpl->_updateHistoryVisualState();
+            strip.UpdateLayout();
+            VERIFY_IS_FALSE(stripImpl->HistoryHeaderButton().IsExpanded());
+            VERIFY_ARE_EQUAL(1u, list.Items().Size());
+            searchProvider.Expand();
+            VERIFY_ARE_EQUAL(Automation::ExpandCollapseState::Expanded, searchProvider.ExpandCollapseState());
             VERIFY_ARE_EQUAL(2u, list.Items().Size());
             strip.SearchQuery(L"");
             strip.UpdateLayout();
