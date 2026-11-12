@@ -54,9 +54,6 @@ namespace TerminalApp
         Boolean UsePathEllipsis;
         Windows.UI.Xaml.DependencyProperty UsePathEllipsisProperty { get; };
 
-        IVector<TextEllipsisRange> EllipsisRanges;
-        Windows.UI.Xaml.DependencyProperty EllipsisRangesProperty { get; };
-
         TextHighlightColor ColorHighlight;
         static Windows.UI.Xaml.DependencyProperty ColorHighlightProperty { get; };
 
@@ -76,6 +73,9 @@ namespace TerminalApp
         static Windows.UI.Xaml.DependencyProperty TextOpacityProperty { get; };
 
         void SetTextAndColor(String text, TextHighlightColor color, IVector<HighlightedRun> ranges);
+
+        IVector<TextEllipsisRange> EllipsisRanges;
+        Windows.UI.Xaml.DependencyProperty EllipsisRangesProperty { get; };
         void SetMetadata(String text, TextHighlightColor color, IVector<HighlightedRun> ranges, IVector<TextEllipsisRange> ellipsisRanges);
     }
 }
