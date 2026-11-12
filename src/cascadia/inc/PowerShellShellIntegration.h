@@ -19,6 +19,110 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Powershell
 {
+    namespace details
+    {
+        // PowerShell treats the Authenticode signature block as the end of
+        // executable script text. Appending even harmless integration code
+        // after it makes the profile fail to parse; inserting before it
+        // would invalidate the signature. Leave signed profiles untouched.
+        inline constexpr std::string_view AuthenticodeSignatureBegin =
+            "# SIG # Begin signature block";
+
+        inline bool HasEncodedAuthenticodeSignatureBlock(std::string_view contents,
+                                                         size_t codeUnitSize,
+                                                         bool littleEndian) noexcept
+        {
+            size_t lineLength = 0;
+            bool matchesMarker = true;
+            for (size_t offset = codeUnitSize; offset + codeUnitSize <= contents.size(); offset += codeUnitSize)
+            {
+                unsigned int codeUnit = 0;
+                for (size_t index = 0; index < codeUnitSize; ++index)
+                {
+                    const auto byte = static_cast<unsigned char>(contents[offset + index]);
+                    const auto shift = littleEndian ? index * 8 : (codeUnitSize - index - 1) * 8;
+                    codeUnit |= static_cast<unsigned int>(byte) << shift;
+                }
+
+                if (codeUnit == '\r' || codeUnit == '\n')
+                {
+                    if (matchesMarker && lineLength == AuthenticodeSignatureBegin.size())
+                    {
+                        return true;
+                    }
+                    lineLength = 0;
+                    matchesMarker = true;
+                }
+                else
+                {
+                    if (matchesMarker &&
+                        (codeUnit > 0x7f || lineLength >= AuthenticodeSignatureBegin.size() ||
+                         codeUnit != static_cast<unsigned char>(AuthenticodeSignatureBegin[lineLength])))
+                    {
+                        matchesMarker = false;
+                    }
+                    ++lineLength;
+                }
+            }
+            return matchesMarker && lineLength == AuthenticodeSignatureBegin.size();
+        }
+
+        inline bool HasAuthenticodeSignatureBlock(std::string_view contents) noexcept
+        {
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe &&
+                static_cast<unsigned char>(contents[2]) == 0x00 &&
+                static_cast<unsigned char>(contents[3]) == 0x00)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, true);
+            }
+            if (contents.size() >= 4 &&
+                static_cast<unsigned char>(contents[0]) == 0x00 &&
+                static_cast<unsigned char>(contents[1]) == 0x00 &&
+                static_cast<unsigned char>(contents[2]) == 0xfe &&
+                static_cast<unsigned char>(contents[3]) == 0xff)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 4, false);
+            }
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xff &&
+                static_cast<unsigned char>(contents[1]) == 0xfe)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, true);
+            }
+            if (contents.size() >= 2 &&
+                static_cast<unsigned char>(contents[0]) == 0xfe &&
+                static_cast<unsigned char>(contents[1]) == 0xff)
+            {
+                return HasEncodedAuthenticodeSignatureBlock(contents, 2, false);
+            }
+
+            size_t lineStart = 0;
+            while (lineStart <= contents.size())
+            {
+                const auto lineEnd = contents.find_first_of("\r\n", lineStart);
+                const auto line = contents.substr(
+                    lineStart,
+                    lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
+                if (line == AuthenticodeSignatureBegin)
+                {
+                    return true;
+                }
+                if (lineEnd == std::string_view::npos)
+                {
+                    break;
+                }
+                lineStart = lineEnd + 1;
+                if (contents[lineEnd] == '\r' && lineStart < contents.size() && contents[lineStart] == '\n')
+                {
+                    ++lineStart;
+                }
+            }
+            return false;
+        }
+    }
+
     enum class ExecutionPolicyStatus
     {
         Absent,
@@ -1295,6 +1399,15 @@ __ShellInteg_Rearm
         std::wstring          ProfileFriendlyName() const override  { return L"PowerShell profile"; }
         LineEndingPolicy      LineEndings() const override          { return LineEndingPolicy::Auto; }
         bool                  PlaceBlockAtEnd() const noexcept override { return true; }
+
+        std::optional<std::wstring> ProfileModificationError(std::string_view contents) const override
+        {
+            if (details::HasAuthenticodeSignatureBlock(contents))
+            {
+                return L"Refusing to modify an Authenticode-signed PowerShell profile";
+            }
+            return std::nullopt;
+        }
 
         std::string ScriptBlock(std::string_view eol) const override
         {
