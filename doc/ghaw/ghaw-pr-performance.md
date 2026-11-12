@@ -110,7 +110,7 @@ base, then each build job fetches that one commit before executing PR code.
 The analyzer itself does not fetch or receive fetch credentials. Receipts bind
 the comparison base as well as head/run/attempt so a different scope is rejected.
 CI analysis tools are checked out from the recorded native-workflow revision,
-not inferred from a subsequently retargeted PR.
+not inferred from a later PR target change.
 
 Performance warnings remain advisory: the C++ analyzer explicitly uses
 `ClangTidyExtraArgs=-Wno-error` without changing the normal build's warning

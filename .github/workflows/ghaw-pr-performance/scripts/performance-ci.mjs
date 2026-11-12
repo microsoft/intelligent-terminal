@@ -140,13 +140,13 @@ export function validatePerformanceFiles(directory, language, identity) {
         throw Error('Invalid performance artifact layout.');
     for (const name of names) {
         const stat = fs.lstatSync(path.join(directory, name));
-        if (!/^(native-results\.json|tool-version\.log|diagnostics(?:-\d+\.log|\.jsonl)|project-\d+\.json)$/.test(name) ||
+        if (!/^(native-results\.json|tool-version\.log|diagnostics(?:-\d+\.log|\.jsonl)|project-\d+(?:\.json|-stderr\.log))$/.test(name) ||
             !stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024)
             throw Error('Invalid performance artifact file.');
     }
     const result = JSON.parse(fs.readFileSync(path.join(directory, 'native-results.json'), 'utf8').replace(/^\uFEFF/, ''));
     validatePerformanceResult(result, language, identity);
-    const phaseLogs = result.phases.map(phase => phase.log);
+    const phaseLogs = result.phases.flatMap(phase => phase.stderrLog ? [phase.log, phase.stderrLog] : [phase.log]);
     if (phaseLogs.some(log => typeof log !== 'string' || !names.includes(log)))
         throw Error('Performance phase log is missing.');
     if (result.status === 'completed') {

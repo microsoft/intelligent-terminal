@@ -80,6 +80,10 @@ version="0.1.0"
                 { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
             validatePerformanceFiles(proof.output, language,
                 { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
+            if (language === 'cpp') {
+                assert.equal(proof.receipt.phases[1].stderrLog, 'project-1-stderr.log');
+                assert.ok(fs.existsSync(path.join(proof.output, 'project-1-stderr.log')));
+            }
             assert.match(fs.readFileSync(path.join(proof.output, language === 'cpp' ? 'diagnostics-1.log' : 'diagnostics.jsonl'), 'utf8'),
                 language === 'cpp' ? /performance-inefficient-vector-operation/ : /vec_init_then_push/);
             save(proof, `${language}-warnings`);

@@ -168,6 +168,11 @@ test('completed artifacts require raw diagnostics and every recorded phase log',
     assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /phase log is missing/);
     fs.writeFileSync(path.join(directory, 'diagnostics.jsonl'), '{"reason":"build-finished","success":true}');
     validatePerformanceFiles(directory, 'rust', identity);
+    result.phases[0].stderrLog = 'project-1-stderr.log';
+    writeReceipt();
+    assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /phase log is missing/);
+    fs.writeFileSync(path.join(directory, 'project-1-stderr.log'), 'tool warning on stderr');
+    validatePerformanceFiles(directory, 'rust', identity);
     result.phases.push({ log: 'project-1.json', exitCode: 0 });
     writeReceipt();
     assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /phase log is missing/);

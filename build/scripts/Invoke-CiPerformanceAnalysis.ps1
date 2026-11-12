@@ -25,10 +25,18 @@ $result = [ordered]@{
 }
 
 function Invoke-AnalysisCommand {
-    param([string]$File, [string[]]$Arguments, [string]$Log)
-    & $File @Arguments 2>&1 | Out-File -LiteralPath (Join-Path $output $Log) -Encoding utf8
+    param([string]$File, [string[]]$Arguments, [string]$Log, [switch]$JsonOutput)
+    $stderrLog = $null
+    if ($JsonOutput) {
+        $stderrLog = "$([IO.Path]::GetFileNameWithoutExtension($Log))-stderr.log"
+        $stderrPath = Join-Path $output $stderrLog
+        & $File @Arguments 2> $stderrPath | Out-File -LiteralPath (Join-Path $output $Log) -Encoding utf8
+    }
+    else {
+        & $File @Arguments 2>&1 | Out-File -LiteralPath (Join-Path $output $Log) -Encoding utf8
+    }
     $code = $LASTEXITCODE
-    $result.phases += @{ command = @($File) + $Arguments; log = $Log; exitCode = $code }
+    $result.phases += @{ command = @($File) + $Arguments; log = $Log; stderrLog = $stderrLog; exitCode = $code }
     if ($code -ne 0) { throw "Performance analyzer failed; see $Log (exit $code)." }
 }
 
@@ -73,7 +81,10 @@ try {
     else {
         $projects = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         $mapped = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        foreach ($project in Get-ChildItem -LiteralPath (Join-Path $root 'src') -Filter *.vcxproj -Recurse) {
+        $projectPaths = @(& git -c core.quotepath=false ls-files -- 'src/*.vcxproj')
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate tracked C++ projects.' }
+        foreach ($projectPath in $projectPaths) {
+            $project = Get-Item -LiteralPath (Join-Path $root $projectPath)
             [xml]$xml = Get-Content -LiteralPath $project.FullName -Raw
             foreach ($item in $xml.SelectNodes("//*[local-name()='ClCompile' or local-name()='ClInclude'][@Include]")) {
                 $include = $item.GetAttribute('Include')
@@ -101,7 +112,7 @@ try {
             $properties = @("/p:SolutionDir=$root\", '/p:Configuration=Debug', '/p:Platform=x64',
                 '/p:PerformanceAnalysis=Extended', '/p:ClangTidyExtraArgs=-Wno-error')
             Invoke-AnalysisCommand 'MSBuild.exe' (@($project, '/nologo', '/getItem:ClCompile,ClInclude',
-                '/getProperty:EnableClangTidyCodeAnalysis,PerformanceAnalysis,ClangTidyChecks') + $properties) "project-$index.json"
+                '/getProperty:EnableClangTidyCodeAnalysis,PerformanceAnalysis,ClangTidyChecks') + $properties) "project-$index.json" -JsonOutput
             $evaluated = Get-Content -LiteralPath (Join-Path $output "project-$index.json") -Raw | ConvertFrom-Json
             if ($evaluated.Properties.EnableClangTidyCodeAnalysis -ne 'true' -or
                 $evaluated.Properties.PerformanceAnalysis -ne 'Extended') { throw 'C++ performance profile was not enabled.' }
