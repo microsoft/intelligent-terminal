@@ -1152,6 +1152,7 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataHighlightColor(pane.MetadataHighlightColor());
                 existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
+                existing.MetadataEllipsisRanges(pane.MetadataEllipsisRanges());
                 existing.HasUnreadActivity(pane.HasUnreadActivity());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());

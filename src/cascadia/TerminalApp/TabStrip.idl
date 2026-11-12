@@ -105,6 +105,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
+        IVector<TextEllipsisRange> MetadataEllipsisRanges;
         Windows.UI.Xaml.Visibility CloseVisibility;
         Boolean HasUnreadActivity;
     };

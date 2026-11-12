@@ -17,6 +17,7 @@ namespace TerminalApp
         String AutomationName;
         TextHighlightColor MetadataHighlightColor;
         IVector<HighlightedRun> MetadataHighlightRanges;
+        IVector<TextEllipsisRange> MetadataEllipsisRanges;
         Object IconSource;
         Boolean HasUnreadActivity;
         Boolean UnreadActivityProjectedToPaneRows;

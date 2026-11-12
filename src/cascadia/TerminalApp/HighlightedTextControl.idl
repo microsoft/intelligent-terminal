@@ -17,6 +17,21 @@ namespace TerminalApp
         UInt64 End;
     };
 
+    enum TextEllipsisKind
+    {
+        None = 0,
+        Path = 1,
+        Middle = 2,
+        Branch = 3
+    };
+
+    struct TextEllipsisRange
+    {
+        UInt64 Start;
+        UInt64 End;
+        TextEllipsisKind Kind;
+    };
+
     [default_interface] runtimeclass HighlightedTextControl : Windows.UI.Xaml.Controls.Control
     {
         HighlightedTextControl();
@@ -39,6 +54,9 @@ namespace TerminalApp
         Boolean UsePathEllipsis;
         Windows.UI.Xaml.DependencyProperty UsePathEllipsisProperty { get; };
 
+        IVector<TextEllipsisRange> EllipsisRanges;
+        Windows.UI.Xaml.DependencyProperty EllipsisRangesProperty { get; };
+
         TextHighlightColor ColorHighlight;
         static Windows.UI.Xaml.DependencyProperty ColorHighlightProperty { get; };
 
@@ -58,5 +76,6 @@ namespace TerminalApp
         static Windows.UI.Xaml.DependencyProperty TextOpacityProperty { get; };
 
         void SetTextAndColor(String text, TextHighlightColor color, IVector<HighlightedRun> ranges);
+        void SetMetadata(String text, TextHighlightColor color, IVector<HighlightedRun> ranges, IVector<TextEllipsisRange> ellipsisRanges);
     }
 }

@@ -28,6 +28,7 @@ namespace winrt::TerminalApp::implementation
     DependencyProperty HighlightedTextControl::_TextBlockStyleProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_HighlightedRunStyleProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_UsePathEllipsisProperty{ nullptr };
+    DependencyProperty HighlightedTextControl::_EllipsisRangesProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_ColorHighlightProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_ColorHighlightRangesProperty{ nullptr };
     DependencyProperty HighlightedTextControl::_SuccessHighlightBrushProperty{ nullptr };
@@ -121,6 +122,12 @@ namespace winrt::TerminalApp::implementation
                 xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
                 PropertyMetadata(box_value(false), HighlightedTextControl::_onPropertyChanged));
 
+            _EllipsisRangesProperty = DependencyProperty::Register(
+                L"EllipsisRanges",
+                xaml_typename<IVector<TerminalApp::TextEllipsisRange>>(),
+                xaml_typename<winrt::TerminalApp::HighlightedTextControl>(),
+                PropertyMetadata(nullptr, HighlightedTextControl::_onPropertyChanged));
+
             _ColorHighlightProperty = DependencyProperty::Register(
                 L"ColorHighlight",
                 xaml_typename<winrt::TerminalApp::TextHighlightColor>(),
@@ -167,7 +174,7 @@ namespace winrt::TerminalApp::implementation
         if (control)
         {
             const auto self = winrt::get_self<HighlightedTextControl>(control);
-            if (e.Property() == _UsePathEllipsisProperty)
+            if (e.Property() == _UsePathEllipsisProperty || e.Property() == _EllipsisRangesProperty)
             {
                 self->_updateTypographyObservers();
             }
@@ -180,7 +187,16 @@ namespace winrt::TerminalApp::implementation
         const TerminalApp::TextHighlightColor color,
         const IVector<TerminalApp::HighlightedRun>& ranges)
     {
-        if (Text() == text && ColorHighlight() == color && ColorHighlightRanges() == ranges)
+        SetMetadata(text, color, ranges, EllipsisRanges());
+    }
+
+    void HighlightedTextControl::SetMetadata(
+        const winrt::hstring& text,
+        const TerminalApp::TextHighlightColor color,
+        const IVector<TerminalApp::HighlightedRun>& ranges,
+        const IVector<TerminalApp::TextEllipsisRange>& ellipsisRanges)
+    {
+        if (Text() == text && ColorHighlight() == color && ColorHighlightRanges() == ranges && EllipsisRanges() == ellipsisRanges)
         {
             return;
         }
@@ -190,6 +206,7 @@ namespace winrt::TerminalApp::implementation
             Text(text);
             ColorHighlightRanges(ranges);
             ColorHighlight(color);
+            EllipsisRanges(ellipsisRanges);
         }
         _updateTextAndStyle();
     }
@@ -216,7 +233,7 @@ namespace winrt::TerminalApp::implementation
             _sizeChangedRevoker = SizeChanged(auto_revoke, [weak = get_weak()](auto&&, const SizeChangedEventArgs& args) {
                 if (const auto self = weak.get())
                 {
-                    if (self->UsePathEllipsis() && args.NewSize().Width != args.PreviousSize().Width)
+                    if (self->_usesEllipsis() && args.NewSize().Width != args.PreviousSize().Width)
                     {
                         self->_updateTextAndStyle();
                     }
@@ -244,7 +261,7 @@ namespace winrt::TerminalApp::implementation
     void HighlightedTextControl::_updateTypographyObservers()
     {
         _clearTypographyObservers();
-        if (!_textBlock || !UsePathEllipsis())
+        if (!_textBlock || !_usesEllipsis())
         {
             return;
         }
@@ -363,9 +380,15 @@ namespace winrt::TerminalApp::implementation
         return offsets;
     }
 
-    HighlightedTextControl::PathEllipsisResult HighlightedTextControl::_pathEllipsisText(const winrt::hstring& text) const
+    bool HighlightedTextControl::_usesEllipsis() const
     {
-        PathEllipsisResult result{ text, _identityOffsets(text.size()) };
+        const auto ranges = EllipsisRanges();
+        return UsePathEllipsis() || (ranges && ranges.Size() != 0);
+    }
+
+    HighlightedTextControl::EllipsisResult HighlightedTextControl::_ellipsisText(const winrt::hstring& text) const
+    {
+        EllipsisResult result{ text, _identityOffsets(text.size()) };
         const auto width = ActualWidth();
         if (text.empty() || !_textBlock || width <= 0)
         {
@@ -428,7 +451,7 @@ namespace winrt::TerminalApp::implementation
         };
 
         const auto compactLine = [&](const std::wstring_view path) {
-            PathEllipsisResult lineResult{ hstring{ path }, _identityOffsets(path.size()) };
+            EllipsisResult lineResult{ hstring{ path }, _identityOffsets(path.size()) };
             if (fits(lineResult.text))
             {
                 return lineResult;
@@ -531,6 +554,102 @@ namespace winrt::TerminalApp::implementation
             return lineResult;
         };
 
+        const auto middleCandidate = [](const std::wstring_view value, const size_t prefixEnd, const size_t suffixStart) {
+            std::wstring candidate{ value.substr(0, prefixEnd) };
+            candidate.push_back(L'\u2026');
+            candidate.append(value.substr(suffixStart));
+            EllipsisResult compacted{ hstring{ candidate }, _identityOffsets(value.size()) };
+            std::fill(compacted.sourceToDisplay.begin() + prefixEnd,
+                      compacted.sourceToDisplay.begin() + suffixStart,
+                      prefixEnd);
+            for (auto index = suffixStart; index <= value.size(); ++index)
+            {
+                compacted.sourceToDisplay[index] = prefixEnd + 1 + index - suffixStart;
+            }
+            return compacted;
+        };
+        const auto compactName = [&](const std::wstring_view value, const bool branch) {
+            EllipsisResult best{ hstring{ value }, _identityOffsets(value.size()) };
+            if (fits(best.text) || value.size() < 3)
+            {
+                return best;
+            }
+            size_t fallbackStart = 0;
+            if (branch)
+            {
+                const auto firstSlash = value.find(L'/');
+                const auto lastSlash = value.rfind(L'/');
+                if (firstSlash != std::wstring_view::npos && lastSlash > firstSlash && lastSlash + 1 < value.size())
+                {
+                    auto candidate = middleCandidate(value, firstSlash + 1, lastSlash);
+                    if (fits(candidate.text))
+                    {
+                        return candidate;
+                    }
+                }
+                if (lastSlash != std::wstring_view::npos && lastSlash + 1 < value.size())
+                {
+                    auto candidate = middleCandidate(value, 0, lastSlash);
+                    if (fits(candidate.text))
+                    {
+                        return candidate;
+                    }
+
+                    const auto leafStart = lastSlash + 1;
+                    EllipsisResult leaf{ hstring{ value.substr(leafStart) }, std::vector<size_t>(value.size() + 1) };
+                    if (fits(leaf.text))
+                    {
+                        for (auto index = leafStart; index <= value.size(); ++index)
+                        {
+                            leaf.sourceToDisplay[index] = index - leafStart;
+                        }
+                        return leaf;
+                    }
+                    fallbackStart = leafStart;
+                }
+            }
+
+            const auto fallbackValue = value.substr(fallbackStart);
+            best = { hstring{ fallbackValue }, _identityOffsets(fallbackValue.size()) };
+            size_t low = 2;
+            size_t high = fallbackValue.size() - 1;
+            while (low <= high)
+            {
+                const auto retained = low + (high - low) / 2;
+                auto prefixEnd = (retained + 1) / 2;
+                auto suffixStart = fallbackValue.size() - retained / 2;
+                // Never split a UTF-16 surrogate pair at either retained edge.
+                if (fallbackValue[prefixEnd] >= 0xDC00 && fallbackValue[prefixEnd] <= 0xDFFF &&
+                    fallbackValue[prefixEnd - 1] >= 0xD800 && fallbackValue[prefixEnd - 1] <= 0xDBFF)
+                {
+                    --prefixEnd;
+                }
+                if (fallbackValue[suffixStart] >= 0xDC00 && fallbackValue[suffixStart] <= 0xDFFF &&
+                    fallbackValue[suffixStart - 1] >= 0xD800 && fallbackValue[suffixStart - 1] <= 0xDBFF)
+                {
+                    ++suffixStart;
+                }
+                auto candidate = middleCandidate(fallbackValue, prefixEnd, suffixStart);
+                if (fits(candidate.text))
+                {
+                    best = std::move(candidate);
+                    low = retained + 1;
+                }
+                else
+                {
+                    high = retained - 1;
+                }
+            }
+            if (fallbackStart != 0)
+            {
+                std::vector<size_t> offsets(value.size() + 1);
+                std::copy(best.sourceToDisplay.begin(), best.sourceToDisplay.end(), offsets.begin() + fallbackStart);
+                best.sourceToDisplay = std::move(offsets);
+            }
+            return best;
+        };
+
+        const auto ranges = EllipsisRanges();
         std::wstring displayText;
         displayText.reserve(text.size());
         const std::wstring_view source{ text };
@@ -538,7 +657,23 @@ namespace winrt::TerminalApp::implementation
         {
             const auto lineEnd = source.find_first_of(L"\r\n", lineStart);
             const auto contentEnd = lineEnd == std::wstring_view::npos ? source.size() : lineEnd;
-            const auto line = compactLine(source.substr(lineStart, contentEnd - lineStart));
+            auto kind = UsePathEllipsis() && (!ranges || ranges.Size() == 0) ? TerminalApp::TextEllipsisKind::Path : TerminalApp::TextEllipsisKind::None;
+            if (ranges)
+            {
+                for (const auto& range : ranges)
+                {
+                    if (contentEnd > lineStart && range.Start <= lineStart && range.End >= contentEnd - 1 && range.End < source.size())
+                    {
+                        kind = range.Kind;
+                        break;
+                    }
+                }
+            }
+            const auto value = source.substr(lineStart, contentEnd - lineStart);
+            const auto line = kind == TerminalApp::TextEllipsisKind::Path ? compactLine(value) :
+                              kind == TerminalApp::TextEllipsisKind::Middle || kind == TerminalApp::TextEllipsisKind::Branch ?
+                                                                            compactName(value, kind == TerminalApp::TextEllipsisKind::Branch) :
+                                                                            EllipsisResult{ hstring{ value }, _identityOffsets(value.size()) };
             const auto displayStart = displayText.size();
             displayText.append(line.text);
             for (size_t offset = 0; offset <= contentEnd - lineStart; ++offset)
@@ -604,7 +739,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto sourceText = Text();
-        auto pathResult = UsePathEllipsis() ? _pathEllipsisText(sourceText) : PathEllipsisResult{ sourceText, _identityOffsets(sourceText.size()) };
+        auto pathResult = _usesEllipsis() ? _ellipsisText(sourceText) : EllipsisResult{ sourceText, _identityOffsets(sourceText.size()) };
         _displayText = std::move(pathResult.text);
         _sourceToDisplay = std::move(pathResult.sourceToDisplay);
         const auto& text = _displayText;
