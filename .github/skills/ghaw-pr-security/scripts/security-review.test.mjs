@@ -906,16 +906,14 @@ function ciFixture() {
     headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic', defaultBranch: 'main' };
   const run = { id: 91, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
-    path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis',
+    path: '.github/workflows/pr-ci.yml', name: 'PR CI',
     workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
-  const jobs = ['C++ build and unit tests', 'Rust build and unit tests'].map(name =>
-    ({ name, run_id: 91, run_attempt: 2, status: 'completed', conclusion: 'success' }));
   const pull = { number: 17, state: 'open', head: { sha: HEAD, ref: 'topic',
     repo: { id: 42, full_name: 'owner/repo' } },
     base: { sha: BASE, ref: 'main', repo: { id: 42, full_name: 'owner/repo' } } };
   const artifacts = ['cpp', 'rust'].map((language, index) => ({ id: 100 + index,
     name: `ci-security-${language}-91-2`, expired: false, workflow_run: { id: 91, head_sha: HEAD } }));
-  return { identity, run, jobs, pull, artifacts };
+  return { identity, run, pull, artifacts };
 }
 
 function ciDefinitionTree() {
@@ -947,25 +945,21 @@ test('unchanged older PRs inherit trusted CI even when their comparison base lac
   assert.throws(() => validateCiDefinition(ciDefinitionTree(), older), /CI implementation differs/);
 });
 
-test('CI admission requires successful exact-head same-repo workflow, attempt and both unit jobs', () => {
-  const { identity, run, jobs, pull, artifacts } = ciFixture();
-  assert.doesNotThrow(() => validateCiRun(run, jobs, identity));
+test('CI admission requires successful exact-head same-repo workflow and attempt, not internal job names', () => {
+  const { identity, run, pull, artifacts } = ciFixture();
+  assert.doesNotThrow(() => validateCiRun(run, identity));
   assert.doesNotThrow(() => validateCiPull(pull, run, identity));
   assert.equal(validateCiArtifacts(artifacts, run).length, 2);
   for (const extra of [
     { conclusion: 'failure' }, { conclusion: 'cancelled' }, { status: 'in_progress' },
     { head_sha: BASE }, { run_attempt: 3 }, { path: '.github/workflows/forged.yml' },
     { name: 'another workflow' }, { event: 'push' }, { id: 92 },
+    { path: '.github/workflows/pr-build-security.yml', name: 'PR build and security analysis' },
     { repository: { id: 99, full_name: 'owner/repo' } },
     { head_repository: { id: 99, full_name: 'fork/repo' } },
-  ]) assert.throws(() => validateCiRun({ ...run, ...extra }, jobs, identity));
+  ]) assert.throws(() => validateCiRun({ ...run, ...extra }, identity));
   for (const extra of [{ runAttempt: 1 }, { repositoryId: 99 }, { headSha: BASE }]) {
-    assert.throws(() => validateCiRun(run, jobs, { ...identity, ...extra }));
-  }
-  for (const badJobs of [jobs.slice(1), [...jobs, jobs[0]],
-    jobs.map(job => ({ ...job, run_attempt: 1 })), jobs.map(job => ({ ...job, conclusion: 'failure' })),
-    jobs.map(job => ({ ...job, conclusion: 'skipped' }))]) {
-    assert.throws(() => validateCiRun(run, badJobs, identity));
+    assert.throws(() => validateCiRun(run, { ...identity, ...extra }));
   }
   for (const badPull of [{ ...pull, state: 'closed' },
     { ...pull, head: { ...pull.head, sha: BASE } },
@@ -984,15 +978,14 @@ test('CI admission requires successful exact-head same-repo workflow, attempt an
 });
 
 test('native CI verification rechecks live PR and trusted workflow before returning protected artifact identities', () => {
-  const { run, jobs, pull, artifacts } = ciFixture();
+  const { run, pull, artifacts } = ciFixture();
   const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
     CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
     PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
   const responses = {
     '': { default_branch: 'main' },
     'actions/runs/91': run,
-    'actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
-    'actions/workflows/pr-build-security.yml': { id: 7, path: run.path, state: 'active' },
+    'actions/workflows/pr-ci.yml': { id: 7, path: run.path, state: 'active' },
     'pulls/17': pull, 'actions/runs/91/artifacts?per_page=100&page=1': { artifacts },
   };
   responses[`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`] =
@@ -1023,15 +1016,15 @@ test('native CI verification rechecks live PR and trusted workflow before return
   workflowFile.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /CI implementation differs/);
   workflowFile.sha = '4'.repeat(40);
-  responses['actions/workflows/pr-build-security.yml'] = { id: 8, path: run.path, state: 'active' };
+  responses['actions/workflows/pr-ci.yml'] = { id: 8, path: run.path, state: 'active' };
   assert.throws(() => verifyCiSecurity({ environment, request }), /source workflow/);
-  responses['actions/workflows/pr-build-security.yml'].id = 7;
+  responses['actions/workflows/pr-ci.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
 });
 
 test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {
-  const { run, jobs } = ciFixture();
+  const { run } = ciFixture();
   const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
     PR_NUMBER: '17', RUN_ID: '123', EXPECTED_HEAD_SHA: HEAD, EXPECTED_BASE_SHA: BASE,
     EXPECTED_WORKFLOW_SHA: '3'.repeat(40), SAME_REPO: 'true', HEAD_REF: 'topic',
@@ -1039,7 +1032,6 @@ test('publication native API adapter reaches CI validation through the canonical
   const responses = {
     '/repos/owner/repo': { default_branch: 'main' },
     '/repos/owner/repo/actions/runs/91': { ...run, conclusion: 'failure' },
-    '/repos/owner/repo/actions/runs/91/attempts/2/jobs?per_page=100&page=1': { jobs },
   };
   const requests = [];
   const command = t.mock.method(childProcess, 'execFileSync', (program, args) => {
@@ -1067,7 +1059,7 @@ test('actual controller admission uses trusted commit association when workflow_
     'github', 'context', 'core', 'process', 'require', script);
   for (const variant of ['current', 'ambiguous', 'stale-pr', 'failed', 'replayed', 'controller-retry', 'wrong-workflow', 'fork',
     'no-op-builds', 'changed-test-runner', 'changed-analyzer-policy', 'missing-trusted-revision', 'older-pr', 'untrusted-target']) {
-    const { run, pull, jobs } = ciFixture();
+    const { run, pull } = ciFixture();
     const source = structuredClone(run);
     source.pull_requests = [];
     if (variant === 'failed') run.conclusion = 'failure';
@@ -1080,7 +1072,6 @@ test('actual controller admission uses trusted commit association when workflow_
     if (variant === 'ambiguous') associated.push({ ...associated[0], number: 18 });
     const github = { rest: { actions: {
       getWorkflowRun: async () => ({ data: run }),
-      listJobsForWorkflowRunAttempt: 'jobs',
       getWorkflow: async () => ({ data: { id: 7, path: run.path, state: 'active' } }),
     }, repos: { listPullRequestsAssociatedWithCommit: 'associated',
       compareCommits: async ({ base, head }) => {
@@ -1093,7 +1084,7 @@ test('actual controller admission uses trusted commit association when workflow_
       for (const file of tree.tree) {
         const path = file.path;
         const substituted = tree_sha === HEAD && (
-          (variant === 'no-op-builds' && path === '.github/workflows/pr-build-security.yml') ||
+          (variant === 'no-op-builds' && path === '.github/workflows/pr-ci.yml') ||
           (variant === 'changed-test-runner' && path === 'build/scripts/Run-Tests.ps1') ||
           (variant === 'changed-analyzer-policy' && path === 'build/config/codeql-accepted-warnings.json'));
         if (substituted) file.sha = BASE;
@@ -1101,7 +1092,7 @@ test('actual controller admission uses trusted commit association when workflow_
       return { data: tree };
     } },
     pulls: { get: async () => ({ data: pull }) } },
-    paginate: async endpoint => endpoint === 'jobs' ? jobs : associated };
+    paginate: async () => associated };
     const output = {};
     const invoke = () => execute(github, { repo: { owner: 'owner', repo: 'repo' },
       runAttempt: variant === 'controller-retry' ? 2 : 1,
@@ -2109,7 +2100,7 @@ test('CI-completed controller preserves instruction classification without Rust 
   const workflow = name => readFileSync(new URL(`../../../workflows/${name}`, import.meta.url), 'utf8');
   const controller = workflow('ghaw-pr-security-controller.yml');
   assert(controller.includes('workflow_run:'));
-  assert(controller.includes("workflows: ['PR build and security analysis']"));
+  assert(controller.includes("workflows: ['PR CI']"));
   assert(!controller.includes('  pull_request:'));
   for (const name of ['ghaw-pr-security.lock.yml']) {
     const worker = workflow(name);

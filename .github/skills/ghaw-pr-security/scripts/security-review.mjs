@@ -928,7 +928,7 @@ export function publicationDecision(report) {
 }
 
 export const CI_DEFINITION_PATHS = [
-  '.github/workflows/pr-build-security.yml',
+  '.github/workflows/pr-ci.yml',
   'build/scripts/Run-Tests.ps1',
   'tools/razzle.cmd',
   'tools/.razzlerc.cmd',
@@ -956,7 +956,7 @@ export function validateCiDefinition(sourceTree, comparisonBaseTree) {
   }
 }
 
-export function validateCiRun(run, jobs, identity) {
+export function validateCiRun(run, identity) {
   const { repository, repositoryId, runId, runAttempt, headSha } = identity;
   if (!SHA.test(headSha ?? '') || !/^[1-9][0-9]*$/.test(String(runId)) ||
       !Number.isSafeInteger(runAttempt) || runAttempt < 1 ||
@@ -964,16 +964,10 @@ export function validateCiRun(run, jobs, identity) {
       String(run.id) !== String(runId) || run.run_attempt !== runAttempt ||
       run.repository?.id !== repositoryId || run.repository?.full_name !== repository ||
       run.head_repository?.id !== repositoryId || run.head_repository?.full_name !== repository ||
-      run.path !== '.github/workflows/pr-build-security.yml' ||
-      run.name !== 'PR build and security analysis' || run.event !== 'pull_request' ||
+      run.path !== '.github/workflows/pr-ci.yml' ||
+      run.name !== 'PR CI' || run.event !== 'pull_request' ||
       run.head_sha !== headSha || run.status !== 'completed' || run.conclusion !== 'success') {
     fail('CI run identity or successful conclusion is invalid');
-  }
-  for (const name of ['C++ build and unit tests', 'Rust build and unit tests']) {
-    const matches = jobs.filter(job => job.name === name);
-    if (matches.length !== 1 || matches[0].run_id !== run.id ||
-        matches[0].run_attempt !== runAttempt || matches[0].status !== 'completed' ||
-        matches[0].conclusion !== 'success') fail('CI requires successful matching build and analysis jobs');
   }
 }
 
@@ -1032,10 +1026,9 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
     }
     fail('CI API list exceeds admission limit');
   };
-  const jobs = collect(`actions/runs/${identity.runId}/attempts/${identity.runAttempt}/jobs`, 'jobs');
-  validateCiRun(run, jobs, identity);
-  const workflow = api('actions/workflows/pr-build-security.yml');
-  if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-build-security.yml' ||
+  validateCiRun(run, identity);
+  const workflow = api('actions/workflows/pr-ci.yml');
+  if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
       workflow.state !== 'active') fail('CI source workflow is not trusted');
   const comparison = api(`compare/${environment.EXPECTED_WORKFLOW_SHA}...${identity.headSha}?per_page=1`);
   if (!SHA.test(comparison.merge_base_commit?.sha ?? '')) fail('CI comparison base is invalid');
