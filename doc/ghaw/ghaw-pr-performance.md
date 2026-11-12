@@ -112,7 +112,7 @@ policy; Clippy uses the alias's warning flags. Compiler/parser errors, missing
 tools and analyzer execution failures still fail CI and prevent review kickoff.
 There is no second native build job in the performance reviewer.
 
-The worker revalidates CI and downloads only matching performance artifacts
+The worker checks CI identity again and downloads only matching performance artifacts
 before inference, then confirms run/attempt identity again. Missing, stale,
 failed or malformed evidence stops admission rather than looking clean.
 The agent inspects raw warnings in source, compares with the original base and

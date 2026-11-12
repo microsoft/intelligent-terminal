@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 175
     concurrency:
-      group: ghaw-pr-performance-review-${{ github.repository }}-${{ github.event.workflow_run.head_branch }}
+      group: ghaw-pr-performance-review-${{ github.repository }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
       cancel-in-progress: true
     outputs:
       pr_number: ${{ steps.admission.outputs.pr_number }}

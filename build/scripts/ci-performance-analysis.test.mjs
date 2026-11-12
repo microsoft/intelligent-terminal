@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { validatePerformanceResult } from '../../.github/workflows/ghaw-pr-performance/scripts/performance-ci.mjs';
+import { validatePerformanceFiles, validatePerformanceResult } from '../../.github/workflows/ghaw-pr-performance/scripts/performance-ci.mjs';
 
 const script = fileURLToPath(new URL('./Invoke-CiPerformanceAnalysis.ps1', import.meta.url));
 
@@ -53,8 +53,17 @@ test('real CI profiles preserve performance warnings but reject actual compilati
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
 </Project>`);
         write('src/probe/Probe.cpp', '#include <vector>\nstd::vector<int> copy(const std::vector<int>& v) { return v; }\n');
-        write('tools/wta/Cargo.toml', '[package]\nname="ci-native-fixture"\nversion="0.1.0"\nedition="2024"\n');
-        write('tools/wta/Cargo.lock', 'version = 4\n\n[[package]]\nname="ci-native-fixture"\nversion="0.1.0"\n');
+        write('tools/wta/Cargo.toml', `[package]
+name="ci-native-fixture"
+version="0.1.0"
+edition="2024"
+`);
+        write('tools/wta/Cargo.lock', `version = 4
+
+[[package]]
+name="ci-native-fixture"
+version="0.1.0"
+`);
         write('tools/wta/src/main.rs', 'fn main() {}\n');
         const base = commit();
         write('src/probe/Probe.cpp', '#include <vector>\nstd::vector<int> copy(const std::vector<int>& v) { std::vector<int> r; for (int n : v) r.push_back(n); return r; }\n');
@@ -68,6 +77,8 @@ test('real CI profiles preserve performance warnings but reject actual compilati
             assert.equal(proof.receipt.status, 'completed');
             assert.equal(proof.receipt.headSha, head);
             validatePerformanceResult(proof.receipt, language,
+                { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
+            validatePerformanceFiles(proof.output, language,
                 { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
             assert.match(fs.readFileSync(path.join(proof.output, language === 'cpp' ? 'diagnostics-1.log' : 'diagnostics.jsonl'), 'utf8'),
                 language === 'cpp' ? /performance-inefficient-vector-operation/ : /vec_init_then_push/);

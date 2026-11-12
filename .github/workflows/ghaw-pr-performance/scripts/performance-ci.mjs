@@ -76,6 +76,30 @@ export function verifyPerformanceCi({ environment = process.env, request } = {})
         artifacts: validatePerformanceArtifacts(artifacts, verified.run) };
 }
 
+export function validatePerformanceFiles(directory, language, identity) {
+    const names = fs.readdirSync(directory);
+    if (!names.includes('native-results.json') || names.length > 12)
+        throw Error('Invalid performance artifact layout.');
+    for (const name of names) {
+        const stat = fs.lstatSync(path.join(directory, name));
+        if (!/^(native-results\.json|tool-version\.log|diagnostics(?:-\d+\.log|\.jsonl)|project-\d+\.json)$/.test(name) ||
+            !stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024)
+            throw Error('Invalid performance artifact file.');
+    }
+    const result = JSON.parse(fs.readFileSync(path.join(directory, 'native-results.json'), 'utf8').replace(/^\uFEFF/, ''));
+    validatePerformanceResult(result, language, identity);
+    const phaseLogs = result.phases.map(phase => phase.log);
+    if (phaseLogs.some(log => typeof log !== 'string' || !names.includes(log)))
+        throw Error('Performance phase log is missing.');
+    if (result.status === 'completed') {
+        const diagnostics = language === 'rust' ? ['diagnostics.jsonl'] :
+            names.filter(name => /^diagnostics-\d+\.log$/.test(name));
+        if (!diagnostics.length || !['tool-version.log', ...diagnostics].every(name =>
+            names.includes(name) && phaseLogs.includes(name)))
+            throw Error('Completed performance evidence requires diagnostic output and tool-version logs.');
+    }
+}
+
 function collect(output) {
     const verified = verifyPerformanceCi();
     fs.mkdirSync(output, { recursive: true });
@@ -85,17 +109,7 @@ function collect(output) {
         execFileSync('gh', ['run', 'download', verified.identity.runId, '--repo',
             process.env.GITHUB_REPOSITORY, '--name', artifact.name, '--dir', directory],
         { stdio: 'pipe', timeout: 30000 });
-        const names = fs.readdirSync(directory);
-        if (!names.includes('native-results.json') || names.length > 12)
-            throw Error('Invalid performance artifact layout.');
-        for (const name of names) {
-            const stat = fs.lstatSync(path.join(directory, name));
-            if (!/^(native-results\.json|tool-version\.log|diagnostics(?:-\d+\.log|\.jsonl)|project-\d+\.json)$/.test(name) ||
-                !stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024)
-                throw Error('Invalid performance artifact file.');
-        }
-        validatePerformanceResult(JSON.parse(fs.readFileSync(path.join(directory, 'native-results.json'), 'utf8')
-            .replace(/^\uFEFF/, '')), artifact.language, verified.identity);
+        validatePerformanceFiles(directory, artifact.language, verified.identity);
     }
     const confirmed = verifyPerformanceCi();
     if (JSON.stringify(confirmed.identity) !== JSON.stringify(verified.identity) ||

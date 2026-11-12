@@ -62,6 +62,17 @@ function publicationQueue() {
     };
 }
 
+test('stale CI completions cannot preempt a different admitted run or attempt', () => {
+    const group = workflowJob('performance-review').match(/^ {6}group: (.+)$/m)?.[1];
+    assert.ok(group);
+    const resolve = (id, attempt) => group.replace(/\$\{\{\s*([\s\S]*?)\s*\}\}/g, (_, source) =>
+        expression(source, { github: { repository: 'owner/repo',
+            event: { workflow_run: { id, run_attempt: attempt, head_branch: 'same-branch' } } } }));
+    assert.notEqual(resolve(99, 1), resolve(100, 1));
+    assert.notEqual(resolve(100, 1), resolve(100, 2));
+    assert.equal(resolve(100, 2), resolve(100, 2), 'duplicate deliveries of one CI attempt may coalesce');
+});
+
 function temporaryDirectory(prefix) {
     const generated = path.join(process.cwd(), 'Generated Files');
     fs.mkdirSync(generated, { recursive: true });

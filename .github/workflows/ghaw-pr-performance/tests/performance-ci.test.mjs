@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
-import { admitPerformanceCi, validatePerformanceArtifacts, validatePerformanceResult, verifyPerformanceCi } from '../scripts/performance-ci.mjs';
+import { admitPerformanceCi, validatePerformanceArtifacts, validatePerformanceFiles, validatePerformanceResult, verifyPerformanceCi } from '../scripts/performance-ci.mjs';
 import { CI_DEFINITION_PATHS } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
 
 function fixture() {
@@ -115,4 +116,34 @@ test('workflow wiring has no direct PR inference and no native rebuild in the wo
     assert.doesNotMatch(ci, /fetch-depth: 0/);
     assert.match(ci, /Resolve performance comparison base/);
     assert.equal((ci.match(/credential\.helper=!gh auth git-credential/g) ?? []).length, 2);
+});
+
+test('completed artifacts require raw diagnostics and every recorded phase log', t => {
+    const parent = path.join(process.cwd(), 'Generated Files');
+    fs.mkdirSync(parent, { recursive: true });
+    const directory = fs.mkdtempSync(path.join(parent, 'performance-evidence-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const identity = { headSha: 'a'.repeat(40), comparisonBaseSha: 'b'.repeat(40), runId: '99', runAttempt: 2 };
+    const result = { headSha: identity.headSha, comparisonBaseSha: identity.comparisonBaseSha,
+        ciRunId: '99', ciRunAttempt: '2', language: 'rust', status: 'completed',
+        phases: [{ log: 'tool-version.log', exitCode: 0 }, { log: 'diagnostics.jsonl', exitCode: 0 }] };
+    const writeReceipt = () => fs.writeFileSync(path.join(directory, 'native-results.json'), JSON.stringify(result));
+    writeReceipt();
+    fs.writeFileSync(path.join(directory, 'tool-version.log'), 'clippy version');
+    assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /phase log is missing/);
+    fs.writeFileSync(path.join(directory, 'diagnostics.jsonl'), '{"reason":"build-finished","success":true}');
+    validatePerformanceFiles(directory, 'rust', identity);
+    result.phases.push({ log: 'project-1.json', exitCode: 0 });
+    writeReceipt();
+    assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /phase log is missing/);
+    result.phases = [{ log: 'tool-version.log', exitCode: 0 }];
+    writeReceipt();
+    assert.throws(() => validatePerformanceFiles(directory, 'rust', identity), /requires diagnostic output/);
+    result.language = 'cpp';
+    writeReceipt();
+    assert.throws(() => validatePerformanceFiles(directory, 'cpp', identity), /requires diagnostic output/);
+    result.phases.push({ log: 'diagnostics-1.log', exitCode: 0 });
+    fs.writeFileSync(path.join(directory, 'diagnostics-1.log'), 'C++ diagnostics');
+    writeReceipt();
+    validatePerformanceFiles(directory, 'cpp', identity);
 });
