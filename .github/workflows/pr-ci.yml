@@ -3,6 +3,15 @@ name: PR CI
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'installer/**'
+      - 'build/**'
+      - 'dep/**'
+      - '.cargo/**'
+      - '.github/workflows/pr-ci.yml'
+      - '*'
   push:
     branches: [main]
   workflow_dispatch:
@@ -25,76 +34,8 @@ env:
 # codeql-action v4 tag 5895b2c9be147bc7f1c75ce72c5cb577febb1907
 #   -> commit 33d7b85da1a04171e211befe2c739303b9a4c066
 jobs:
-  changes:
-    name: Select CI jobs
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      cpp: ${{ steps.select.outputs.cpp }}
-      rust: ${{ steps.select.outputs.rust }}
-    steps:
-      - name: Select builds from changed files
-        id: select
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        with:
-          script: |
-            // These are build-input rules, not a filter on which PRs get CI.
-            const rules = {
-              docs: [/^doc\/.*\.md$/, /(?:^|\/)(?:README|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY)\.md$/],
-              assets: [/(?:^|\/)assets\//i],
-              localization: [/^src\/.*\/Resources\/.*\.resw$/i, /^tools\/wta\/locales\//],
-              rust: [/^(?:tools\/wta|installer\/bootstrap)\//],
-              cpp: [/^src\//],
-              shared: [/^src\/(?:inc|cascadia\/inc|tools\/wtcli)\//, /(?:^|\/)(?:Cargo\.(?:toml|lock)|build\.rs)$/],
-            };
-            let cpp = false, rust = false, reason = 'Selected from changed build inputs.';
-            if (context.eventName !== 'pull_request') {
-              cpp = rust = true;
-              reason = 'Push/manual runs validate both languages.';
-            } else {
-              const eventPull = context.payload.pull_request;
-              const pull = (await github.rest.pulls.get({
-                ...context.repo, pull_number: eventPull.number })).data;
-              if (pull.head.sha !== eventPull.head.sha || pull.base.sha !== eventPull.base.sha) {
-                throw Error('PR revision changed during CI selection; rerun CI for the current revision.');
-              }
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                ...context.repo, pull_number: pull.number, per_page: 100 });
-              if (!files.length || files.length !== pull.changed_files) {
-                cpp = rust = true;
-                reason = 'Incomplete changed-file coverage; conservatively running both.';
-                core.warning(reason);
-              } else {
-                for (const file of files) {
-                  const path = file.filename;
-                  const excluded = value => typeof value === 'string' &&
-                    [...rules.docs, ...rules.assets, ...rules.localization].some(rule => rule.test(value));
-                  if (excluded(path) && (file.status !== 'renamed' || excluded(file.previous_filename))) continue;
-                  if (!['added', 'modified'].includes(file.status) ||
-                      rules.shared.some(rule => rule.test(path))) {
-                    cpp = rust = true;
-                  } else if (rules.rust.some(rule => rule.test(path))) {
-                    rust = true;
-                  } else if (rules.cpp.some(rule => rule.test(path))) {
-                    cpp = true;
-                  } else {
-                    cpp = rust = true;
-                  }
-                }
-              }
-            }
-            core.setOutput('cpp', String(cpp));
-            core.setOutput('rust', String(rust));
-            await core.summary.addRaw(
-              `C++ build/tests/analysis: ${cpp ? 'run' : 'not required'}\n\n` +
-              `Rust build/tests/analysis: ${rust ? 'run' : 'not required'}\n\n${reason}\n`).write();
-
   cpp:
     name: C++ build and unit tests
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
     defaults:
@@ -205,8 +146,6 @@ jobs:
 
   rust:
     name: Rust build and unit tests
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 60
     env:

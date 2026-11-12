@@ -27,38 +27,26 @@ better vulnerability detection.
 
 ## Current flow and ownership
 
-1. `PR CI` (`.github/workflows/pr-ci.yml`) is the single shared build/test and
-   analysis workflow on GitHub Windows runners, not a security-specific CI.
-   It currently includes security analysis; future performance and accessibility
-   checks belong in the same CI. CI produces check-specific artifacts without
-   invoking gh-aw; downstream reviewers consume only the artifacts they need.
-   The CodeQL collector and accepted-warning baseline remain security-specific,
-   not a required format for future performance or accessibility output.
-   Its C++ and
+1. `PR CI` (`.github/workflows/pr-ci.yml`) runs on GitHub Windows runners. Its C++ and
    Rust jobs build and run unit tests in parallel; the C++ test host is included,
    but Dev-package build, signing and deployment are not. Analyzer findings are
    warnings, not build failures; analyzer execution errors remain failures.
    The security controller starts only after successful matching PR CI.
-   For PRs, a small selection job in `pr-ci.yml` chooses builds by folder:
-   `src/` selects C++; `tools/wta/` and `installer/bootstrap/` select Rust.
-   Plain documentation, `Assets` folders, native localized
-   `.resw` resources and WTA `locales/` select neither. This intentionally skips
-   build validation of localization changes; it does not assert they compile.
-   Shared headers, Cargo/build configuration, unknown paths and renamed/deleted
-   source files conservatively select both; mixed changes select the union.
-   Push/manual runs select both. Selected builds retain all their unit tests
-   and CodeQL analysis. These selection rules belong only to CI.
+   PR triggering uses GitHub's native `paths` includes in `pr-ci.yml` for
+   source/build folders, Cargo configuration, the CI workflow and root files.
+   Assets/localization inside included folders also trigger CI. Both language
+   jobs run whenever CI is triggered.
    The security controller checks the successful workflow result, not its
    internal build-job names or selection decisions. It consumes available
    CodeQL artifacts with matching head/run/attempt bindings; absent analysis
-   is not a clean scan. Other reviewers can consume their own CI artifacts.
+   is not a clean scan.
    It binds PR identity, trusted workflow revision,
    comparison merge-base, immutable head, repository relation, and scope hash.
    Scope resolution, repair publication and reporting load their own code from
    GitHub's automatic `github.workflow_sha`, never the PR's potentially older
    base. The recorded PR base/head still govern comparison and live identity;
    no commit ID is hardcoded.
-   CI event, workflow, job outcomes, run attempt and current PR head are checked
+   CI event, workflow outcome, run attempt and current PR head are checked
    through GitHub APIs before inference. Fork AI reviews are skipped. The
    worker-code revision is separate from the PR's comparison base, so an older
    PR base need not contain the worker. Workers are dispatched from the
