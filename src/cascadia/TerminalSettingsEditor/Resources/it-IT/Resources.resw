@@ -3093,13 +3093,9 @@ Alt+Shift+/ inserisci un prompt; Alt+Shift+B avvia senza un prompt iniziale.</va
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>Chiudi</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>un agente qualsiasi</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>Gli agenti e i modelli di IA che ospiti e a cui scegli di connetterti sono una tua scelta. Se scegli un agente o un modello di terze parti, Microsoft potrebbe non fornirlo, ospitarlo, gestirlo o monitorarlo. Se usi {0} per interagire con un agente o un modello che ospiti, lo fai a tuo rischio.</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>Se scegli un modello di terze parti, Microsoft non filtra, modera o convalida le risposte del modello. È tua responsabilità implementare soluzioni per la provenienza dei contenuti e misure di mitigazione per un’IA responsabile, come prompt di sistema, filtri dei contenuti o altri sistemi di sicurezza, e rivedere l’output prima di usarlo; oppure verificare che il modello selezionato implementi queste soluzioni per tuo conto.</value>

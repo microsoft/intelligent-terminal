@@ -3086,13 +3086,9 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>Çŀöšë !!! !!! !!! !!! !!!</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>åñÿ !!! !!! !!! !!! !!!</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>ÅÏ åģëñŧš åñđ ḿöđëŀš ŧħåŧ ÿöü ħöšŧ åñđ çħööšë ŧö çöññëçŧ ŧö ïš ÿöüŕ çħöïçë. Ïƒ ÿöü çħööšë å ŧħïŕđ ƥåŕŧÿ åģëñŧ öŕ ḿöđëŀ, Microsoft ḿåÿ ñöŧ ƥŕöṽïđë, ħöšŧ, öƥëŕåŧë, öŕ ḿöñïŧöŕ ŧħëḿ. Ïƒ ÿöü üšë {0} ŧö ïñŧëŕåçŧ ŵïŧħ åñ åģëñŧ öŕ ḿöđëŀ ÿöü ħöšŧ, ÿöü đö šö åŧ ÿöüŕ öŵñ ŕïšķ. !!! !!! !!! !!! !!!</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>Ïƒ ÿöü çħööšë å ŧħïŕđ-ƥåŕŧÿ ḿöđëŀ, Microsoft đöëš ñöŧ ƒïŀŧëŕ, ḿöđëŕåŧë, öŕ ṽåŀïđåŧë ḿöđëŀ ŕëšƥöñšëš. Ÿöü åŕë ŕëšƥöñšïƀŀë ƒöŕ ïḿƥŀëḿëñŧïñģ ÿöüŕ öŵñ çöñŧëñŧ ƥŕöṽëñåñçë šöŀüŧïöñš, ŕëšƥöñšïƀŀë ÅÏ ḿïŧïģåŧïöñš, šüçħ åš šÿšŧëḿ ƥŕöḿƥŧš, çöñŧëñŧ ƒïŀŧëŕš öŕ öŧħëŕ šåƒëŧÿ šÿšŧëḿš, åñđ ƒöŕ ŕëṽïëŵïñģ öüŧƥüŧ ƀëƒöŕë ÿöü üšë ïŧ; öŕ đëŧëŕḿïñïñģ ŧħåŧ ÿöüŕ šëŀëçŧëđ ḿöđëŀ ïḿƥŀëḿëñŧš ŧħëšë šöŀüŧïöñš öñ ÿöüŕ ƀëħåŀƒ. !!! !!! !!! !!! !!!</value>

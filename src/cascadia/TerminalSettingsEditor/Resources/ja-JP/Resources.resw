@@ -3093,13 +3093,9 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>閉じる</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>任意のエージェント</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>お客様がホストし、接続することを選択した AI エージェントとモデルは、お客様ご自身の選択によるものです。サードパーティのエージェントまたはモデルを選択した場合、Microsoft はそれらを提供、ホスト、運用、監視していない可能性があります。{0} を使用してお客様がホストするエージェントまたはモデルとやり取りする場合は、お客様ご自身の責任で行ってください。</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>サードパーティのモデルを選択した場合、Microsoft はモデルの応答のフィルタリング、モデレーション、検証を行いません。コンテンツの出所を追跡する独自のソリューションや、システム プロンプト、コンテンツ フィルター、その他の安全システムなど、責任ある AI のリスク軽減策を実装し、使用前に出力を確認する責任は、お客様にあります。または、選択したモデルがお客様に代わってこれらのソリューションを実装していることを確認する必要があります。</value>

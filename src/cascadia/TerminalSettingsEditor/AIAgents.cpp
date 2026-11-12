@@ -191,11 +191,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         const auto lifetime = get_strong();
         const auto dialog = FindName(L"ComplianceDialog").as<ContentDialog>();
-        const auto selectedAgent = AcpAgentComboBox().SelectedItem().try_as<Editor::AgentEntry>();
-        const auto agentName = selectedAgent && !selectedAgent.IsAddNew() && !selectedAgent.DisplayName().empty() ?
-                                   selectedAgent.DisplayName() :
-                                   RS_(L"AIAgents_ComplianceAnyAgent");
-        ComplianceHostingText().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", agentName) });
+        ComplianceHostingText().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", CascadiaSettings::ApplicationDisplayName()) });
 
         dialog.XamlRoot(XamlRoot());
         // XAML island popups do not inherit the page's theme. Match TerminalWindow::ShowDialog.

@@ -3141,13 +3141,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>Close</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>any</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>AI agents and models that you host and choose to connect to is your choice. If you choose a third party agent or model, Microsoft may not provide, host, operate, or monitor them. If you use {0} to interact with an agent or model you host, you do so at your own risk.</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent's display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked="Microsoft"}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>If you choose a third-party model, Microsoft does not filter, moderate, or validate model responses. You are responsible for implementing your own content provenance solutions, responsible AI mitigations, such as system prompts, content filters or other safety systems, and for reviewing output before you use it; or determining that your selected model implements these solutions on your behalf.</value>

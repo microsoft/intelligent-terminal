@@ -3093,13 +3093,9 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>Schließen</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>einen beliebigen Agenten</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>Welche KI-Agenten und Modelle Sie hosten und mit welchen Sie sich verbinden, entscheiden Sie selbst. Wenn Sie einen Agenten oder ein Modell eines Drittanbieters wählen, werden diese möglicherweise nicht von Microsoft bereitgestellt, gehostet, betrieben oder überwacht. Wenn Sie {0} verwenden, um mit einem von Ihnen gehosteten Agenten oder Modell zu interagieren, geschieht dies auf eigenes Risiko.</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>Wenn Sie ein Modell eines Drittanbieters wählen, filtert, moderiert oder überprüft Microsoft die Modellantworten nicht. Sie sind dafür verantwortlich, eigene Lösungen zur Nachverfolgung der Herkunft von Inhalten und Maßnahmen für verantwortungsvolle KI zu implementieren, etwa Systemprompts, Inhaltsfilter oder andere Sicherheitssysteme, und die Ausgabe vor der Verwendung zu prüfen; oder festzustellen, dass das gewählte Modell diese Lösungen für Sie implementiert.</value>

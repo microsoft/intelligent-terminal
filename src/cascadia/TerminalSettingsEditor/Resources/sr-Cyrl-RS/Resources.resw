@@ -3133,13 +3133,9 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
   <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
     <value>Затвори</value>
   </data>
-  <data name="AIAgents_ComplianceAnyAgent" xml:space="preserve">
-    <value>било ког агента</value>
-    <comment>Fallback word substituted for {0} in AIAgents_ComplianceHosting when no agent is selected, including the Add New entry. Translate to fit that sentence.</comment>
-  </data>
   <data name="AIAgents_ComplianceHosting" xml:space="preserve">
     <value>Агенти и модели вештачке интелигенције које хостујете и са којима бирате да се повежете ваш су избор. Ако изаберете агента или модел треће стране, Microsoft их можда не обезбеђује, не хостује, не покреће нити надгледа. Ако користите {0} за интеракцију са агентом или моделом који хостујете, то чините на сопствени ризик.</value>
-    <comment>First dialog paragraph. {0} is the currently selected agent&apos;s display name, or the localized AIAgents_ComplianceAnyAgent fallback if none is selected. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
   </data>
   <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
     <value>Ако изаберете модел треће стране, Microsoft не филтрира, не модерира нити проверава одговоре модела. Одговорни сте за примену сопствених решења за праћење порекла садржаја и мера за ублажавање ризика одговорне вештачке интелигенције, као што су системски упити, филтери садржаја или други безбедносни системи, као и за преглед излаза пре употребе; или за утврђивање да изабрани модел примењује ова решења у ваше име.</value>
