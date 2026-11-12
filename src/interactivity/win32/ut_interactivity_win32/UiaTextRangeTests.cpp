@@ -1684,15 +1684,16 @@ class UiaTextRangeTests
             // Set up the buffer's attributes.
             TextAttribute italicAttr;
             italicAttr.SetItalic(true);
-            auto iter{ _pUiaData->GetTextBuffer().GetCellDataAt(startPos) };
+            // Writes can invalidate a cell iterator's cached attribute storage.
+            auto position{ startPos };
             for (auto i = 0; i < 5; ++i)
             {
-                _pTextBuffer->Write({ L"X", italicAttr }, iter.Pos());
-                ++iter;
+                _pTextBuffer->Write({ L"X", italicAttr }, position);
+                ++position.x;
             }
 
             // set the expected end (exclusive)
-            const auto expectedEndPos{ iter.Pos() };
+            const auto expectedEndPos{ position };
 
             VARIANT var{};
             var.vt = VT_BOOL;

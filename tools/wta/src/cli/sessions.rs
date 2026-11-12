@@ -38,12 +38,12 @@ fn control_initialize_request(
 pub(crate) async fn run_list(
     master: String,
     origin_filter: crate::agent_sessions::OriginFilter,
-    refresh: bool,
+    params: crate::session_registry::SessionsListParams,
     json_mode: bool,
     include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let result = local.run_until(fetch_from_master(master, refresh)).await;
+    let result = local.run_until(fetch_from_master(master, params)).await;
     let mut snapshot = match result {
         Ok(snapshot) => snapshot,
         Err(error) => {
@@ -91,7 +91,7 @@ fn filter_snapshot(
 
 pub(crate) async fn fetch_from_master(
     master: String,
-    refresh: bool,
+    params: crate::session_registry::SessionsListParams,
 ) -> Result<crate::session_registry::SessionsListResponse> {
     let pipe = connect_master_pipe(&master).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
@@ -126,7 +126,7 @@ pub(crate) async fn fetch_from_master(
         );
         init_result.context("initialize wta-master sessions client")?;
 
-        let req = crate::session_registry::build_sessions_list_request(refresh);
+        let req = crate::session_registry::build_sessions_list_request_with_params(params);
         let resp = conn
             .ext_method(req)
             .await

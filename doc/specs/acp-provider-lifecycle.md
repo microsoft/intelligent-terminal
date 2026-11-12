@@ -91,7 +91,8 @@ even after a successful installation-time check.
 
 - Allow at most three total automatic startup attempts, including the first.
 - Scope admission to the effective provider, execution source and launch
-  configuration. Automatic callers must not independently reset the budget.
+  configuration within one WTA process. Automatic callers in that process must
+  not independently reset the budget.
 - Ordinary refresh, tab activation and duplicate requests do not create a new
   retry cycle. Explicit user retry is a distinct intent.
 - Confirm the failed attempt's process tree has exited before admitting its
@@ -125,28 +126,40 @@ supports selection and copying and clears on retry or selection changes.
 Older responses without details retain the summary-only UI. The explicit retry
 action remains available without implying that retry will resolve the cause.
 
-The package-private `acp-startup` ledger uses an exclusive per-target file lease
-so master startup and independent model-probe processes serialize their attempts.
-Targets include the authoritative agent identity, execution source, command and
-a restart-stable digest of effective provider binding fields. Process-local pool
-generations are not used as persistent admission identities. Ledger directories are scoped to the WTA executable identity,
-so installing a different build does not inherit an obsolete startup failure.
-An omitted built-in agent ID is inferred consistently for the shared key, so
-legacy runtime and diagnostic callers cannot obtain separate failure budgets
-for the same launch. Explicit custom IDs remain authoritative.
-An explicit retry does not override an unconfirmed cleanup failure.
-It advances a persisted retry epoch; stopped discovery/history workers observe
-that epoch without ordinary refresh resetting the budget. Results from an older
-epoch cannot stop a newer retry cycle.
+Startup admission lives only in memory. All runtime callers in one master
+share a per-target lease, failure budget and cleanup quarantine. Targets include
+the authoritative agent identity, execution source, command and a digest of
+effective provider binding fields. An omitted built-in ID is inferred consistently;
+explicit custom IDs remain authoritative. Pool replacement and ordinary refresh
+cannot reset the budget. Explicit retry advances an in-memory retry epoch but
+does not override unconfirmed cleanup. Stale results cannot stop a newer retry
+cycle. Restarting the master starts a new admission lifetime. Independent model
+probes and verification commands own their process-local budgets rather than
+sharing state with the master. No caller reads or writes the former `acp-startup`
+ledger, so old files cannot block a new process.
 
-The `probe-sessions` and `probe-host-sessions` diagnostics also participate in
-shared admission. Their inherited provider configuration is snapshotted and
-uses the same stable binding digest as a legacy-environment master. They keep
-the lease until process cleanup is confirmed and persist cleanup failures.
-`--retry-startup` explicitly reopens an exhausted diagnostic cycle but cannot
-override cleanup quarantine. Both diagnostics use the shared 60-second
-initialize budget and retain a 10-second session-list timeout; an unsupported
-session-list method remains a normal diagnostic result, not a startup failure.
+Dedicated history ACP connections do not participate in chat startup admission.
+They retain single-flight queries, adaptive waits, the 300-second hard query
+deadline and backoff-based recovery. Three consecutive failed query cycles pause
+automatic recovery. Preparation/initialize failures, protocol failures and hard
+query timeouts consume one cycle each; soft timeouts retain the same request and
+do not consume or reset cycles. Only a successful session-list response resets
+the failure streak, not successful initialization. Cancellation is not a failure.
+Cleanup must finish before the query replaces its owned process; a paused query
+retains ownership if cleanup remains unconfirmed. Ordinary refresh cannot reopen
+the breaker. `wta sessions refresh --master <pipe> --retry-history` explicitly
+reopens paused history workers without resetting chat admission or disrupting a
+healthy chat connection. The request returns a cached snapshot while recovery
+runs in the background. Restarting the master also starts a fresh history
+lifetime. No history recovery state is written to disk.
+
+The `probe-sessions` and `probe-host-sessions` diagnostics also own independent,
+invocation-local startup state. They confirm process cleanup without changing a
+master's budget or quarantine. `--retry-startup` remains accepted but is not
+required to recover from an earlier invocation's failure. Both diagnostics use
+the shared 60-second initialize budget and retain a 10-second session-list
+timeout; an unsupported session-list method remains a normal diagnostic result,
+not a startup failure.
 
 The provider's initialize deadline is separate from the helper's overall startup
 deadline, which also includes bounded admission, preparation and cleanup waits.
@@ -154,7 +167,7 @@ Receipt acquisition and post-initialize retirement keep process ownership and
 the admission lease until cleanup is confirmed or quarantined.
 Waiting for a healthy process to exit does not hold startup admission. Once
 exit or stop is observed, its reaper holds the shared target lease through
-termination and cleanup-failure persistence before retiring the pool entry.
+termination and in-memory cleanup quarantine before retiring the pool entry.
 
 Windows ACP children inherit critical-error reporting instead of a native loader
 dialog. This changes error presentation only: Application Control enforcement,

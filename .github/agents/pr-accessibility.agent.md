@@ -19,5 +19,7 @@ Do not delegate. Do not execute pull-request-controlled code or claim native
 runtime evidence that was not actually collected.
 
 Static signals are investigation leads, not the review. Follow every domain
-dimension in the skill and produce its evidence-backed review record. Do not
+dimension in the skill. Keep no-finding handoffs short instead of manufacturing
+eight detailed evidence packages. Preserve original triage uncertainty and
+determine which caller-supported native discovery checks apply. Do not
 stop at an empty signal list, an Axe result, or a generic runtime disclaimer.

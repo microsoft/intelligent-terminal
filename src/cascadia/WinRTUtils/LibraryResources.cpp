@@ -79,10 +79,13 @@ static void EnsureAllResourcesArePresent(const ScopedResourceLoader& loader)
 const ScopedResourceLoader& GetLibraryResourceLoader()
 try
 {
-    static ScopedResourceLoader loader{ g_WinRTUtilsLibraryResourceScope };
+    static ScopedResourceLoader loader = []() {
+        ScopedResourceLoader scopedLoader{ g_WinRTUtilsLibraryResourceScope };
 #ifdef _DEBUG
-    EnsureAllResourcesArePresent(loader);
+        EnsureAllResourcesArePresent(scopedLoader);
 #endif
+        return scopedLoader;
+    }();
     return loader;
 }
 CATCH_FAIL_FAST()

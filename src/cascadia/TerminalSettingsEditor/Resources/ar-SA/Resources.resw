@@ -1384,6 +1384,10 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>اختر الوكيل المستخدم لتفويض لوحة الأوامر في ملف التعريف هذا. تكون لهذا الاختيار الأولوية على الإعداد العام لوكيل التفويض.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>استخدام الإعداد العام ({0})</value>
+    <comment>{Locked="{0}"} Option in the per-profile agent pane and command palette agent lists that follows the corresponding global agent setting. The current global agent display name replaces {0}.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -3074,16 +3078,12 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <comment>Additional startup arguments for the native AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentArguments.HelpText" xml:space="preserve">
-    <value>استخدم قواعد اقتباس سطر أوامر Windows للقيم التي تحتوي على مسافات. تُرفض الوسيطات التي تتعارض مع الإعدادات المُدارة أو السياسة. أوامر shell غير مدعومة.</value>
-    <comment>{Locked="Windows"} This text box contains arguments only, not a shell script.</comment>
+    <value>استخدم قواعد اقتباس سطر أوامر Windows للقيم التي تحتوي على مسافات.</value>
+    <comment>{Locked="Windows"}</comment>
   </data>
   <data name="Actions_SplitTypeProfile.Content" xml:space="preserve">
     <value>استخدام تفضيل التقسيم لملف التعريف</value>
     <comment>Split action mode that uses the current profile's configured split target, or duplicates the profile when no target is configured.</comment>
-  </data>
-  <data name="Profile_AgentPolicyBlocked.Text" xml:space="preserve">
-    <value>تحظر مؤسستك عمليات تشغيل الوكلاء الأصليين المُدارة. يجب السماح بالوكيل، ويجب أن تسمح السياسة بالموافقة التلقائية لأن الوكلاء الأصليين يتحكمون في إعدادات الموافقة الخاصة بهم.</value>
-    <comment>Warning when an agent profile is blocked by the agent allowlist or the policy prohibiting automatic approval. The native CLI cannot guarantee enforcement of the latter policy throughout its session.</comment>
   </data>
   <data name="AIAgents_RenderAgentMarkdown.Header" xml:space="preserve">
     <value>تنسيق Markdown</value>
@@ -3112,5 +3112,13 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
   <data name="AIAgents_RetryAcpPreparation.Content" xml:space="preserve">
     <value>حاول مرة أخرى</value>
     <comment>Button in AI Agents Settings that explicitly retries ACP setup after a failure without changing the selected agent. {Locked="ACP"}</comment>
+  </data>
+  <data name="AgentProfilesIntroductionTitle.Text" xml:space="preserve">
+    <value>تمت إضافة ملفات تعريف الوكلاء تلقائيًا</value>
+    <comment>Title of a one-time guide next to Profiles in Settings. Profiles are terminal launch configurations, not user accounts.</comment>
+  </data>
+  <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
+    <value>يضيف Terminal تلقائيًا أدوات سطر أوامر الوكلاء المثبتة لديك كملفات تعريف. افتح أحدها من قائمة علامة التبويب الجديدة للبدء.</value>
+    <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
 </root>

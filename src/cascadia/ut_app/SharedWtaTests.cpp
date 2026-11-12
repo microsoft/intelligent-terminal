@@ -130,6 +130,12 @@ namespace TerminalAppUnitTests
         TEST_METHOD(FailedAcquireDoesNotOwnReferences);
         TEST_METHOD(KeepRunningLeaseDoesNotSpawnMaster);
         TEST_METHOD(KeepRunningLeaseOutlivesLastPane);
+        TEST_METHOD(LastPaneAndRetirementLeaveMasterRunning);
+        TEST_METHOD(HeadlessServiceDoesNotRequirePaneOwnership);
+        TEST_METHOD(StatusPollingCannotRestartExhaustedService);
+        TEST_METHOD(PolicyDisableSignalsAndStopsService);
+        TEST_METHOD(ProcessShutdownCannotBeReenabled);
+        TEST_METHOD(ShutdownEnvironmentCannotBeOverridden);
         TEST_METHOD(LeaseMovePreservesActiveOwnership);
         TEST_METHOD(RepeatedResetCannotReleaseSiblingLease);
         TEST_METHOD(LeaseDestructionReleasesOwnReference);
@@ -137,13 +143,13 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LeaseMoveAssignmentPreservesRetiringState);
         TEST_METHOD(LeaseSelfMovePreservesOwnership);
         TEST_METHOD(RetirementConsumesActiveLeaseAndRetainsReference);
-        TEST_METHOD(RetiringLeaseCannotRequestCrashRecovery);
+        TEST_METHOD(RetiringLeaseDoesNotStopServiceRecovery);
         TEST_METHOD(ActiveSiblingStillAllowsBoundedCrashRecovery);
         TEST_METHOD(CreationRollbackDuringUnwindPreservesSibling);
         TEST_METHOD(FailedAcquirePreservesActiveAndRetiringReferences);
         TEST_METHOD(GraceCompletionAndReplacementAcquisitionPreserveOwnership);
         TEST_METHOD(OverlappingRetirementsExpireOutOfOrder);
-        TEST_METHOD(DrainingExitCannotRecoverWhenActiveDemandReturns);
+        TEST_METHOD(RecoveryRemainsBoundedAcrossPaneReplacement);
         TEST_METHOD(EmptyEnvironmentOverridesInheritParent);
         TEST_METHOD(ValidEnvironmentOverridesCloneAndReplace);
         TEST_METHOD(MixedInvalidEnvironmentOverridesFail);
@@ -182,6 +188,7 @@ namespace TerminalAppUnitTests
             // Exercise the production accounting without spawning a master
             // or touching the process singleton.
             std::lock_guard lock{ owner._mtx };
+            owner._serviceRequested = true;
             return owner._AcquireLeaseLocked();
         }
     };
@@ -234,6 +241,124 @@ namespace TerminalAppUnitTests
         kept.Reset();
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+    }
+
+    void SharedWtaTests::LastPaneAndRetirementLeaveMasterRunning()
+    {
+        SharedWta owner;
+        // A signaled event stands in for the owned process without launching
+        // an agent, registering a wait callback, or touching the singleton.
+        owner._process.reset(CreateEventW(nullptr, TRUE, TRUE, nullptr));
+        VERIFY_IS_TRUE(owner._process.is_valid());
+        auto pane = _AcquireLease(owner);
+        auto retiring = pane._TakeForRetirement();
+        retiring.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        VERIFY_IS_TRUE(owner.IsRunning());
+        VERIFY_IS_TRUE(owner._serviceRequested);
+
+        auto replacement = _AcquireLease(owner);
+        replacement.Reset();
+        VERIFY_IS_TRUE(owner.IsRunning());
+    }
+
+    void SharedWtaTests::HeadlessServiceDoesNotRequirePaneOwnership()
+    {
+        SharedWta owner;
+        owner._process.reset(CreateEventW(nullptr, TRUE, TRUE, nullptr));
+        VERIFY_IS_TRUE(owner.EnsureStarted(L"unused-wta.exe"));
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
+        VERIFY_IS_TRUE(owner._serviceRequested);
+        owner._unexpectedExitRecovery.Arm(7);
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._serviceRequested, false, true));
+    }
+
+    void SharedWtaTests::StatusPollingCannotRestartExhaustedService()
+    {
+        SharedWta owner;
+        VERIFY_IS_TRUE(owner.CanStart());
+        owner._spawnSuppressed = true;
+        VERIFY_IS_FALSE(owner.CanStart());
+        owner._spawnSuppressed = false;
+        owner._serviceRequested = true;
+        owner._cachedWtaPath = L"previous-wta.exe";
+        VERIFY_IS_FALSE(owner.CanStart());
+        VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
+        VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"previous-wta.exe" }, owner._cachedWtaPath);
+        VERIFY_ARE_EQUAL(details::ProcessWaitGenerationTracker::Generation{ 0 }, owner._waitGeneration.Current());
+    }
+
+    void SharedWtaTests::PolicyDisableSignalsAndStopsService()
+    {
+        SharedWta owner;
+        owner._process.reset(CreateEventW(nullptr, TRUE, TRUE, nullptr));
+        owner._shutdownEvent.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        wil::unique_handle observer;
+        VERIFY_IS_TRUE(DuplicateHandle(GetCurrentProcess(), owner._shutdownEvent.get(), GetCurrentProcess(), observer.put(), 0, FALSE, DUPLICATE_SAME_ACCESS));
+        auto pane = _AcquireLease(owner);
+        owner.SetEnabled(false);
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, WaitForSingleObject(observer.get(), 0));
+        VERIFY_IS_FALSE(owner.IsRunning());
+        VERIFY_IS_FALSE(owner._serviceRequested);
+        VERIFY_IS_FALSE(owner.CanStart());
+        VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
+        VERIFY_IS_FALSE(static_cast<bool>(owner.AcquirePane(L"unused-wta.exe")));
+        VERIFY_IS_FALSE(owner.Restart());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
+        pane.Reset();
+        owner.SetEnabled(true);
+        VERIFY_IS_TRUE(owner._serviceEnabled);
+        VERIFY_IS_FALSE(owner._shuttingDown);
+        VERIFY_IS_FALSE(owner.IsRunning());
+        VERIFY_IS_TRUE(owner.CanStart());
+    }
+
+    void SharedWtaTests::ProcessShutdownCannotBeReenabled()
+    {
+        SharedWta owner;
+        owner._process.reset(CreateEventW(nullptr, TRUE, TRUE, nullptr));
+        auto pane = _AcquireLease(owner);
+        owner.Shutdown();
+        owner.Shutdown();
+        owner.SetEnabled(true);
+        VERIFY_IS_FALSE(owner.IsRunning());
+        VERIFY_IS_FALSE(owner._serviceRequested);
+        VERIFY_IS_FALSE(owner.CanStart());
+        VERIFY_IS_FALSE(owner.EnsureStarted(L"unused-wta.exe"));
+        VERIFY_IS_FALSE(owner.Restart(L"unused-wta.exe", {}));
+        pane.Reset();
+        VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
+    }
+
+    void SharedWtaTests::ShutdownEnvironmentCannotBeOverridden()
+    {
+        const std::array overrides{
+            std::pair{ std::wstring{ L"wta_master_shutdown_event" }, std::wstring{ L"stale-event" } },
+            std::pair{ std::wstring{ L"WTA_MASTER_GENERATION" }, std::wstring{ L"999" } },
+        };
+        const auto block = details::BuildMasterEnvironmentBlock(overrides, 7, L"owned-event");
+        VERIFY_IS_TRUE(block.has_value());
+        size_t shutdownEvents = 0;
+        for (const wchar_t* current = block->data(); *current;)
+        {
+            const std::wstring_view entry{ current };
+            const auto separator = entry.find(L'=');
+            const auto name = entry.substr(0, separator);
+            if (_wcsicmp(std::wstring{ name }.c_str(), L"WTA_MASTER_SHUTDOWN_EVENT") == 0)
+            {
+                ++shutdownEvents;
+                VERIFY_ARE_EQUAL(std::wstring_view{ L"WTA_MASTER_SHUTDOWN_EVENT=owned-event" }, entry);
+            }
+            if (name == L"WTA_MASTER_GENERATION")
+            {
+                VERIFY_ARE_EQUAL(std::wstring_view{ L"WTA_MASTER_GENERATION=7" }, entry);
+            }
+            current += entry.size() + 1;
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, shutdownEvents);
     }
 
     void SharedWtaTests::LeaseMovePreservesActiveOwnership()
@@ -370,7 +495,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
     }
 
-    void SharedWtaTests::RetiringLeaseCannotRequestCrashRecovery()
+    void SharedWtaTests::RetiringLeaseDoesNotStopServiceRecovery()
     {
         SharedWta owner;
         auto lease = _AcquireLease(owner);
@@ -379,7 +504,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
 
         owner._unexpectedExitRecovery.Arm(7);
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._serviceRequested, false, true));
 
         retiring.Reset();
         retiring.Reset();
@@ -399,14 +524,14 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
 
         owner._unexpectedExitRecovery.Arm(7);
-        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._serviceRequested, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(7, owner._serviceRequested, false, true));
 
         transferred.Reset();
         VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
         owner._unexpectedExitRecovery.Arm(8);
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(8, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(8, owner._serviceRequested, false, true));
     }
 
     void SharedWtaTests::CreationRollbackDuringUnwindPreservesSibling()
@@ -473,7 +598,7 @@ namespace TerminalAppUnitTests
             VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
 
             owner._unexpectedExitRecovery.Arm(9);
-            VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(9, owner._activeRefCount, false, true));
+            VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(9, owner._serviceRequested, false, true));
             replacement.Reset();
             VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
             VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
@@ -499,32 +624,32 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(size_t{ 1 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
         owner._unexpectedExitRecovery.Arm(10);
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._serviceRequested, false, true));
 
         thirdRetiring.Reset();
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 0 }, owner._activeRefCount);
     }
 
-    void SharedWtaTests::DrainingExitCannotRecoverWhenActiveDemandReturns()
+    void SharedWtaTests::RecoveryRemainsBoundedAcrossPaneReplacement()
     {
         SharedWta owner;
         auto closing = _AcquireLease(owner);
         auto retiring = closing._TakeForRetirement();
         owner._unexpectedExitRecovery.Arm(10);
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._serviceRequested, false, true));
 
         auto replacement = _AcquireLease(owner);
         VERIFY_IS_TRUE(static_cast<bool>(replacement));
         VERIFY_ARE_EQUAL(size_t{ 2 }, owner._refCount);
         VERIFY_ARE_EQUAL(size_t{ 1 }, owner._activeRefCount);
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._serviceRequested, false, true));
 
         owner._unexpectedExitRecovery.Arm(11);
         retiring.Reset();
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._activeRefCount, false, true));
-        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._activeRefCount, false, true));
-        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._activeRefCount, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(10, owner._serviceRequested, false, true));
+        VERIFY_IS_TRUE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._serviceRequested, false, true));
+        VERIFY_IS_FALSE(owner._unexpectedExitRecovery.ShouldRespawn(11, owner._serviceRequested, false, true));
     }
 
     void SharedWtaTests::EmptyEnvironmentOverridesInheritParent()
@@ -764,21 +889,21 @@ namespace TerminalAppUnitTests
         details::UnexpectedExitRecoveryPolicy policy;
         policy.Arm(7);
 
-        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 2, false, true));
-        VERIFY_IS_FALSE(policy.ShouldRespawn(7, 2, false, true));
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, true, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(7, true, false, true));
     }
 
     void SharedWtaTests::UnexpectedExitWithoutRecoveryConditionsDoesNotRespawn()
     {
         details::UnexpectedExitRecoveryPolicy policy;
         policy.Arm(7);
-        VERIFY_IS_FALSE(policy.ShouldRespawn(7, 0, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(7, false, false, true));
 
         policy.Arm(8);
-        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, true, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, true, true, true));
 
         policy.Arm(9);
-        VERIFY_IS_FALSE(policy.ShouldRespawn(9, 1, false, false));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(9, true, false, false));
     }
 
     void SharedWtaTests::DeliberateOrStaleExitDoesNotRespawn()
@@ -786,12 +911,12 @@ namespace TerminalAppUnitTests
         details::UnexpectedExitRecoveryPolicy policy;
         policy.Arm(7);
 
-        VERIFY_IS_FALSE(policy.ShouldRespawn(6, 1, false, true));
-        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 1, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(6, true, false, true));
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, true, false, true));
 
         policy.Arm(8);
         policy.Retire();
-        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, true, false, true));
     }
 
     void SharedWtaTests::RecoveryReplacementExitDoesNotLoop()
@@ -799,11 +924,11 @@ namespace TerminalAppUnitTests
         details::UnexpectedExitRecoveryPolicy policy;
         policy.Arm(7);
 
-        VERIFY_IS_TRUE(policy.ShouldRespawn(7, 1, false, true));
-        VERIFY_IS_FALSE(policy.ShouldRespawn(8, 1, false, true));
+        VERIFY_IS_TRUE(policy.ShouldRespawn(7, true, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(8, true, false, true));
 
         policy.Arm(9);
-        VERIFY_IS_TRUE(policy.ShouldRespawn(9, 1, false, true));
+        VERIFY_IS_TRUE(policy.ShouldRespawn(9, true, false, true));
     }
 
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()

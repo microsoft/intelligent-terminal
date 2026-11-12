@@ -61,6 +61,7 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t updateSequence{ 0 };
         std::optional<Presentation> presentation;
         std::vector<std::string> diagnostics;
+        uint64_t diagnosticCwdToken{ 0 };
     };
 
     class ProviderBroker
@@ -87,6 +88,15 @@ namespace Microsoft::Terminal::RichTab::Provider
             AttachmentId attachment,
             bool agentActive,
             std::optional<std::string> workingDirectory);
+        void TraceCwd(
+            std::string_view sessionId,
+            AttachmentId attachment,
+            CwdDiagnosticStage stage,
+            CwdDiagnosticOutcome outcome,
+            std::optional<std::filesystem::path> observedPath = std::nullopt,
+            uint64_t updateSequence = 0,
+            std::optional<uint64_t> outputCwdToken = std::nullopt,
+            std::optional<uint64_t> contextRevision = std::nullopt);
         void Activate(AttachmentId attachment);
         void Notify(AttachmentId attachment, ActivationEvent reason);
         void ReloadProviders();
@@ -99,6 +109,7 @@ namespace Microsoft::Terminal::RichTab::Provider
 
         uint64_t ProcessEpoch() const noexcept;
         bool GitAvailable() const noexcept;
+        bool DiagnosticsEnabled() const noexcept;
 
         static std::optional<Presentation> ComposePresentation(
             const std::vector<Registration>& providers,
@@ -157,6 +168,17 @@ namespace Microsoft::Terminal::RichTab::Provider
             Registration provider,
             Request request,
             uint64_t generation);
+        uint64_t _CwdTokenLocked(const std::filesystem::path& path);
+        void _LogCwdLocked(
+            const SessionState& session,
+            AttachmentId attachment,
+            CwdDiagnosticStage stage,
+            CwdDiagnosticOutcome outcome,
+            std::optional<std::filesystem::path> observedPath = std::nullopt,
+            uint64_t updateSequence = 0,
+            uint64_t requestId = 0,
+            std::optional<uint64_t> outputCwdToken = std::nullopt,
+            std::optional<uint64_t> contextRevision = std::nullopt) noexcept;
         BrokerUpdate _UpdateFor(
             const std::string& sessionId,
             const SessionState& state,
@@ -192,6 +214,8 @@ namespace Microsoft::Terminal::RichTab::Provider
         uint64_t _nextSessionIncarnation{ 1 };
         uint64_t _nextAttachment{ 1 };
         uint64_t _nextRequest{ 1 };
+        uint64_t _nextCwdToken{ 1 };
+        std::unordered_map<std::filesystem::path, uint64_t> _cwdTokens;
         uint64_t _nextGeneration{ 1 };
     };
 }

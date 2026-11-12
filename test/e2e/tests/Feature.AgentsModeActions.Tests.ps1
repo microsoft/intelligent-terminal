@@ -234,7 +234,10 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         function Assert-ActionFilterState {
             param([bool]$AgentsOnly, [bool]$Recent)
-            Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+            $openItem = Get-ActionElement AgentsOnlyFilterMenuItem
+            if (-not $openItem -or $openItem.Current.IsOffscreen) {
+                Invoke-UiClick -App $script:app -Selector FilterTabsButton | Out-Null
+            }
             try {
                 foreach ($entry in @(
                     @{ Id = 'AgentsOnlyFilterMenuItem'; Expected = $AgentsOnly },
@@ -360,6 +363,10 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                         if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
                             Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
                         }
+                        Wait-Until -TimeoutSec 5 -Because 'search is visible before updating the query' -Condition {
+                            $box = Get-ActionElement SearchTextBox
+                            $box -and -not $box.Current.IsOffscreen -and $box.Current.BoundingRectangle.Height -gt 0
+                        } | Out-Null
                         Set-UiValue -App $script:app -Selector SearchTextBox -Value $query | Out-Null
                         foreach ($layout in @('vertical', 'horizontal')) {
                             Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
@@ -396,7 +403,17 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                                 Should -Match ([regex]::Escape("PROFILE-IDENTITY:$script:defaultProfile"))
                             @(Get-ActionLaunches).Count + @(Get-CanonicalLaunches).Count | Should -Be $launchCount
                             if ($layout -eq 'vertical') {
-                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
+                                Wait-Until -TimeoutSec 5 -Because 'vertical plus closes search' -Condition {
+                                    (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                                        [Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq
+                                        [Windows.Automation.ToggleState]::Off
+                                } | Out-Null
+                                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+                                Wait-Until -TimeoutSec 5 -Because 'search is visible again after vertical plus' -Condition {
+                                    $box = Get-ActionElement SearchTextBox
+                                    $box -and -not $box.Current.IsOffscreen -and $box.Current.BoundingRectangle.Height -gt 0
+                                } | Out-Null
+                                Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be ''
                             }
                             $created += $pane.session_id
                             Save-ActionUiEvidence "plus-$agentsOnly-$recent-$($query.Length)-$layout"
@@ -414,12 +431,12 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
                             Close-WtPane -App $script:app -SessionId $original.session_id
                         }
                         Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
-                        Wait-Until -TimeoutSec 10 -Because 'Sidebar restores the existing search after the layout round trip' -Condition {
-                            $box = Get-ActionElement SearchTextBox
-                            $box -and -not $box.Current.IsOffscreen
+                        Wait-Until -TimeoutSec 10 -Because 'horizontal layout keeps Sidebar search closed' -Condition {
+                            (Get-ActionElement SearchTabsButton).GetCurrentPattern(
+                                [Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq
+                                [Windows.Automation.ToggleState]::Off
                         } | Out-Null
                         Assert-ActionFilterState -AgentsOnly $agentsOnly -Recent $recent
-                        Get-UiValue -App $script:app -Selector SearchTextBox -ValuePattern | Should -Be $query
                     }
                 }
             }
@@ -427,6 +444,10 @@ Describe 'Feature: Agents mode actions' -Tag @('Feature', 'AgentsModeActions') {
         }
         finally {
             Set-WtSetting -App $script:app -Key tabLayout -Value vertical | Out-Null
+            $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::Off) {
+                Invoke-UiClick -App $script:app -Selector SearchTabsButton | Out-Null
+            }
             Set-UiValue -App $script:app -Selector SearchTextBox -Value '' | Out-Null
             $toggle = (Get-ActionElement SearchTabsButton).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
             if ($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On) {

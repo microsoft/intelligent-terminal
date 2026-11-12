@@ -199,9 +199,36 @@ fn sessions_refresh_is_explicit_and_removed_discovery_flag_is_rejected() {
     assert!(matches!(
         cli.command,
         Some(Command::Sessions {
-            action: SessionsAction::Refresh { master }
+            action: SessionsAction::Refresh { master, retry_history: false }
         }) if master == "pipe"
     ));
+    let retry = Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "refresh",
+        "--master",
+        "pipe",
+        "--retry-history",
+    ])
+    .unwrap();
+    assert!(matches!(
+        retry.command,
+        Some(Command::Sessions {
+            action: SessionsAction::Refresh {
+                retry_history: true,
+                ..
+            }
+        })
+    ));
+    assert!(Cli::try_parse_from([
+        "wta",
+        "sessions",
+        "list",
+        "--master",
+        "pipe",
+        "--retry-history",
+    ])
+    .is_err());
 }
 
 #[test]

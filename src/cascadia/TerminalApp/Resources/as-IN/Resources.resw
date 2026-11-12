@@ -431,6 +431,14 @@
     <value>PowerShell এক্সিকিউচন নীতিয়ে স্ক্ৰিপ্ট অৱৰোধ কৰি আছে।</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>শ্বেল পেন</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>শ্বেলত ফ&apos;কাছ কৰিবলৈ Enter টিপক।</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ব্যৱহাৰ</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>টোকেন</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>প্ৰসংগ উইণ্ড’</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -483,7 +491,8 @@
     <value>টেবসমূহ সন্ধান কৰক</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>টেবসমূহ সন্ধান কৰক</value>
+    <value>সন্ধান</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>টেবসমূহ সন্ধান কৰক</value>
@@ -569,6 +578,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>মিল থকা কোনো এজেণ্ট অধিৱেশন নাই।</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>আপোনাৰ সন্ধানৰ সৈতে মিল থকা কোনো খোলা টেব বা এজেণ্টৰ পূৰ্বৰ অধিৱেশন নাই।</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>এজেণ্ট অধিৱেশনসমূহ ল'ড কৰিব পৰা নগ'ল।</value>
@@ -729,7 +742,7 @@
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
-    <value>পটভূমিত চলি থকা সকলো টেব বন্ধ কৰক</value>
+    <value>হেডলেছ মোডত থকা সকলো টেব বন্ধ কৰক</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
@@ -750,7 +763,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>টেবসমূহ আৰু শেহতীয়া এজেণ্ট অধিৱেশনসমূহ সন্ধান কৰক</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · আন এখন উইণ্ড’ত</value>
@@ -764,6 +777,7 @@
   <data name="ExportTabText"><value>পাঠ ৰপ্তানি কৰক</value></data>
   <data name="FindText"><value>সন্ধান</value></data>
   <data name="RestartConnectionText"><value>অধিবেশন পুনৰ আৰম্ভ কৰক</value></data>
+  <data name="TabToolTipPaneCount"><value>{0}টা পেন</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>বন্ধ কৰক</value></data>
   <data name="TabClose"><value>টেব বন্ধ কৰক</value></data>
   <data name="MoveTabToNewWindowText"><value>টেব নতুন উইণ্ড'লৈ স্থানান্তৰ কৰক</value></data>

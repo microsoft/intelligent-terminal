@@ -36,6 +36,9 @@ namespace TerminalApp
         Windows.UI.Xaml.Style HighlightedRunStyle;
         Windows.UI.Xaml.DependencyProperty HighlightedRunStyleProperty { get; };
 
+        Boolean UsePathEllipsis;
+        Windows.UI.Xaml.DependencyProperty UsePathEllipsisProperty { get; };
+
         TextHighlightColor ColorHighlight;
         static Windows.UI.Xaml.DependencyProperty ColorHighlightProperty { get; };
 
@@ -53,5 +56,7 @@ namespace TerminalApp
 
         Double TextOpacity;
         static Windows.UI.Xaml.DependencyProperty TextOpacityProperty { get; };
+
+        void SetTextAndColor(String text, TextHighlightColor color, IVector<HighlightedRun> ranges);
     }
 }

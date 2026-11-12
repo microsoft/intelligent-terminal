@@ -427,6 +427,14 @@
     <value>La directiva de ejecución de PowerShell está bloqueando los scripts. Detección de errores desactivada.</value>
     <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
+  <data name="ShellPaneFocusStopName" xml:space="preserve">
+    <value>Panel del shell</value>
+    <comment>Accessibility name for the keyboard-focusable outline of the selected shell pane.</comment>
+  </data>
+  <data name="ShellPaneFocusStopHelpText" xml:space="preserve">
+    <value>Presione Entrar para enfocar el shell.</value>
+    <comment>Accessibility hint for the shell pane outline; Tab continues to the agent pane button without entering terminal input.</comment>
+  </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Uso</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
   <data name="Usage_ContextWindowLabel" xml:space="preserve"><value>Ventana de contexto</value><comment>Label for the AI agent context-window usage percentage shown in the terminal bottom bar.</comment></data>
@@ -479,7 +487,8 @@
     <value>Buscar pestañas</value>
   </data>
   <data name="VerticalTabsSearchBox.PlaceholderText" xml:space="preserve">
-    <value>Buscar pestañas</value>
+    <value>Buscar</value>
+    <comment>Short placeholder in the sidebar search box. Use a concise localized equivalent of "Search"; the full search scope is described in the tooltip and accessible name.</comment>
   </data>
   <data name="VerticalTabsSearchBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Buscar pestañas</value>
@@ -565,6 +574,10 @@
   </data>
   <data name="VerticalTabsHistoryNoMatches" xml:space="preserve">
     <value>No hay sesiones del agente que coincidan.</value>
+  </data>
+  <data name="VerticalTabsSearchNoMatches.Text" xml:space="preserve">
+    <value>No hay pestañas abiertas ni sesiones anteriores de agentes que coincidan con tu búsqueda.</value>
+    <comment>Empty-state message below the sidebar search box when neither open terminal tabs nor recent AI-agent sessions match the search. Active tabs means currently open tabs, not only the focused tab. Agent history means past AI-agent sessions, not shell command history.</comment>
   </data>
   <data name="VerticalTabsHistoryLoadError" xml:space="preserve">
     <value>No se pudieron cargar las sesiones del agente.</value>
@@ -725,7 +738,7 @@
     <comment>Agent History time label when the session&apos;s latest activity timestamp is missing or invalid. Do not imply that the session was recently active.</comment>
   </data>
   <data name="NotificationIconCloseAllKeptTabs" xml:space="preserve">
-    <value>Cerrar todas las pestañas en ejecución en segundo plano</value>
+    <value>Cerrar todas las pestañas en modo sin interfaz</value>
     <comment>Command below the background tabs in the notification-area menu. Closes all detached tabs retained by headless mode and terminates their panes and processes. Does not close tabs still in a window or only turn off headless mode.</comment>
   </data>
   <data name="PaneProgressStatusNormal" xml:space="preserve">
@@ -746,7 +759,7 @@
   </data>
   <data name="VerticalTabsAgentsSearch.Text" xml:space="preserve">
     <value>Buscar pestañas y sesiones recientes de agentes</value>
-    <comment>Global sidebar search placeholder, tooltip, and accessible name. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
+    <comment>Tooltip and accessible name for global sidebar search. A nonempty query searches all open shell and AI-agent tabs plus recent AI-agent sessions, regardless of the checked sidebar display filters.</comment>
   </data>
   <data name="VerticalTabsHistoryOtherWindowStatusFormat" xml:space="preserve">
     <value>{0} · En otra ventana</value>
@@ -760,6 +773,7 @@
   <data name="ExportTabText"><value>Exportar texto</value></data>
   <data name="FindText"><value>Buscar</value></data>
   <data name="RestartConnectionText"><value>Reiniciar sesión</value></data>
+  <data name="TabToolTipPaneCount"><value>{0} paneles</value><comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment></data>
   <data name="TabCloseSubMenu"><value>Cerrar</value></data>
   <data name="TabClose"><value>Cerrar pestaña</value></data>
   <data name="MoveTabToNewWindowText"><value>Mover pestaña a una ventana nueva</value></data>

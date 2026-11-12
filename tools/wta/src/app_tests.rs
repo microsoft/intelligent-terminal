@@ -9814,7 +9814,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": "unrelated-restart" }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": "unrelated-restart",
+        }),
     });
     assert!(
         !app.pending_acp_start,
@@ -9824,7 +9827,10 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": restart_request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": restart_request_id,
+        }),
     });
     assert!(!app.pending_acp_start);
     assert!(app.reconnect_after_transport_retired);
@@ -9895,6 +9901,33 @@ fn start_timed_auth_recovery() -> (App, String) {
 }
 
 #[test]
+fn auth_recovery_ignores_restart_without_matching_request() {
+    let (mut app, request_id) = start_timed_auth_recovery();
+    let generation = app.auth_recovery_generation;
+    for params in [
+        json!({ "operation_id": request_id }),
+        json!({ "operation_id": request_id, "request_id": "unrelated-request" }),
+        json!({ "operation_id": "retirement-operation", "request_id": "" }),
+        json!({ "operation_id": "", "request_id": request_id }),
+    ] {
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_master_restarted".into(),
+            pane_id: String::new(),
+            tab_id: None,
+            params,
+        });
+
+        assert!(!app.pending_acp_start);
+        assert!(!app.reconnect_after_transport_retired);
+        assert_eq!(app.auth_recovery_generation, generation);
+        assert!(matches!(
+            &app.auth_recovery_state,
+            AuthRecoveryState::WaitingForMaster { request_id: expected } if expected == &request_id
+        ));
+    }
+}
+
+#[test]
 fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
     let (mut app, request_id) = start_timed_auth_recovery();
     let readiness_generation = app.auth_recovery_generation;
@@ -9908,7 +9941,10 @@ fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
 
     assert!(!app.pending_acp_start);
@@ -9951,7 +9987,10 @@ fn auth_recovery_connection_timeout_starts_when_master_is_ready() {
         method: "agent_master_restarted".into(),
         pane_id: String::new(),
         tab_id: None,
-        params: json!({ "operation_id": request_id }),
+        params: json!({
+            "operation_id": "retirement-operation",
+            "request_id": request_id,
+        }),
     });
     let connection_generation = app.auth_recovery_generation;
     assert_eq!(
@@ -20556,6 +20595,65 @@ fn render_permission_compact_shows_hint() {
 }
 
 #[test]
+fn pending_permission_hides_slash_autocomplete_until_queue_is_empty() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    assert!(app.command_popup_state().is_some());
+    assert_eq!(app.current_tab().input, "/");
+
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("FIRST_PERMISSION"));
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("SECOND_PERMISSION"));
+
+    let first_pending = render_to_text(&mut app, 80, 7);
+    assert!(
+        first_pending.contains("FIRST_PERMISSION") || first_pending.contains("Y/N"),
+        "the short pane must keep the approval prompt or its compact hint visible; rendered:\n{first_pending}"
+    );
+    assert!(
+        !first_pending.contains("/help"),
+        "slash autocomplete must yield to the approval prompt; rendered:\n{first_pending}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "the slash draft must be preserved"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert_eq!(app.current_tab().permission.len(), 1);
+    let second_pending = render_to_text(&mut app, 80, 7);
+    assert!(
+        !second_pending.contains("/help"),
+        "autocomplete must stay hidden until the last permission is resolved; rendered:\n{second_pending}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "resolving a permission must preserve the draft"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert!(app.current_tab().permission.is_empty());
+    let after_resolution = render_to_text(&mut app, 80, 7);
+    assert!(
+        after_resolution.contains("/help"),
+        "slash autocomplete must return after the permission queue clears; rendered:\n{after_resolution}"
+    );
+    assert_eq!(
+        app.current_tab().input,
+        "/",
+        "the draft must remain unchanged"
+    );
+}
+
+#[test]
 fn render_permission_queue_keeps_one_actionable_and_previews_the_rest() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -23988,6 +24086,12 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
     );
     app.request_turn_cancel_for_tab(DEFAULT_TAB_ID);
 
+    let observation_id = uuid::Uuid::new_v4();
+    app.handle_event(AppEvent::SessionTelemetryBound {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "lazy-session".into(),
+        observation_id,
+    });
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "lazy-session".into(),
@@ -23996,6 +24100,10 @@ fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
         current_model_id: None,
     });
 
+    assert_eq!(
+        app.current_tab().telemetry_observation,
+        Some(("lazy-session".into(), observation_id))
+    );
     assert_eq!(
         app.current_tab()
             .active_prompt_cancellation
@@ -25234,6 +25342,90 @@ fn error_fix_telemetry_ignores_stale_generation_and_new_turn_gets_new_id() {
     assert_ne!(old_id, new_id);
     flush_error_fix_telemetry_frame(&mut app, 100, 30);
     assert_eq!(take(), vec![Event::ErrorFixOffered(new_id)]);
+}
+
+#[test]
+fn error_fix_telemetry_blocked_shell_failure_never_arms_ui_or_analysis() {
+    use crate::telemetry::{
+        capture::{take, Event},
+        AutoFixPolicyState,
+    };
+    take();
+    let mut app = test_app();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.autofix_enabled = true;
+    app.autofix_policy_state = AutoFixPolicyState::Enabled;
+    app.handle_event(AppEvent::WtEvent {
+        method: "shell_command_failed".into(),
+        pane_id: "blocked-shell".into(),
+        tab_id: Some(DEFAULT_TAB_ID.into()),
+        params: json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+    });
+    assert_eq!(
+        take(),
+        vec![Event::ErrorDetected {
+            policy: AutoFixPolicyState::Disabled,
+            enabled: false,
+        }]
+    );
+    assert!(!app.show_notification_banner);
+    assert!(app.wt_notifications.is_empty());
+    assert!(app.current_tab().autofix.detected_offer.is_none());
+    assert!(app.current_tab().autofix.offer.is_none());
+    assert!(matches!(
+        app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+}
+
+#[test]
+fn error_fix_telemetry_blocked_shell_failure_rejects_unscoped_or_invalid_events() {
+    use crate::telemetry::capture::take;
+    let mut app = test_app();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    for (pane, tab, params) in [
+        (
+            "pane",
+            Some("other-tab"),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            None,
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "enabled", "autofix_enabled": false}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": true}),
+        ),
+        (
+            "pane",
+            Some(DEFAULT_TAB_ID),
+            json!({"autofix_policy_state": "disabled", "autofix_enabled": "false"}),
+        ),
+    ] {
+        take();
+        app.handle_event(AppEvent::WtEvent {
+            method: "shell_command_failed".into(),
+            pane_id: pane.into(),
+            tab_id: tab.map(str::to_string),
+            params,
+        });
+        assert!(take().is_empty());
+        assert!(!app.show_notification_banner);
+        assert!(app.current_tab().autofix.detected_offer.is_none());
+    }
 }
 
 #[test]

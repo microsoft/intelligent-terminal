@@ -48,6 +48,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(LocalizedFieldDisplayNamesOverrideManifestFallbacks);
         TEST_METHOD(ProviderDiagnosticVersionRejectsUntrustedText);
         TEST_METHOD(ProviderDiagnosticLogWritesContentMinimizedRecord);
+        TEST_METHOD(ProviderDiagnosticLogCorrelatesCwdStagesWithoutPaths);
+        TEST_METHOD(ProviderDiagnosticLogDistinguishesMissingCwdFromContext);
         TEST_METHOD(ProviderDiagnosticLogCleanupSkipsUnrelatedFiles);
         TEST_METHOD(ProviderDiagnosticLogDropsOnContention);
         TEST_METHOD(CommandRunnerMarksLaunchFailureObservations);
@@ -187,6 +189,100 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("repository-value-canary"));
         VERIFY_ARE_EQUAL(std::string::npos, contents.find("stderr-value-canary"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogCorrelatesCwdStagesWithoutPaths()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabCwdLog-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        {
+            auto logger = ProviderDiagnosticLog::CreateForTests(42, logRoot);
+            VERIFY_IS_NOT_NULL(logger.get());
+            ProviderDiagnosticRecord record;
+            record.event = ProviderDiagnosticEvent::Cwd;
+            record.timestamp = ProviderDiagnosticTimestamp();
+            record.processId = GetCurrentProcessId();
+            record.processEpoch = 42;
+            record.sessionToken = 17;
+            record.attachmentId = 23;
+            record.cwdToken = 31;
+            record.shellCwdToken = 31;
+            record.agentCwdToken = 37;
+            record.hostRequestId = 41;
+            record.contextRevision = 43;
+            record.updateSequence = 47;
+            record.cwdStage = CwdDiagnosticStage::OscReceived;
+            record.cwdSource = CwdDiagnosticSource::Shell;
+            record.cwdOutcome = CwdDiagnosticOutcome::Changed;
+            record.workingDirectoryAuthoritative = true;
+            logger->TryLog(record);
+            record.cwdStage = CwdDiagnosticStage::UiResult;
+            record.cwdOutcome = CwdDiagnosticOutcome::Stale;
+            logger->TryLog(record);
+        }
+
+        const auto logs = std::filesystem::directory_iterator{ logRoot };
+        std::ifstream stream{ logs->path(), std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        const std::string contents{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("event":"cwd","stage":"osc-received")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("session":17,"attachment":23)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("cwd":31,"shellCwd":31,"agentCwd":37)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("request":41,"contextRevision":43,"updateSequence":47)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("source":"shell","outcome":"changed","authoritative":true)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("stage":"ui-result")"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, contents.find(R"("outcome":"stale")"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("/home/secret/cwd-canary"));
+    }
+
+    void RichTabProviderTests::ProviderDiagnosticLogDistinguishesMissingCwdFromContext()
+    {
+        const auto logRoot = std::filesystem::temp_directory_path() /
+                             (L"RichTabMissingCwd-" + std::to_wstring(GetCurrentProcessId()) +
+                              L"-" + std::to_wstring(GetTickCount64()));
+        VERIFY_IS_TRUE(std::filesystem::create_directory(logRoot));
+        const auto cleanup = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(logRoot, error);
+        });
+
+        ProviderBroker broker{ std::nullopt, false };
+        auto logger = ProviderDiagnosticLog::CreateForTests(42, logRoot);
+        VERIFY_IS_NOT_NULL(logger.get());
+        broker._diagnosticLog = logger.get();
+        ProviderBroker::SessionState session;
+        session.context.workingDirectory = L"C:\\secret\\cwd-canary";
+        session.context.workingDirectoryAuthoritative = true;
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::ContextObserved, CwdDiagnosticOutcome::Observed);
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::OscReceived, CwdDiagnosticOutcome::Unmatched);
+        broker._LogCwdLocked(session, 0, CwdDiagnosticStage::ProviderResult, CwdDiagnosticOutcome::Accepted);
+        broker._LogCwdLocked(session, 1, CwdDiagnosticStage::OscReceived, CwdDiagnosticOutcome::Matched, session.context.workingDirectory);
+        broker._diagnosticLog = nullptr;
+        logger.reset();
+
+        const auto logs = std::filesystem::directory_iterator{ logRoot };
+        std::ifstream stream{ logs->path(), std::ios::binary };
+        VERIFY_IS_TRUE(stream.is_open());
+        const std::string contents{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
+        const auto lineFor = [&](const std::string_view stage, const size_t from = 0) {
+            const auto begin = contents.find(stage, from);
+            VERIFY_ARE_NOT_EQUAL(std::string::npos, begin);
+            return contents.substr(begin, contents.find('\n', begin) - begin);
+        };
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"context-observed")").find(R"("cwd":1,"shellCwd":1)"));
+        const auto missingOsc = lineFor(R"("stage":"osc-received")");
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, missingOsc.find(R"("cwd":0,"shellCwd":1)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"provider-result")").find(R"("cwd":0,"shellCwd":1)"));
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, lineFor(R"("stage":"osc-received")", contents.find(missingOsc) + missingOsc.size()).find(R"("cwd":1,"shellCwd":1)"));
+        VERIFY_ARE_EQUAL(std::string::npos, contents.find("C:\\secret\\cwd-canary"));
     }
 
     void RichTabProviderTests::ProviderDiagnosticLogCleanupSkipsUnrelatedFiles()

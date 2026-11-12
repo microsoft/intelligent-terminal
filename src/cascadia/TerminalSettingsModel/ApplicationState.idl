@@ -24,6 +24,7 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<LaunchPosition> InitialPosition;
         Windows.Foundation.IReference<Windows.Foundation.Size> InitialSize;
         Windows.Foundation.IReference<LaunchMode> LaunchMode;
+        Windows.Foundation.IReference<Boolean> SidebarCollapsed;
     };
 
     [default_interface] runtimeclass ApplicationState {
@@ -59,5 +60,11 @@ namespace Microsoft.Terminal.Settings.Model
         String SidebarRolloutName { get; };
         String SidebarRolloutAssignment { get; };
         Guid FeatureRolloutId { get; };
+
+        Boolean AgentProfilesIntroductionShown;
+        UInt64 TryBeginAgentProfilesIntroduction();
+        void EndAgentProfilesIntroduction(UInt64 claim, Boolean dismissed);
+
+        Boolean SidebarRecentSessionsExpanded;
     }
 }

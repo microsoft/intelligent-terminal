@@ -138,5 +138,7 @@ namespace Microsoft.Terminal.Settings.Editor
         String AcpPreparationErrorText { get; };
         String AcpPreparationErrorDetails { get; };
         Boolean HasAcpPreparationErrorDetails { get; };
+
+        Boolean TryUpdateSettings(Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings);
     }
 }

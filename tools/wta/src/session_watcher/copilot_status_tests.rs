@@ -146,6 +146,33 @@ fn released_session_lease_cannot_promote_old_sid_even_with_live_pid() {
     assert!(fixture.read().is_none());
 }
 
+#[test]
+fn copilot_prompt_recovery_requires_the_exact_held_lease_owner() {
+    let mut fixture = Fixture::new();
+    let lookup = |pid| {
+        Ok((pid == 42).then_some(Process {
+            created: SystemTime::UNIX_EPOCH,
+            image: PathBuf::from("C:\\native\\copilot.exe"),
+        }))
+    };
+    let owner = |fixture: &Fixture| {
+        probe_owner(
+            &fixture.row,
+            &fixture.root,
+            &lookup,
+            Instant::now() + Duration::from_secs(2),
+        )
+    };
+    assert_eq!(owner(&fixture), Ok(Some(42)));
+    assert_ne!(
+        owner(&fixture),
+        Ok(Some(43)),
+        "a child/other process is not the pane root"
+    );
+    fixture.hold.take();
+    assert_eq!(owner(&fixture), Ok(None));
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn blocking_probe_admission_survives_timeout_and_waiter_drop() {
     use std::future::Future;

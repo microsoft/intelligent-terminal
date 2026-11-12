@@ -170,6 +170,21 @@ while ($true) {
                 break
             }
             Write-FixtureLog -Message "list|$([DateTimeOffset]::UtcNow.ToString('o'))|$($request.id)"
+            $historyControl = if ($HistoryControlPath -and (Test-Path -LiteralPath $HistoryControlPath)) {
+                Get-Content -LiteralPath $HistoryControlPath -Raw | ConvertFrom-Json -AsHashtable
+            }
+            if ($historyControl -and $historyControl.mode -eq 'fail') {
+                if ($historyControl.spawnChild) {
+                    $program = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+                    $child = Start-Process -FilePath $program -ArgumentList @(
+                        '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 120'
+                    ) -WindowStyle Hidden -PassThru
+                    Write-FixtureLog -Message "child|$($child.Id)|$($child.StartTime.ToUniversalTime().Ticks)|$($child.Path)"
+                }
+                Write-FixtureLog -Message "history-failed|$([DateTimeOffset]::UtcNow.ToString('o'))"
+                Send-AcpMessage @{ jsonrpc = '2.0'; id = $request.id; error = @{ code = -32603; message = 'Controlled history query failure' } }
+                exit 24
+            }
             if (Test-HistoryHeld) {
                 if ($pendingHistory) {
                     Write-FixtureLog -Message "duplicate-list|$([DateTimeOffset]::UtcNow.ToString('o'))"

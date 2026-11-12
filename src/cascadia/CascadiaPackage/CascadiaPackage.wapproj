@@ -171,8 +171,8 @@
       <Link>FREAssets\Error-detection.png</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)res\fre\sidebar.png">
-      <Link>FREAssets\sidebar.png</Link>
+    <Content Include="$(SolutionDir)res\fre\Headless-mode.png">
+      <Link>FREAssets\Headless-mode.png</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

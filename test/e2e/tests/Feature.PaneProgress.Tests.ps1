@@ -374,8 +374,23 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
                 $row = Get-PaneRow $Title
                 $bounds = $row.Current.BoundingRectangle
                 $size = 16 * $script:scale
-                $slot = [Windows.Rect]::new($bounds.X + 9 * $script:scale,
-                    $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+                $identities = @(Get-LeadingIdentityPeers -Row $row | ForEach-Object {
+                    $_.Current.BoundingRectangle
+                } | Where-Object {
+                    $_.Width -ge 15 * $script:scale -and $_.Width -le 17 * $script:scale -and
+                    $_.Height -ge 15 * $script:scale -and $_.Height -le 17 * $script:scale
+                } | Sort-Object -Property X, Y, Width, Height -Unique)
+                if ($identities.Count) {
+                    $identities | Should -HaveCount 1
+                    $slot = $identities[0]
+                    $script:expandedSlotBaselines[$Title] = $slot.X - $bounds.X
+                }
+                else {
+                    # Preserve the measured identity offset, not a guessed column or the spinner's own position.
+                    if (-not $script:expandedSlotBaselines.ContainsKey($Title)) { throw 'Capture the owned identity slot before starting progress.' }
+                    $slot = [Windows.Rect]::new($bounds.X + $script:expandedSlotBaselines[$Title],
+                        $bounds.Y + ($bounds.Height - $size) / 2, $size, $size)
+                }
             }
             elseif ($Surface -eq 'collapsed') {
                 $list = @(Get-OwnedElements AutomationId ItemsList)
@@ -538,6 +553,14 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
             }
             $row | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $script:evidence "$Session-$Status.json")
         }
+        function Wait-NativeOwnerReset {
+            param($Listener, [string]$Session)
+            Wait-WtEvent -Listener $Listener -TimeoutSec 30 -Predicate {
+                $_.method -eq 'native_agent_observation' -and $_.params.kind -eq 'reset' -and
+                $_.params.pane_id -eq $script:a.session_id -and $_.params.provider_id -eq 'copilot' -and
+                $_.params.agent_session_id -eq $Session
+            } | Should -Not -BeNullOrEmpty
+        }
         $script:tabTitle = 'IT-progress-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         $script:titleA = "$script:tabTitle-A"; $script:titleB = "$script:tabTitle-B"
         New-WtTab -App $script:app -Title "$script:tabTitle-guard" | Out-Null
@@ -605,6 +628,8 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         Wait-UiElement -App $script:app -Selector PaneIndeterminateProgressRing -Gone | Out-Null
         $script:profileIcon = Get-ProfileIconDigest 'baseline-profile'
         $script:siblingIcon = Get-ProfileIconDigest 'baseline-sibling' $script:titleB
+        $script:expandedSlotBaselines = @{}
+        Get-LeadingSlot expanded | Out-Null
     }
     AfterAll {
         if ($script:evidence) {
@@ -847,9 +872,17 @@ public static extern bool GetUserObjectInformation(System.IntPtr handle, int ind
         $hook = "'$payload' | & '$($script:app.WtcliPath)' agent-hook --cli-source copilot --event"
         $beginHook = if ($Identity -eq 'provider') { "$hook agent.session.start`n$hook agent.prompt.submit" } else { '' }
         $endHook = if ($Identity -eq 'provider') { "$hook agent.session.end" } else { '' }
+        $listener = $null
+        $fixtureStarted = $false
         try {
+            if ($Identity -eq 'provider') {
+                $listener = Start-WtEventListener -App $script:app -WaitForReady
+                Send-ShellScript $script:a.session_id $beginHook
+                Wait-NativeOwnerReset $listener $sid
+            }
+            # A new owner invalidates the preceding case's OSC cache; seed Idle only after admission.
             Send-ShellScript $script:a.session_id -ExitPath $done -Code @"
-$beginHook
+[Console]::Write([char]27+']9;4;0'+[char]7)
 [IO.File]::WriteAllText('$ready', 'ready')
 while (-not (Test-Path '$start')) { Start-Sleep -Milliseconds 100 }
 [Console]::Write([char]27+']9;4;3;0'+[char]7)
@@ -858,9 +891,10 @@ while (-not (Test-Path '$clear')) { Start-Sleep -Milliseconds 100 }
 while (-not (Test-Path '$release')) { Start-Sleep -Milliseconds 100 }
 $endHook
 "@
+            $fixtureStarted = $true
             Wait-Until -TimeoutSec 20 -Because 'the fixture reached its pre-progress barrier' -Condition { Test-Path $ready } | Out-Null
             if ($Identity -eq 'provider') {
-                Assert-NativeStatus $sid Working
+                Assert-NativeStatus $sid Idle
                 Wait-Until -TimeoutSec 20 -Because 'the provider icon is realized before OSC begins' -Condition {
                     (Get-ProfileIconDigest "$token-provider-baseline") -ne $script:profileIcon
                 } | Out-Null
@@ -967,7 +1001,7 @@ $endHook
                     (Get-VisualDigest -Bounds (Get-LeadingSlot compact).slot -Name "$token-reselected" -Icon) -eq $icon
                 } | Out-Null
             }
-            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Working }
+            if ($Identity -eq 'provider') { Assert-NativeStatus $sid Idle }
             @((Get-WtPanes -App $script:app -TabId $script:tab.tab_id).session_id | Sort-Object) |
                 Should -Be @(@($script:a.session_id, $script:b.session_id) | Sort-Object)
             @{
@@ -981,6 +1015,10 @@ $endHook
             } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidence "$token-slot.json")
         }
         finally {
+            if ($listener) { Stop-WtEventListener -Listener $listener }
+            if (-not $fixtureStarted) {
+                Send-ShellScript $script:a.session_id -ExitPath $done -Code $endHook
+            }
             foreach ($path in @($start, $clear, $release)) { [IO.File]::WriteAllText($path, 'release') }
             Wait-Until -TimeoutSec 30 -Because 'the fixture clears progress and exits before another case reuses the shell' -Condition {
                 (Test-Path $done) -and (Get-Content -Raw $done) -eq '0'
@@ -1004,7 +1042,7 @@ $endHook
         # Contract/title: above; deterministic native CLI fixture, NOT a real Copilot/model claim.
         # Trigger: child shell calls shipped agent-hook start/prompt/end with inherited WT_SESSION.
         # Boundary: real native hook -> COM -> registry -> owned pane icon, with OSC3 and OSC0.
-        # Oracle: pane/session-scoped Working/Ended events and profile raster restored after CLI exit.
+        # Oracle: OSC-derived activity retains native identity until Ended restores the profile raster.
         # Negative: sibling B stays unbranded. Protection: SessionHookRouting and HookBridgeCli.
         foreach ($state in @(3, 0)) {
             $sid = [guid]::NewGuid().ToString()
@@ -1013,23 +1051,28 @@ $endHook
             $payload = @{ session_id = $sid; cwd = $script:evidence; reason = 'user_exit' } | ConvertTo-Json -Compress
             $hook = "'$payload' | & '$($script:app.WtcliPath)' agent-hook --cli-source copilot --event"
             $listener = Start-WtEventListener -App $script:app -WaitForReady
+            $fixtureStarted = $false
             try {
-                Send-ShellScript $script:a.session_id -ExitPath $done -Code @"
-[Console]::Write([char]27+']9;4;$state'+[char]7)
-$hook agent.session.start
-$hook agent.prompt.submit
-while (-not (Test-Path '$release')) { Start-Sleep -Milliseconds 100 }
-$hook agent.session.end
-"@
+                Send-ShellScript $script:a.session_id "$hook agent.session.start`n$hook agent.prompt.submit"
                 foreach ($event in @('agent.session.start', 'agent.prompt.submit')) {
                     Wait-WtEvent -Listener $listener -TimeoutSec 30 -Predicate {
                         $_.method -eq 'agent_event' -and $_.params.event -eq $event -and
                         $_.params.pane_id -eq $script:a.session_id -and $_.params.agent_session_id -eq $sid
                     } | Should -Not -BeNullOrEmpty
                 }
-                Assert-NativeStatus $sid Working
+                Wait-NativeOwnerReset $listener $sid
+                Send-ShellScript $script:a.session_id -ExitPath $done -Code @"
+[Console]::Write([char]27+']9;4;$state'+[char]7)
+while (-not (Test-Path '$release')) { Start-Sleep -Milliseconds 100 }
+$hook agent.session.end
+"@
+                $fixtureStarted = $true
+                Assert-NativeStatus $sid $(if ($state -eq 3) { 'Working' } else { 'Idle' })
+                Wait-Until -TimeoutSec 10 -Because "OSC $state realizes the expected progress ring count in the emitting pane row" -Condition {
+                    @(Get-RowProgress (Get-PaneRow $script:titleA)).Count -eq $(if ($state -eq 3) { 1 } else { 0 })
+                } | Out-Null
                 @(Get-OwnedElements AutomationId PaneIndeterminateProgressRing).Count | Should -Be $(if ($state -eq 3) { 1 } else { 0 })
-                Wait-Until -TimeoutSec 20 -Because 'Working native identity replaces the profile raster' -Condition {
+                Wait-Until -TimeoutSec 20 -Because 'live native identity replaces the profile raster' -Condition {
                     (Get-ProfileIconDigest "working-$state" -Progress:($state -eq 3)) -ne $script:profileIcon
                 } | Out-Null
                 Get-ProfileIconDigest "working-$state-sibling" $script:titleB | Should -Be $script:siblingIcon
@@ -1055,6 +1098,9 @@ $hook agent.session.end
                 Get-ProfileIconDigest "ended-$state-sibling" $script:titleB | Should -Be $script:siblingIcon
             }
             finally {
+                if (-not $fixtureStarted) {
+                    Send-ShellScript $script:a.session_id -ExitPath $done -Code "$hook agent.session.end"
+                }
                 [IO.File]::WriteAllText($release, 'end')
                 @($listener.Events | Where-Object {
                     $_.method -eq 'agent_event' -and $_.params.pane_id -eq $script:a.session_id -and
