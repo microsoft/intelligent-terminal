@@ -159,6 +159,8 @@ test('original safety and relevance path categories remain eligible', () => {
     '.github/workflows/ghaw-pr-accessibility.lock.yml', 'src/CLAUDE.md', 'src/GEMINI.md',
     'src/copilot-instructions.md', 'src/SKILL.md', 'src/x.instructions.md',
     'src/x.agent.md', 'src/.mcp.json', 'src/.claude/x', 'src/.copilot/x', 'src/.gemini/x',
+    'build/scripts/ci-accessibility-payload.py', 'build/scripts/ci-accessibility-scope.mjs',
+    'build/scripts/test_ci_accessibility_payload.py',
     'build/scripts/Get-DependenciesFromAppxRecipe.ps1']) assert(relevantPath(path), path);
   assert.equal(relevantPath('tools/wta/src/main.rs'), false);
 });
