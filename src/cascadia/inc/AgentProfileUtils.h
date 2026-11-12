@@ -184,7 +184,7 @@ namespace Microsoft::Terminal::AgentProfiles
         AgentPaneRestore::AppendQuoted(command, systemDirectory + L"\\wsl.exe");
         command.append(L" --distribution ");
         AgentPaneRestore::AppendQuoted(command, distro);
-        // Login PATH includes user-installed CLIs. Pass arguments positionally,
+        // Login PATH includes user-installed CLIs. Pass arguments as parameters,
         // never as shell source, and do not involve an ACP adapter.
         command.append(L" --exec bash -lc ");
         AgentPaneRestore::AppendQuoted(command, L"exec \"$@\"");

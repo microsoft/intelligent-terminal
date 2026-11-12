@@ -245,7 +245,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         };
         update(_acpAgentList, Reg::FilteredAcpAgents(), _GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource());
         update(_delegateAgentList, Reg::FilteredDelegateAgents(), _GlobalSettings.DelegateAgent(), _GlobalSettings.DelegateAgentSource());
-        _NotifyChanges(L"AcpAgentList", L"DelegateAgentList", L"CurrentAcpAgent", L"CurrentDelegateAgent");
+        _NotifyChanges(L"AcpAgentList", L"DelegateAgentList", L"CurrentAcpAgent", L"CurrentDelegateAgent", L"ShowGeminiYoloInfo");
     }
 
     ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice AIAgentsViewModel::_YoloSettingsNotice() const

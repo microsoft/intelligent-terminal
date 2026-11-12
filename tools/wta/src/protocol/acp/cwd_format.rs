@@ -59,7 +59,7 @@ pub(crate) async fn build_cwd_attempts(
     }
 
     let posix_input = value.to_string_lossy().starts_with('/');
-    let windows = if !posix_input && value.is_absolute() {
+    let windows = if value.is_absolute() && (native_host || !posix_input) {
         value.to_path_buf()
     } else {
         windows_home()
@@ -244,6 +244,32 @@ mod tests {
             build_cwd_attempts(Path::new("/tmp"), &source, false, None).await,
             vec![PathBuf::from("/tmp")]
         );
+    }
+
+    #[tokio::test]
+    async fn native_host_preserves_windows_unc_but_not_posix_cwd() {
+        for cwd in [
+            "//server/share/project",
+            r"\\server\share\project",
+            "//wsl$/Ubuntu/home/me/project",
+        ] {
+            let value = Path::new(cwd);
+            assert_eq!(
+                build_cwd_attempts(value, &AgentSource::Host, true, Some(CwdNamespace::Posix))
+                    .await,
+                vec![value.to_path_buf()],
+                "{cwd}"
+            );
+        }
+        let attempts = build_cwd_attempts(
+            Path::new("/home/me/project"),
+            &AgentSource::Host,
+            true,
+            None,
+        )
+        .await;
+        assert_eq!(attempts, vec![windows_home()]);
+        assert!(attempts[0].is_absolute());
     }
 
     #[tokio::test]

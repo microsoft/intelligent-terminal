@@ -2198,7 +2198,9 @@ namespace winrt::TerminalApp::implementation
                              ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
         const auto binding = _ResolveAgentPaneSettingsBindingForTab(tab);
         if (stashed && binding.agentSource == L"wsl" &&
-            !_CanPrewarmAgentBinding(binding, std::wstring_view{ _settings.GlobalSettings().AcpAgentSource() }))
+            !_CanPrewarmAgentBinding(binding,
+                                    std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
+                                    std::wstring_view{ _settings.GlobalSettings().AcpAgentSource() }))
         {
             tab->DeferAgentPaneRestore({ contentArgs, splitDirection, splitSize });
             return true;
@@ -4396,11 +4398,13 @@ namespace winrt::TerminalApp::implementation
     // See doc/specs/Multi-window-agent-pane.md.
     bool TerminalPage::_CanPrewarmAgentBinding(
         const AgentPaneSettingsBinding& binding,
+        const std::wstring_view globalAgentId,
         const std::wstring_view globalAgentSource)
     {
         return binding.launchable &&
                (binding.agentSource == L"host" ||
                 (binding.agentSource == L"wsl" &&
+                 binding.agentId == globalAgentId &&
                  globalAgentSource.starts_with(L"wsl:") &&
                  til::compare_ordinal_insensitive(globalAgentSource.substr(4), binding.agentWslDistro) == 0));
     }
@@ -4450,9 +4454,11 @@ namespace winrt::TerminalApp::implementation
 
         const auto binding = _ResolveAgentPaneSettingsBindingForTab(tab);
         // Avoid a synchronous WSL query on tab creation. Only the explicit
-        // global source is prewarmed; other WSL sources start on explicit use.
+        // global provider/source pair is prewarmed; other WSL agents start on explicit use.
         if (autoStash && binding.agentSource == L"wsl" &&
-            !_CanPrewarmAgentBinding(binding, std::wstring_view{ globals.AcpAgentSource() }))
+            !_CanPrewarmAgentBinding(binding,
+                                    std::wstring_view{ globals.EffectiveAcpAgent() },
+                                    std::wstring_view{ globals.AcpAgentSource() }))
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: non-default WSL source deferred until explicit use");
             return false;
@@ -5656,7 +5662,9 @@ namespace winrt::TerminalApp::implementation
                         }
 
                         if ((tabImpl->HasStashedAgentPane() &&
-                             !_CanPrewarmAgentBinding(*rebindBinding, current.acpAgentSource)) ||
+                             !_CanPrewarmAgentBinding(*rebindBinding,
+                                                     std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
+                                                     current.acpAgentSource)) ||
                             (restoredBinding &&
                              (!connectionState ||
                               !_CanSwitchAgentInPlace(*restoredBinding, *rebindBinding, *connectionState, helperEventReady))))
@@ -9990,8 +9998,14 @@ namespace winrt::TerminalApp::implementation
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
             if (settingsInternal->UsesManagedAgentCommand())
             {
-                const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
-                newWorkingDirectory = std::filesystem::absolute(path).wstring();
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                    profile.AgentProfileId(), profile.AgentProfileSource());
+                // Preserve Linux paths for WSL --cd; only host agents need absolute Windows paths.
+                if (!backend || backend->source != ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+                {
+                    const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
+                    newWorkingDirectory = std::filesystem::absolute(path).wstring();
+                }
             }
             connection = TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),

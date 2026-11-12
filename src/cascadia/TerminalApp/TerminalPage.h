@@ -751,6 +751,7 @@ namespace winrt::TerminalApp::implementation
             const AgentPaneSettingsBindingRequest& request);
         static bool _CanPrewarmAgentBinding(
             const AgentPaneSettingsBinding& binding,
+            std::wstring_view globalAgentId,
             std::wstring_view globalAgentSource);
         AgentPaneSettingsBinding _ResolveAgentPaneSettingsBindingForTab(
             const winrt::com_ptr<Tab>& tab,

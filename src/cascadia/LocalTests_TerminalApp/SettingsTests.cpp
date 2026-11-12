@@ -2635,20 +2635,24 @@ namespace TerminalAppLocalTests
             .agentSource = L"host",
             .launchable = true,
         };
-        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"host"));
-        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"wsl:Ubuntu"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"host"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
         binding.agentSource = L"wsl";
         binding.agentWslDistro = L"Ubuntu";
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"host"));
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"wsl:Debian"));
-        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"wsl:Ubuntu"));
-        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"wsl:uBuNtU"));
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"wsl:dEbIaN"));
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"WSL:Ubuntu"));
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"wsl:"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"host"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Debian"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Ubuntu"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:uBuNtU"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:dEbIaN"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"WSL:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:"));
+        binding.agentId = L"claude";
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:uBuNtU"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
         binding.launchable = false;
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"wsl:Ubuntu"));
-        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"wsl:uBuNtU"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:uBuNtU"));
     }
 
     void SettingsTests::TestAgentPaneSwitchCapability()

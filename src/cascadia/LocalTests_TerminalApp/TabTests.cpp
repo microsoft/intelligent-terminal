@@ -45,6 +45,7 @@
 #include <icu.h>
 #include <map>
 #include <set>
+#include <til/commandline.h>
 #include <til/io.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
@@ -520,6 +521,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentProfileInvalidArgumentsDisplayStartupFailure);
         TEST_METHOD(ConptyStartupFailureDoesNotLaunchProcess);
         TEST_METHOD(AgentProfileSessionsAreNotPrebound);
+        TEST_METHOD(ManagedWslAgentConnectionPreservesStartingDirectory);
         TEST_METHOD(NativeAgentProfileLaunchCwdIsPaneMetadata);
         TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
         TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
@@ -9074,6 +9076,37 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"." }, launch.as<Conpty>().StartingDirectory());
             });
         }
+    }
+
+    void TabTests::ManagedWslAgentConnectionPreservesStartingDirectory()
+    {
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto pageCleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            profile.AgentProfileId(L"copilot");
+            profile.AgentProfileSource(L"wsl:Ubuntu");
+            for (const auto virtualCwd : { L"", LR"(C:\host-workspace)" })
+            {
+                page->_WindowProperties.VirtualWorkingDirectory(virtualCwd);
+                for (const auto directory : { L"~", L"~/repo", L"/home/me/repo", L"/home/me/my repo" })
+                {
+                    profile.StartingDirectory(directory);
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    VERIFY_IS_TRUE(settings.DefaultSettings()->UsesManagedAgentCommand());
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false).as<Conpty>();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ directory }, launch.StartingDirectory());
+                    const auto [command, hostDirectory] = Utils::MangleStartingDirectoryForWSL(
+                        launch.Commandline(), launch.StartingDirectory());
+                    VERIFY_IS_TRUE(hostDirectory.empty());
+                    std::wstring quotedDirectory;
+                    til::append_quoted_argument(quotedDirectory, directory);
+                    VERIFY_IS_TRUE(command.find(L" --cd " + quotedDirectory + L" ") != std::wstring::npos);
+                    launch.Close();
+                }
+            }
+        });
     }
 
     void TabTests::AgentProfileCommandlineCopies()

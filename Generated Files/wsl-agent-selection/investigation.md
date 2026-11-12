@@ -19,7 +19,7 @@ Explicitly opening Agent settings actively probes registered distributions,
 even if this starts a stopped distribution, to show an accurate installed-agent
 list. Ordinary startup, settings-file loading/reloading, and native profile
 generation reuse saved/cached evidence without these expensive Linux probes.
-Discovery must not authorize unused ACP processes: neither a running distro nor
+Discovery does not authorize unused ACP processes. Neither a running distro nor
 finding its executables permits Windows-style chat/history pairs. Automatic WSL
 ACP eligibility requires the exact configured default provider and distribution,
 or actual use of that exact provider/source.
@@ -43,7 +43,7 @@ regular installation, settings, sessions, hooks, and unrelated worktrees.
 | Model discovery | `src\cascadia\TerminalSettingsEditor\AIAgentsViewModel.cpp:1887-1998`; `tools\wta\src\protocol\acp\probe.rs:55-108,151-174` | Settings probes always start on the host. Model cache entries are keyed by provider, so they cannot distinguish Windows and WSL accounts/catalogs. |
 | WSL execution | `tools\wta\src\agent_source.rs:22-90`; `tools\wta\src\protocol\acp\spawn.rs:584-690` | Already source-aware: the master process pool distinguishes source and launches ACP in an explicit distribution. No new transport or second orchestrator is needed. |
 | Working directory | `src\cascadia\inc\AgentSourceUtils.h:211-241`; `tools\wta\src\agent_source.rs:104-188` | Helper and agent cwd are already separate, but the original Rust drive conversion fabricated `/mnt/<drive>`. That is not evidence that the directory is mounted or accessible. Linux paths from a different distribution cannot be assumed to name the same workspace. |
-| Session MCP | `tools\wta\AGENTS.md:35-58`; `tools\wta\src\master\session_mcp.rs` | A distro-local relay already reaches the master-owned endpoint. Terminal actions must continue targeting the owning helper's actual shell, not be retargeted to match the agent. |
+| Session MCP | `tools\wta\AGENTS.md:35-58`; `tools\wta\src\master\session_mcp.rs` | A distro-local relay already reaches the master-owned endpoint. Terminal actions must continue targeting the owning helper's actual shell, not be redirected to match the agent. |
 | MVVM ownership | `src\cascadia\TerminalSettingsEditor\MainPage.cpp:1469-1495` | Settings already has asynchronous availability discovery and distributes results to profile VMs. Extend that existing owner rather than introducing a discovery service or putting process work in XAML code-behind. |
 
 ## What is not a fundamental blocker

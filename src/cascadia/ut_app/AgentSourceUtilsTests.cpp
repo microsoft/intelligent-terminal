@@ -55,16 +55,27 @@ namespace TerminalAppUnitTests
     {
         using Microsoft::Terminal::AgentSource::ResolveAgentAndHelperWorkingDirectories;
         const auto hostDirectory = [](std::wstring_view path) { return path == L"C:\\Users\\me"; };
-        for (const auto sourceShell : { L"pwsh.exe", L"wsl:Debian", L"" })
+        for (const auto sourceShell : { L"pwsh.exe", L"wsl:Debian", L"WSL:Ubuntu", L"wsl:Ubuntu-other", L"" })
         {
             const auto resolved = ResolveAgentAndHelperWorkingDirectories(
                 true, L"/home/me/project", {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", sourceShell);
             VERIFY_ARE_EQUAL(std::wstring{ L"~" }, resolved.agent);
             VERIFY_ARE_EQUAL(std::wstring{ L"C:\\Users\\me" }, resolved.helper);
         }
-        const auto sameDistro = ResolveAgentAndHelperWorkingDirectories(
-            true, L"/home/me/project", {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", L"wsl:Ubuntu");
-        VERIFY_ARE_EQUAL(std::wstring{ L"/home/me/project" }, sameDistro.agent);
+        for (const auto distro : { L"Ubuntu", L"ubuntu", L"uBuNtU" })
+        {
+            const auto sameDistro = ResolveAgentAndHelperWorkingDirectories(
+                true, L"/home/me/project", {}, {}, L"C:\\Users\\me", hostDirectory, distro, L"wsl:Ubuntu");
+            VERIFY_ARE_EQUAL(std::wstring{ L"/home/me/project" }, sameDistro.agent);
+        }
+        for (const auto unc : { L"//wsl$/Ubuntu/home/me/project", L"//wsl.localhost/Ubuntu/home/me/project", L"//wsl$/Debian/home/me/project", L"//server/share/project" })
+        {
+            const auto qualified = ResolveAgentAndHelperWorkingDirectories(
+                true, unc, {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", L"pwsh.exe");
+            // Rust validates the embedded distribution before using a UNC cwd.
+            VERIFY_ARE_EQUAL(std::wstring{ unc }, qualified.agent);
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\Users\\me" }, qualified.helper);
+        }
         const auto windowsPath = ResolveAgentAndHelperWorkingDirectories(
             true, L"C:\\work", {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", L"pwsh.exe");
         VERIFY_ARE_EQUAL(std::wstring{ L"C:\\work" }, windowsPath.agent);

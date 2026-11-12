@@ -7,6 +7,7 @@
 #include "../../types/inc/utils.hpp"
 
 #include <shellapi.h>
+#include <til/string.h>
 #include <wil/win32_helpers.h>
 
 #include <filesystem>
@@ -246,8 +247,9 @@ namespace Microsoft::Terminal::AgentSource
                             ResolveCwd(paneCwd, windowCwd, profileCwd, homeCwd) :
                             helperCwd;
         if (agentRunsInWsl && !agentWslDistro.empty() &&
-            agentCwd.starts_with(L'/') &&
-            paneShell != L"wsl:" + std::wstring{ agentWslDistro })
+            agentCwd.starts_with(L'/') && !agentCwd.starts_with(L"//") &&
+            (!paneShell.starts_with(L"wsl:") ||
+             til::compare_ordinal_insensitive(paneShell.substr(4), agentWslDistro) != 0))
         {
             agentCwd = L"~";
         }
