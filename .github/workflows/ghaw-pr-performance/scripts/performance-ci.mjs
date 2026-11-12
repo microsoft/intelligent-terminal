@@ -4,6 +4,36 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { validateCiDefinition, validateCiPull, validateCiRun, verifyCiSecurity } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
 
+function nativeCiReference(run, repository) {
+    const matches = run.referenced_workflows?.filter(item =>
+        item.path?.split('@')[0] === `${repository}/.github/workflows/pr-ci-native.yml`);
+    if (matches?.length !== 1 || !/^[0-9a-f]{40}$/.test(matches[0].sha ?? ''))
+        throw Error('CI has no unambiguous immutable native-workflow provenance.');
+    return matches[0];
+}
+
+export function validatePerformanceProvenance(run, proof) {
+    if (proof.commit?.sha !== proof.reference.sha || proof.commit.parents?.length !== 2 ||
+        proof.commit.parents[1].sha !== run.head_sha ||
+        !/^[0-9a-f]{40}$/.test(proof.commit.parents[0].sha ?? '') ||
+        !['ahead', 'identical'].includes(proof.baseComparison?.status))
+        throw Error('CI workflow revision does not bind the reviewed head to default-branch history.');
+    validateCiDefinition(proof.workflowTree, proof.trustedTree);
+    if (!Array.isArray(proof.jobs) || proof.jobs.length !== 3)
+        throw Error('CI provenance requires exactly the native workflow jobs.');
+    for (const name of ['native / performance-scope', 'native / C++ build and unit tests', 'native / Rust build and unit tests']) {
+        const jobs = proof.jobs.filter(job => job.name === name);
+        if (jobs.length !== 1 || jobs[0].run_id !== run.id || jobs[0].run_attempt !== run.run_attempt ||
+            jobs[0].status !== 'completed' || jobs[0].conclusion !== 'success')
+            throw Error('CI provenance requires all native jobs to complete successfully.');
+    }
+    const origin = proof.jobs.find(job => job.name === 'native / performance-scope').steps?.filter(step =>
+        step.name === 'Confirm default-target CI origin');
+    if (origin?.length !== 1 || origin[0].status !== 'completed' || origin[0].conclusion !== 'success')
+        throw Error('CI attempt did not confirm its original default-target PR context.');
+    return { workflowSha: proof.reference.sha, originalBaseSha: proof.commit.parents[0].sha };
+}
+
 export async function admitPerformanceCi(github, context, trustedSha) {
     if (!/^[0-9a-f]{40}$/.test(trustedSha ?? '')) throw Error('Invalid trusted CI revision.');
     const source = context.payload.workflow_run;
@@ -13,6 +43,17 @@ export async function admitPerformanceCi(github, context, trustedSha) {
         runAttempt: source.run_attempt, headSha: source.head_sha,
         defaultBranch: context.payload.repository.default_branch };
     validateCiRun(run, identity);
+    const reference = nativeCiReference(run, identity.repository);
+    const commit = (await github.rest.git.getCommit({ ...context.repo, commit_sha: reference.sha })).data;
+    if (!/^[0-9a-f]{40}$/.test(commit.parents?.[0]?.sha ?? '')) throw Error('Missing CI merge parent.');
+    const baseComparison = (await github.rest.repos.compareCommits({
+        ...context.repo, base: commit.parents[0].sha, head: trustedSha, per_page: 1 })).data;
+    const [workflowTree, trustedTree] = await Promise.all([reference.sha, trustedSha].map(async tree_sha =>
+        (await github.rest.git.getTree({ ...context.repo, tree_sha, recursive: '1' })).data));
+    const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+        ...context.repo, run_id: run.id, per_page: 100,
+    });
+    validatePerformanceProvenance(run, { reference, commit, baseComparison, workflowTree, trustedTree, jobs });
     const workflow = (await github.rest.actions.getWorkflow({ ...context.repo, workflow_id: 'pr-ci.yml' })).data;
     if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' || workflow.state !== 'active')
         throw Error('CI workflow is not the active trusted workflow.');
@@ -64,6 +105,23 @@ export function verifyPerformanceCi({ environment = process.env, request } = {})
         ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`],
         { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 })));
     const verified = verifyCiSecurity({ environment, request: api });
+    const reference = nativeCiReference(verified.run, environment.GITHUB_REPOSITORY);
+    const commit = api(`git/commits/${reference.sha}`);
+    if (!/^[0-9a-f]{40}$/.test(commit.parents?.[0]?.sha ?? '')) throw Error('Missing CI merge parent.');
+    const jobs = [];
+    for (let page = 1; ; page++) {
+        if (page > 20) throw Error('CI jobs exceed the admission limit.');
+        const batch = api(`actions/runs/${verified.run.id}/jobs?per_page=100&page=${page}`).jobs;
+        if (!Array.isArray(batch)) throw Error('Invalid CI job list.');
+        jobs.push(...batch);
+        if (batch.length < 100) break;
+    }
+    const provenance = validatePerformanceProvenance(verified.run, {
+        reference, commit, jobs,
+        baseComparison: api(`compare/${commit.parents[0].sha}...${environment.EXPECTED_WORKFLOW_SHA}?per_page=1`),
+        workflowTree: api(`git/trees/${reference.sha}?recursive=1`),
+        trustedTree: api(`git/trees/${environment.EXPECTED_WORKFLOW_SHA}?recursive=1`),
+    });
     const artifacts = [];
     for (let page = 1; ; page++) {
         if (page > 20) throw Error('CI artifact list exceeds the admission limit.');
@@ -72,7 +130,7 @@ export function verifyPerformanceCi({ environment = process.env, request } = {})
         artifacts.push(...batch);
         if (batch.length < 100) break;
     }
-    return { ...verified, identity: { ...verified.identity, comparisonBaseSha: environment.COMPARISON_BASE_SHA },
+    return { ...verified, identity: { ...verified.identity, ...provenance, comparisonBaseSha: environment.COMPARISON_BASE_SHA },
         artifacts: validatePerformanceArtifacts(artifacts, verified.run) };
 }
 

@@ -929,6 +929,7 @@ export function publicationDecision(report) {
 
 export const CI_DEFINITION_PATHS = [
   '.github/workflows/pr-ci.yml',
+  '.github/workflows/pr-ci-native.yml',
   'build/scripts/Run-Tests.ps1',
   'tools/razzle.cmd',
   'tools/.razzlerc.cmd',

@@ -60,6 +60,10 @@ as verified or tested fixes.
    when no performance-sensitive source changed. No commit ID is hardcoded.
    Controller and worker use the default-branch workflow revision. Admission
    reuses the security workflow's CI identity and unchanged-definition checks.
+   The native jobs are a same-repository reusable workflow so GitHub records
+   their immutable revision. Admission checks that revision and its helper
+   definitions, merge parents, successful native jobs and original default-target
+   context. Mutable PR associations alone do not prove which CI ran.
    PRs changing CI implementation require manual review, not self-attested CI.
    Documentation-only PRs excluded by PR CI do not start this review.
 2. The repair worker inspects source and callers, creates a separate local
@@ -105,6 +109,8 @@ CI keeps shallow checkouts. A read-only API job resolves the immutable merge
 base, then each build job fetches that one commit before executing PR code.
 The analyzer itself does not fetch or receive fetch credentials. Receipts bind
 the comparison base as well as head/run/attempt so a different scope is rejected.
+CI analysis tools are checked out from the recorded native-workflow revision,
+not inferred from a subsequently retargeted PR.
 
 Performance warnings remain advisory: the C++ analyzer explicitly uses
 `ClangTidyExtraArgs=-Wno-error` without changing the normal build's warning

@@ -6,17 +6,22 @@ import { admitPerformanceCi, validatePerformanceArtifacts, validatePerformanceFi
 import { CI_DEFINITION_PATHS } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
 
 function fixture() {
-    const head = 'a'.repeat(40), base = 'b'.repeat(40), trusted = 'c'.repeat(40);
+    const head = 'a'.repeat(40), base = 'b'.repeat(40), trusted = 'c'.repeat(40), merge = 'd'.repeat(40);
     const repository = { id: 1, full_name: 'owner/repo', default_branch: 'main' };
     const run = { id: 99, run_attempt: 2, workflow_id: 3, repository, head_repository: repository,
         path: '.github/workflows/pr-ci.yml', name: 'PR CI', event: 'pull_request',
         head_sha: head, head_branch: 'topic', status: 'completed', conclusion: 'success' };
+    run.referenced_workflows = [{ path: 'owner/repo/.github/workflows/pr-ci-native.yml@refs/pull/42/merge', sha: merge }];
+    const commit = { sha: merge, parents: [{ sha: base }, { sha: head }] };
+    const jobs = ['native / performance-scope', 'native / C++ build and unit tests', 'native / Rust build and unit tests']
+        .map(name => ({ name, run_id: 99, run_attempt: 2, status: 'completed', conclusion: 'success',
+            steps: [{ name: 'Confirm default-target CI origin', status: 'completed', conclusion: 'success' }] }));
     const pr = { number: 42, state: 'open', draft: false,
         head: { sha: head, ref: 'topic', repo: repository }, base: { sha: base, ref: 'main', repo: repository } };
     const tree = { truncated: false, tree: CI_DEFINITION_PATHS.map(path =>
         ({ path, mode: '100644', type: 'blob', sha: trusted })) };
     const workflow = { id: 3, path: '.github/workflows/pr-ci.yml', state: 'active' };
-    const comparison = { merge_base_commit: { sha: base } };
+    const comparison = { merge_base_commit: { sha: base }, status: 'ahead' };
     const artifacts = ['ci-security-cpp', 'ci-security-rust', 'ci-performance-cpp', 'ci-performance-rust'].map((prefix, i) =>
         ({ id: i + 1, name: `${prefix}-99-2`, expired: false, workflow_run: { id: 99, head_sha: head } }));
     const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '1',
@@ -28,18 +33,21 @@ function fixture() {
         if (endpoint === 'actions/workflows/pr-ci.yml') return workflow;
         if (endpoint.startsWith('compare/')) return comparison;
         if (endpoint.startsWith('git/trees/')) return tree;
+        if (endpoint === `git/commits/${merge}`) return commit;
+        if (endpoint.startsWith('actions/runs/99/jobs?')) return { jobs };
         if (endpoint === 'pulls/42') return pr;
         if (endpoint.startsWith('actions/runs/99/artifacts?')) return { artifacts };
         throw Error(`Unexpected API request: ${endpoint}`);
     };
     const context = { repo: { owner: 'owner', repo: 'repo' }, payload: { repository, workflow_run: structuredClone(run) } };
     const github = { rest: {
-        actions: { async getWorkflowRun() { return { data: run }; }, async getWorkflow() { return { data: workflow }; } },
+        actions: { async getWorkflowRun() { return { data: run }; }, async getWorkflow() { return { data: workflow }; },
+            listJobsForWorkflowRun: 'jobs' },
         repos: { async compareCommits() { return { data: comparison }; }, listPullRequestsAssociatedWithCommit: 'associated' },
-        git: { async getTree() { return { data: tree }; } },
+        git: { async getTree() { return { data: tree }; }, async getCommit() { return { data: commit }; } },
         pulls: { async get() { return { data: pr }; } },
-    }, async paginate() { return [pr]; } };
-    return { run, pr, tree, artifacts, environment, request, context, github, head, trusted };
+    }, async paginate(method) { return method === 'jobs' ? jobs : [pr]; } };
+    return { run, pr, tree, artifacts, environment, request, context, github, head, trusted, merge, jobs, commit, comparison };
 }
 
 test('controller admits only successful current same-repository CI; drafts cost no inference', async () => {
@@ -64,7 +72,8 @@ test('controller admits only successful current same-repository CI; drafts cost 
 test('worker revalidates CI and requires both matching performance artifacts', () => {
     const f = fixture();
     assert.deepEqual(verifyPerformanceCi(f).identity, { runId: '99', runAttempt: 2,
-        headSha: f.head, comparisonBaseSha: f.environment.COMPARISON_BASE_SHA });
+        headSha: f.head, comparisonBaseSha: f.environment.COMPARISON_BASE_SHA,
+        workflowSha: f.merge, originalBaseSha: f.environment.EXPECTED_BASE_SHA });
     for (const change of [
         item => { item.expired = true; }, item => { item.name = 'ci-performance-cpp-99-1'; },
         item => { item.workflow_run.head_sha = 'd'.repeat(40); },
@@ -103,7 +112,10 @@ test('head/run/attempt and successful tool execution bind the analyzer receipt',
 test('workflow wiring has no direct PR inference and no native rebuild in the worker', () => {
     const controller = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance-controller.yml', import.meta.url), 'utf8');
     const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
-    const ci = fs.readFileSync(new URL('../../../workflows/pr-ci.yml', import.meta.url), 'utf8');
+    const entry = fs.readFileSync(new URL('../../../workflows/pr-ci.yml', import.meta.url), 'utf8');
+    const ci = fs.readFileSync(new URL('../../../workflows/pr-ci-native.yml', import.meta.url), 'utf8');
+    assert.match(entry, /uses: \.\/\.github\/workflows\/pr-ci-native\.yml/);
+    assert.match(ci, /workflow_call:/);
     assert.match(controller, /workflow_run:\s+workflows: \['PR CI'\]\s+types: \[completed\]/);
     assert.doesNotMatch(controller, /^  pull_request:/m);
     assert.match(controller, /workflow_run\.conclusion == 'success'/);
@@ -116,6 +128,29 @@ test('workflow wiring has no direct PR inference and no native rebuild in the wo
     assert.doesNotMatch(ci, /fetch-depth: 0/);
     assert.match(ci, /Resolve performance comparison base/);
     assert.equal((ci.match(/credential\.helper=!gh auth git-credential/g) ?? []).length, 2);
+});
+
+test('same-head retargeting and unverifiable workflow revisions cannot establish CI provenance', async () => {
+    for (const change of [
+        f => { f.run.referenced_workflows = []; },
+        f => { f.commit.parents[1].sha = 'e'.repeat(40); },
+        f => { f.comparison.status = 'diverged'; },
+        f => { f.jobs[0].steps[0].conclusion = 'skipped'; },
+        f => { f.jobs[1].conclusion = 'skipped'; },
+        f => { f.jobs[2].run_attempt = 1; },
+    ]) {
+        const f = fixture();
+        change(f);
+        await assert.rejects(admitPerformanceCi(f.github, f.context, f.trusted));
+        assert.throws(() => verifyPerformanceCi(f));
+    }
+    const substituted = fixture();
+    const otherTree = structuredClone(substituted.tree);
+    otherTree.tree.find(item => item.path === '.github/workflows/pr-ci-native.yml').sha = 'e'.repeat(40);
+    substituted.github.rest.git.getTree = async ({ tree_sha }) => ({ data: tree_sha === substituted.merge ? otherTree : substituted.tree });
+    await assert.rejects(admitPerformanceCi(substituted.github, substituted.context, substituted.trusted), /CI implementation differs/);
+    assert.equal(substituted.pr.base.ref, 'main');
+    assert.equal(substituted.pr.head.sha, substituted.run.head_sha);
 });
 
 test('completed artifacts require raw diagnostics and every recorded phase log', t => {
