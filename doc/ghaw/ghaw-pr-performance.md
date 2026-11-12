@@ -123,8 +123,12 @@ produce a green check. A successful workflow check means execution/delivery
 completed; action-required delivery also fails the controller's publishing step.
 It does **not** mean the proposed changes were built or tested.
 
-Comment mutation is not atomic compare-and-swap: concurrency and final
-freshness checks reduce races but do not constitute atomicity.
+Review jobs can be superseded, but report publication runs in a separate
+per-PR concurrency group with `cancel-in-progress: false` and `queue: max`.
+The publisher checks freshness and the live head inside that group, covering
+the final comment read/write interval. This serializes cooperating publishers;
+it is not API compare-and-swap and does not coordinate older workflow revisions
+that used a different group.
 
 ## Local workflow-contract checks
 
