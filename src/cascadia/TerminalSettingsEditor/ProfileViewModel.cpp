@@ -139,7 +139,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         const auto selectedPresent = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
-            return std::wstring_view{ entry.Id() } == selected;
+            return Backend::AgentPaneBackend::SelectionEquals(entry.Id(), selected);
         });
         if (!selected.empty() && !selectedPresent)
         {
@@ -322,7 +322,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < _agentPaneBackendList.Size(); ++i)
         {
             const auto entry = _agentPaneBackendList.GetAt(i);
-            if (entry.Id() == selected)
+            if (::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SelectionEquals(entry.Id(), selected))
             {
                 return entry;
             }
@@ -332,7 +332,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void ProfileViewModel::CurrentAgentPaneBackend(const Editor::AgentEntry& value)
     {
-        if (value && !_updatingAgentChoices && AgentPaneBackend() != value.Id())
+        if (value && !_updatingAgentChoices && !::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SelectionEquals(AgentPaneBackend(), value.Id()))
         {
             AgentPaneBackend(value.Id());
             _NotifyChanges(L"CurrentAgentPaneBackend");
@@ -345,7 +345,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < _commandPaletteAgentList.Size(); ++i)
         {
             const auto entry = _commandPaletteAgentList.GetAt(i);
-            if (entry.Id() == selected)
+            if (::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SelectionEquals(entry.Id(), selected))
             {
                 return entry;
             }
@@ -355,7 +355,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void ProfileViewModel::CurrentCommandPaletteAgent(const Editor::AgentEntry& value)
     {
-        if (value && !_updatingAgentChoices && CommandPaletteAgent() != value.Id())
+        if (value && !_updatingAgentChoices && !::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SelectionEquals(CommandPaletteAgent(), value.Id()))
         {
             CommandPaletteAgent(value.Id());
             _NotifyChanges(L"CurrentCommandPaletteAgent");

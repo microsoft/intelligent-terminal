@@ -155,16 +155,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return false;
         }
 
-        const auto selectedAgent = _AgentSelectionId(_GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource());
-        for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
-        {
-            const auto entry = _acpAgentList.GetAt(i);
-            if (!entry.IsAddNew() && entry.Id() == selectedAgent)
-            {
-                return entry.IsInstalled();
-            }
-        }
-        return false;
+        const auto entry = _FindEntryById(_acpAgentList, _AgentSelectionId(_GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource()));
+        return entry && entry.IsInstalled();
     }
 
     winrt::hstring AIAgentsViewModel::_AgentSelectionId(const winrt::hstring& agentId, const winrt::hstring& source)
@@ -1190,7 +1182,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < list.Size(); ++i)
         {
             const auto entry = list.GetAt(i);
-            if (entry.Id() == id && !entry.IsAddNew()) return entry;
+            if (!entry.IsAddNew() && ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SelectionEquals(entry.Id(), id))
+            {
+                return entry;
+            }
         }
         return nullptr;
     }
@@ -1473,7 +1468,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return;
         }
         if (backend->agentId == std::wstring_view{ _GlobalSettings.AcpAgent() } &&
-            backend->SettingsSource() == std::wstring_view{ _GlobalSettings.AcpAgentSource() })
+            ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SourceEquals(
+                backend->SettingsSource(), _GlobalSettings.AcpAgentSource()))
         {
             if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
             {
@@ -1601,7 +1597,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return;
         }
         if (backend->agentId == std::wstring_view{ _GlobalSettings.DelegateAgent() } &&
-            backend->SettingsSource() == std::wstring_view{ _GlobalSettings.DelegateAgentSource() })
+            ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SourceEquals(
+                backend->SettingsSource(), _GlobalSettings.DelegateAgentSource()))
         {
             if (_isAddingCustomDelegateAgent && _editingCustomDelegateAgentId.empty())
             {

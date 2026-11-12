@@ -35,6 +35,9 @@ fn master_retains_default_wsl_source_and_rejects_invalid_distro() {
     ])
     .unwrap();
     assert!(master_config(cli).is_err());
+    let cli =
+        Cli::try_parse_from(["wta", "--master", "test-pipe", "--agent-source", "wsl"]).unwrap();
+    assert!(master_config(cli).is_err());
 }
 
 #[test]

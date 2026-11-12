@@ -579,6 +579,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentCreationMetadataSurvivesAdmissionLifecycle);
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
+        TEST_METHOD(ManagedAgentLaunchObservationPreservesSource);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
@@ -27059,6 +27060,60 @@ namespace TerminalAppLocalTests
             const auto replay = manager->AdmitNativeAgentObservation(control.ContentId(), 1, "tab", {}, {}, true, 2);
             VERIFY_ARE_EQUAL(std::string{ "Host" }, replay.location);
             VERIFY_ARE_EQUAL(initial.paneCreatedAtMs, replay.paneCreatedAtMs);
+        });
+    }
+
+    void TabTests::ManagedAgentLaunchObservationPreservesSource()
+    {
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto pageCleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+            page->_SyncNativeAgentStatusMode();
+            const auto manager = winrt::get_self<Manager>(page->_manager);
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            profile.AgentProfileId(L"copilot");
+            for (const auto source : { L"host", L"wsl:Ubuntu" })
+            {
+                profile.AgentProfileSource(source);
+                for (const auto customized : { false, true })
+                {
+                    if (customized)
+                    {
+                        profile.Commandline(L"copilot --custom-option");
+                    }
+                    else
+                    {
+                        profile.ClearCommandline();
+                    }
+                    winrt::guid paneId;
+                    VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
+                    const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                    NewTerminalArgs args;
+                    args.Profile(Utils::GuidToString(profile.Guid()));
+                    const auto pane = page->_MakePane(args, nullptr, *connection);
+                    VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                    const auto contentId = pane->GetTerminalControl().ContentId();
+                    const auto initial = manager->NativeAgentObservationForContent(contentId).value();
+                    const auto expected = customized                             ? std::string{} :
+                                          std::wstring_view{ source } == L"host" ? std::string{ "Host" } :
+                                                                                   std::string{ "wsl:Ubuntu" };
+                    VERIFY_ARE_EQUAL(expected, initial.location);
+                    VERIFY_IS_TRUE(initial.agentSessionId.empty());
+                    VERIFY_IS_TRUE(manager->AgentSessionEvent(contentId).empty());
+                    if (!customized)
+                    {
+                        VERIFY_IS_FALSE(manager->RefineNativeAgentLaunchLocation(contentId, L"copilot", "wsl:Debian"));
+                        manager->RemoveNativeAgentObservation(contentId);
+                        const auto replay = manager->AdmitNativeAgentObservation(contentId, 1, "tab", {}, {}, true, 2);
+                        VERIFY_ARE_EQUAL(expected, replay.location);
+                        VERIFY_ARE_EQUAL(initial.paneCreatedAtMs, replay.paneCreatedAtMs);
+                        VERIFY_ARE_EQUAL(initial.paneCreationSequence, replay.paneCreationSequence);
+                    }
+                }
+            }
         });
     }
 

@@ -226,7 +226,10 @@ async fn main() -> Result<()> {
         Some(command) => cli::run(command, json_mode).await,
         None => {
             if let Some(pipe_name) = cli.master.clone() {
-                master::run_master_mode(master_config(cli)?, pipe_name).await
+                match master_config(cli) {
+                    Ok(config) => master::run_master_mode(config, pipe_name).await,
+                    Err(error) => Err(error),
+                }
             } else if let Some(pipe_name) = cli.connect_master.clone() {
                 helper::run_helper_mode(helper_config(cli), pipe_name).await
             } else {

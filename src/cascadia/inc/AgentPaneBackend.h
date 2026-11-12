@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <til/string.h>
 
 namespace Microsoft::Terminal::Settings::Model
 {
@@ -53,6 +54,26 @@ namespace Microsoft::Terminal::Settings::Model
         std::wstring SettingsSource() const
         {
             return source == AgentPaneBackendSource::Wsl ? L"wsl:" + wslDistro : L"host";
+        }
+
+        static bool SourceEquals(const std::wstring_view lhs, const std::wstring_view rhs) noexcept
+        {
+            return lhs == rhs ||
+                   (lhs.starts_with(L"wsl:") && rhs.starts_with(L"wsl:") &&
+                    til::compare_ordinal_insensitive(lhs.substr(4), rhs.substr(4)) == 0);
+        }
+
+        static bool SelectionEquals(const std::wstring_view lhs, const std::wstring_view rhs)
+        {
+            if (lhs == rhs)
+            {
+                return true;
+            }
+            const auto left = Parse(lhs);
+            const auto right = Parse(rhs);
+            return left && right &&
+                   left->agentId == right->agentId &&
+                   SourceEquals(left->SettingsSource(), right->SettingsSource());
         }
 
         std::wstring SelectionId() const

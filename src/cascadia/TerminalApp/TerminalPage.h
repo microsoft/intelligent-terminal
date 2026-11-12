@@ -1554,7 +1554,8 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Microsoft::Terminal::Control::TermControl _CreateNewControlAndContent(const winrt::Microsoft::Terminal::Settings::TerminalSettingsCreateResult& settings,
                                                                                      const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
-                                                                                     const winrt::hstring& nativeAgentProviderId = {});
+                                                                                     const winrt::hstring& nativeAgentProviderId = {},
+                                                                                     const winrt::hstring& nativeAgentSource = L"host");
         winrt::Microsoft::Terminal::Control::TermControl _SetupControl(const winrt::Microsoft::Terminal::Control::TermControl& term);
         winrt::Microsoft::Terminal::Control::TermControl _AttachControlToContent(
             const uint64_t& contentGuid,

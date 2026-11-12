@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 
+// Two 10s enumeration calls plus this budget leave headroom before native capture's 90s limit.
+const WSL_SOURCE_COLLECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub(crate) async fn run_install_acp(
     agent_id: &str,
     wsl_distro: Option<&str>,
@@ -211,7 +214,8 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
         "Invalid --wsl-distro"
     );
     crate::agent_source::ensure_wsl_running(distro).await?;
-    let (agents, interactive_agents, error) = probe_distro_agents(distro, false).await;
+    let deadline = tokio::time::Instant::now() + WSL_SOURCE_COLLECTION_TIMEOUT;
+    let (agents, interactive_agents, error) = probe_distro_agents(distro, false, deadline).await;
     anyhow::ensure!(error.is_none(), "{}", error.unwrap_or_default());
 
     println!(
@@ -229,6 +233,7 @@ pub(crate) async fn run_agent_sources(wsl_distro: &str) -> Result<()> {
 async fn probe_distro_agents(
     distro: &str,
     start_stopped_wsl: bool,
+    deadline: tokio::time::Instant,
 ) -> (
     Vec<AgentSourceProbeEntry>,
     Vec<AgentSourceProbeEntry>,
@@ -239,13 +244,17 @@ async fn probe_distro_agents(
         .map(|profile| async move {
             if !start_stopped_wsl {
                 // Passive callers must not turn a running-state failure into permission.
-                crate::agent_source::ensure_wsl_running(distro).await?;
+                probe_before_deadline(deadline, crate::agent_source::ensure_wsl_running(distro))
+                    .await?;
             }
             Ok::<_, anyhow::Error>(
                 probe_agent_capabilities(profile, distro, |executable| async move {
-                    crate::agent_check::find_wsl_exe_checked(distro, executable)
-                        .await
-                        .map(|path| path.is_some())
+                    probe_before_deadline(
+                        deadline,
+                        crate::agent_check::find_wsl_exe_checked(distro, executable),
+                    )
+                    .await
+                    .map(|path| path.is_some())
                 })
                 .await,
             )
@@ -286,6 +295,22 @@ async fn probe_distro_agents(
         interactive_agents,
         (!errors.is_empty()).then(|| errors.join("; ")),
     )
+}
+
+async fn probe_before_deadline<T>(
+    deadline: tokio::time::Instant,
+    probe: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    // Do not poll queued probes after expiry: polling could start another distro.
+    anyhow::ensure!(
+        tokio::time::Instant::now() < deadline,
+        "WSL source collection timed out"
+    );
+    // These process probes own kill_on_drop children. Cancellation drops the
+    // in-flight child without spawning detached tasks or discarding earlier results.
+    tokio::time::timeout_at(deadline, probe)
+        .await
+        .context("WSL source collection timed out")?
 }
 
 async fn probe_agent_capabilities<F, Fut>(
@@ -342,7 +367,7 @@ async fn collect_wsl_source_probes<F, Fut>(
     probe: F,
 ) -> Vec<WslSourceProbeResult>
 where
-    F: Fn(String) -> Fut,
+    F: Fn(String, tokio::time::Instant) -> Fut,
     Fut: std::future::Future<
         Output = (
             Vec<AgentSourceProbeEntry>,
@@ -353,7 +378,10 @@ where
 {
     use futures::StreamExt as _;
     let probe = &probe;
+    let deadline = tokio::time::Instant::now() + WSL_SOURCE_COLLECTION_TIMEOUT;
     // Both levels are bounded: at most two distributions, four agents each.
+    // Every executable/running-state check uses this same deadline, so timeout
+    // becomes a provider error rather than dropping a source's partial results.
     let mut sources: Vec<_> = futures::stream::iter(registered)
         .map(|distro| {
             let running = &running;
@@ -369,7 +397,7 @@ where
                     ),
                 };
                 let (agents, interactive_agents, error) = if is_running || start_stopped_wsl {
-                    probe(distro.clone()).await
+                    probe(distro.clone(), deadline).await
                 } else {
                     (Vec::new(), Vec::new(), error)
                 };
@@ -406,7 +434,9 @@ pub(crate) async fn run_all_agent_sources(start_stopped_wsl: bool) -> Result<()>
         registered,
         running,
         start_stopped_wsl,
-        |distro| async move { probe_distro_agents(&distro, start_stopped_wsl).await },
+        |distro, deadline| async move {
+            probe_distro_agents(&distro, start_stopped_wsl, deadline).await
+        },
     )
     .await;
     println!("{}", serde_json::json!({ "sources": sources }));
@@ -582,7 +612,7 @@ mod tests {
                 vec!["Ubuntu".into(), "Debian".into()],
                 Ok(Vec::new()),
                 start_stopped_wsl,
-                |_| {
+                |_, _| {
                     calls.set(calls.get() + 1);
                     async {
                         (
@@ -612,7 +642,7 @@ mod tests {
             vec!["Ubuntu".into()],
             Err(anyhow::anyhow!("query failed")),
             true,
-            |_| async { (Vec::new(), Vec::new(), None) },
+            |_, _| async { (Vec::new(), Vec::new(), None) },
         )
         .await;
         assert!(sources[0].running);
@@ -625,7 +655,7 @@ mod tests {
             vec!["Ubuntu".into(), "Debian".into()],
             Ok(Vec::new()),
             true,
-            |distro| async move {
+            |distro, _| async move {
                 let agents = if distro == "Ubuntu" {
                     vec![AgentSourceProbeEntry {
                         id: "copilot",
@@ -667,7 +697,7 @@ mod tests {
             vec!["Ubuntu".into(), "Debian".into(), "Fedora".into()],
             Ok(vec!["Ubuntu".into(), "Fedora".into()]),
             false,
-            |distro| async move {
+            |distro, _| async move {
                 assert_ne!(
                     distro, "Debian",
                     "stopped distro must never execute a probe"
@@ -702,7 +732,7 @@ mod tests {
             vec!["Ubuntu".into()],
             Err(anyhow::anyhow!("query failed")),
             false,
-            |_| async { panic!("unknown running state must not start a distro") },
+            |_, _| async { panic!("unknown running state must not start a distro") },
         )
         .await;
         assert!(!sources[0].running);
@@ -720,7 +750,7 @@ mod tests {
         let active = AtomicUsize::new(0);
         let peak = AtomicUsize::new(0);
         let names: Vec<_> = (0..8).map(|i| format!("Distro{i}")).collect();
-        let sources = collect_wsl_source_probes(names.clone(), Ok(names), false, |_| async {
+        let sources = collect_wsl_source_probes(names.clone(), Ok(names), false, |_, _| async {
             let count = active.fetch_add(1, Ordering::SeqCst) + 1;
             peak.fetch_max(count, Ordering::SeqCst);
             tokio::task::yield_now().await;
@@ -730,6 +760,117 @@ mod tests {
         .await;
         assert_eq!(sources.len(), 8);
         assert_eq!(peak.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn all_wsl_deadline_retains_healthy_and_partial_sources_and_times_out_queued_sources() {
+        let started = tokio::time::Instant::now();
+        let sources = collect_wsl_source_probes(
+            vec![
+                "Healthy".into(),
+                "Partial".into(),
+                "Slow".into(),
+                "Queued".into(),
+            ],
+            Ok(Vec::new()),
+            true,
+            |distro, deadline| async move {
+                if distro == "Healthy" {
+                    return (
+                        vec![AgentSourceProbeEntry {
+                            id: "copilot",
+                            display_name: "GitHub Copilot",
+                        }],
+                        Vec::new(),
+                        None,
+                    );
+                }
+                let profile = crate::agent_registry::lookup_profile_by_id("claude");
+                let distro = distro.as_str();
+                let (acp, interactive, errors) =
+                    probe_agent_capabilities(profile, distro, |executable| {
+                        probe_before_deadline(deadline, async move {
+                            assert_ne!(distro, "Queued", "expired queued probes must not run");
+                            if distro == "Partial" && executable == profile.cli_executable {
+                                Ok(true)
+                            } else {
+                                std::future::pending::<Result<bool>>().await
+                            }
+                        })
+                    })
+                    .await;
+                assert!(!acp);
+                (
+                    Vec::new(),
+                    if interactive {
+                        vec![AgentSourceProbeEntry {
+                            id: profile.id,
+                            display_name: profile.display_name,
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                    Some(errors.join("; ")),
+                )
+            },
+        )
+        .await;
+        assert_eq!(started.elapsed(), WSL_SOURCE_COLLECTION_TIMEOUT);
+        assert_eq!(sources.len(), 4);
+        let healthy = sources
+            .iter()
+            .find(|source| source.wsl_distro == "Healthy")
+            .unwrap();
+        assert_eq!(healthy.agents[0].id, "copilot");
+        assert!(healthy.running);
+        assert!(healthy.error.is_none());
+        let partial = sources
+            .iter()
+            .find(|source| source.wsl_distro == "Partial")
+            .unwrap();
+        assert_eq!(partial.interactive_agents[0].id, "claude");
+        assert!(partial.running);
+        for source in sources
+            .iter()
+            .filter(|source| source.wsl_distro != "Healthy")
+        {
+            assert!(source
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("collection timed out"));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wsl_deadline_drops_in_flight_probe_before_returning_timeout() {
+        struct ProbeGuard<'a>(&'a std::cell::Cell<bool>);
+        impl Drop for ProbeGuard<'_> {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
+        }
+        let started = std::cell::Cell::new(false);
+        let active = std::cell::Cell::new(false);
+        let deadline = tokio::time::Instant::now() + WSL_SOURCE_COLLECTION_TIMEOUT;
+        let result = probe_before_deadline(deadline, async {
+            started.set(true);
+            active.set(true);
+            let _guard = ProbeGuard(&active);
+            std::future::pending::<Result<()>>().await
+        })
+        .await;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("collection timed out"));
+        assert!(started.get(), "the test must cancel an in-flight probe");
+        assert!(!active.get(), "the owned in-flight probe must be dropped");
+        let result: Result<()> = probe_before_deadline(deadline, async {
+            panic!("an expired probe must not be polled");
+        })
+        .await;
+        assert!(result.is_err());
     }
 
     #[test]

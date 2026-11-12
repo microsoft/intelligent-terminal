@@ -17764,13 +17764,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection, const winrt::hstring& nativeAgentProviderId)
+    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection, const winrt::hstring& nativeAgentProviderId, const winrt::hstring& nativeAgentSource)
     {
+        std::string launchLocation;
+        if (!nativeAgentProviderId.empty() && settings.DefaultSettings()->UsesManagedAgentCommand())
+        {
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(nativeAgentProviderId, nativeAgentSource))
+            {
+                launchLocation = backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                                     "wsl:" + winrt::to_string(winrt::hstring{ backend->wslDistro }) :
+                                     "Host";
+            }
+        }
         // Do any initialization that needs to apply to _every_ TermControl we
         // create here.
         const auto content = winrt::get_self<ContentManager>(_manager)->CreateAgentCliCore(
-            *settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection, nativeAgentProviderId,
-            !nativeAgentProviderId.empty() && settings.DefaultSettings()->UsesManagedAgentCommand() ? "Host" : "");
+            *settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection, nativeAgentProviderId, launchLocation);
         const TermControl control{ content };
         return _SetupControl(control);
     }
@@ -18130,7 +18139,7 @@ namespace winrt::TerminalApp::implementation
         const auto nativeAgentProvider = newTerminalArgs && !newTerminalArgs.NativeAgentProviderId().empty() ?
                                              newTerminalArgs.NativeAgentProviderId() :
                                              winrt::hstring{ profileProvider };
-        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
+        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider, profile.AgentProfileSource());
 
         // Two kinds of pane replay their own history and must not also be
         // seeded from the saved buffer: one running an agent resume command,

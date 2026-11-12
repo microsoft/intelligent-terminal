@@ -37,6 +37,7 @@ listing a case here does not claim that its code exists or passed.
 | V15 | Open global Agents or profile agent-picker page | Actively probe registered distros, including stopped ones, on a background thread; publish current choices without creating ACP/model processes. |
 | V16 | General Settings construction, settings-file reload, or reload restoring Agent-page navigation | No active WSL discovery; preserve current/saved evidence and unsaved editor state. |
 | V17 | Navigate repeatedly while discovery is pending | One in-flight discovery; completion targets live VMs without forced global settings reload. |
+| V18 | Saved distro casing differs from fresh discovery | All four pickers select one available entry; availability warnings follow it. Preserve saved spelling and model. Provider IDs, literal prefixes, custom IDs and inheritance remain exact. |
 
 ## Binding, reload, and model behavior
 
@@ -78,6 +79,9 @@ listing a case here does not claim that its code exists or passed.
 | R14 | Persisted stashed non-default WSL conversation on app restart | Retain deferred owner/session/view/cwd/geometry without a helper/ACP/distro start; serialize it again, omit it when session persistence is disabled, and materialize it only on explicit open/resume. |
 | R15 | WSL native agent versus explicit shell command | Managed native agents never enter shell-integration sweeps; a user override to an interactive WSL shell retains existing behavior. |
 | R16 | Passive all-WSL CLI versus explicit `--start-stopped-wsl` | Passive mode skips stopped distros; active Settings mode checks native executables in every registered eligible distro, without installation, models, or ACP. |
+| R17 | Healthy, partially completed, slow and queued distro probes reach the shared deadline | Return completed capability evidence plus explicit timeout rows before native capture expires; expired queued checks never start, and in-flight owned futures are dropped. |
+| R18 | Master receives WSL source without a valid distro | Reject configuration through the common error/log-flush epilogue, without starting master services or silently falling back to host. |
+| R19 | Launch managed native host/WSL profile with sessions disabled, then readmit its observation | Before hooks, report the declared actual source, preserve creation metadata and existing confirmed ownership. Customized commandlines remain unknown until normal refinement. |
 
 ## ACP cwd namespace debt (#265)
 
