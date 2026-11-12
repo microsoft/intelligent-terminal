@@ -8,6 +8,7 @@
 //! returns them, so we subtract them here.
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
+use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -66,7 +67,6 @@ pub(crate) fn classify_and_map(
     let provider_id = cli.canonical_provider_id().unwrap_or_default();
     sessions
         .iter()
-        .filter(|s| s.title.as_deref().is_some_and(|title| !title.is_empty()))
         .filter(|s| {
             !s.title
                 .as_deref()
@@ -75,6 +75,18 @@ pub(crate) fn classify_and_map(
         .map(|s| acp_session_to_agent_session(s, location.clone(), cli))
         .filter(|s| !agent_pane_index.contains(&provider_id, &location, &s.key))
         .collect()
+}
+
+pub(crate) fn retain_titled_history(
+    rows: &mut Vec<AgentSession>,
+    sessions: &[agent_client_protocol::schema::v1::SessionInfo],
+) {
+    let titled_ids: HashSet<&str> = sessions
+        .iter()
+        .filter(|s| s.title.as_deref().is_some_and(|title| !title.is_empty()))
+        .map(|s| s.session_id.0.as_ref())
+        .collect();
+    rows.retain(|row| titled_ids.contains(row.key.as_str()));
 }
 
 pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
@@ -137,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_requires_a_provider_title_across_agents_and_locations() {
+    fn history_requires_a_provider_title_across_agents_and_locations() {
         let mut untitled = info("untitled", "C:\\project");
         untitled.title = None;
         let mut empty = info("empty", "C:\\project");
@@ -161,7 +173,13 @@ mod tests {
                 },
                 SessionLocation::Unknown,
             ] {
-                let result = classify_and_map(&rows, &index, location.clone(), &cli);
+                let mut result = classify_and_map(&rows, &index, location.clone(), &cli);
+                assert_eq!(
+                    result.len(),
+                    3,
+                    "the inference inventory keeps untitled rows"
+                );
+                retain_titled_history(&mut result, &rows);
                 assert_eq!(result.len(), 1, "{cli:?} {location:?}");
                 assert_eq!(result[0].key, "named");
                 assert_eq!(result[0].title, "named");

@@ -19090,20 +19090,29 @@ fn listing_agent_from(
 /// agent the user switched to until Terminal was restarted.
 #[tokio::test]
 async fn native_list_inference_runs_through_existing_complete_history_ingestion() {
-    assert_native_list_inference_ingestion(None, false).await;
+    assert_native_list_inference_ingestion(None, false, false).await;
 }
 
 #[tokio::test]
 async fn native_list_inference_ingests_candidate_from_later_inventory_page() {
-    assert_native_list_inference_ingestion(None, true).await;
+    assert_native_list_inference_ingestion(None, true, false).await;
 }
 
 #[tokio::test]
 async fn native_list_inference_rejects_repeated_cursor_inventory() {
-    assert_native_list_inference_ingestion(Some("second-page".into()), false).await;
+    assert_native_list_inference_ingestion(Some("second-page".into()), false, false).await;
 }
 
-async fn assert_native_list_inference_ingestion(next_cursor: Option<String>, later_page: bool) {
+#[tokio::test]
+async fn untitled_history_filter_preserves_native_inference_ambiguity() {
+    assert_native_list_inference_ingestion(None, false, true).await;
+}
+
+async fn assert_native_list_inference_ingestion(
+    next_cursor: Option<String>,
+    later_page: bool,
+    include_untitled: bool,
+) {
     use crate::agent_sessions::{AgentStatus, CliSource};
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -19132,7 +19141,22 @@ async fn assert_native_list_inference_ingestion(next_cursor: Option<String>, lat
                     .format(&time::format_description::well_known::Rfc3339)
                     .unwrap();
             let mut paged_requests = None;
-            let agent = if later_page {
+            let agent = if include_untitled {
+                let mut titled = history_row("fresh-native", "Recent native");
+                titled.updated_at = Some(activity.clone());
+                let mut untitled = history_row("untitled-native", "");
+                untitled.title = None;
+                untitled.updated_at = Some(activity.clone());
+                let (agent, requests) = paged_history_agent(
+                    "copilot",
+                    HashMap::from([(
+                        None,
+                        acp::schema::v1::ListSessionsResponse::new(vec![titled, untitled]),
+                    )]),
+                );
+                paged_requests = Some(requests);
+                agent
+            } else if later_page {
                 let mut old = history_row("old-history", "Old history");
                 old.updated_at = Some(
                     time::OffsetDateTime::from_unix_timestamp_nanos(
@@ -19176,13 +19200,15 @@ async fn assert_native_list_inference_ingestion(next_cursor: Option<String>, lat
             );
             if let Some(requests) = &mut paged_requests {
                 assert_eq!(requests.try_recv().unwrap(), None);
-                assert_eq!(requests.try_recv().unwrap().as_deref(), Some("second-page"));
+                if later_page {
+                    assert_eq!(requests.try_recv().unwrap().as_deref(), Some("second-page"));
+                }
                 assert!(requests.try_recv().is_err());
             }
             let native = &state.registry.native_pane_observations().await[0];
             assert_eq!(
                 native.inferred_agent_session_id.as_deref(),
-                next_cursor.is_none().then_some("fresh-native")
+                (next_cursor.is_none() && !include_untitled).then_some("fresh-native")
             );
             assert!(native.agent_session_id.is_none());
             assert_eq!(native.status, AgentStatus::Working);
@@ -19198,6 +19224,26 @@ async fn assert_native_list_inference_ingestion(next_cursor: Option<String>, lat
                 );
             }
             assert!(state.session_to_helper.lock().await.is_empty());
+            if include_untitled {
+                assert!(
+                    agent.listed_ever.lock().await.contains("untitled-native"),
+                    "untitled sessions remain part of the inference inventory"
+                );
+                assert!(state
+                    .registry
+                    .lookup(&"untitled-native".into())
+                    .await
+                    .is_none());
+                assert!(
+                    state
+                        .registry
+                        .effective_snapshot()
+                        .await
+                        .iter()
+                        .any(|row| { row.session_id.0.as_ref() == "fresh-native" }),
+                    "the unrelated titled conversation must remain visible"
+                );
+            }
             if later_page {
                 assert!(
                     !state
