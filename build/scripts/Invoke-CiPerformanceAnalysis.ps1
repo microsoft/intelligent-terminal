@@ -81,7 +81,7 @@ try {
     else {
         $projects = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         $mapped = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        $projectPaths = @(& git -c core.quotepath=false ls-files -- 'src/*.vcxproj')
+        $projectPaths = @(& git -c core.quotePath=false ls-files -- 'src/*.vcxproj')
         if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate tracked C++ projects.' }
         foreach ($projectPath in $projectPaths) {
             $project = Get-Item -LiteralPath (Join-Path $root $projectPath)
