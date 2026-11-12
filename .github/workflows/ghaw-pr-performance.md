@@ -74,6 +74,7 @@ jobs:
           EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
           CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
           CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
+          COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_WORKFLOW_SHA"
@@ -148,6 +149,7 @@ pre-agent-steps:
       EXPECTED_WORKFLOW_SHA: ${{ github.event.inputs.expected_workflow_sha }}
       CI_RUN_ID: ${{ github.event.inputs.ci_run_id }}
       CI_RUN_ATTEMPT: ${{ github.event.inputs.ci_run_attempt }}
+      COMPARISON_BASE_SHA: ${{ github.event.inputs.comparison_base_sha }}
     run: |
       set -euo pipefail
       test "$TRUSTED_SHA" = "$EXPECTED_WORKFLOW_SHA"

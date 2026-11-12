@@ -101,6 +101,11 @@ coverage gaps. Changed WTA Rust inputs use the same size bound and the existing
 target outputs. Unchanged languages and dedicated test-only changes skip the
 extra analyzer invocation.
 
+CI keeps shallow checkouts. A read-only API job resolves the immutable merge
+base, then each build job fetches that one commit before executing PR code.
+The analyzer itself does not fetch or receive fetch credentials. Receipts bind
+the comparison base as well as head/run/attempt so a different scope is rejected.
+
 Performance warnings remain advisory: the C++ analyzer explicitly uses
 `ClangTidyExtraArgs=-Wno-error` without changing the normal build's warning
 policy; Clippy uses the alias's warning flags. Compiler/parser errors, missing

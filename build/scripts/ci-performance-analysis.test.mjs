@@ -24,12 +24,12 @@ test('real CI profiles preserve performance warnings but reject actual compilati
             git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'fixture']);
             return git(['rev-parse', 'HEAD']);
         };
-        const run = (language, head, base) => {
+        const run = (language, head, base, cwd = root) => {
             const output = path.join(root, '.git', `${language}-${head}`);
             const result = spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-File', script,
                 '-Language', language, '-OutputDirectory', output], {
-                cwd: root, encoding: 'utf8', timeout: 180000,
-                env: { ...process.env, EXPECTED_HEAD_SHA: head, PR_BASE_SHA: base,
+                cwd, encoding: 'utf8', timeout: 180000,
+                env: { ...process.env, EXPECTED_HEAD_SHA: head, PR_COMPARISON_BASE_SHA: base,
                     GITHUB_RUN_ID: '99', GITHUB_RUN_ATTEMPT: '2', RUSTUP_TOOLCHAIN: '1.93.0',
                     CARGO_TARGET_DIR: path.join(root, '.git', 'target') },
             });
@@ -39,7 +39,6 @@ test('real CI profiles preserve performance warnings but reject actual compilati
         const save = (proof, name) => fs.cpSync(proof.output,
             path.join(process.cwd(), 'Generated Files', 'ci-performance-validation', 'native', name), { recursive: true });
         git(['init', '--quiet', '--initial-branch=main']);
-        git(['remote', 'add', 'origin', pathToFileURL(root).href]);
         write('.gitignore', '**/x64/\n');
         const profile = fs.readFileSync(new URL('../../src/common.build.pre.props', import.meta.url), 'utf8')
             .match(/  <PropertyGroup Condition="'\$\(PerformanceAnalysis\)'=='Extended'">[\s\S]*?<\/PropertyGroup>/)[0];
@@ -68,11 +67,22 @@ test('real CI profiles preserve performance warnings but reject actual compilati
             assert.equal(proof.result.status, 0, proof.result.stderr + JSON.stringify(proof.receipt));
             assert.equal(proof.receipt.status, 'completed');
             assert.equal(proof.receipt.headSha, head);
-            validatePerformanceResult(proof.receipt, language, { headSha: head, runId: '99', runAttempt: 2 });
+            validatePerformanceResult(proof.receipt, language,
+                { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
             assert.match(fs.readFileSync(path.join(proof.output, language === 'cpp' ? 'diagnostics-1.log' : 'diagnostics.jsonl'), 'utf8'),
                 language === 'cpp' ? /performance-inefficient-vector-operation/ : /vec_init_then_push/);
             save(proof, `${language}-warnings`);
         }
+        const shallow = path.join(root, '.git', 'shallow-checkout');
+        git(['clone', '--quiet', '--depth=1', pathToFileURL(root).href, shallow]);
+        const shallowGit = args => execFileSync('git', args, { cwd: shallow, encoding: 'utf8' }).trim();
+        assert.equal(shallowGit(['rev-parse', '--is-shallow-repository']), 'true');
+        shallowGit(['fetch', '--quiet', '--no-tags', '--depth=1', 'origin', base]);
+        const shallowProof = run('rust', head, base, shallow);
+        assert.equal(shallowProof.result.status, 0, shallowProof.result.stderr);
+        validatePerformanceResult(shallowProof.receipt, 'rust',
+            { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
+        save(shallowProof, 'rust-shallow-checkout');
         write('src/probe/Probe.cpp', 'not valid C++;\n');
         write('tools/wta/src/main.rs', 'not valid Rust;\n');
         const invalidHead = commit();
@@ -82,7 +92,7 @@ test('real CI profiles preserve performance warnings but reject actual compilati
             assert.equal(proof.receipt.status, 'incomplete');
             assert.ok(proof.receipt.phases.some(phase => phase.exitCode !== 0));
             assert.throws(() => validatePerformanceResult(proof.receipt, language,
-                { headSha: invalidHead, runId: '99', runAttempt: 2 }));
+                { headSha: invalidHead, runId: '99', runAttempt: 2, comparisonBaseSha: base }));
             save(proof, `${language}-errors`);
         }
         write('README.md', 'Documentation-only follow-up.\n');
@@ -92,7 +102,8 @@ test('real CI profiles preserve performance warnings but reject actual compilati
             assert.equal(proof.result.status, 0, proof.result.stderr);
             assert.equal(proof.receipt.status, 'skipped');
             assert.deepEqual(proof.receipt.phases, []);
-            validatePerformanceResult(proof.receipt, language, { headSha: docsHead, runId: '99', runAttempt: 2 });
+            validatePerformanceResult(proof.receipt, language,
+                { headSha: docsHead, runId: '99', runAttempt: 2, comparisonBaseSha: invalidHead });
             save(proof, `${language}-skipped`);
         }
     });

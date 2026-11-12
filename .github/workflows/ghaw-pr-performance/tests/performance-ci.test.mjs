@@ -20,7 +20,7 @@ function fixture() {
         ({ id: i + 1, name: `${prefix}-99-2`, expired: false, workflow_run: { id: 99, head_sha: head } }));
     const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '1',
         CI_RUN_ID: '99', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, PR_NUMBER: '42',
-        EXPECTED_BASE_SHA: base, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: trusted };
+        EXPECTED_BASE_SHA: base, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: trusted, COMPARISON_BASE_SHA: base };
     const request = endpoint => {
         if (!endpoint) return repository;
         if (endpoint === 'actions/runs/99') return run;
@@ -62,7 +62,8 @@ test('controller admits only successful current same-repository CI; drafts cost 
 
 test('worker revalidates CI and requires both matching performance artifacts', () => {
     const f = fixture();
-    assert.deepEqual(verifyPerformanceCi(f).identity, { runId: '99', runAttempt: 2, headSha: f.head });
+    assert.deepEqual(verifyPerformanceCi(f).identity, { runId: '99', runAttempt: 2,
+        headSha: f.head, comparisonBaseSha: f.environment.COMPARISON_BASE_SHA });
     for (const change of [
         item => { item.expired = true; }, item => { item.name = 'ci-performance-cpp-99-1'; },
         item => { item.workflow_run.head_sha = 'd'.repeat(40); },
@@ -88,12 +89,12 @@ test('changed CI analysis definitions and a different base require manual review
 });
 
 test('head/run/attempt and successful tool execution bind the analyzer receipt', () => {
-    const identity = { headSha: 'a'.repeat(40), runId: '99', runAttempt: 2 };
+    const identity = { headSha: 'a'.repeat(40), runId: '99', runAttempt: 2, comparisonBaseSha: 'b'.repeat(40) };
     const result = { headSha: identity.headSha, ciRunId: '99', ciRunAttempt: '2',
-        language: 'rust', status: 'completed', phases: [{ exitCode: 0 }] };
+        comparisonBaseSha: identity.comparisonBaseSha, language: 'rust', status: 'completed', phases: [{ exitCode: 0 }] };
     validatePerformanceResult(result, 'rust', identity);
     for (const change of [{ headSha: 'b'.repeat(40) }, { ciRunAttempt: '1' },
-        { status: 'incomplete' }, { phases: [{ exitCode: 1 }] }, { phases: [] }])
+        { comparisonBaseSha: 'c'.repeat(40) }, { status: 'incomplete' }, { phases: [{ exitCode: 1 }] }, { phases: [] }])
         assert.throws(() => validatePerformanceResult({ ...result, ...change }, 'rust', identity));
     validatePerformanceResult({ ...result, status: 'skipped', phases: [], reason: 'Unsupported scope.' }, 'rust', identity);
 });
@@ -111,4 +112,7 @@ test('workflow wiring has no direct PR inference and no native rebuild in the wo
     assert.doesNotMatch(worker, /\/t:ClangTidy|cargo wta-perf/);
     assert.match(ci, /Collect advisory C\+\+ performance diagnostics/);
     assert.match(ci, /Collect advisory Rust performance diagnostics/);
+    assert.doesNotMatch(ci, /fetch-depth: 0/);
+    assert.match(ci, /Resolve performance comparison base/);
+    assert.equal((ci.match(/credential\.helper=!gh auth git-credential/g) ?? []).length, 2);
 });

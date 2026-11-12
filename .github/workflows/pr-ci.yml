@@ -41,7 +41,29 @@ env:
 # codeql-action v4 tag 5895b2c9be147bc7f1c75ce72c5cb577febb1907
 #   -> commit 33d7b85da1a04171e211befe2c739303b9a4c066
 jobs:
+  performance-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      comparison_base_sha: ${{ steps.scope.outputs.comparison_base_sha }}
+    steps:
+      - name: Resolve performance comparison base
+        id: scope
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          retries: 2
+          script: |
+            if (context.eventName !== 'pull_request') return;
+            const pr = context.payload.pull_request;
+            const { data } = await github.rest.repos.compareCommits({
+              ...context.repo, base: pr.base.sha, head: pr.head.sha, per_page: 1,
+            });
+            const sha = data.merge_base_commit?.sha;
+            if (!/^[0-9a-f]{40}$/.test(sha || '')) throw Error('Invalid performance comparison base.');
+            core.setOutput('comparison_base_sha', sha);
+
   cpp:
+    needs: performance-scope
     name: C++ build and unit tests
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
@@ -54,7 +76,7 @@ jobs:
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Checkout workflow-revision CI analysis tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -82,6 +104,17 @@ jobs:
             throw 'Analysis helpers do not match the workflow revision.'
           }
           "Built commit: $actual" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Fetch performance comparison object before executing PR code
+        if: needs.performance-scope.outputs.comparison_base_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARISON_BASE_SHA: ${{ needs.performance-scope.outputs.comparison_base_sha }}
+        run: |
+          if ($env:COMPARISON_BASE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid comparison commit.' }
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch `
+            --no-tags --depth=1 origin $env:COMPARISON_BASE_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Initialize C++ security analysis
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
@@ -155,7 +188,7 @@ jobs:
       - name: Collect advisory C++ performance diagnostics
         shell: cmd
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_COMPARISON_BASE_SHA: ${{ needs.performance-scope.outputs.comparison_base_sha }}
         run: |
           set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
           for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do call "%%I\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
@@ -172,6 +205,7 @@ jobs:
           retention-days: 30
 
   rust:
+    needs: performance-scope
     name: Rust build and unit tests
     runs-on: windows-2025-vs2026
     timeout-minutes: 60
@@ -188,7 +222,7 @@ jobs:
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Checkout workflow-revision CI analysis tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -215,6 +249,17 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $tools -ne $env:EXPECTED_TOOLS_SHA) {
             throw 'Analysis helpers do not match the workflow revision.'
           }
+
+      - name: Fetch performance comparison object before executing PR code
+        if: needs.performance-scope.outputs.comparison_base_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARISON_BASE_SHA: ${{ needs.performance-scope.outputs.comparison_base_sha }}
+        run: |
+          if ($env:COMPARISON_BASE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid comparison commit.' }
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch `
+            --no-tags --depth=1 origin $env:COMPARISON_BASE_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install public Rust toolchain
         run: |
@@ -269,7 +314,7 @@ jobs:
 
       - name: Collect advisory Rust performance diagnostics
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_COMPARISON_BASE_SHA: ${{ needs.performance-scope.outputs.comparison_base_sha }}
         run: |
           rustup component add clippy --toolchain 1.93.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

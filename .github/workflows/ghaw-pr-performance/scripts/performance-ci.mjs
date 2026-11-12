@@ -47,6 +47,7 @@ export function validatePerformanceArtifacts(artifacts, run) {
 
 export function validatePerformanceResult(result, language, identity) {
     if (result?.headSha !== identity.headSha || result.ciRunId !== identity.runId ||
+        result.comparisonBaseSha !== identity.comparisonBaseSha ||
         result.ciRunAttempt !== String(identity.runAttempt) || result.language !== language ||
         !['completed', 'skipped'].includes(result.status) || !Array.isArray(result.phases) ||
         result.phases.some(phase => phase.exitCode !== 0) ||
@@ -56,6 +57,8 @@ export function validatePerformanceResult(result, language, identity) {
 }
 
 export function verifyPerformanceCi({ environment = process.env, request } = {}) {
+    if (!/^[0-9a-f]{40}$/.test(environment.COMPARISON_BASE_SHA ?? ''))
+        throw Error('Invalid performance comparison base.');
     const repository = environment.GITHUB_REPOSITORY;
     const api = request ?? (endpoint => JSON.parse(execFileSync('gh',
         ['api', `/repos/${repository}${endpoint ? `/${endpoint}` : ''}`],
@@ -69,7 +72,8 @@ export function verifyPerformanceCi({ environment = process.env, request } = {})
         artifacts.push(...batch);
         if (batch.length < 100) break;
     }
-    return { ...verified, artifacts: validatePerformanceArtifacts(artifacts, verified.run) };
+    return { ...verified, identity: { ...verified.identity, comparisonBaseSha: environment.COMPARISON_BASE_SHA },
+        artifacts: validatePerformanceArtifacts(artifacts, verified.run) };
 }
 
 function collect(output) {

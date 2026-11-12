@@ -33,18 +33,16 @@ function Invoke-AnalysisCommand {
 }
 
 try {
-    $base = $env:PR_BASE_SHA
+    $base = $env:PR_COMPARISON_BASE_SHA
     if ($base -cnotmatch '^[0-9a-f]{40}$') {
         $result.status = 'skipped'
         $result.reason = 'No PR comparison base; scoped performance analysis is PR-only.'
         return
     }
-    & git fetch --no-tags origin $base
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch the CI comparison base.' }
-    $mergeBase = & git merge-base $base $head
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the CI comparison base.' }
-    $result.comparisonBaseSha = $mergeBase
-    $changed = @(& git diff --name-only --no-renames $mergeBase $head -- src tools/wta)
+    & git cat-file -e "${base}^{commit}"
+    if ($LASTEXITCODE -ne 0) { throw 'CI must fetch the comparison commit before running analysis.' }
+    $result.comparisonBaseSha = $base
+    $changed = @(& git diff --name-only --no-renames $base $head -- src tools/wta)
     if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate changed performance inputs.' }
     $inputs = @($changed | Where-Object {
         ($_ -notmatch '(^|/)(tests?|ut_[^/]*|ft_[^/]*|LocalTests_[^/]*|UnitTests_[^/]*|WindowsTerminal_UIATests)(/|$)') -and
@@ -52,7 +50,7 @@ try {
         (($Language -eq 'cpp' -and $_ -match '^src/.+\.(c|cc|cpp|cxx|h|hh|hpp|ixx)$') -or
          ($Language -eq 'rust' -and $_ -match '^tools/wta/(src/.+\.rs|build\.rs|Cargo\.(toml|lock))$'))
     })
-    $sizes = @(& git diff --numstat --no-renames $mergeBase $head -- src tools/wta)
+    $sizes = @(& git diff --numstat --no-renames $base $head -- src tools/wta)
     if ($LASTEXITCODE -ne 0) { throw 'Cannot measure changed performance inputs.' }
     $lines = 0
     $binary = $false
