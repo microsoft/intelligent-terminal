@@ -1,9 +1,7 @@
 # OSC 7501 program status
 
-The Dev and Release builds recognize revision 0.4 of the
+All builds recognize revision 0.4 of the
 [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status).
-Preview and Windows Inbox builds do not advertise this experimental
-capability.
 
 Programs report `idle`, `working`, `blocked`, `done` or `error`. `clear` removes
 a record or a slash-delimited subtree. Reports replace a record, including its
@@ -96,9 +94,9 @@ Directory/repository/branch metadata remains in its existing separate fields.
 
 ## Shell command fallback
 
-Dev and Release connections export `INTELLIGENT_TERMINAL_PROGRAM_STATUS=1`, including into
+All connections export `INTELLIGENT_TERMINAL_PROGRAM_STATUS=1`, including into
 WSL. Updated PowerShell and Bash integration scripts use that capability marker
-without reading terminal input. Other branding configurations export `0`.
+without reading terminal input.
 PowerShell needs its existing FullLanguage PSReadLine wrapper; Bash needs 4.4+
 for `PS0`. Older or restricted shells keep their existing OSC 133 integration.
 
@@ -172,8 +170,11 @@ state; DECSTR and alternate-screen transitions preserve it. Once accepted,
 program status takes precedence over legacy OSC 9;4/BEL activity until RIS;
 Clear does not resurrect stale legacy progress.
 
-The parser uses a conservative 4087-byte body budget so a complete wire sequence
-fits within 4096 bytes. It retains at most 256 records and independently bounds
+The parser uses a conservative 4087-byte body budget and counts extra OSC prefix
+bytes against the 4096-byte sequence limit, reserving two bytes for termination.
+Malformed unknown fields are skipped, but their UTF-8 bytes still count toward
+the limits. Oversized fragmented prefixes cannot grow the sequence cache without
+bound. It retains at most 256 records and independently bounds
 retained results to 256. IDs, hierarchy depth, encoded and decoded strings are
 also bounded. Invalid IDs never fall back to the root. Base64 must decode to
 valid, control-free UTF-8. Capability replies are constant and synchronous; they

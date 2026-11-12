@@ -627,6 +627,7 @@ void StateMachine::_ActionClear() noexcept
 
     _oscString.clear();
     _oscParameter = 0;
+    _oscPrefixLength = 0;
     _oscDiscarded = false;
 
     _dcsStringHandler = nullptr;
@@ -687,13 +688,14 @@ void StateMachine::_ActionOscPut(const wchar_t wch)
 
     if (_oscParameter == 7501)
     {
-        // Reserve the longer seven-bit OSC/ST framing (9 bytes). The wire
-        // alphabet is ASCII, so each accepted UTF-16 code unit is one byte.
+        // Keep malformed pairs intact for field-level validation. Bound the
+        // UTF-16 collection here and check its UTF-8 byte length at dispatch.
         if (_oscDiscarded)
         {
             return;
         }
-        if (_oscString.size() == ProgramStatus::MaximumBodyLength || wch > 0x7f || (wch < L' ' && wch != L'\t' && wch != L'\r' && wch != L'\n'))
+        if (_oscString.size() == ProgramStatus::MaximumBodyLength ||
+            _oscPrefixLength + _oscString.size() + 2 >= ProgramStatus::MaximumSequenceLength)
         {
             _oscDiscarded = true;
             _oscString.clear();
@@ -715,7 +717,8 @@ void StateMachine::_ActionOscPut(const wchar_t wch)
 void StateMachine::_ActionOscDispatch()
 {
     _trace.TraceOnAction(L"OscDispatch");
-    if (_oscParameter == 7501 && _oscDiscarded)
+    if (_oscParameter == 7501 &&
+        (_oscDiscarded || _oscPrefixLength + ProgramStatus::Utf8ByteLength(_oscString) + 2 > ProgramStatus::MaximumSequenceLength))
     {
         return;
     }
@@ -901,6 +904,7 @@ void StateMachine::_EnterCsiIntermediate() noexcept
 void StateMachine::_EnterOscParam() noexcept
 {
     _state = VTStates::OscParam;
+    _oscPrefixLength = 2; // ESC ] (also the UTF-8 length of C1 OSC).
     _trace.TraceStateChange(L"OscParam");
 }
 
@@ -1865,7 +1869,21 @@ void StateMachine::_EventSosPmApcString(const wchar_t /*wch*/) noexcept
 // - <none>
 void StateMachine::ProcessCharacter(const wchar_t wch)
 {
-    if (!(_oscParameter == 7501 && _oscDiscarded))
+    if (_state == VTStates::OscParam && !_isEngineForInput &&
+        !(_isC1ControlCharacter(wch) && _parserMode.test(Mode::AcceptC1)) &&
+        _oscPrefixLength <= ProgramStatus::MaximumSequenceLength)
+    {
+        // Include leading zeroes and ignored prefix bytes. Saturate before
+        // the OSC number is known, without limiting other OSC payloads.
+        _oscPrefixLength += ProgramStatus::Utf8ByteLength({ &wch, 1 });
+        if (_oscPrefixLength > ProgramStatus::MaximumSequenceLength)
+        {
+            _cachedSequence.reset();
+            _trace.ClearSequenceTrace();
+        }
+    }
+    if (!(_oscParameter == 7501 && _oscDiscarded) &&
+        !(_state == VTStates::OscParam && !_isEngineForInput && _oscPrefixLength > ProgramStatus::MaximumSequenceLength))
     {
         _trace.TraceCharInput(wch);
     }
@@ -2109,11 +2127,13 @@ void StateMachine::ProcessString(const std::wstring_view string)
                 cacheUnusedRun = false;
             }
         }
-        else if (_oscParameter == 7501 && (_state == VTStates::OscString || _state == VTStates::OscTermination))
+        else if ((_state == VTStates::OscParam && _oscPrefixLength > ProgramStatus::MaximumSequenceLength) ||
+                 (_oscParameter == 7501 && (_state == VTStates::OscString || _state == VTStates::OscTermination)))
         {
             // Typed OSC dispatch cannot need the raw sequence. Bounding only
             // _oscString would still leave this fragmented-sequence cache open
-            // to unbounded growth, including after body overflow.
+            // to unbounded growth. Overlong prefixes must also be bounded
+            // before the OSC number is known.
             _cachedSequence.reset();
             cacheUnusedRun = false;
         }

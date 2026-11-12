@@ -197,9 +197,36 @@ namespace
     }
 }
 
+size_t Microsoft::Console::VirtualTerminal::ProgramStatus::Utf8ByteLength(const std::wstring_view text) noexcept
+{
+    size_t length = 0;
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+        const auto ch = static_cast<uint32_t>(text[i]);
+        if (ch <= 0x7f)
+        {
+            ++length;
+        }
+        else if (ch <= 0x7ff)
+        {
+            length += 2;
+        }
+        else if (ch >= 0xd800 && ch <= 0xdbff && i + 1 < text.size() && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
+        {
+            length += 4;
+            ++i;
+        }
+        else
+        {
+            length += ch <= 0xffff ? 3 : 4;
+        }
+    }
+    return length;
+}
+
 std::optional<Command> Microsoft::Console::VirtualTerminal::ProgramStatus::Parse(const std::wstring_view body)
 {
-    if (body.size() > MaximumBodyLength || std::any_of(body.begin(), body.end(), [](const auto ch) { return ch > 0x7f; }))
+    if (body.size() > MaximumBodyLength || Utf8ByteLength(body) > MaximumBodyLength)
     {
         return std::nullopt;
     }
@@ -229,10 +256,10 @@ std::optional<Command> Microsoft::Console::VirtualTerminal::ProgramStatus::Parse
             const auto value = trim(pair.substr(equals + 1));
             // Check every occurrence before duplicate/malformed-pair filtering.
             // Otherwise a malformed explicit id could silently target the root.
-            if (key.size() > 16 || (key == L"id" && !validId(value)) ||
-                (key == L"app" && value.size() > 32) ||
-                (key == L"title" && value.size() > 256) ||
-                (key == L"msg" && value.size() > 2732))
+            if (Utf8ByteLength(key) > 16 || (key == L"id" && !validId(value)) ||
+                (key == L"app" && Utf8ByteLength(value) > 32) ||
+                (key == L"title" && Utf8ByteLength(value) > 256) ||
+                (key == L"msg" && Utf8ByteLength(value) > 2732))
             {
                 return std::nullopt;
             }
@@ -247,7 +274,7 @@ std::optional<Command> Microsoft::Console::VirtualTerminal::ProgramStatus::Parse
             }
             else if (!key.empty() &&
                      std::all_of(key.begin(), key.end(), [](const auto ch) { return alphaNumeric(ch) || ch == L'_' || ch == L'-'; }) &&
-                     std::all_of(value.begin(), value.end(), [](const auto ch) { return nameCharacter(ch) || ch == L'/' || ch == L'='; }))
+                     std::all_of(value.begin(), value.end(), [](const auto ch) { return nameCharacter(ch) || ch == L',' || ch == L'/' || ch == L'='; }))
             {
                 if (key == L"state")
                 {

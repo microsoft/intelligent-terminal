@@ -125,6 +125,61 @@ class ProgramStatusModelTests
         VERIFY_IS_FALSE(store.GetSnapshot().records[0].message.has_value());
     }
 
+    TEST_METHOD(DuplicateValuesUseFullWireAlphabet)
+    {
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:state=working,future").has_value());
+        const auto command = PS::Parse(L"state=blocked:progress=50:progress=1,2:kind=permission:kind=future,kind:app=old:app=new,app");
+        VERIFY_IS_TRUE(command.has_value());
+        VERIFY_IS_FALSE(command->record.progress.has_value());
+        VERIFY_IS_FALSE(command->record.kind.has_value());
+        VERIFY_IS_FALSE(command->record.app.has_value());
+
+        const auto malformed = PS::Parse(L"state=working:state=bad!:progress=50:progress=bad!:app=old:app=bad!");
+        VERIFY_IS_TRUE(malformed.has_value());
+        VERIFY_IS_TRUE(malformed->record.state == PS::State::Working);
+        VERIFY_IS_TRUE(malformed->record.progress == uint32_t{ 50 });
+        VERIFY_IS_TRUE(malformed->record.app == "old");
+    }
+
+    TEST_METHOD(MalformedUnknownPairsPreserveKnownFields)
+    {
+        for (const auto value : { L"\u4f60", L"\U0001f680", L"bad!", L"a\x01"
+                                                                     L"b",
+                                  L"a\x80"
+                                  L"b",
+                                  L"a;b" })
+        {
+            const auto command = PS::Parse(std::wstring{ L"state=done:future=" } + value + L":app=builder");
+            VERIFY_IS_TRUE(command.has_value());
+            VERIFY_IS_TRUE(command->record.state == PS::State::Done);
+            VERIFY_IS_TRUE(command->record.app == "builder");
+        }
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:id=\u4f60").has_value());
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:msg=\u4f60").has_value());
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:title=\u4f60").has_value());
+    }
+
+    TEST_METHOD(MalformedPairsStillRespectUtf8ByteLimits)
+    {
+        for (const auto text : { L"\u4f60", L"\U0001f680" })
+        {
+            const auto bytesPerCharacter = text[0] == L'\u4f60' ? size_t{ 3 } : size_t{ 4 };
+            std::wstring body{ L"state=done:future=" };
+            auto remaining = PS::MaximumBodyLength - body.size();
+            while (remaining >= bytesPerCharacter)
+            {
+                body += text;
+                remaining -= bytesPerCharacter;
+            }
+            body.append(remaining, L'x');
+            VERIFY_IS_TRUE(PS::Parse(body).has_value());
+            body += L'x';
+            VERIFY_IS_FALSE(PS::Parse(body).has_value());
+        }
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:" + std::wstring(6, L'\u4f60') + L"=x").has_value());
+        VERIFY_IS_FALSE(PS::Parse(L"state=clear:app=" + std::wstring(11, L'\u4f60')).has_value());
+    }
+
     TEST_METHOD(ReplacementHierarchyAndRecency)
     {
         PS::Store store;

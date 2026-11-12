@@ -12,7 +12,8 @@
 
 namespace Microsoft::Console::VirtualTerminal::ProgramStatus
 {
-    inline constexpr size_t MaximumBodyLength = 4087;
+    inline constexpr size_t MaximumSequenceLength = 4096;
+    inline constexpr size_t MaximumBodyLength = MaximumSequenceLength - 9;
     inline constexpr size_t MaximumRecords = 256;
     inline constexpr std::wstring_view CapabilityResponse = L"7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth";
 
@@ -77,6 +78,7 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         Record record;
     };
 
+    [[nodiscard]] size_t Utf8ByteLength(std::wstring_view text) noexcept;
     [[nodiscard]] std::optional<Command> Parse(std::wstring_view body);
 
     // The owner serializes access in terminal stream order. None of these

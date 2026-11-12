@@ -189,6 +189,26 @@ namespace TerminalCoreUnitTests
             VERIFY_ARE_EQUAL(size_t{ 2048 }, snapshot.records[0].message->size());
         }
 
+        TEST_METHOD(MalformedExtensionsAndDuplicateStatesAreAtomic)
+        {
+            Fixture f;
+            f.Report(L"state=blocked:id=keep:kind=question");
+            const auto revision = f.terminal.GetProgramStatusSnapshot().revision;
+            f.Report(L"state=clear:state=working,future");
+            auto snapshot = f.terminal.GetProgramStatusSnapshot();
+            VERIFY_ARE_EQUAL(revision, snapshot.revision);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.records.size());
+            VERIFY_IS_TRUE(snapshot.records[0].id == "keep");
+            VERIFY_IS_TRUE(snapshot.records[0].state == PS::State::Blocked);
+
+            f.Report(L"state=done:id=keep:future=\u4f60");
+            snapshot = f.terminal.GetProgramStatusSnapshot();
+            VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.records.size());
+            VERIFY_IS_TRUE(snapshot.records[0].state == PS::State::Done);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, snapshot.results.size());
+            VERIFY_IS_TRUE(snapshot.results[0].unread);
+        }
+
         TEST_METHOD(QueryFragmentationAndRawObservation)
         {
             const std::wstring query = L"\x1b]7501;?\x1b\\";
