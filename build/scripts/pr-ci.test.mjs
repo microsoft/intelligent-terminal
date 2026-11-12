@@ -47,7 +47,7 @@ test('Rust sources and embedded locale/prompt/hook inputs select only Rust', asy
 });
 
 test('plain documentation skips both builds; mixed changes accumulate required languages', async () => {
-  const docs = await select(['doc/guide.md', 'README.md']);
+  const docs = await select(['doc/guide.md', 'README.md', 'tools/wta/README.md', 'installer/bootstrap/README.md']);
   assert.equal(docs.cpp, 'false');
   assert.equal(docs.rust, 'false');
   assert.match(docs.summary, /not required/);

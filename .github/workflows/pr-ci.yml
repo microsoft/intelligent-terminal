@@ -42,7 +42,7 @@ jobs:
           script: |
             // These are build-input rules, not a filter on which PRs get CI.
             const rules = {
-              docs: [/^doc\/.*\.md$/, /^(?:README|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY)\.md$/],
+              docs: [/^doc\/.*\.md$/, /(?:^|\/)(?:README|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY)\.md$/],
               assets: [/(?:^|\/)assets\//i],
               localization: [/^src\/.*\/Resources\/.*\.resw$/i, /^tools\/wta\/locales\//],
               rust: [/^(?:tools\/wta|installer\/bootstrap)\//],
