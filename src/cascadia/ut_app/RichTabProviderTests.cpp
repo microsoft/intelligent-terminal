@@ -1643,10 +1643,18 @@ else {
         VERIFY_IS_TRUE(std::filesystem::remove(sparseCheckout));
         const auto externalSparseCheckout = fixture / L"external-sparse-checkout";
         _WriteFile(externalSparseCheckout, "/*\n");
-        VERIFY_WIN32_BOOL_SUCCEEDED(CreateSymbolicLinkW(
-            sparseCheckout.c_str(), externalSparseCheckout.c_str(), SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE));
-        VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
-        VERIFY_IS_TRUE(std::filesystem::remove(sparseCheckout));
+        if (CreateSymbolicLinkW(
+                sparseCheckout.c_str(), externalSparseCheckout.c_str(), SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE))
+        {
+            VERIFY_IS_FALSE(inspect(linked).fields.contains("branch"));
+            VERIFY_IS_TRUE(std::filesystem::remove(sparseCheckout));
+        }
+        else
+        {
+            const auto error = GetLastError();
+            VERIFY_ARE_EQUAL(DWORD{ ERROR_PRIVILEGE_NOT_HELD }, error);
+            WEX::Logging::Log::Comment(L"File symlink rejection not tested: symlink creation requires Developer Mode or elevation.");
+        }
         _WriteFile(sparseCheckout, "/*\n");
         VERIFY_ARE_EQUAL(std::string{ "linked" }, field(inspect(linked), "branch"));
 
