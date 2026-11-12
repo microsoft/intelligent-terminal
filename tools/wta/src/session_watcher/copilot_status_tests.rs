@@ -161,6 +161,7 @@ fn copilot_prompt_recovery_requires_the_exact_held_lease_owner() {
             &fixture.root,
             &lookup,
             Instant::now() + Duration::from_secs(2),
+            &AtomicBool::new(false),
         )
     };
     assert_eq!(owner(&fixture), Ok(Some(42)));
@@ -174,17 +175,24 @@ fn copilot_prompt_recovery_requires_the_exact_held_lease_owner() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn blocking_probe_admission_survives_timeout_and_waiter_drop() {
+async fn blocking_probe_releases_admission_and_cancels_worker_on_timeout_or_drop() {
     use std::future::Future;
     use std::task::{Context, Poll, Waker};
 
     for timeout in [false, true] {
         let gate = Arc::new(tokio::sync::Semaphore::new(1));
         let (started, started_rx) = tokio::sync::oneshot::channel();
+        let (cancelled, cancelled_rx) = tokio::sync::oneshot::channel();
         let (release, release_rx) = std::sync::mpsc::channel();
-        let mut waiter = Box::pin(run_probe(gate.clone(), move || {
+        let (finished, mut finished_rx) = tokio::sync::oneshot::channel();
+        let mut waiter = Box::pin(run_probe(gate.clone(), move |cancellation| {
             started.send(()).unwrap();
+            while !cancellation.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            cancelled.send(()).unwrap();
             release_rx.recv().unwrap();
+            finished.send(()).unwrap();
         }));
         let mut context = Context::from_waker(Waker::noop());
         assert!(matches!(waiter.as_mut().poll(&mut context), Poll::Pending));
@@ -197,14 +205,18 @@ async fn blocking_probe_admission_survives_timeout_and_waiter_drop() {
         } else {
             drop(waiter);
         }
+        cancelled_rx.await.unwrap();
         assert_eq!(
-            run_probe(gate.clone(), || panic!("busy probe must not be spawned")).await,
-            Err::<(), _>(ProbeError::Busy)
+            run_probe(gate.clone(), |_| 42).await,
+            Ok(42),
+            "a timed-out or abandoned probe must release admission"
         );
+        assert!(matches!(
+            finished_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
         release.send(()).unwrap();
-        let permit = gate.clone().acquire_owned().await.unwrap();
-        drop(permit);
-        assert_eq!(run_probe(gate.clone(), || 42).await, Ok(42));
+        finished_rx.await.unwrap();
     }
 }
 
@@ -223,11 +235,18 @@ fn activation_probe_distinguishes_absence_release_timeout_and_errors() {
             &fixture.root,
             &lookup,
             Instant::now() + Duration::from_secs(2),
+            &AtomicBool::new(false),
         )
     };
     assert_eq!(read(&fixture), Ok(Some(AgentStatus::InUse)));
     assert_eq!(
-        probe_status(&fixture.row, &fixture.root, &lookup, Instant::now()),
+        probe_status(
+            &fixture.row,
+            &fixture.root,
+            &lookup,
+            Instant::now(),
+            &AtomicBool::new(false),
+        ),
         Err(ProbeError::Timeout)
     );
     assert_eq!(
@@ -236,6 +255,7 @@ fn activation_probe_distinguishes_absence_release_timeout_and_errors() {
             &fixture.root,
             &|_| Err(ProbeError::Unavailable),
             Instant::now() + Duration::from_secs(2),
+            &AtomicBool::new(false),
         ),
         Err(ProbeError::Unavailable)
     );
