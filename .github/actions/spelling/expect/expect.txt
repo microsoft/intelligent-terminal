@@ -88,6 +88,7 @@ azurecr
 backgrounded
 Backgrounder
 backgrounding
+backlink
 backstory
 Bazz
 bbccb
@@ -681,6 +682,8 @@ GHgh
 GHIJK
 GHIJKL
 gitcheckin
+gitdir
+gitfile
 gitfilters
 gle
 GLOBALFOCUS
@@ -689,6 +692,7 @@ GMEM
 Goldmine
 gonce
 goutput
+gpgsign
 gpo
 GPUs
 GREENSCROLL
