@@ -934,6 +934,8 @@ export const CI_DEFINITION_PATHS = [
   'tools/.razzlerc.cmd',
   'build/scripts/ci-security-analysis.mjs',
   'build/config/codeql-accepted-warnings.json',
+  'build/scripts/ci-accessibility-scope.mjs',
+  'build/scripts/ci-accessibility-payload.py',
 ];
 
 export function validateCiDefinition(sourceTree, comparisonBaseTree) {
@@ -985,15 +987,19 @@ export function validateCiPull(pull, run, identity) {
   }
 }
 
+export function validateCiArtifact(artifacts, run, name) {
+  const matches = artifacts.filter(item => item.name === name);
+  if (matches.length !== 1 || matches[0].expired !== false ||
+      !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
+      matches[0].workflow_run?.id !== run.id ||
+      matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
+  return matches[0];
+}
+
 export function validateCiArtifacts(artifacts, run) {
   return ['cpp', 'rust'].map(language => {
     const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
-    const matches = artifacts.filter(item => item.name === name);
-    if (matches.length !== 1 || matches[0].expired !== false ||
-        !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
-        matches[0].workflow_run?.id !== run.id ||
-        matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
-    return { language, id: matches[0].id, name };
+    return { language, id: validateCiArtifact(artifacts, run, name).id, name };
   });
 }
 

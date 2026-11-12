@@ -78,6 +78,8 @@ class FrameworkDependencyInstallationTests(unittest.TestCase):
                     archive.writestr("AppxManifest.xml", manifest)
             installed_flag = "$true" if already_installed else "$false"
             prefix = f"""
+$env:GITHUB_WORKSPACE = $PWD.Path
+$env:ACCESSIBILITY_PAYLOAD = $PWD.Path
 $script:installs = [Collections.Generic.List[string]]::new()
 $script:alreadyInstalled = {installed_flag}
 function Get-AppxPackage {{
@@ -149,10 +151,11 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("native-runtime", publication)
         discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
-        self.assertRegex(discovery, r"(?m)^    needs:\n      - agent\n      - native-selection$")
-        self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}", discovery)
-        self.assertNotIn("published", discovery)
-        self.assertNotIn("safe_outputs", discovery)
+        self.assertIn("- native-selection", discovery)
+        self.assertIn("- safe_outputs", discovery)
+        self.assertIn("head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
+        self.assertIn("published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}", discovery)
+        self.assertIn("!cancelled()", discovery)
 
     def test_reusable_native_definition_has_no_telemetry_or_secret_references(self):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
@@ -193,20 +196,23 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn("call tools\\razzle.cmd", caller)
         self.assertNotIn("-Surface fre-settings", caller)
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
-        self.assertIn("call tools\\razzle.cmd", native)
+        self.assertNotIn("call tools\\razzle.cmd", native)
+        self.assertNotIn("call bx", native)
+        self.assertIn("require-payload: 'true'", native)
+        self.assertIn("ci-accessibility-payload.py extract", native)
         for surface in ("fre", "fre-settings", "agents"):
             self.assertIn(f"-Surface {surface}", native)
         self.assertRegex(native, r"timeout-minutes: \d+")
 
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        trigger = caller.split("\npermissions:", 1)[0]
-        for pattern in (".github/**", "**/.github/**", "**/AGENTS.md", "**/CLAUDE.md",
-                        "**/GEMINI.md", "**/copilot-instructions.md", "**/SKILL.md",
-                        "**/*.instructions.md", "**/*.agent.md", "**/.mcp.json",
-                        "**/.claude/**", "**/.copilot/**", "**/.agents/**", "**/.gemini/**"):
-            self.assertIn(f"'{pattern}'", trigger)
-        self.assertIn("'.github/workflows/native-accessibility.yml'", trigger)
+        self.assertIn("uses: ./.github/actions/accessibility-ci-admission", caller)
+        scope = (ROOT / "build/scripts/ci-accessibility-scope.mjs").read_text(encoding="utf-8")
+        admission = (ROOT / ".github/actions/accessibility-ci-admission/admission.mjs").read_text(encoding="utf-8")
+        producer = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        self.assertIn("export function relevantPath", scope)
+        self.assertIn("build/scripts/ci-accessibility-scope.mjs", admission)
+        self.assertIn("build/scripts/ci-accessibility-scope.mjs", producer)
 
 
 if __name__ == "__main__":

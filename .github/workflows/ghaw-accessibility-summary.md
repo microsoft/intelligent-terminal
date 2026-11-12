@@ -1,6 +1,7 @@
 ---
 name: Accessibility final summary
 on:
+  bots: ['github-actions[bot]']
   workflow_call:
     inputs:
       triage-result:

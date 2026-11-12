@@ -45,12 +45,43 @@ Native discovery admission and the final summary may accept this trusted worker'
 confirmed repair tip while retaining the original CI identity; that is not CI
 validation of the repairs. Unrelated live head changes still fail admission.
 
-PR CI currently publishes `ci-security-cpp-*` and `ci-security-rust-*` findings,
-not a supported TestHost package, Axe result or accessibility static report.
-Accessibility does not consume those unrelated artifacts or claim CI certified
-Axe. Selected native discovery therefore still builds TestHost from the exact
-original head, under read-only permissions. No new build artifact contract is
-introduced here, and no proposed-fix build/test gate is added.
+PR CI's existing C++ job already builds TestHost and LocalTests in parallel with
+Rust. For relevant same-repository, non-draft PRs, it now publishes that existing
+output as `ci-accessibility-testhost-RUN-ATTEMPT`; no second product/TestHost
+build is added. Producer and admission use the same path classifier. Docs-only
+changes do not start CI or payload publication; native harness/workflow changes
+are narrowly included in PR CI's existing source/build filters.
+
+The payload combines every recipe mapping with loose AfterBuild runtime content:
+the host/App/LocalTests and component DLLs/WinMDs, aggregate resources, XBFs,
+agent assets, `taef.png`, and the two x64 Microsoft framework packages.
+PDBs and build-only libraries are excluded. A portable recipe replaces absolute
+build-machine paths; a versioned inventory hashes every file and binds repository
+ID/name, exact head, CI run and attempt, Debug configuration and x64 platform.
+Stale loose copies that disagree with recipe inputs fail staging.
+
+Selected native discovery revalidates the successful C++ producer and upload
+step for the exact attempt, then authenticates artifact ID/name/run/head/repository,
+expiry and GitHub's SHA-256 digest using the shared security artifact contract.
+It downloads the raw archive with read-only credentials. Trusted consumer code
+checks the archive digest, provenance, completeness and per-file hashes before
+extracting, rejecting traversal, drive/ADS/device paths, symlinks, collisions and
+oversized archives. Missing/skipped producers or invalid/missing artifacts fail
+closed: **no rebuild fallback and no PASS**. A confirmed repair tip is never
+the payload's source or native scan revision.
+
+CI's security finding artifacts are not accessibility analysis or Axe results.
+No applicable existing static analyzer is being newly published or invented.
+Axe remains a selected interactive Windows runtime consumer of the original
+CI-built payload, not certification from CI success or proposed-fix validation.
+
+Admission also checks successful C++/Rust build/test steps, not just a green
+workflow name. GitHub's REST run PR fields are mutable; target history is checked
+through typed GraphQL timeline events. Retargeted/base-force-pushed PRs fail
+closed for manual review/new PR because immutable original-target provenance
+cannot be inferred from queue timestamps. The controller's `github-actions[bot]`
+is explicitly allowlisted in reusable triage/summary authorization; CI admission
+still gates all model jobs.
 
 ## Responsibilities
 
@@ -60,7 +91,8 @@ introduced here, and no proposed-fix build/test gate is added.
 | `pr-accessibility` skill | Evidence-backed domain review across names, keyboard/focus, announcements, busy state, visual behavior, localization and affected UI operations |
 | Existing Python validator | Source/report identity, patch scope, eligible recipe and one-finding commit attribution |
 | Agent | Review judgment, each proposed repair commit, JSON evidence and the Markdown summary |
-| Windows native job | Build and scan the original immutable PR head; retain scan results and enforce failures |
+| PR CI C++ job | Reuse its existing TestHost build; publish a complete original-head runtime payload only for relevant PRs |
+| Windows native job | Authenticate/consume the CI payload and scan the original immutable PR head; retain results and enforce failures |
 | Original PR reviewer | Validate proposed fix commits through builds/tests; accept or revert |
 
 There is no separate summary-rendering script. The agent follows the template
@@ -140,7 +172,7 @@ The PR head can still move afterward; do not claim stronger atomicity.
 
 The restored `native-runtime` job calls `native-accessibility.yml` with exact
 head and trusted-source identities, without inheriting source-agent secrets.
-It builds TestHost and scans FRE, FRE settings after Next, and the real Agents
+It consumes CI's built TestHost and scans FRE, FRE settings after Next, and the real Agents
 page reached through production Frame navigation. Native errors, blocked startup and missing state evidence
 remain failures. Its artifacts and job outcome are separate from the source
 agent's Markdown and source-only runtime records.
@@ -176,7 +208,7 @@ gh aw compile ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility
 gh aw validate ghaw-pr-accessibility ghaw-accessibility-triage ghaw-accessibility-summary --no-check-update
 ```
 
-Use gh-aw v0.87.10 and commit all three generated lockfiles. The Node tests use
+Use gh-aw v0.87.10 and commit all three generated lock files. The Node tests use
 mocked GitHub APIs (identity, status, freshness, attempts, duplicates and manual
 guards); the Python tests inspect the compiled graph and existing repair policy.
 They do not establish hosted Actions pickup or end-to-end dispatch behavior.

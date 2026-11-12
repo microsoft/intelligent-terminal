@@ -9,7 +9,7 @@ function fixture(dispatch = false) {
   const run = { id: 91, run_attempt: 2, repository: repo, head_repository: repo,
     path: '.github/workflows/pr-ci.yml', name: 'PR CI', workflow_id: 7,
     event: 'pull_request', head_sha: HEAD, head_branch: 'dev/test',
-    status: 'completed', conclusion: 'success' };
+    status: 'completed', conclusion: 'success', created_at: '2026-11-12T10:00:00Z' };
   const pr = { number: 17, state: 'open', draft: false,
     head: { sha: HEAD, ref: 'dev/test', repo },
     base: { sha: BASE, ref: 'main', repo } };
@@ -25,19 +25,37 @@ function fixture(dispatch = false) {
   const workflow = { id: 7, path: run.path, state: 'active' };
   const caller = { id: 100, path: '.github/workflows/ghaw-pr-accessibility.lock.yml',
     event: 'workflow_dispatch', head_sha: TRUSTED, repository: repo };
+  const producer = { name: 'C++ build and unit tests', run_id: 91, run_attempt: 2, head_sha: HEAD,
+    status: 'completed', conclusion: 'success',
+    steps: ['Publish accessibility TestHost payload', 'Build production Terminal and C++ tests', 'Test all C++ units']
+      .map(name => ({ name, status: 'completed', conclusion: 'success' })) };
+  const rust = { ...producer, name: 'Rust build and unit tests',
+    steps: ['Build x64 Rust binaries', 'Test all x64 Rust units']
+      .map(name => ({ name, status: 'completed', conclusion: 'success' })) };
+  const artifact = { id: 5, name: 'ci-accessibility-testhost-91-2', expired: false,
+    digest: `sha256:${'d'.repeat(64)}`, size_in_bytes: 4096,
+    workflow_run: { id: 91, head_sha: HEAD, repository_id: 42, head_repository_id: 42 } };
   let associated = [pr], previous = [], files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
-  const github = { rest: { repos: {
+  let jobs = [producer, rust], artifacts = [artifact], timeline = [];
+  const github = { graphql: async () => ({ repository: { pullRequest: {
+    timelineItems: { totalCount: 6, nodes: timeline, pageInfo: { hasNextPage: false } } } } }), rest: { repos: {
     get: async () => ({ data: repo }),
     compareCommits: async () => ({ data: { merge_base_commit: { sha: BASE } } }),
     listPullRequestsAssociatedWithCommit: 'associated',
   }, actions: {
     getWorkflowRun: async ({ run_id }) => ({ data: Number(run_id) === 100 ? caller : run }),
     getWorkflow: async () => ({ data: workflow }), listWorkflowRuns: 'runs',
-  }, git: {
+    listJobsForWorkflowRunAttempt: 'jobs', listWorkflowRunArtifacts: 'artifacts',
+  }, issues: { listEventsForTimeline: 'timeline' }, git: {
     getTree: async ({ tree_sha }) => ({ data: trees[tree_sha === HEAD ? 0 : 1] }),
   }, pulls: { get: async () => ({ data: pr }), listFiles: 'files' } },
-  paginate: async method => ({ associated, runs: previous, files })[method] };
+  paginate: async (method, options) => {
+    if (method === 'jobs') assert.equal(options.attempt_number, 2);
+    return ({ associated, runs: previous, files, jobs, artifacts, timeline })[method];
+  } };
   return { github, context, trustedSha: TRUSTED, repo, run, pr, trees, workflow, caller,
+    producer, rust, artifact, setJobs: value => { jobs = value; }, setArtifacts: value => { artifacts = value; },
+    setTimeline: value => { timeline = value; },
     setAssociated: value => { associated = value; }, setPrevious: value => { previous = value; },
     setFiles: value => { files = value; } };
 }
@@ -64,6 +82,11 @@ for (const [name, change] of [
   ['modified CI implementation', f => { f.trees[0].tree[0].sha = HEAD; }],
   ['truncated provenance', f => { f.trees[0].truncated = true; }],
   ['inactive workflow', f => { f.workflow.state = 'disabled_manually'; }],
+  ['same-head retarget after CI start', f => { f.setTimeline([
+    { event: 'base_ref_changed', created_at: '2026-11-12T10:01:00Z' }]); }],
+  ['missing target provenance', f => { f.setTimeline(null); }],
+  ['green no-op build', f => { f.producer.steps = []; }],
+  ['skipped Rust build in successful run', f => { f.rust.steps[0].conclusion = 'skipped'; }],
 ]) test(`reject ${name}`, async () => {
   const f = fixture(); change(f);
   await assert.rejects(admit(f));
@@ -101,6 +124,11 @@ test('controller and dispatch accept exact successful PR CI including an empty w
     assert.equal(JSON.parse(result.pull_request).head.sha, HEAD);
   }
 });
+test('retarget timing cannot establish immutable CI target provenance', async () => {
+  const f = fixture();
+  f.setTimeline([{ event: 'base_ref_changed', created_at: '2026-11-12T09:00:00Z' }]);
+  await assert.rejects(admit(f), /provenance/);
+});
 test('new successful CI attempt is independent of an earlier attempt', async () => {
   const f = fixture(true); f.deduplicate = true;
   f.setPrevious([{ id: 99, display_title: 'Accessibility CI 91-1' }]);
@@ -133,4 +161,41 @@ test('original safety and relevance path categories remain eligible', () => {
     'src/x.agent.md', 'src/.mcp.json', 'src/.claude/x', 'src/.copilot/x', 'src/.gemini/x',
     'build/scripts/Get-DependenciesFromAppxRecipe.ps1']) assert(relevantPath(path), path);
   assert.equal(relevantPath('tools/wta/src/main.rs'), false);
+});
+
+for (const [name, change] of [
+  ['absent producer', f => f.setJobs([])],
+  ['ambiguous producer', f => f.setJobs([f.producer, f.producer])],
+  ['wrong producer name', f => { f.producer.name = 'Unrelated green job'; }],
+  ['wrong job run', f => { f.producer.run_id++; }],
+  ['stale producer attempt', f => { f.producer.run_attempt--; }],
+  ['wrong producer head', f => { f.producer.head_sha = BASE; }],
+  ['failed producer', f => { f.producer.conclusion = 'failure'; }],
+  ['cancelled producer', f => { f.producer.conclusion = 'cancelled'; }],
+  ['pending producer', f => { f.producer.status = 'in_progress'; }],
+  ['absent upload', f => { f.producer.steps = []; }],
+  ['skipped upload', f => { f.producer.steps[0].conclusion = 'skipped'; }],
+  ['missing artifact', f => f.setArtifacts([])],
+  ['ambiguous artifact', f => f.setArtifacts([f.artifact, f.artifact])],
+  ['expired artifact', f => { f.artifact.expired = true; }],
+  ['wrong artifact head', f => { f.artifact.workflow_run.head_sha = BASE; }],
+  ['wrong artifact run', f => { f.artifact.workflow_run.id++; }],
+  ['wrong artifact attempt', f => { f.artifact.name = 'ci-accessibility-testhost-91-1'; }],
+  ['foreign artifact repository', f => { f.artifact.workflow_run.repository_id++; }],
+  ['fork artifact source', f => { f.artifact.workflow_run.head_repository_id++; }],
+  ['missing digest', f => { delete f.artifact.digest; }],
+  ['invalid digest', f => { f.artifact.digest = 'sha256:wrong'; }],
+  ['unbounded artifact', f => { f.artifact.size_in_bytes = 3 * 1024 ** 3; }],
+]) test(`native payload rejects ${name} without fallback`, async () => {
+  const f = fixture(true); change(f);
+  await assert.rejects(admit({ ...f, requirePayload: true }));
+});
+test('native admission returns only successful same-head exact-attempt artifact identity', async () => {
+  const f = fixture(true);
+  const result = await admit({ ...f, requirePayload: true });
+  assert.equal(result.artifact_id, '5');
+  assert.equal(result.artifact_digest, f.artifact.digest);
+  assert.equal(JSON.parse(result.pull_request).head.sha, HEAD);
+  f.pr.head.sha = BASE; // Confirmed own repair is never the artifact source.
+  assert.equal((await admit({ ...f, requirePayload: true, publishedSha: BASE })).artifact_id, '5');
 });

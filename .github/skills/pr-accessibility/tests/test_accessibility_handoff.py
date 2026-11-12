@@ -160,7 +160,37 @@ class CompiledGraphTests(unittest.TestCase):
                          if step.get("uses") == "./.github/actions/accessibility-ci-admission")
         self.assertEqual("${{ inputs.published-sha }}", admission["with"]["published-sha"])
         checkout = workflow["jobs"]["native-smoke"]["steps"][0]
-        self.assertEqual("${{ inputs.head-sha }}", checkout["with"]["ref"])
+        self.assertEqual("${{ inputs.trusted-sha }}", checkout["with"]["ref"])
+        consumer = workflow["jobs"]["native-smoke"]
+        payload = next(step for step in consumer["steps"] if step.get("id") == "payload")
+        self.assertEqual("true", payload["with"]["require-payload"])
+        extraction = next(step for step in consumer["steps"] if step.get("name", "").startswith("Verify archive integrity"))
+        self.assertEqual("${{ inputs.head-sha }}", extraction["env"]["EXPECTED_HEAD_SHA"])
+        self.assertNotIn("razzle", str(consumer))
+
+    def test_existing_parallel_ci_build_publishes_payload_without_a_second_build(self):
+        ci = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
+        self.assertNotIn("needs", ci["jobs"]["cpp"])
+        self.assertNotIn("needs", ci["jobs"]["rust"])
+        steps = ci["jobs"]["cpp"]["steps"]
+        names = [step["name"] for step in steps]
+        self.assertLess(names.index("Build production Terminal and C++ tests"),
+                        names.index("Stage complete original-head TestHost layout"))
+        self.assertLess(names.index("Test all C++ units"), names.index("Publish accessibility TestHost payload"))
+        for name in ("Stage complete original-head TestHost layout", "Publish accessibility TestHost payload"):
+            self.assertIn("steps.accessibility-scope.outputs.required == 'true'",
+                          next(step for step in steps if step["name"] == name)["if"])
+        self.assertNotIn("doc/**", ci[True]["pull_request"]["paths"])
+        build = next(step for step in steps if step["name"] == "Build production Terminal and C++ tests")
+        self.assertEqual(1, build["run"].count(r"Terminal\Tests\TestHostApp"))
+
+    def test_controller_bot_is_authorized_but_ci_admission_still_gates_models(self):
+        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
+            jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
+            membership = next(step for step in jobs["pre_activation"]["steps"] if step.get("id") == "check_membership")
+            self.assertEqual("github-actions[bot]", membership["env"]["GH_AW_ALLOWED_BOTS"])
+            self.assertNotIn("read", membership["env"]["GH_AW_REQUIRED_ROLES"])
+            self.assertIn("admission", jobs["agent"]["needs"])
 
     def test_reusable_workflow_permissions_fit_callers(self):
         levels = {"none": 0, "read": 1, "write": 2}

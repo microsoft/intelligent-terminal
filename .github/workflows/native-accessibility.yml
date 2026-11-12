@@ -26,6 +26,8 @@ permissions:
   pull-requests: read
 env:
   ACCESSIBILITY_RESULTS: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
+  ACCESSIBILITY_PAYLOAD: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost-payload
+  ACCESSIBILITY_ARCHIVE: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost.zip
 jobs:
   admission:
     runs-on: ubuntu-latest
@@ -60,32 +62,74 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
+      pull-requests: read
     steps:
-      - name: Checkout immutable pull request head
+      - name: Checkout immutable trusted consumer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ${{ inputs.head-repository }}
-          ref: ${{ inputs.head-sha }}
+          repository: ${{ inputs.trusted-repository }}
+          ref: ${{ inputs.trusted-sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Verify immutable head
+          sparse-checkout: |
+            .github/actions/accessibility-ci-admission
+            .github/skills/ghaw-pr-security/scripts/security-review.mjs
+            build/scripts/ci-accessibility-scope.mjs
+            build/scripts/ci-accessibility-payload.py
+          sparse-checkout-cone-mode: false
+      - name: Verify immutable consumer
+        shell: pwsh
+        env:
+          EXPECTED_TRUSTED_SHA: ${{ inputs.trusted-sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_TRUSTED_SHA) {
+            throw 'Consumer checkout does not match the immutable trusted revision.'
+          }
+      - name: Authenticate exact CI TestHost producer and artifact
+        id: payload
+        uses: ./.github/actions/accessibility-ci-admission
+        with:
+          published-sha: ${{ inputs.published-sha }}
+          require-payload: 'true'
+      - name: Download authenticated artifact without extracting it
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          ARTIFACT_ID: ${{ steps.payload.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
+          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
+          SOURCE_SHA: ${{ inputs.head-sha }}
+          CI_RUN_ID: ${{ steps.payload.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.payload.outputs.ci_run_attempt }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const response = await github.rest.actions.downloadArtifact({
+              ...context.repo, artifact_id: Number(process.env.ARTIFACT_ID), archive_format: 'zip',
+            });
+            fs.mkdirSync(path.dirname(process.env.ACCESSIBILITY_ARCHIVE), { recursive: true });
+            fs.writeFileSync(process.env.ACCESSIBILITY_ARCHIVE, Buffer.from(response.data), { flag: 'wx' });
+            fs.mkdirSync(process.env.ACCESSIBILITY_RESULTS, { recursive: true });
+            fs.writeFileSync(path.join(process.env.ACCESSIBILITY_RESULTS, 'ci-payload-provenance.json'),
+              JSON.stringify({ repository: `${context.repo.owner}/${context.repo.repo}`,
+                pr_number: process.env.PR_NUMBER, source_sha: process.env.SOURCE_SHA, run_id: process.env.CI_RUN_ID,
+                run_attempt: process.env.CI_RUN_ATTEMPT, artifact_id: process.env.ARTIFACT_ID,
+                digest: process.env.ARTIFACT_DIGEST }));
+      - name: Verify archive integrity and complete portable layout before extraction
         shell: pwsh
         env:
           EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
+          CI_RUN_ID: ${{ steps.payload.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.payload.outputs.ci_run_attempt }}
+          ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD) -ne $env:EXPECTED_HEAD_SHA) {
-            throw 'Checked-out revision does not match the immutable PR head.'
-          }
-      - name: Build accessibility test host
-        shell: cmd
-        run: |
-          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          call tools\razzle.cmd
-          if errorlevel 1 exit /b 1
-          cd src\cascadia\LocalTests_TerminalApp\TestHostApp
-          if errorlevel 1 exit /b 1
-          call bx
+          python build/scripts/ci-accessibility-payload.py extract `
+            --archive "$env:ACCESSIBILITY_ARCHIVE" --digest "$env:ARTIFACT_DIGEST" `
+            --output "$env:ACCESSIBILITY_PAYLOAD"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Acquire pinned Axe.Windows CLI
         shell: pwsh
         run: |
@@ -131,8 +175,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $recipe = 'bin\x64\Debug\TestHostApp\TestHostApp.build.appxrecipe'
-          $dependencies = @(& trusted-accessibility\build\scripts\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)
+          Set-Location -LiteralPath $env:ACCESSIBILITY_PAYLOAD
+          $recipe = 'TestHostApp.build.appxrecipe'
+          $helper = Join-Path $env:GITHUB_WORKSPACE 'trusted-accessibility\build\scripts\Get-DependenciesFromAppxRecipe.ps1'
+          $dependencies = @(& $helper -Path $recipe)
           if ($dependencies.Count -eq 0) {
             throw 'The test host recipe contains no framework dependencies.'
           }
@@ -171,7 +217,7 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface fre `
-            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
@@ -184,7 +230,7 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface agents `
-            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
@@ -197,7 +243,7 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface fre-settings `
-            -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA

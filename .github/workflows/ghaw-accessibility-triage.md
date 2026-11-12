@@ -2,6 +2,7 @@
 name: Accessibility diff triage
 on:
   workflow_call:
+  bots: ['github-actions[bot]']
 permissions:
   contents: read
   copilot-requests: write

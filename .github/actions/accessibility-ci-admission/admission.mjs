@@ -1,21 +1,46 @@
-// Reuse the authoritative security CI foundation; accessibility consumes no CI artifacts.
+// Reuse the authoritative security CI foundation.
 import {
-  validateCiDefinition, validateCiRun, validateCiPull,
+  validateCiDefinition, validateCiRun, validateCiPull, validateCiArtifact,
 } from '../../skills/ghaw-pr-security/scripts/security-review.mjs';
+import { relevantPath } from '../../../build/scripts/ci-accessibility-scope.mjs';
+export { relevantPath };
 
 const sha = value => /^[0-9a-f]{40}$/.test(value ?? '');
 const positive = value => /^[1-9][0-9]*$/.test(String(value ?? ''));
 const worker = 'ghaw-pr-accessibility.lock.yml';
 
-export function relevantPath(path) {
-  return /^src\/cascadia\/(TerminalApp|TerminalControl|TerminalSettingsEditor|WindowsTerminal|WindowsTerminal_UIATests|UIMarkdown|LocalTests_TerminalApp\/TestHostApp)\//.test(path) ||
-    /(^|\/)\.github\//.test(path) || /^test\/accessibility\//.test(path) ||
-    path === 'build/scripts/Get-DependenciesFromAppxRecipe.ps1' ||
-    /(^|\/)(AGENTS\.md|CLAUDE\.md|GEMINI\.md|copilot-instructions\.md|SKILL\.md|[^/]+\.instructions\.md|[^/]+\.agent\.md|\.mcp\.json)$/.test(path) ||
-    /(^|\/)\.(claude|copilot|agents|gemini)\//.test(path);
+export function validateBuildJobs(jobs, run) {
+  for (const [name, steps] of [
+    ['C++ build and unit tests', ['Build production Terminal and C++ tests', 'Test all C++ units']],
+    ['Rust build and unit tests', ['Build x64 Rust binaries', 'Test all x64 Rust units']],
+  ]) {
+    const matches = jobs.filter(job => job.name === name);
+    if (matches.length !== 1 || matches[0].run_id !== run.id || matches[0].run_attempt !== run.run_attempt ||
+        matches[0].head_sha !== run.head_sha || matches[0].status !== 'completed' ||
+        matches[0].conclusion !== 'success') throw Error('Required exact-attempt PR build did not complete.');
+    for (const step of steps) {
+      const executed = (matches[0].steps ?? []).filter(item => item.name === step);
+      if (executed.length !== 1 || executed[0].status !== 'completed' || executed[0].conclusion !== 'success') {
+        throw Error('Required PR build/test step did not execute successfully.');
+      }
+    }
+  }
 }
 
-export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '' }) {
+export function validateTestHostProducer(jobs, run) {
+  const producers = jobs.filter(job => job.name === 'C++ build and unit tests');
+  if (producers.length !== 1 || producers[0].run_id !== run.id ||
+      producers[0].run_attempt !== run.run_attempt || producers[0].head_sha !== run.head_sha ||
+      producers[0].status !== 'completed' || producers[0].conclusion !== 'success') {
+    throw Error('Missing successful exact-attempt TestHost producer.');
+  }
+  const uploads = (producers[0].steps ?? []).filter(step => step.name === 'Publish accessibility TestHost payload');
+  if (uploads.length !== 1 || uploads[0].status !== 'completed' || uploads[0].conclusion !== 'success') {
+    throw Error('TestHost publication did not complete successfully.');
+  }
+}
+
+export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '', requirePayload = false }) {
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   const metadata = (await github.rest.repos.get(context.repo)).data;
   const inputs = context.payload.inputs;
@@ -75,6 +100,25 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   }
   validateCiPull(reviewedPull, run, { ...identity, prNumber: pr.number,
     ...(!source && { baseSha: expected.base.sha, headRef: expected.head.ref }) });
+  // REST run.pull_requests is mutable. With no immutable original-target field,
+  // admit only PRs whose default target never changed; do not infer origin from
+  // timing (an old event can be queued across a retarget). Manual review/new PR
+  // is required for retargeted PRs, rather than laundering a foreign-base run.
+  const provenance = await github.graphql(`query($owner:String!,$repo:String!,$number:Int!) {
+    repository(owner:$owner,name:$repo) { pullRequest(number:$number) {
+      timelineItems(first:1,itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT]) {
+        nodes { __typename } pageInfo { hasNextPage }
+      }
+    } }
+  }`, { owner: context.repo.owner, repo: context.repo.repo, number: pr.number });
+  const history = provenance?.repository?.pullRequest?.timelineItems;
+  // totalCount includes unrelated events even with itemTypes; inspect filtered nodes.
+  if (!Array.isArray(history?.nodes) || history.nodes.length !== 0 || history.pageInfo?.hasNextPage !== false) {
+    throw Error('Original default-target CI provenance is unavailable or changed; manual review is required.');
+  }
+  const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
+    { ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100 });
+  validateBuildJobs(jobs, run);
   if (pr.draft) throw Error('Draft pull requests are not eligible.');
   if (!source) {
     const aw = JSON.parse(inputs.aw_context ?? '{}');
@@ -100,6 +144,20 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   const pull = { number: pr.number, head: { sha: pr.head.sha, ref: pr.head.ref,
     repo: { id: metadata.id, full_name: repository } },
     base: { sha: pr.base.sha, ref: pr.base.ref, repo: { id: metadata.id, full_name: repository } } };
-  return { pull_request: JSON.stringify(pull), ci_run_id: String(run.id),
+  const outputs = { pull_request: JSON.stringify(pull), ci_run_id: String(run.id),
     ci_run_attempt: String(run.run_attempt), applicable: String(applicable) };
+  if (requirePayload) {
+    validateTestHostProducer(jobs, run);
+    const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+      { ...context.repo, run_id: run.id, per_page: 100 });
+    const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-testhost-${run.id}-${run.run_attempt}`);
+    if (!/^sha256:[0-9a-f]{64}$/.test(artifact.digest ?? '') ||
+        artifact.workflow_run.repository_id !== run.repository.id ||
+        artifact.workflow_run.head_repository_id !== run.head_repository.id ||
+        !Number.isSafeInteger(artifact.size_in_bytes) || artifact.size_in_bytes < 1 ||
+        artifact.size_in_bytes > 2 * 1024 ** 3) throw Error('Missing TestHost artifact integrity identity.');
+    outputs.artifact_id = String(artifact.id);
+    outputs.artifact_digest = artifact.digest;
+  }
+  return outputs;
 }

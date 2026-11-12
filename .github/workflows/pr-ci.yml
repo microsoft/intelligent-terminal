@@ -13,6 +13,8 @@ on:
       - 'res/**'
       - '.cargo/**'
       - '.github/workflows/pr-ci.yml'
+      - '.github/workflows/native-accessibility.yml'
+      - 'test/accessibility/**'
       - '*.props'
       - '*.targets'
       - '*.sln*'
@@ -45,6 +47,9 @@ jobs:
     name: C++ build and unit tests
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
+    permissions:
+      contents: read
+      pull-requests: read
     defaults:
       run:
         shell: pwsh
@@ -66,6 +71,8 @@ jobs:
           sparse-checkout: |
             build/scripts/ci-security-analysis.mjs
             build/config/codeql-accepted-warnings.json
+            build/scripts/ci-accessibility-scope.mjs
+            build/scripts/ci-accessibility-payload.py
           sparse-checkout-cone-mode: false
 
       - name: Verify built commit
@@ -81,6 +88,20 @@ jobs:
             throw 'Analysis helpers do not match the workflow revision.'
           }
           "Built commit: $actual" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Select accessibility payload publication
+        id: accessibility-scope
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.id == github.repository_id && github.event.pull_request.draft == false
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { relevantPath } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/ci-analysis-tools/build/scripts/ci-accessibility-scope.mjs`));
+            const files = await github.paginate(github.rest.pulls.listFiles,
+              { ...context.repo, pull_number: context.payload.pull_request.number, per_page: 100 });
+            core.setOutput('required', String(files.length >= 3000 ||
+              files.some(file => relevantPath(file.filename) || relevantPath(file.previous_filename || ''))));
 
       - name: Initialize C++ security analysis
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
@@ -150,6 +171,28 @@ jobs:
             -Platform x64 -Configuration Debug -Root bin\x64\Debug `
             -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'
           exit $LASTEXITCODE
+
+      - name: Stage complete original-head TestHost layout
+        if: steps.accessibility-scope.outputs.required == 'true'
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage `
+            --workspace "$env:GITHUB_WORKSPACE" `
+            --output "Generated Files/ci-accessibility-payload"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish accessibility TestHost payload
+        if: steps.accessibility-scope.outputs.required == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-accessibility-testhost-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Generated Files/ci-accessibility-payload/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
 
   rust:
     name: Rust build and unit tests
