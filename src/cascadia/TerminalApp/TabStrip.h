@@ -155,6 +155,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::UI::Xaml::Visibility, MetadataVisibility, PropertyChanged.raise, winrt::Windows::UI::Xaml::Visibility::Collapsed);
         WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TextHighlightColor, MetadataHighlightColor, PropertyChanged.raise, winrt::TerminalApp::TextHighlightColor::None);
         WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, MetadataHighlightRanges, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange>, MetadataEllipsisRanges, PropertyChanged.raise, nullptr);
         WINRT_OBSERVABLE_PROPERTY(bool, HasUnreadActivity, PropertyChanged.raise, false);
 
     public:
@@ -672,6 +673,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::TextBlock _historyMessage{ nullptr };
         winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Grid> _historySection;
         bool _historyExpanded{ false };
+        bool _historySearchExpanded{ true };
         bool _syncingHistorySection{ false };
         winrt::Windows::UI::Xaml::FrameworkElement _historyElement(const wchar_t* name)
         {
@@ -765,6 +767,7 @@ namespace winrt::TerminalApp::implementation
         bool _updateHistoryCompletionPresentation(const TerminalApp::TabStripHistoryItem& item);
         bool _matchesHistorySearch(size_t index) const;
         void _applyHistoryProjection(bool preserveScroll = false);
+        bool _isHistoryExpanded() const noexcept;
         void _updateHistoryVisualState();
         void _syncViewportItems();
         void _activateHistoryItem(TerminalApp::TabStripHistoryItem const& item);

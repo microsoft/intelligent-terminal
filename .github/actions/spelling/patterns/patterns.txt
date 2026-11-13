@@ -12,6 +12,12 @@
 # App Package trailer
 __[a-z\d]{13}\b
 
+# Authenticode test signature placeholder
+(?<=# )MIIC(?=\.{3}signature-data\.{3})
+
+# CI security analysis warning ID prefix
+\bCISEC(?=-)
+
 # src/host/ut_host/TextBufferTests.cpp
 // \d\|.{10}\|
 

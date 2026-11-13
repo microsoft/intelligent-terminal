@@ -1435,6 +1435,10 @@ namespace Microsoft::Terminal::RichTab::Provider
                 {
                     const auto valueText = _ValueText(value->second);
                     _Append(result.text, valueText, L"\n");
+                    if (!valueText.empty())
+                    {
+                        result.fieldRanges.push_back({ field.id, result.text.size() - valueText.size(), valueText.size() });
+                    }
                     if (field.id == "agentStatus" && !valueText.empty())
                     {
                         result.agentStatusRanges.push_back({ result.text.size() - valueText.size(), valueText.size() });

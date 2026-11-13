@@ -21,6 +21,10 @@ namespace winrt::TerminalApp::implementation
         void SetTextAndColor(const winrt::hstring& text,
                              winrt::TerminalApp::TextHighlightColor color,
                              const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges);
+        void SetMetadata(const winrt::hstring& text,
+                         winrt::TerminalApp::TextHighlightColor color,
+                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& ranges,
+                         const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange>& ellipsisRanges);
 
         DEPENDENCY_PROPERTY(winrt::hstring, Text);
         DEPENDENCY_PROPERTY(winrt::hstring, SearchText);
@@ -28,6 +32,7 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, TextBlockStyle);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Style, HighlightedRunStyle);
         DEPENDENCY_PROPERTY(bool, UsePathEllipsis);
+        DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::TextEllipsisRange>, EllipsisRanges);
         DEPENDENCY_PROPERTY(winrt::TerminalApp::TextHighlightColor, ColorHighlight);
         DEPENDENCY_PROPERTY(winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>, ColorHighlightRanges);
         DEPENDENCY_PROPERTY(winrt::Windows::UI::Xaml::Media::Brush, SuccessHighlightBrush);
@@ -36,7 +41,7 @@ namespace winrt::TerminalApp::implementation
         DEPENDENCY_PROPERTY(double, TextOpacity);
 
     private:
-        struct PathEllipsisResult
+        struct EllipsisResult
         {
             winrt::hstring text;
             std::vector<size_t> sourceToDisplay;
@@ -45,7 +50,8 @@ namespace winrt::TerminalApp::implementation
         friend struct HighlightedTextControlPropertyRegistration;
         static void _InitializeProperties();
         static void _onPropertyChanged(const Windows::UI::Xaml::DependencyObject& o, const Windows::UI::Xaml::DependencyPropertyChangedEventArgs& e);
-        PathEllipsisResult _pathEllipsisText(const winrt::hstring& text) const;
+        EllipsisResult _ellipsisText(const winrt::hstring& text) const;
+        bool _usesEllipsis() const;
         std::vector<winrt::TerminalApp::HighlightedRun> _mapRuns(const winrt::Windows::Foundation::Collections::IVector<winrt::TerminalApp::HighlightedRun>& runs) const;
         void _updateTextAndStyle();
         void _updateColorHighlights();

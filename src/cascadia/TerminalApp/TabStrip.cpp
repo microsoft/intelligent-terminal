@@ -545,7 +545,7 @@ namespace winrt::TerminalApp::implementation
         ChildrenVisibility(showPaneRows ? Visibility::Visible : Visibility::Collapsed);
         const auto bitmap = IconSource().try_as<MUX::Controls::BitmapIconSource>();
         IconVisibility(ShowStatusIcon() || (isGroup && !railCollapsed) || (bitmap && !bitmap.UriSource()) ? Visibility::Collapsed : Visibility::Visible);
-        PinnedIconVisibility(railCollapsed && IsPinned() ? Visibility::Visible : Visibility::Collapsed);
+        PinnedIconVisibility(Visibility::Collapsed);
         HeaderMinHeight(railCollapsed ? 32.0 : 40.0);
         LeadingContentMargin(railCollapsed ? WUX::Thickness{} : WUX::Thickness{ 6, 0, 10, 0 });
         LeadingContentColumnSpan(railCollapsed ? 3 : 1);
@@ -961,6 +961,10 @@ namespace winrt::TerminalApp::implementation
         }
         if (queryChanged)
         {
+            if (!_sidebarFilters.HasSearchQuery())
+            {
+                _historySearchExpanded = true;
+            }
             _syncingSearchState = true;
             SearchTextBox().Text(SearchQuery());
             _syncingSearchState = false;
@@ -1152,6 +1156,7 @@ namespace winrt::TerminalApp::implementation
                 existing.MetadataText(pane.MetadataText());
                 existing.MetadataHighlightColor(pane.MetadataHighlightColor());
                 existing.MetadataHighlightRanges(pane.MetadataHighlightRanges());
+                existing.MetadataEllipsisRanges(pane.MetadataEllipsisRanges());
                 existing.HasUnreadActivity(pane.HasUnreadActivity());
                 existing.MetadataVisibility(pane.MetadataVisibility());
                 existing.AutomationName(pane.AutomationName());
@@ -3256,14 +3261,21 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::SetHistoryExpanded(const bool expanded)
     {
-        _historyExpanded = expanded;
-        ApplicationState::SharedInstance().SidebarRecentSessionsExpanded(expanded);
+        if (_sidebarFilters.HasSearchQuery())
+        {
+            _historySearchExpanded = expanded;
+        }
+        else
+        {
+            _historyExpanded = expanded;
+            ApplicationState::SharedInstance().SidebarRecentSessionsExpanded(expanded);
+        }
         _updateHistoryVisualState();
     }
 
     void TabStrip::OnTreeExpanding(MUX::Controls::TreeView const&, MUX::Controls::TreeViewExpandingEventArgs const& e)
     {
-        if (!_syncingTree && e.Node() == _historyNode && !_sidebarFilters.HasSearchQuery())
+        if (!_syncingTree && e.Node() == _historyNode)
         {
             SetHistoryExpanded(true);
         }
@@ -3273,14 +3285,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (!_syncingTree && e.Node() == _historyNode)
         {
-            if (!_sidebarFilters.HasSearchQuery())
-            {
-                SetHistoryExpanded(false);
-            }
-            else
-            {
-                _updateHistoryVisualState();
-            }
+            SetHistoryExpanded(false);
         }
     }
 
@@ -3288,7 +3293,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (e.InvokedItem() == _historySectionItem)
         {
-            if (!_sidebarFilters.HasSearchQuery() && _historyNode)
+            if (_historyNode)
             {
                 _historyNode.IsExpanded(!_historyNode.IsExpanded());
             }
@@ -3373,7 +3378,7 @@ namespace winrt::TerminalApp::implementation
         treeItem.HasUnrealizedChildren(header);
         if (header)
         {
-            treeItem.IsExpanded(_historyExpanded || _sidebarFilters.HasSearchQuery());
+            treeItem.IsExpanded(_isHistoryExpanded());
             WUX::Automation::AutomationProperties::SetAutomationId(container, L"HistoryHeaderButton");
         }
         else
@@ -4071,10 +4076,15 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    bool TabStrip::_isHistoryExpanded() const noexcept
+    {
+        return _sidebarFilters.HasSearchQuery() ? _historySearchExpanded : _historyExpanded;
+    }
+
     void TabStrip::_updateHistoryVisualState()
     {
         const auto visible = _sidebarFilters.RecentAgentSessionsVisible() && !_isRailCollapsed;
-        const auto expanded = _historyExpanded || _sidebarFilters.HasSearchQuery();
+        const auto expanded = _isHistoryExpanded();
         const auto loading = HistoryLoading();
         const auto section = HistorySection();
         if (section)
@@ -4229,7 +4239,7 @@ namespace winrt::TerminalApp::implementation
                 children.InsertAt(index, node);
             }
             _historyNode.HasUnrealizedChildren(true);
-            _historyNode.IsExpanded(_historyExpanded || _sidebarFilters.HasSearchQuery());
+            _historyNode.IsExpanded(_isHistoryExpanded());
         }
         else
         {
