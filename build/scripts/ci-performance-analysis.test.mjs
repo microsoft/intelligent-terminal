@@ -241,10 +241,16 @@ version="0.1.0"
 fn copy_nonempty(rows: &[String]) -> Vec<String> {
     rows.iter().cloned().filter(|row| !row.is_empty()).collect()
 }
+async fn hold_lock(lock: &std::sync::Mutex<()>) {
+    let guard=lock.lock().unwrap();
+    std::future::ready(()).await;
+    drop(guard);
+}
 fn main() {
     let mut v=Vec::new(); v.push(1); v.push(2);
     let count=std::env::args().collect::<Vec<_>>().len();
     println!("{v:?} {} {:?}", style_only(count), copy_nonempty(&[String::from("a")]));
+    drop(hold_lock(&std::sync::Mutex::new(())));
 }
 `);
         const head = commit();
@@ -270,6 +276,7 @@ fn main() {
                 const diagnostics = fs.readFileSync(path.join(proof.output, 'diagnostics.jsonl'), 'utf8');
                 assert.match(diagnostics, /clippy::iter_overeager_cloned/);
                 assert.match(diagnostics, /clippy::needless_collect/);
+                assert.match(diagnostics, /clippy::await_holding_lock/);
                 assert.doesNotMatch(diagnostics, /clippy::needless_return/);
             }
             save(proof, `${language}-warnings`);
