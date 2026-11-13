@@ -76,7 +76,9 @@ try {
     }
     if ($Language -eq 'rust') {
         Invoke-AnalysisCommand 'cargo.exe' @('clippy', '--version') 'tool-version.log'
-        Invoke-AnalysisCommand 'cargo.exe' @('wta-perf-extended') 'diagnostics.jsonl'
+        # Individual alias checks retain priority over groups; correctness errors stay fatal.
+        Invoke-AnalysisCommand 'cargo.exe' @('wta-perf-extended',
+            '-A', 'clippy::all', '-W', 'clippy::perf', '-D', 'clippy::correctness') 'diagnostics.jsonl'
     }
     else {
         $projects = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
