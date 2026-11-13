@@ -56,6 +56,23 @@ function Wait-VisibleElement
     throw "Expected visible accessibility state was not reached: $AutomationId."
 }
 
+function Test-SidebarSelectionOwner
+{
+    param($Row, $ItemsList)
+    # WinUI 2.8 GetSelection() intentionally omits virtualized nodes. Verify
+    # the row's native SelectionItem container instead of enumeration count.
+    $selectionItem = $null
+    if (-not $Row.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selectionItem))
+    {
+        return $false
+    }
+    $owner = $selectionItem.Current.SelectionContainer
+    if (-not $owner) { return $false }
+    $runtimeId = @($ItemsList.GetRuntimeId())
+    return $runtimeId.Count -gt 0 -and $owner.Current.ProcessId -eq $ItemsList.Current.ProcessId -and
+        ($owner.GetRuntimeId() -join ',') -ceq ($runtimeId -join ',')
+}
+
 if ($ScanId -eq 'fre-settings')
 {
     $next = Wait-VisibleElement -AutomationId 'NextButton'
@@ -72,8 +89,10 @@ $marker = Wait-VisibleElement -AutomationId $markerId
 if ($ScanId -eq 'sidebar')
 {
     # This populated fixture is the real TabStrip, not FRE's welcomeSidebarImage.
-    if ($marker.Current.ControlType -ne [Windows.Automation.ControlType]::Tab -or
-        $marker.Current.ClassName -ne 'TabStrip')
+    # Older heads expose Tab; corrected product heads group chrome around the
+    # native selection tree. Neither role admits promo/history-only content.
+    if ($marker.Current.ControlType -notin @([Windows.Automation.ControlType]::Tab, [Windows.Automation.ControlType]::Group) -or
+        $marker.Current.ClassName -ne 'TabStrip' -or $marker.Current.ProcessId -ne $ProcessId)
     {
         throw 'The sidebar marker is not the production TabStrip automation peer.'
     }
@@ -81,9 +100,18 @@ if ($ScanId -eq 'sidebar')
     $itemCondition = [Windows.Automation.PropertyCondition]::new(
         [Windows.Automation.AutomationElement]::AutomationIdProperty, 'ItemsList')
     $sidebarItems = $marker.FindFirst([Windows.Automation.TreeScope]::Descendants, $itemCondition)
-    if (-not $sidebarItems -or $sidebarItems.Current.IsOffscreen)
+    if (-not $sidebarItems -or $sidebarItems.Current.IsOffscreen -or
+        $sidebarItems.Current.ProcessId -ne $ProcessId -or
+        $sidebarItems.Current.ControlType -ne [Windows.Automation.ControlType]::Tree -or
+        $sidebarItems.Current.ClassName -ne 'ListView')
     {
         throw 'The sidebar has no visible production tab list.'
+    }
+    $selection = $null
+    if (-not $sidebarItems.TryGetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern, [ref]$selection) -or
+        $selection.Current.CanSelectMultiple)
+    {
+        throw 'The production sidebar tree must expose single-selection support.'
     }
     $tabCondition = [Windows.Automation.PropertyCondition]::new(
         [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
@@ -93,11 +121,12 @@ if ($ScanId -eq 'sidebar')
         $rows = @($sidebarItems.FindAll([Windows.Automation.TreeScope]::Descendants, $tabCondition) |
             Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $ProcessId -and
                 $_.Current.ClassName -eq 'Microsoft.UI.Xaml.Controls.TreeViewItem' -and
-                $_.Current.Name -eq 'PowerShell' -and $_.Current.AutomationId -ne 'HistoryHeaderButton' })
+                $_.Current.Name -eq 'PowerShell' -and $_.Current.AutomationId -ne 'HistoryHeaderButton' } |
+            Where-Object { Test-SidebarSelectionOwner -Row $_ -ItemsList $sidebarItems })
         if ($rows.Count -gt 0) { break }
         Start-Sleep -Milliseconds 250
     } while ([DateTimeOffset]::UtcNow -lt $deadline)
-    if ($rows.Count -eq 0) { throw 'The populated sidebar fixture has no visible PowerShell production tab row.' }
+    if ($rows.Count -eq 0) { throw 'The populated sidebar fixture has no visible PowerShell production tab row with native selection ownership.' }
 }
 $elements = $root.FindAll(
     [Windows.Automation.TreeScope]::Subtree, [Windows.Automation.Condition]::TrueCondition)

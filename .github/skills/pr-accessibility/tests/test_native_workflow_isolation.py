@@ -265,7 +265,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
 
     def test_actual_sidebar_row_predicate_rejects_history_header_only_without_a_desktop(self):
         scan = (ROOT / "test/accessibility/Invoke-AxeWindowsScan.ps1").read_text(encoding="utf-8")
-        predicate = scan.split("Where-Object { ", 1)[1].split(" })", 1)[0]
+        predicate = scan.split("Where-Object { ", 1)[1].split(" } |", 1)[0]
         current = {"ProcessId": 45, "IsOffscreen": False, "Name": "PowerShell",
                    "ClassName": "Microsoft.UI.Xaml.Controls.TreeViewItem", "AutomationId": ""}
         with tempfile.TemporaryDirectory() as directory:
@@ -288,6 +288,81 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
                     result = subprocess.run(["pwsh", "-NoProfile", "-File", str(path)],
                                             capture_output=True, text=True, timeout=30)
                     self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_actual_sidebar_selection_guards_require_native_single_selection_and_row_owner(self):
+        # Execute the production function/condition, with UIA calls represented
+        # by snapshots. This is portable predicate coverage, not a native scan.
+        scan_path = ROOT / "test/accessibility/Invoke-AxeWindowsScan.ps1"
+        script = r"""
+$ErrorActionPreference = 'Stop'
+Add-Type @'
+namespace Windows.Automation {
+    public static class SelectionItemPattern { public static string Pattern = "SelectionItem"; }
+    public static class SelectionPattern { public static string Pattern = "Selection"; }
+}
+'@
+$tokens = $null; $errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($args[0], [ref]$tokens, [ref]$errors)
+if ($errors) { throw 'Scanner parse failure' }
+$function = $ast.Find({
+    param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $n.Name -eq 'Test-SidebarSelectionOwner'
+}, $true)
+. ([scriptblock]::Create($function.Extent.Text))
+$condition = $ast.Find({
+    param($n)
+    $n -is [System.Management.Automation.Language.IfStatementAst] -and
+        $n.Extent.Text.StartsWith('if (-not $sidebarItems.TryGetCurrentPattern(')
+}, $true)
+if (-not $condition) { throw 'Missing actual single-selection admission guard' }
+$nativeSelectionGuard = [scriptblock]::Create($condition.Extent.Text)
+function Element($id, $process = 45) {
+    $element = [pscustomobject]@{ Current = [pscustomobject]@{ ProcessId = $process }; RuntimeId = @($id) }
+    $element | Add-Member ScriptMethod GetRuntimeId { $this.RuntimeId }
+    return $element
+}
+$sidebarItems = Element @(42, 2)
+$sidebarItems | Add-Member NoteProperty HasPattern $true
+$sidebarItems | Add-Member NoteProperty Multiple $false
+$sidebarItems | Add-Member ScriptMethod TryGetCurrentPattern {
+    param($pattern, $result)
+    $result.Value = [pscustomobject]@{ Current = [pscustomobject]@{ CanSelectMultiple = $this.Multiple } }
+    return $this.HasPattern -and $pattern -eq 'Selection'
+}
+foreach ($case in @('single', 'missing-selection', 'multiple-selection')) {
+    $sidebarItems.HasPattern = $case -ne 'missing-selection'
+    $sidebarItems.Multiple = $case -eq 'multiple-selection'
+    $selection = $null
+    $threw = $false
+    try { . $nativeSelectionGuard } catch { $threw = $true }
+    if ($threw -ne ($case -ne 'single')) { throw "Wrong Tree selection admission: $case" }
+}
+$row = [pscustomobject]@{ HasPattern = $true; Owner = (Element @(42, 2)) }
+$row | Add-Member ScriptMethod TryGetCurrentPattern {
+    param($pattern, $result)
+    $result.Value = [pscustomobject]@{ Current = [pscustomobject]@{ SelectionContainer = $this.Owner } }
+    return $this.HasPattern -and $pattern -eq 'SelectionItem'
+}
+foreach ($case in @('owned', 'missing-pattern', 'missing-owner', 'foreign-owner', 'other-tree', 'empty-tree-id')) {
+    $row.HasPattern = $case -ne 'missing-pattern'
+    $row.Owner = switch ($case) {
+        'missing-owner' { $null }
+        'foreign-owner' { Element @(42, 2) 46 }
+        'other-tree' { Element @(42, 3) }
+        default { Element @(42, 2) }
+    }
+    $sidebarItems.RuntimeId = if ($case -eq 'empty-tree-id') { @() } else { @(42, 2) }
+    $accepted = Test-SidebarSelectionOwner -Row $row -ItemsList $sidebarItems
+    if ($accepted -ne ($case -eq 'owned')) { throw "Wrong row selection owner admission: $case" }
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "selection-predicate.ps1"
+            path.write_text(script, encoding="utf-8")
+            result = subprocess.run(["pwsh", "-NoProfile", "-File", str(path), str(scan_path)],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

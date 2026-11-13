@@ -1,6 +1,7 @@
 """Transport tests only; fixtures are not usable native builds or signed frameworks."""
 import hashlib
 import importlib.util
+import itertools
 import json
 from pathlib import Path
 import stat
@@ -313,7 +314,8 @@ class NativeReceiptTests(unittest.TestCase):
                      "runtime_id": [1], "parent_runtime_id": [], "control_type": "ControlType.Tab",
                      "class_name": "TabStrip"},
                     {"process_id": 45, "automation_id": "ItemsList", "is_offscreen": False,
-                     "runtime_id": [2], "parent_runtime_id": [1], "control_type": "ControlType.List"},
+                     "runtime_id": [2], "parent_runtime_id": [1], "control_type": "ControlType.Tree",
+                     "class_name": "ListView"},
                     {"process_id": 45, "automation_id": "", "is_offscreen": False,
                      "runtime_id": [3], "parent_runtime_id": [2], "control_type": "ControlType.TreeItem",
                      "class_name": "Microsoft.UI.Xaml.Controls.TreeViewItem", "name": "PowerShell"},
@@ -336,6 +338,19 @@ class NativeReceiptTests(unittest.TestCase):
         self.assertEqual(IDENTITY, receipt["identity"])
         self.assertEqual(set(PAYLOAD.SURFACES), set(receipt["surfaces"]))
         self.assertEqual(0, receipt["surfaces"]["fre"]["error_count"])
+
+    def test_sidebar_admits_legacy_tab_and_corrected_group_with_native_tree(self):
+        path = self.output / "sidebar/uia-tree.json"
+        tree = json.loads(path.read_text())
+        for role in ("ControlType.Tab", "ControlType.Group"):
+            candidate = json.loads(json.dumps(tree))
+            candidate[0]["control_type"] = role
+            with self.subTest(role=role):
+                self.assertTrue(PAYLOAD.sidebar_state(candidate, 45))
+        tree[0]["control_type"] = "ControlType.Group"
+        path.write_text(json.dumps(tree))
+        self.consume()
+        self.assertEqual("PASS", json.loads((self.destination / "native-ci.json").read_text())["status"])
 
     def test_missing_skipped_failed_stale_hidden_empty_and_cleanup_blocked_are_not_pass(self):
         path = self.output / "fre/result.json"
@@ -362,10 +377,13 @@ class NativeReceiptTests(unittest.TestCase):
     def test_sidebar_rejects_promo_missing_marker_empty_rows_foreign_hidden_and_unrelated_rows(self):
         path = self.output / "sidebar/uia-tree.json"
         tree = json.loads(path.read_text())
-        for mode in ("promo", "absent-marker", "empty-window", "empty-rows", "hidden-marker",
+        for role, mode in itertools.product(("ControlType.Tab", "ControlType.Group"), (
+                     "promo", "absent-marker", "empty-window", "empty-rows", "hidden-marker",
                      "hidden-row", "foreign-row", "unrelated-list", "unrelated-row", "cycle", "wrong-role",
-                     "fake-marker-role", "fake-marker-class", "history-header-only"):
+                     "fake-marker-role", "fake-marker-class", "history-header-only", "spoofed-history-name",
+                     "wrong-list-role", "wrong-list-class", "foreign-list", "foreign-marker")):
             candidate = json.loads(json.dumps(tree))
+            candidate[0]["control_type"] = role
             if mode == "promo":
                 candidate[0]["automation_id"] = "welcomeSidebarImage"
             elif mode == "absent-marker":
@@ -394,8 +412,18 @@ class NativeReceiptTests(unittest.TestCase):
                 candidate[0]["class_name"] = "Image"
             elif mode == "history-header-only":
                 candidate[2].update(name="Recent agent sessions", automation_id="HistoryHeaderButton")
+            elif mode == "spoofed-history-name":
+                candidate[2].update(name="PowerShell", automation_id="HistoryHeaderButton")
+            elif mode == "wrong-list-role":
+                candidate[1]["control_type"] = "ControlType.List"
+            elif mode == "wrong-list-class":
+                candidate[1]["class_name"] = "ItemsControl"
+            elif mode == "foreign-list":
+                candidate[1]["process_id"] = 46
+            elif mode == "foreign-marker":
+                candidate[0]["process_id"] = 46
             path.write_text(json.dumps(candidate))
-            with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, "incomplete or failed"):
+            with self.subTest(role=role, mode=mode), self.assertRaisesRegex(ValueError, "incomplete or failed"):
                 self.consume()
             self.assertFalse(self.destination.exists())
         path.write_text(json.dumps(tree))
