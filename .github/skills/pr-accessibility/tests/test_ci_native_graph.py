@@ -77,6 +77,30 @@ class CiNativeGraphTests(unittest.TestCase):
                 if "uses" in step:
                     self.assertRegex(step["uses"], r"@[0-9a-f]{40}$")
 
+    def test_partial_consumer_reruns_use_actual_payload_producer_attempt(self):
+        self.assertEqual("${{ github.run_attempt }}", self.jobs["cpp"]["outputs"]["payload-attempt"])
+        steps = self.jobs["cpp-tests"]["steps"]
+        download = next(s for s in steps if s.get("name") == "Download original build unit payload")
+        verify = next(s for s in steps if s.get("name") == "Verify unit payload identity and completeness")
+        self.assertEqual("ci-cpp-units-${{ github.run_id }}-${{ needs.cpp.outputs.payload-attempt }}",
+                         download["with"]["name"])
+        self.assertEqual("${{ needs.cpp.outputs.payload-attempt }}", verify["env"]["CI_RUN_ATTEMPT"])
+        self.assertEqual("${{ needs.cpp.outputs.payload-attempt }}", self.jobs["axe"]["with"]["payload-attempt"])
+        native = self.native["jobs"]["native-smoke"]["steps"]
+        fetch = next(s for s in native if s.get("name") == "Download authenticated artifact without extracting it")
+        extract = next(s for s in native if s.get("name") == "Verify archive integrity and complete portable layout before extraction")
+        self.assertEqual("${{ inputs.payload-attempt }}", fetch["env"]["PAYLOAD_ATTEMPT"])
+        self.assertIn("process.env.PAYLOAD_ATTEMPT", fetch["with"]["script"])
+        self.assertEqual("${{ inputs.payload-attempt }}", extract["env"]["CI_RUN_ATTEMPT"])
+        # Native result receipts still identify the actual native execution,
+        # not the older build attempt used solely for payload verification.
+        self.assertEqual("${{ github.run_attempt }}", self.native["env"]["CI_RUN_ATTEMPT"])
+        current_attempt, retained_producer = 2, 1
+        self.assertNotEqual(current_attempt, retained_producer)
+        name = download["with"]["name"].replace("${{ github.run_id }}", "91").replace(
+            "${{ needs.cpp.outputs.payload-attempt }}", str(retained_producer))
+        self.assertEqual("ci-cpp-units-91-1", name)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,10 @@ on:
       head-sha:
         required: true
         type: string
+      payload-attempt:
+        description: Actual C++ producer attempt, retained when only a consumer is rerun.
+        required: true
+        type: string
       trusted-sha:
         description: Immutable PR base revision for the native harness, not candidate source.
         required: true
@@ -61,6 +65,8 @@ jobs:
       - name: Download authenticated artifact without extracting it
         id: payload
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PAYLOAD_ATTEMPT: ${{ inputs.payload-attempt }}
         with:
           script: |
             const fs = require('node:fs');
@@ -68,7 +74,7 @@ jobs:
             const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
               { ...context.repo, run_id: context.runId, per_page: 100 });
             const matches = artifacts.filter(a =>
-              a.name === `ci-accessibility-testhost-${context.runId}-${process.env.CI_RUN_ATTEMPT}`);
+              a.name === `ci-accessibility-testhost-${context.runId}-${process.env.PAYLOAD_ATTEMPT}`);
             if (matches.length !== 1) throw Error('Missing or ambiguous same-build TestHost artifact.');
             const artifact = matches[0];
             if (artifact.expired !== false || artifact.workflow_run?.id !== context.runId ||
@@ -90,6 +96,7 @@ jobs:
         shell: pwsh
         env:
           EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+          CI_RUN_ATTEMPT: ${{ inputs.payload-attempt }}
           ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
         run: |
           python build/scripts/ci-accessibility-payload.py extract `

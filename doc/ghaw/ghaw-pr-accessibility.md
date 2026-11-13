@@ -54,6 +54,12 @@ path classifier. Docs-only changes do not start native CI. Every accessibility
 model, including triage and summary, waits for authoritative entire PR CI success.
 There is no Windows job or rebuild fallback in gh-aw.
 
+Ordinary CI consumers carry the C++ producer attempt explicitly. A failed-job-only
+rerun can reuse its retained build artifact without pretending it was rebuilt in
+the new attempt; native receipts still identify the actual scan attempt.
+Model admission remains stricter: retained older build jobs do not satisfy the
+fresh exact-attempt prerequisite. A full fresh CI attempt is needed for review.
+
 The payload combines every recipe mapping with loose AfterBuild runtime content:
 the host/App/LocalTests and component DLLs/WinMDs, aggregate resources, XBFs,
 agent assets, `taef.png`, and the two x64 Microsoft framework packages.

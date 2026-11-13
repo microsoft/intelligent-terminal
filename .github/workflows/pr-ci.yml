@@ -50,6 +50,7 @@ jobs:
     outputs:
       accessibility: ${{ steps.accessibility-scope.outputs.required }}
       units: ${{ steps.units.outcome == 'success' }}
+      payload-attempt: ${{ github.run_attempt }}
     permissions:
       contents: read
       pull-requests: read
@@ -222,12 +223,12 @@ jobs:
       - name: Download original build unit payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ci-cpp-units-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-cpp-units-${{ github.run_id }}-${{ needs.cpp.outputs.payload-attempt }}
           path: bin/x64/Debug
       - name: Verify unit payload identity and completeness
         env:
           CI_RUN_ID: ${{ github.run_id }}
-          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CI_RUN_ATTEMPT: ${{ needs.cpp.outputs.payload-attempt }}
           PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
         run: |
           python build/scripts/ci-accessibility-payload.py check-units --output bin/x64/Debug
@@ -262,6 +263,7 @@ jobs:
     with:
       head-sha: ${{ github.event.pull_request.head.sha }}
       trusted-sha: ${{ github.event.pull_request.base.sha }}
+      payload-attempt: ${{ needs.cpp.outputs.payload-attempt }}
 
   rust:
     name: Rust build and unit tests

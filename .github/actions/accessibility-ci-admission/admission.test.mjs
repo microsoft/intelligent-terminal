@@ -271,3 +271,11 @@ test('irrelevant successful CI can omit native work without starting a model', a
   f.setJobs([f.producer, f.units, f.rust]);
   assert.equal((await admit(f)).applicable, 'false');
 });
+
+test('ordinary partial rerun support never admits retained build evidence as a fresh model prerequisite', async () => {
+  for (const dispatch of [false, true]) {
+    const f = fixture(dispatch);
+    f.producer.run_attempt = 1; // Consumer/run are attempt2, build was retained.
+    await assert.rejects(admit(f), /Required exact-attempt PR build/);
+  }
+});
