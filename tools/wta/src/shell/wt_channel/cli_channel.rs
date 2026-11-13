@@ -1156,6 +1156,10 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "get_settings" => self.run_wtcli(&["get-settings"]).await,
+            "get_custom_acp_commands" => {
+                self.run_wtcli(&["get-settings", "--custom-acp-commands"])
+                    .await
+            }
             "read_pane_output" => {
                 let pane_id = params
                     .get("session_id")

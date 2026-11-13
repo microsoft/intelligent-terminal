@@ -3067,6 +3067,7 @@ fn make_state_with_retirement_pending_timeout(
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
+        custom_agent_commands: Mutex::new(CustomAcpCatalog::default()),
         allowed_agent_ids: None,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -14617,6 +14618,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
+        custom_agent_commands: Mutex::new(CustomAcpCatalog::default()),
         allowed_agent_ids: None,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -18913,7 +18915,10 @@ async fn history_refresh_wsl_reconciles_only_owned_previously_listed_terminal_ro
 async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_providers() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            let state = make_state();
+            let state = make_state_with_wt(Arc::new(MockWtChannel::responding(
+                serde_json::json!({"custom:one":"one --acp","custom:two":"two --acp"}),
+            )));
+            assert!(refresh_custom_agent_catalog(&state).await);
             let mut foreign = crate::session_registry::SessionInfo::new(
                 SessionId::new("same"),
                 PathBuf::from("C:\\repo"),
@@ -18944,7 +18949,12 @@ async fn history_refresh_isolates_colliding_ids_across_sources_and_custom_provid
                     "Custom two",
                 ),
             ] {
-                let (agent, mut requests) = controlled_history_agent(provider, source);
+                let (mut agent, mut requests) = controlled_history_agent(provider, source);
+                if provider.starts_with("custom:") {
+                    let command = host_history_agent_command(&state, provider).await;
+                    let inner = Arc::get_mut(&mut agent).unwrap();
+                    inner.cmd_key = agent_cmd_key(&command, Some(provider), &inner.source);
+                }
                 add_test_agent_to_pool(&state, &agent).await;
                 let refresh = refresh_agent_history(&state, &agent);
                 let reply = async {
@@ -19192,6 +19202,680 @@ async fn untitled_history_filter_prunes_explicit_rejections_from_partial_listing
                     "partial listing and ownership guards must preserve: {id}"
                 );
             }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_refresh_preserves_clients_routes_and_last_valid_commands() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel =
+                mutable_custom_acp_channel(serde_json::json!({"custom:qwen": "qwen --acp"}));
+            let state = make_state_with_wt(channel.clone());
+            let agent = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+            let key = agent_cmd_key(
+                "copilot --acp --stdio",
+                Some("copilot"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let cell = Arc::new(OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state.agents.lock().await.insert(key.clone(), cell);
+            let custom_key = agent_cmd_key(
+                "qwen --acp",
+                Some("custom:qwen"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let custom_agent = listing_agent_with_cli(None, &[]);
+            let custom_cell = Arc::new(OnceCell::new());
+            assert!(custom_cell.set(Arc::clone(&custom_agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(custom_key.clone(), custom_cell);
+            let helper_id = HelperId(42);
+            agent.bound_helpers.lock().await.insert(helper_id);
+            custom_agent.bound_helpers.lock().await.insert(helper_id);
+            let session_id = SessionId::new("live-builtin");
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            state.session_to_helper.lock().await.insert(
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id: agent.instance_id,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+            refresh_custom_agent_catalog(&state).await;
+            assert_eq!(
+                host_history_agent_command(&state, "custom:qwen").await,
+                "qwen --acp"
+            );
+
+            for response in [
+                serde_json::json!({"custom:qwen": "qwen --new-acp"}),
+                serde_json::json!({"custom:qwen": ""}),
+                serde_json::json!({"acpCustomCommands": ["untrusted --acp"]}),
+            ] {
+                *channel.response.lock().unwrap() = response;
+                refresh_custom_agent_catalog(&state).await;
+                assert_eq!(
+                    host_history_agent_command(&state, "custom:qwen").await,
+                    "qwen --new-acp"
+                );
+                let pooled = get_or_spawn_agent(
+                    &state,
+                    "copilot --acp --stdio",
+                    Some("copilot"),
+                    &crate::agent_source::AgentSource::Host,
+                    ProviderBinding::Native,
+                    Vec::new(),
+                )
+                .await
+                .unwrap();
+                assert!(Arc::ptr_eq(&pooled, &agent));
+                assert_eq!(
+                    state.session_to_helper.lock().await[&session_id].helper_id,
+                    helper_id
+                );
+            }
+            *channel.response.lock().unwrap() = serde_json::Value::Null;
+            refresh_custom_agent_catalog(&state).await;
+            assert_eq!(
+                host_history_agent_command(&state, "custom:qwen").await,
+                "qwen --new-acp"
+            );
+            assert!(state
+                .history_discovery_errors
+                .lock()
+                .await
+                .contains_key("custom-agent-catalog"));
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            refresh_custom_agent_catalog(&state).await;
+            assert!(state.custom_agent_commands.lock().await.is_empty());
+            assert!(Arc::ptr_eq(
+                state.agents.lock().await[&key].get().unwrap(),
+                &agent
+            ));
+            assert!(agent.bound_helpers.lock().await.contains(&helper_id));
+            assert!(Arc::ptr_eq(
+                state.agents.lock().await[&custom_key].get().unwrap(),
+                &custom_agent
+            ));
+            assert!(custom_agent.bound_helpers.lock().await.contains(&helper_id));
+        })
+        .await;
+}
+
+struct MutableCustomAcpChannel {
+    response: std::sync::Mutex<serde_json::Value>,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl crate::shell::wt_channel::WtChannel for MutableCustomAcpChannel {
+    async fn request(
+        &self,
+        method: &str,
+        _: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        assert_eq!(method, "get_custom_acp_commands");
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(self.response.lock().unwrap().clone())
+    }
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
+fn mutable_custom_acp_channel(commands: serde_json::Value) -> Arc<MutableCustomAcpChannel> {
+    Arc::new(MutableCustomAcpChannel {
+        response: std::sync::Mutex::new(commands),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    })
+}
+
+fn custom_listing_agent(command: &str, ids: &[&str]) -> Arc<AgentCli> {
+    let mut agent = listing_agent_with_cli(None, ids);
+    let inner = Arc::get_mut(&mut agent).unwrap();
+    inner.resolved_agent_id = "custom:qwen".into();
+    inner.cmd_key = agent_cmd_key(command, Some("custom:qwen"), &inner.source);
+    agent
+}
+
+#[tokio::test]
+async fn custom_catalog_handover_prunes_old_inventory_and_routes_nonlive_rows_to_current_client() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({"custom:qwen":"qwen --a"}));
+            let state = make_state_with_wt(channel.clone());
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let old = custom_listing_agent("qwen --a", &["obsolete", "live", "pane"]);
+            assert_eq!(refresh_agent_history(&state, &old).await, Some(3));
+            let old_epoch = state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&old, &state)
+                .unwrap()
+                .0;
+            let mut live = state.registry.lookup(&"live".into()).await.unwrap();
+            live.status = Some(crate::agent_sessions::AgentStatus::Working);
+            state.registry.upsert(live.clone()).await;
+            let mut pane = state.registry.lookup(&"pane".into()).await.unwrap();
+            pane.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
+            state.registry.upsert(pane.clone()).await;
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --b"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert!(state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&old, &state)
+                .is_none());
+            let current = custom_listing_agent("qwen --b", &["fresh"]);
+            for agent in [&old, &current] {
+                let cell = Arc::new(OnceCell::new());
+                assert!(cell.set(Arc::clone(agent)).is_ok());
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .insert(agent.cmd_key.clone(), cell);
+            }
+            assert_eq!(refresh_agent_history(&state, &current).await, Some(1));
+            assert!(state.registry.lookup(&"obsolete".into()).await.is_none());
+            assert_eq!(state.registry.lookup(&"live".into()).await, Some(live));
+            assert_eq!(state.registry.lookup(&"pane".into()).await, Some(pane));
+            let owner = agent_for_row(
+                &state,
+                None,
+                &crate::agent_sessions::SessionLocation::Host,
+                Some("custom:qwen"),
+            )
+            .await
+            .unwrap();
+            assert!(Arc::ptr_eq(&owner, &current));
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --a"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let readded_epoch = state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&old, &state)
+                .unwrap()
+                .0;
+            assert_ne!(
+                old_epoch, readded_epoch,
+                "A-B-A cannot reuse the old completion permit"
+            );
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert!(agent_for_row(
+                &state,
+                None,
+                &crate::agent_sessions::SessionLocation::Host,
+                Some("custom:qwen")
+            )
+            .await
+            .is_none());
+            assert!(state.registry.lookup(&"fresh".into()).await.is_none());
+            assert!(state.registry.lookup(&"live".into()).await.is_some());
+            assert!(state.registry.lookup(&"pane".into()).await.is_some());
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --a"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert_ne!(
+                readded_epoch,
+                state
+                    .custom_agent_commands
+                    .lock()
+                    .await
+                    .permit(&old, &state)
+                    .unwrap()
+                    .0
+            );
+            assert!(Arc::ptr_eq(
+                state.agents.lock().await[&old.cmd_key].get().unwrap(),
+                &old
+            ));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_change_cancels_inflight_history_without_committing_late_rows() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({"custom:qwen":"qwen --a"}));
+            let state = make_state_with_wt(channel.clone());
+            refresh_custom_agent_catalog(&state).await;
+            let (mut agent, mut requests) =
+                controlled_history_agent("custom:qwen", crate::agent_source::AgentSource::Host);
+            Arc::get_mut(&mut agent).unwrap().cmd_key = agent_cmd_key(
+                "qwen --a",
+                Some("custom:qwen"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let refresh = refresh_agent_history(&state, &agent);
+            tokio::pin!(refresh);
+            let reply = tokio::select! {
+                reply = requests.recv() => reply.unwrap(),
+                _ = &mut refresh => panic!("custom history did not poll"),
+            };
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --b"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let _ = reply.send(Ok(vec![history_row("late", "Must not enter registry")]));
+            assert_eq!(refresh.await, None);
+            assert!(state.registry.snapshot().await.is_empty());
+            assert!(!agent.history_refresh.gate.lock().await.query.in_flight());
+            assert!(!agent
+                .history_refresh
+                .retired
+                .load(std::sync::atomic::Ordering::Acquire));
+            assert!(
+                agent
+                    .conn
+                    .list_sessions(acp::schema::v1::ListSessionsRequest::new())
+                    .await
+                    .is_ok(),
+                "pooled chat survives dedicated query cancellation"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn custom_catalog_timer_keeps_refreshing_while_builtin_history_is_pending() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({}));
+            let state = make_state_with_wt(channel.clone());
+            let (agent, mut requests) =
+                controlled_history_agent("copilot", crate::agent_source::AgentSource::Host);
+            let cell = Arc::new(OnceCell::new());
+            assert!(cell.set(Arc::clone(&agent)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(agent.cmd_key.clone(), cell);
+            start_agent_history_worker(&state, &agent);
+            let _reply = requests.recv().await.unwrap();
+            start_history_refresh_loop(&state);
+            tokio::task::yield_now().await;
+            let before = channel.calls.load(std::sync::atomic::Ordering::SeqCst);
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            tokio::task::yield_now().await;
+            assert!(channel.calls.load(std::sync::atomic::Ordering::SeqCst) > before);
+            assert!(state.custom_agent_commands.lock().await.known);
+            assert!(
+                agent.history_refresh.gate.try_lock().is_err()
+                    || agent.history_refresh.gate.lock().await.query.in_flight()
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_first_failure_preserves_offline_explicit_helper_history() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut state =
+                make_state_with_wt(Arc::new(MockWtChannel::failing("unsupported old host")));
+            let inner = Arc::get_mut(&mut state).unwrap();
+            inner.default_agent_cmd = "qwen --selected".into();
+            inner.default_agent_id = Some("custom:qwen".into());
+            assert!(!refresh_custom_agent_catalog(&state).await);
+            assert!(!state.custom_agent_commands.lock().await.known);
+            let agent = custom_listing_agent("qwen --selected", &["explicit-history"]);
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
+            assert!(state
+                .registry
+                .lookup(&"explicit-history".into())
+                .await
+                .is_some());
+            assert!(
+                state
+                    .custom_agent_commands
+                    .lock()
+                    .await
+                    .commands()
+                    .is_empty(),
+                "helper commands must never become discovery configuration"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_empty_preserves_only_startup_history_and_fences_handover() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({}));
+            let mut state = make_state_with_wt(channel.clone());
+            let inner = Arc::get_mut(&mut state).unwrap();
+            inner.default_agent_cmd = "qwen --selected".into();
+            inner.default_agent_id = Some("custom:qwen".into());
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let selected = custom_listing_agent("qwen --selected", &["startup-history"]);
+            let unselected = custom_listing_agent("qwen --unselected", &["untrusted-history"]);
+            unselected.bound_helpers.lock().await.insert(HelperId(99));
+            let cell = Arc::new(OnceCell::new());
+            assert!(cell.set(Arc::clone(&selected)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(selected.cmd_key.clone(), cell);
+            let route = SessionId::new("live-startup-chat");
+            let helper = HelperId(42);
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            state.session_to_helper.lock().await.insert(
+                route.clone(),
+                HelperRoute {
+                    helper_id: helper,
+                    agent_instance_id: selected.instance_id,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+            assert_eq!(refresh_agent_history(&state, &selected).await, Some(1));
+            assert_eq!(refresh_agent_history(&state, &unselected).await, None);
+            assert!(state
+                .custom_agent_commands
+                .lock()
+                .await
+                .commands()
+                .is_empty());
+            assert_eq!(state.agents.lock().await.len(), 1);
+            let epoch = selected.history_refresh.gate.lock().await.catalog_epoch;
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --other"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert!(agent_for_row(
+                &state,
+                None,
+                &crate::agent_sessions::SessionLocation::Host,
+                Some("custom:qwen")
+            )
+            .await
+            .is_none());
+            assert_eq!(
+                state
+                    .session_to_helper
+                    .lock()
+                    .await
+                    .get(&route)
+                    .unwrap()
+                    .helper_id,
+                helper
+            );
+            assert!(!selected
+                .history_refresh
+                .retired
+                .load(std::sync::atomic::Ordering::Acquire));
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert!(
+                state
+                    .registry
+                    .lookup(&"startup-history".into())
+                    .await
+                    .is_some(),
+                "removing catalog B must not prune trusted startup A history"
+            );
+            assert!(Arc::ptr_eq(
+                &agent_for_row(
+                    &state,
+                    None,
+                    &crate::agent_sessions::SessionLocation::Host,
+                    Some("custom:qwen")
+                )
+                .await
+                .unwrap(),
+                &selected
+            ));
+            selected.history_refresh.gate.lock().await.catalog_epoch = Some(
+                state
+                    .custom_agent_commands
+                    .lock()
+                    .await
+                    .permit(&selected, &state)
+                    .unwrap()
+                    .0,
+            );
+            selected.history_refresh.gate.lock().await.query =
+                history::HistoryQuery::mock(client_connection_to_listing_agent_with_cursor(
+                    vec!["startup-history".into()],
+                    None,
+                    None,
+                ));
+            assert_eq!(refresh_agent_history(&state, &selected).await, Some(1));
+            assert_ne!(
+                selected.history_refresh.gate.lock().await.catalog_epoch,
+                epoch
+            );
+            assert!(state
+                .custom_agent_commands
+                .lock()
+                .await
+                .commands()
+                .is_empty());
+            selected
+                .history_refresh
+                .retired
+                .store(true, std::sync::atomic::Ordering::Release);
+            assert!(state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&selected, &state)
+                .is_none());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_delayed_startup_history_cannot_cross_empty_b_empty() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({}));
+            let mut state = make_state_with_wt(channel.clone());
+            let inner = Arc::get_mut(&mut state).unwrap();
+            inner.default_agent_cmd = "qwen --selected".into();
+            inner.default_agent_id = Some("custom:qwen".into());
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let (mut agent, mut requests) =
+                controlled_history_agent("custom:qwen", crate::agent_source::AgentSource::Host);
+            Arc::get_mut(&mut agent).unwrap().cmd_key = agent_cmd_key(
+                "qwen --selected",
+                Some("custom:qwen"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let permit = state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&agent, &state)
+                .unwrap();
+            let refresh = refresh_agent_history(&state, &agent);
+            tokio::pin!(refresh);
+            let reply = tokio::select! {
+                reply = requests.recv() => reply.unwrap(),
+                _ = &mut refresh => panic!("startup history did not poll"),
+            };
+            *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --b"});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let next = state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&agent, &state)
+                .unwrap();
+            assert_ne!(permit.0, next.0);
+            assert!(permit.1.is_cancelled());
+            let _ = reply.send(Ok(vec![history_row("late-startup", "Must not commit")]));
+            assert_eq!(refresh.await, None);
+            assert!(state.registry.snapshot().await.is_empty());
+            assert!(agent
+                .conn
+                .list_sessions(acp::schema::v1::ListSessionsRequest::new())
+                .await
+                .is_ok());
+        })
+        .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn custom_catalog_timer_publishes_error_recovery_without_binding_changes() {
+    use crate::session_registry::HistoryLoadStatus;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({}));
+            let state = make_state_with_wt(channel.clone());
+            publish_history_sync_status(&state).await;
+            start_history_refresh_loop(&state);
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(
+                state.history_status.borrow().status,
+                HistoryLoadStatus::Ready
+            );
+            let mut status = state.history_status.subscribe();
+            status.borrow_and_update();
+            *channel.response.lock().unwrap() = serde_json::Value::Null;
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(status.borrow_and_update().status, HistoryLoadStatus::Error);
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert!(
+                !status.has_changed().unwrap(),
+                "identical failure must not republish status"
+            );
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(status.borrow_and_update().status, HistoryLoadStatus::Ready);
+            assert!(state.agents.lock().await.is_empty());
+            assert!(state
+                .custom_agent_commands
+                .lock()
+                .await
+                .commands()
+                .is_empty());
+            let successful = listing_agent(crate::agent_sessions::CliSource::Copilot, &[]);
+            successful
+                .history_refresh
+                .generation
+                .store(1, std::sync::atomic::Ordering::Release);
+            let cell = Arc::new(OnceCell::new());
+            assert!(cell.set(Arc::clone(&successful)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(successful.cmd_key.clone(), cell);
+            *channel.response.lock().unwrap() = serde_json::Value::Null;
+            tokio::time::advance(HISTORY_REFRESH_INTERVAL).await;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(
+                status.borrow_and_update().status,
+                HistoryLoadStatus::Ready,
+                "partial success remains usable"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_native_history_uses_trusted_command_without_an_agent_pane() {
+    use crate::agent_sessions::AgentStatus;
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let provider = "custom:qwen";
+            let command = "qwen --acp";
+            let mut state = make_state_with_wt(Arc::new(MockWtChannel::responding(
+                serde_json::json!({provider: command}),
+            )));
+            refresh_custom_agent_catalog(&state).await;
+            Arc::get_mut(&mut state)
+                .unwrap()
+                .native_observation_receiver_generation = Some(7);
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({"method":"wt_listener_ready","params":{}}),
+            )
+            .await;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            let pane = "00112233-4455-6677-8899-aabbccddeeff";
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({"method":"native_agent_observation","params":{
+                    "pane_id":pane,"provider_id":provider,"window_id":7,"tab_id":"native",
+                    "mode_epoch":1,"kind":"reset","tracking_enabled":false,"location":"Host",
+                    "pane_created_at_ms":now-1000,"pane_creation_sequence":42,"receiver_generation":7
+                }}),
+            )
+            .await;
+            assert_eq!(state.registry.native_pane_observations().await.len(), 1);
+            let activity =
+                time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(now - 500) * 1_000_000)
+                    .unwrap()
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .unwrap();
+            let mut agent = listing_agent_with_cli(None, &[]);
+            let inner = Arc::get_mut(&mut agent).unwrap();
+            inner.resolved_agent_id = provider.into();
+            inner.cmd_key = agent_cmd_key(
+                command,
+                Some(provider),
+                &crate::agent_source::AgentSource::Host,
+            );
+            inner.history_refresh.gate.lock().await.query =
+                history::HistoryQuery::mock(client_connection_to_listing_agent_with_cursor(
+                    vec!["fresh-custom".into()],
+                    Some(activity),
+                    None,
+                ));
+            assert!(
+                refresh_host_history_agents_with(&state, &[provider], |resolved, id| {
+                    assert_eq!(resolved, command);
+                    assert_eq!(id, provider);
+                    std::future::ready(Ok(Arc::clone(&agent)))
+                })
+                .await
+            );
+            let native = state.registry.native_pane_observations().await.remove(0);
+            assert_eq!(
+                native.inferred_agent_session_id.as_deref(),
+                Some("fresh-custom")
+            );
+            assert!(native.agent_session_id.is_none());
+            let history = state.registry.lookup(&"fresh-custom".into()).await.unwrap();
+            assert_eq!(history.provider_id.as_deref(), Some(provider));
+            assert_eq!(history.status, Some(AgentStatus::Historical));
+            assert!(history.pane_session_id.is_none());
+            assert!(state.session_to_helper.lock().await.is_empty());
         })
         .await;
 }

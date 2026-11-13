@@ -8,6 +8,7 @@
 #include "../inc/AgentYoloPolicy.h"
 #include "../TerminalApp/TerminalPage.h"
 #include "../inc/AgentAvailability.h"
+#include "../inc/CustomAcpAgentCommands.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "CppWinrtTailored.h"
@@ -1902,6 +1903,22 @@ namespace TerminalAppLocalTests
             L"copilot", L"", L"gpt-5.4", std::nullopt, {}
         };
         VERIFY_ARE_EQUAL(ChangeKind::None, Page::_ClassifyAgentSettingsChange(native, native));
+
+        Json::Value catalogSettings{ Json::objectValue };
+        catalogSettings["acpCustomCommands"].append(R"("C:\Agents\QWEN.cmd" --acp)");
+        catalogSettings["acpCustomCommands"].append(Json::Value{});
+        catalogSettings["acpCustomCommand"] = "qwen --different";
+        const auto commands = ::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(catalogSettings);
+        VERIFY_ARE_EQUAL(std::string{ R"("C:\Agents\QWEN.cmd" --acp)" }, commands["custom:qwen"].asString());
+        VERIFY_ARE_EQUAL(1u, commands.size());
+        catalogSettings["acpCustomCommands"] = "kimi acp";
+        VERIFY_ARE_EQUAL(std::string{ "kimi acp" }, ::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(catalogSettings)["custom:kimi"].asString());
+        catalogSettings["acpCustomCommands"] = Json::Value{};
+        catalogSettings["acpCustomCommand"] = Json::Value{};
+        catalogSettings["unrelatedInvalidSetting"] = Json::Value{ Json::objectValue };
+        VERIFY_IS_TRUE(::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(catalogSettings).empty());
+        catalogSettings["acpCustomCommands"].append(42);
+        VERIFY_THROWS(::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(catalogSettings), std::invalid_argument);
 
         auto nativeHotUpdate = native;
         nativeHotUpdate.acpModel = L"gpt-5.5";

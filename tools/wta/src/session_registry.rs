@@ -1806,6 +1806,7 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
 #[allow(dead_code)] // Task B wires hook RPCs into these reducer methods.
 #[async_trait::async_trait]
 pub trait SessionRegistry: Send + Sync {
+    async fn invalidate_native_listing(&self, _provider: &str, _location: &SessionLocation) {}
     /// Some means an active native OFF owner claims this id, including rejected
     /// provider/backend or non-activity events. None leaves legacy gates intact.
     async fn apply_native_watcher_activity(
@@ -2179,6 +2180,15 @@ pub(crate) fn title_is_displayable(cli: Option<&CliSource>, title: &str) -> bool
 
 #[async_trait::async_trait]
 impl SessionRegistry for InMemoryRegistry {
+    async fn invalidate_native_listing(&self, provider: &str, location: &SessionLocation) {
+        let mut state = self.inner.lock().await;
+        state
+            .native_listing_completed_at
+            .remove(&(provider.to_ascii_lowercase(), location.clone()));
+        state.native_listing_evidence.retain(|key, _| {
+            !key.provider_id.eq_ignore_ascii_case(provider) || &key.location != location
+        });
+    }
     async fn has_pending_native_inference(
         &self,
         provider: &str,

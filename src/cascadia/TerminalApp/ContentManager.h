@@ -47,6 +47,7 @@ namespace winrt::TerminalApp::implementation
                                                                               const std::string& nativeAgentLaunchLocation = {});
         winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
         winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
+        bool UsesNativeAgentFallback(uint64_t contentId) const;
         struct NativeAgentObservationIdentity
         {
             winrt::hstring providerId;
@@ -162,6 +163,7 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> observationOwnerGeneration;
         };
         static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
+        bool _UsesNativeAgentFallback(const TerminalContent& content) const noexcept;
         std::unordered_map<uint64_t, TerminalContent> _content;
         bool _nativeAgentSessionEventsEnabled{ true };
         uint64_t _nativeAgentObservationGeneration{ 0 };

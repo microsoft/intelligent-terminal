@@ -11,6 +11,7 @@
 
 // Load SDK/WIL declarations before mocking the CLI's COM activation calls.
 #include "..\..\..\cascadia\TerminalProtocol\ProtocolMarshaling.h"
+#include "..\..\..\cascadia\inc\AgentPolicy.h"
 
 namespace NativeMock
 {
@@ -18,8 +19,15 @@ namespace NativeMock
     HRESULT WINAPI CoCreateInstance(REFCLSID, IUnknown*, DWORD, REFIID, void**);
     HRESULT LoadProxy(wil::unique_hmodule&);
     HRESULT RegisterProxy(const wil::unique_hmodule&);
+    void ReloadPolicy();
 }
 
+namespace Microsoft::Terminal::Settings::Model::AgentPolicy
+{
+    using NativeMock::ReloadPolicy;
+}
+
+#define Reload ReloadPolicy
 #define LoadAndVerifyLocalProxyDll LoadProxy
 #define RegisterProcessLocalProxyFactory RegisterProxy
 namespace Microsoft::Terminal::Protocol
@@ -36,6 +44,7 @@ namespace Microsoft::Terminal::Protocol
 #undef GetActiveObject
 #undef RegisterProcessLocalProxyFactory
 #undef LoadAndVerifyLocalProxyDll
+#undef Reload
 
 namespace NativeMock
 {
@@ -50,6 +59,17 @@ namespace NativeMock
     unsigned loadCalls = 0;
     unsigned registerCalls = 0;
     ITerminalProtocol* queryServer = nullptr;
+    bool customPolicyAllowed = true;
+    unsigned policyReloads = 0;
+    void ReloadPolicy()
+    {
+        ++policyReloads;
+        auto policy = std::make_shared<Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot>();
+        policy->customAgents = customPolicyAllowed ?
+            Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Allowed :
+            Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked;
+        Microsoft::Terminal::Settings::Model::AgentPolicy::SetSnapshotForTest(std::move(policy));
+    }
 
     struct ProfileServer : ITerminalProtocol, ITerminalProtocolNativeAgent
     {
@@ -59,6 +79,8 @@ namespace NativeMock
         unsigned queryCalls = 0;
         unsigned nativeInterfaceQueries = 0;
         unsigned nativeResumeCalls = 0;
+        const char* settings = "{}";
+        unsigned settingsCalls = 0;
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
         {
@@ -103,7 +125,12 @@ namespace NativeMock
         HRESULT STDMETHODCALLTYPE ReadPaneOutput(GUID, BSTR, long, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetProcessStatus(GUID, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetSessionVariable(GUID, BSTR, BSTR*) override { return E_NOTIMPL; }
-        HRESULT STDMETHODCALLTYPE GetSettings(BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetSettings(BSTR* json) override
+        {
+            ++settingsCalls;
+            *json = SUCCEEDED(queryResult) ? Bstr(settings) : nullptr;
+            return queryResult;
+        }
         HRESULT STDMETHODCALLTYPE CreateTab(unsigned __int64, BSTR, BSTR, BSTR, BSTR, boolean, boolean, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE SplitPane(GUID, BSTR, float, BSTR, BSTR, boolean, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE ClosePane(GUID) override { return E_NOTIMPL; }
@@ -351,6 +378,58 @@ namespace NativeMock
         Require(query() == 1 && server.queryCalls == 4, "malformed capabilities must not reach the appended method");
         puts("Profile query compatibility tests passed.");
     }
+
+    void CheckCustomAcpProjection()
+    {
+        Reset();
+        ProfileServer server;
+        queryServer = &server;
+        policyReloads = 0;
+        customPolicyAllowed = true;
+        const auto cleanup = wil::scope_exit([]() noexcept {
+            queryServer = nullptr;
+            Microsoft::Terminal::Settings::Model::AgentPolicy::ResetForTest();
+        });
+        const auto query = [](bool projection) {
+            wchar_t executable[] = L"wtcli";
+            wchar_t command[] = L"get-settings";
+            wchar_t option[] = L"--custom-acp-commands";
+            wchar_t* argv[]{ executable, command, option };
+            const auto result = WtcliMain(projection ? 3 : 2, argv);
+            winrt::uninit_apartment();
+            return result;
+        };
+        server.settings = R"({/* JSONC */"acpCustomCommands":["QWEN.cmd --acp",null,"qwen --duplicate"],"acpCustomCommand":"qwen --legacy","unrelatedInvalidSetting":42,})";
+        Require(query(true) == 0 && server.settingsCalls == 1 && policyReloads == 1, "catalog projection must use existing raw JSONC read and reload policy");
+        Json::Value settings;
+        settings["acpCustomCommands"].append("QWEN.cmd --acp");
+        settings["acpCustomCommands"].append(Json::Value{});
+        settings["acpCustomCommands"].append("qwen --duplicate");
+        settings["acpCustomCommand"] = "qwen --legacy";
+        const auto commands = Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings);
+        Require(commands.size() == 1 && commands["custom:qwen"] == "QWEN.cmd --acp", "plural-first canonical IDs must preserve the first command");
+        server.settings = R"({"acpCustomCommands":"kimi acp","acpCustomCommand":null})";
+        Require(query(true) == 0, "SettingsModel scalar-vector and null-string conversion must remain supported");
+        for (const auto invalid : { "[]", R"({"acpCustomCommands":[42]})", R"({"acpCustomCommand":{}})", "invalid JSON" })
+        {
+            server.settings = invalid;
+            Require(query(true) == 1, "invalid catalogs must fail explicitly");
+        }
+        server.settings = R"({"acpCustomCommands":42})";
+        const auto reloads = policyReloads;
+        Require(query(false) == 0 && policyReloads == reloads, "ordinary get-settings must not project, validate the catalog, or reload policy");
+        server.queryResult = E_FAIL;
+        Require(query(true) == 1, "raw settings read failure must not become an empty catalog");
+        customPolicyAllowed = false;
+        server.settings = "invalid JSON";
+        const auto calls = server.settingsCalls;
+        Require(query(true) == 0 && server.settingsCalls == calls, "confirmed policy block must return empty before reading even invalid settings");
+        customPolicyAllowed = true;
+        server.queryResult = S_OK;
+        server.settings = R"({"acpCustomCommands":["\"C:\\Agents\\QWEN.cmd\" --acp"],"acpCustomCommand":"qwen --legacy"})";
+        Require(query(true) == 0 && server.settingsCalls == calls + 1, "policy unblock must immediately resume the authoritative raw read");
+        puts("Custom ACP settings projection tests passed.");
+    }
 }
 
 int wmain()
@@ -361,6 +440,7 @@ int wmain()
         CheckListenTimestampFormatting();
         SetEnvironmentVariableW(L"WT_COM_CLSID", L"{11111111-1111-1111-1111-111111111111}");
         CheckProfileQueries();
+        CheckCustomAcpProjection();
         for (const auto failLoad : { false, true })
         {
             for (const auto existingOnly : { false, true })
