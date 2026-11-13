@@ -789,7 +789,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PinnedTabInsertAndMoveRespectGroups);
         TEST_METHOD(PinnedTabSidebarRejectsCrossGroupDrag);
         TEST_METHOD(PinnedTabRequestDuringDragIsDeferred);
-        TEST_METHOD(PinnedTabCollapsedRailHasIndicator);
+        TEST_METHOD(PinnedTabCollapsedRailHidesIndicator);
         TEST_METHOD(PinnedTabsUnpinWhenSwitchingHorizontal);
         TEST_METHOD(PinnedTabTransferPreservesState);
         TEST_METHOD(PinnedPaneTransferDoesNotPinNewTab);
@@ -2367,7 +2367,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::PinnedTabCollapsedRailHasIndicator()
+    void TabTests::PinnedTabCollapsedRailHidesIndicator()
     {
         const auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
@@ -2381,9 +2381,10 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
             page->_tabStrip.IsRailCollapsed(true);
             page->_tabStrip.UpdateLayout();
-            VERIFY_ARE_EQUAL(Visibility::Visible, displays.GetAt(0).PinnedIconVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
             const auto row = strip->ItemsList().ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>().Children().GetAt(0).as<Grid>();
             const auto collapsedBadge = row.FindName(L"CollapsedPinnedTabIcon").as<PathIcon>();
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedBadge.Visibility());
             VERIFY_IS_NOT_NULL(badge.Data());
             VERIFY_IS_NOT_NULL(collapsedBadge.Data());
             VERIFY_ARE_EQUAL(12.0, badge.Width());
@@ -2403,8 +2404,29 @@ namespace TerminalAppLocalTests
             verifyNeedleTip(collapsedBadge);
             const auto name = std::wstring{ winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(tab->TabViewItem()) };
             VERIFY_IS_TRUE(name.find(L"Pinned") != std::wstring::npos);
+            for (const auto collapsed : { false, true, false, true })
+            {
+                page->_tabStrip.IsRailCollapsed(collapsed);
+                page->_tabStrip.UpdateLayout();
+                VERIFY_IS_TRUE(tab->IsPinned());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedBadge.Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Visible, displays.GetAt(0).IconVisibility());
+                VERIFY_ARE_EQUAL(collapsed ? Visibility::Collapsed : Visibility::Visible, displays.GetAt(0).HeaderVisibility());
+                VERIFY_ARE_EQUAL(Visibility::Visible, badge.Visibility());
+            }
             page->_SetTabPinned(tab, false);
+            page->_tabStrip.UpdateLayout();
+            VERIFY_IS_FALSE(tab->IsPinned());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedBadge.Visibility());
+            page->_SetTabPinned(tab, true);
+            page->_tabStrip.UpdateLayout();
+            VERIFY_IS_TRUE(tab->IsPinned());
             VERIFY_ARE_EQUAL(Visibility::Collapsed, displays.GetAt(0).PinnedIconVisibility());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, collapsedBadge.Visibility());
+            page->_tabStrip.IsRailCollapsed(false);
+            page->_tabStrip.UpdateLayout();
+            VERIFY_ARE_EQUAL(Visibility::Visible, badge.Visibility());
         });
     }
 
