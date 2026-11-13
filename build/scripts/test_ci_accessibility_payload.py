@@ -308,7 +308,15 @@ class NativeReceiptTests(unittest.TestCase):
                 "axe-results": {"version": 1, "scan_id": surface, "process_id": 45, "window_count": 1, "error_count": 0,
                                 "errors": [], "visible_state_marker": marker,
                                 "uia_tree": scan_path.replace("axe-results", "uia-tree")},
-                "uia-tree": [{"process_id": 45, "automation_id": marker, "is_offscreen": False}],
+                "uia-tree": ([{"process_id": 45, "automation_id": marker, "is_offscreen": False}] if surface != "sidebar" else [
+                    {"process_id": 45, "automation_id": marker, "is_offscreen": False,
+                     "runtime_id": [1], "parent_runtime_id": [], "control_type": "ControlType.Tab",
+                     "class_name": "TabStrip"},
+                    {"process_id": 45, "automation_id": "ItemsList", "is_offscreen": False,
+                     "runtime_id": [2], "parent_runtime_id": [1], "control_type": "ControlType.List"},
+                    {"process_id": 45, "automation_id": "", "is_offscreen": False,
+                     "runtime_id": [3], "parent_runtime_id": [2], "control_type": "ControlType.TreeItem"},
+                ]),
             }.items():
                 (path / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
 
@@ -349,6 +357,62 @@ class NativeReceiptTests(unittest.TestCase):
                 self.consume()
             self.assertFalse(self.destination.exists())
             target.write_bytes(original)
+
+    def test_sidebar_rejects_promo_missing_marker_empty_rows_foreign_hidden_and_unrelated_rows(self):
+        path = self.output / "sidebar/uia-tree.json"
+        tree = json.loads(path.read_text())
+        for mode in ("promo", "absent-marker", "empty-window", "empty-rows", "hidden-marker",
+                     "hidden-row", "foreign-row", "unrelated-list", "unrelated-row", "cycle", "wrong-role",
+                     "fake-marker-role", "fake-marker-class"):
+            candidate = json.loads(json.dumps(tree))
+            if mode == "promo":
+                candidate[0]["automation_id"] = "welcomeSidebarImage"
+            elif mode == "absent-marker":
+                candidate = candidate[1:]
+            elif mode == "empty-window":
+                candidate = []
+            elif mode == "empty-rows":
+                candidate = candidate[:2]
+            elif mode == "hidden-marker":
+                candidate[0]["is_offscreen"] = True
+            elif mode == "hidden-row":
+                candidate[2]["is_offscreen"] = True
+            elif mode == "foreign-row":
+                candidate[2]["process_id"] = 46
+            elif mode == "unrelated-list":
+                candidate[1]["parent_runtime_id"] = [99]
+            elif mode == "unrelated-row":
+                candidate[2]["parent_runtime_id"] = [1]
+            elif mode == "cycle":
+                candidate[1]["parent_runtime_id"] = [2]
+            elif mode == "wrong-role":
+                candidate[2]["control_type"] = "ControlType.Image"
+            elif mode == "fake-marker-role":
+                candidate[0]["control_type"] = "ControlType.Image"
+            elif mode == "fake-marker-class":
+                candidate[0]["class_name"] = "Image"
+            path.write_text(json.dumps(candidate))
+            with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, "incomplete or failed"):
+                self.consume()
+            self.assertFalse(self.destination.exists())
+        path.write_text(json.dumps(tree))
+
+    def test_four_states_required_and_sidebar_actual_errors_remain_fail(self):
+        self.assertEqual({"fre", "agents", "fre-settings", "sidebar"}, set(PAYLOAD.SURFACES))
+        path = self.output / "sidebar/axe-results.json"
+        scan = json.loads(path.read_text())
+        path.unlink()
+        receipt = PAYLOAD.record_native(self.output, IDENTITY)
+        self.assertEqual("INCOMPLETE", receipt["status"])
+        scan.update(error_count=1, errors=[{"rule_id": "real-error"}])
+        path.write_text(json.dumps(scan))
+        result_path = self.output / "sidebar/result.json"
+        result = json.loads(result_path.read_text())
+        result["status"] = "FAIL"
+        result_path.write_text(json.dumps(result))
+        receipt = PAYLOAD.record_native(self.output, IDENTITY)
+        self.assertEqual("FAIL", receipt["status"])
+        self.assertEqual(1, receipt["surfaces"]["sidebar"]["error_count"])
 
     def test_actual_axe_errors_are_fail_not_missing_or_pass(self):
         path = self.output / "fre/axe-results.json"

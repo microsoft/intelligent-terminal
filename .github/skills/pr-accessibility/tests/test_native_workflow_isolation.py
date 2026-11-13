@@ -57,7 +57,7 @@ class NativeCiIdentityTests(unittest.TestCase):
                     if s.get("name") == "Verify immutable consumer")
         environment = {**os.environ, "GITHUB_EVENT_NAME": "pull_request",
                        "GITHUB_REPOSITORY_ID": "42", "PR_REPOSITORY_ID": "42",
-                       "EXPECTED_TRUSTED_SHA": "c" * 40, "TRUSTED_HARNESS_SHA": "b" * 40,
+                       "EXPECTED_TRUSTED_SHA": "c" * 40, "TRUSTED_HARNESS_SHA": "c" * 40,
                        "PR_BASE_SHA": "b" * 40, "EXPECTED_HEAD_SHA": "a" * 40, "PR_HEAD_SHA": "a" * 40}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "verify.ps1"
@@ -199,9 +199,9 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
             self.assertIn(f"      {key}:", caller)
             self.assertRegex(native, rf"{key}:\n(?:\s+description:.*\n)?\s+required: true\n\s+type: string")
             self.assertIn(f"${{{{ inputs.{key} }}}}", native)
-        self.assertIn("trusted-sha: ${{ github.event.pull_request.base.sha }}", caller)
+        self.assertIn("trusted-sha: ${{ github.workflow_sha }}", caller)
         self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}", caller)
-        self.assertIn("$env:TRUSTED_HARNESS_SHA -ne $env:PR_BASE_SHA", native)
+        self.assertIn("$env:TRUSTED_HARNESS_SHA -ne $env:EXPECTED_TRUSTED_SHA", native)
         self.assertIn("$env:EXPECTED_HEAD_SHA -ne $env:PR_HEAD_SHA", native)
         self.assertIn("$env:PR_REPOSITORY_ID -ne $env:GITHUB_REPOSITORY_ID", native)
         self.assertNotIn("github.event.inputs.pull_request", native)
@@ -229,9 +229,28 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn("call tools\\razzle.cmd", native)
         self.assertNotIn("call bx", native)
         self.assertIn("ci-accessibility-payload.py extract", native)
-        for surface in ("fre", "fre-settings", "agents"):
+        for surface in ("fre", "fre-settings", "agents", "sidebar"):
             self.assertIn(f"-Surface {surface}", native)
         self.assertRegex(native, r"timeout-minutes: \d+")
+
+    def test_sidebar_uses_existing_production_route_and_visible_tree_rows(self):
+        launch = (ROOT / "test/accessibility/Invoke-AxeWindowsTestHost.ps1").read_text(encoding="utf-8")
+        scan = (ROOT / "test/accessibility/Invoke-AxeWindowsScan.ps1").read_text(encoding="utf-8")
+        host = (ROOT / "src/cascadia/LocalTests_TerminalApp/TestHostApp/UnitTestApp.xaml.cpp").read_text(encoding="utf-8")
+        fixture = (ROOT / "src/cascadia/LocalTests_TerminalApp/SidebarVisualFixture.cpp").read_text(encoding="utf-8")
+        self.assertIn("if ($Surface -eq 'sidebar') { '--visual-page=sidebar' }", launch)
+        self.assertIn("$launchArgument)", launch)
+        self.assertIn('L"--visual-page=sidebar"', host)
+        self.assertIn('"InitializeSidebarVisualFixture"', host)
+        for source in ('winrt::TerminalApp::TabStrip strip', 'winrt::TerminalApp::TabRowControl chrome',
+                       'L"FixtureSidebar"', 'strip.TabItems().Append(tab)'):
+            self.assertIn(source, fixture)
+        for assertion in ("'sidebar' { 'FixtureSidebar' }", "$marker.FindFirst(",
+                          "'ItemsList'", "ControlType]::TreeItem", "$_.Current.ProcessId -eq $ProcessId",
+                          "if ($rows.Count -eq 0) { throw"):
+            self.assertIn(assertion, scan)
+        self.assertIn("warning_coverage = 'Unknown'", scan)
+        self.assertIn("needs_review_coverage = 'Unknown'", scan)
 
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

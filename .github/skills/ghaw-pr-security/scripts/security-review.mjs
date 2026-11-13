@@ -937,6 +937,9 @@ export const CI_DEFINITION_PATHS = [
   'build/config/codeql-accepted-warnings.json',
   'build/scripts/ci-accessibility-scope.mjs',
   'build/scripts/ci-accessibility-payload.py',
+  'test/accessibility/Invoke-AxeWindowsTestHost.ps1',
+  'test/accessibility/Invoke-AxeWindowsScan.ps1',
+  'build/scripts/Get-DependenciesFromAppxRecipe.ps1',
 ];
 
 export function validateCiDefinition(sourceTree, comparisonBaseTree) {

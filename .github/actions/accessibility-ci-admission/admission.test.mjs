@@ -33,7 +33,8 @@ function fixture(dispatch = false) {
   const units = { ...producer, name: 'C++ unit tests',
     steps: [{ name: 'Test all C++ units', status: 'completed', conclusion: 'success' }] };
   const native = { ...producer, name: 'Native accessibility / Native Axe.Windows smoke',
-    steps: ['Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']
+    steps: ['Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results',
+      'Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar']
       .map(name => ({ name, status: 'completed', conclusion: 'success' })) };
   const rust = { ...producer, name: 'Rust build and unit tests',
     steps: ['Build x64 Rust binaries', 'Test all x64 Rust units']
@@ -69,6 +70,30 @@ function fixture(dispatch = false) {
 }
 
 // Negative controls first: no costly work may follow these admission failures.
+for (const name of ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar']) {
+  for (const outcome of ['missing', 'skipped', 'failure']) {
+    test(`all model admission rejects ${outcome} ${name}`, async () => {
+      const f = fixture();
+      if (outcome === 'missing') f.native.steps = f.native.steps.filter(step => step.name !== name);
+      else f.native.steps.find(step => step.name === name).conclusion = outcome;
+      await assert.rejects(admit(f), /scan receipt\/upload\/enforcement/);
+    });
+  }
+}
+
+test('sidebar production fixture changes retain native CI applicability without a broad trigger', () => {
+  for (const path of ['src/cascadia/LocalTests_TerminalApp/SidebarVisualFixture.cpp',
+    'src/cascadia/LocalTests_TerminalApp/LocalTests_TerminalApp.def',
+    'src/cascadia/TerminalApp/TabStrip.xaml', 'test/accessibility/Invoke-AxeWindowsScan.ps1']) {
+    assert.equal(relevantPath(path), true);
+  }
+  assert.equal(relevantPath('doc/sidebar.md'), false);
+  for (const path of ['test/accessibility/Invoke-AxeWindowsScan.ps1',
+    'test/accessibility/Invoke-AxeWindowsTestHost.ps1', 'build/scripts/Get-DependenciesFromAppxRecipe.ps1']) {
+    assert.ok(CI_DEFINITION_PATHS.includes(path));
+  }
+});
+
 for (const [name, change] of [
   ['absent CI identity', f => { delete f.context.payload.workflow_run.id; }],
   ['pending', f => { f.run.status = 'in_progress'; f.run.conclusion = null; }],
@@ -257,7 +282,7 @@ for (const [name, change] of [
   ['absent native job', f => f.setJobs([f.producer, f.units, f.rust])],
   ['skipped native job', f => { f.native.conclusion = 'skipped'; }],
   ['stale native attempt', f => { f.native.run_attempt--; }],
-  ['skipped native enforcement', f => { f.native.steps.at(-1).conclusion = 'skipped'; }],
+  ['skipped native enforcement', f => { f.native.steps[2].conclusion = 'skipped'; }],
 ]) test(`all model admission rejects green CI with ${name}`, async () => {
   for (const dispatch of [false, true]) {
     const f = fixture(dispatch); change(f);

@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('fre', 'fre-settings', 'agents')]
+    [ValidateSet('fre', 'fre-settings', 'agents', 'sidebar')]
     [string]$Surface,
 
     [Parameter(Mandatory)]
@@ -287,10 +287,11 @@ try
     $expectedExecutable = [IO.Path]::GetFullPath(
         (Join-Path (Split-Path -Parent $resolvedManifest) $application.Executable))
     $launchSurface = if ($Surface -eq 'fre-settings') { 'fre' } else { $Surface }
+    $launchArgument = if ($Surface -eq 'sidebar') { '--visual-page=sidebar' } else { "--accessibility-page=$launchSurface" }
     $activationStarted = [datetime]::UtcNow
     $processId = [IntelligentTerminal.Accessibility.PackagedApp]::Activate(
         $appUserModelId,
-        "--accessibility-page=$launchSurface")
+        $launchArgument)
     $ownedProcess = Get-OwnedProcess -ProcessId $processId `
         -ExpectedExecutable $expectedExecutable -ActivationStarted $activationStarted
     $process = $ownedProcess.Process

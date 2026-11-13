@@ -425,9 +425,12 @@ no issues. Triage has not selected evidence scope: you determine applicability.
 Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/native-checks.md` at the run root,
 using exactly
 `# Native checks: Axe.Windows` or `# Native checks: None`, a blank line and a
-reason. Select Axe.Windows when the existing FRE/Agents/FRE-settings smoke can
+reason. Select Axe.Windows when the existing FRE/Agents/FRE-settings/Sidebar smoke can
 inform relevant original-head UIA problems. Explain other needed scenarios
 as gaps; source-only/comment/text changes need not use native evidence.
+Sidebar is the production TabStrip/TabRowControl synthetic fixture, not the FRE
+promotional image. It does not prove populated history, sessions, terminal-window
+lifecycle, full keyboard journeys, Narrator, contrast or scaling.
 This selection cannot start or skip CI: path-gated CI scans already ran independently.
 Write all domain reports/handoffs under this run-specific Generated Files
 directory; never stage or commit them.

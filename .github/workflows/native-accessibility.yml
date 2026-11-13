@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       trusted-sha:
-        description: Immutable PR base revision for the native harness, not candidate source.
+        description: Immutable CI workflow revision for the native harness, not a caller-selected ref.
         required: true
         type: string
 permissions:
@@ -48,7 +48,6 @@ jobs:
         env:
           EXPECTED_TRUSTED_SHA: ${{ github.workflow_sha }}
           TRUSTED_HARNESS_SHA: ${{ inputs.trusted-sha }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
         run: |
@@ -56,8 +55,8 @@ jobs:
           if ($env:GITHUB_EVENT_NAME -ne 'pull_request' -or
               $env:PR_REPOSITORY_ID -ne $env:GITHUB_REPOSITORY_ID -or
               $env:EXPECTED_HEAD_SHA -ne $env:PR_HEAD_SHA -or
-              $env:TRUSTED_HARNESS_SHA -ne $env:PR_BASE_SHA) {
-            throw 'Native CI requires the same-repository original PR head and immutable base harness.'
+              $env:TRUSTED_HARNESS_SHA -ne $env:EXPECTED_TRUSTED_SHA) {
+            throw 'Native CI requires the same-repository original PR head and immutable workflow harness.'
           }
           if ((git rev-parse HEAD) -ne $env:EXPECTED_TRUSTED_SHA) {
             throw 'Consumer checkout does not match the immutable trusted revision.'
@@ -219,6 +218,19 @@ jobs:
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
+      - name: Scan Sidebar
+        id: sidebar
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+            -Surface sidebar `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
+            -AxePath $env:AXE_WINDOWS_PATH `
+            -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
+            -SourceSha $env:SOURCE_SHA
       - name: Record native CI results
         if: always()
         shell: pwsh
@@ -240,11 +252,12 @@ jobs:
           FRE_OUTCOME: ${{ steps.fre.outcome }}
           AGENTS_OUTCOME: ${{ steps.agents.outcome }}
           FRE_SETTINGS_OUTCOME: ${{ steps.fre-settings.outcome }}
+          SIDEBAR_OUTCOME: ${{ steps.sidebar.outcome }}
           SOURCE_SHA: ${{ inputs.head-sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success') {
-            throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME"
+          if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success' -or $env:SIDEBAR_OUTCOME -ne 'success') {
+            throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME Sidebar=$env:SIDEBAR_OUTCOME"
           }
           python build/scripts/ci-accessibility-payload.py check-native --output "$env:ACCESSIBILITY_RESULTS"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

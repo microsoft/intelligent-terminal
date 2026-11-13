@@ -49,7 +49,8 @@ export function validateNativeJobs(jobs, run) {
   if (matches.length !== 1 || matches[0].run_id !== run.id || matches[0].run_attempt !== run.run_attempt ||
       matches[0].head_sha !== run.head_sha || matches[0].status !== 'completed' ||
       matches[0].conclusion !== 'success') throw Error('Native CI evidence incomplete: exact-attempt scan job did not succeed.');
-  for (const name of ['Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']) {
+  for (const name of ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar',
+    'Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']) {
     const steps = (matches[0].steps ?? []).filter(step => step.name === name);
     if (steps.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') {
       throw Error('Native CI evidence incomplete: required scan receipt/upload/enforcement did not succeed.');

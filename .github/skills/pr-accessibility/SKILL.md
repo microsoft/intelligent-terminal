@@ -155,8 +155,13 @@ error even when UIA scanning works. In that lane, retain structured Axe rule
 results, per-state UIA hierarchy JSON, state/process/source identity, and logs.
 JSON is not an `.a11ytest` file and does not provide its screenshot or replay
 capabilities; record that capture gap rather than claiming equivalent output.
-The Windows smoke job covers FRE, Agents settings, and FRE settings after
-invoking Next. It scans the original immutable revision, not a proposed fix,
+The Windows smoke job covers FRE, Agents settings, FRE settings after
+invoking Next, and the production TabStrip/TabRowControl sidebar fixture via
+`--visual-page=sidebar`. Sidebar requires visible production rows, not the FRE
+promotional image or an empty window. Synthetic fixture coverage does not prove
+populated history, sessions, terminal-window lifecycle or full keyboard journeys.
+The harness reports Error-level rules only; Warning and NeedsReview coverage is
+Unknown. It scans the original immutable revision, not a proposed fix,
 and is independent of repair publication. The source agent's unavailable
 runtime records are not the separate Windows job's result; use that job's
 artifacts and outcome. This smoke does not cover every affected product state.

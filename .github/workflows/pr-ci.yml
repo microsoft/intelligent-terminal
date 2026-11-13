@@ -262,7 +262,7 @@ jobs:
       actions: read
     with:
       head-sha: ${{ github.event.pull_request.head.sha }}
-      trusted-sha: ${{ github.event.pull_request.base.sha }}
+      trusted-sha: ${{ github.workflow_sha }}
       payload-attempt: ${{ needs.cpp.outputs.payload-attempt }}
 
   rust:

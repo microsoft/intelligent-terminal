@@ -60,7 +60,7 @@ class CiNativeGraphTests(unittest.TestCase):
     def test_failed_or_missing_native_receipts_are_uploaded_before_enforcement(self):
         steps = self.native["jobs"]["native-smoke"]["steps"]
         names = [s.get("name") for s in steps]
-        for name in ("Scan FRE", "Scan Agents settings", "Scan FRE settings"):
+        for name in ("Scan FRE", "Scan Agents settings", "Scan FRE settings", "Scan Sidebar"):
             self.assertTrue(next(s for s in steps if s.get("name") == name)["continue-on-error"])
         for name in ("Record native CI results", "Upload native accessibility evidence", "Enforce native scan results"):
             self.assertEqual("always()", next(s for s in steps if s.get("name") == name)["if"])
@@ -69,7 +69,7 @@ class CiNativeGraphTests(unittest.TestCase):
         upload = next(s for s in steps if s.get("name") == "Upload native accessibility evidence")
         self.assertEqual("error", upload["with"]["if-no-files-found"])
         self.assertIn("ci-accessibility-native-", upload["with"]["name"])
-        self.assertEqual("${{ github.event.pull_request.base.sha }}", self.jobs["axe"]["with"]["trusted-sha"])
+        self.assertEqual("${{ github.workflow_sha }}", self.jobs["axe"]["with"]["trusted-sha"])
 
     def test_native_and_ordinary_ci_execution_actions_are_immutable(self):
         for job in [*self.jobs.values(), *self.native["jobs"].values()]:

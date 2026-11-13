@@ -150,10 +150,13 @@ definitions, never a PR merge commit's operating code. Fork PRs are skipped.
 Preparation reads immutable Git blobs from `github.workflow_sha`, records that
 code revision as `trusted_base_sha` separately from feature `comparison_base_sha`,
 and stages its skill/analyzer in gh-aw's read-only runtime mount. CI's Windows
-harness is pinned separately to the PR base SHA; candidate binaries run without
+harness is pinned to the immutable CI workflow revision, not a caller-selected
+head/ref; candidate binaries run without
 secrets. This is not a privileged attestation from an untrusted PR build.
 Admission rejects changed CI implementation through the security foundation's
-strict immutable definition comparison.
+strict immutable definition comparison, including both native harness scripts
+and their dependency helper. Changed harness/CI code cannot become a model's
+authoritative prerequisite until installed on the default branch.
 Preparation receives the PR base separately for feature comparison. The trusted
 workflow revision is control code, not the feature's comparison ancestor.
 PR instructions and artifacts are review data, never operating instructions.
@@ -196,7 +199,12 @@ The PR head can still move afterward; do not claim stronger atomicity.
 
 PR CI calls `native-accessibility.yml` after the C++ build, without model
 credentials or inherited secrets. It scans FRE, FRE settings after Next, and
-the real Agents page reached through production Frame navigation. Native errors,
+the real Agents page reached through production Frame navigation, and Sidebar
+through the existing `--visual-page=sidebar` TestHost route. Sidebar loads
+production TabStrip/TabRowControl and requires a visible `FixtureSidebar`, its
+descendant `ItemsList` and visible `TreeItem` tab rows in the activated PID's
+hierarchy. FRE's `welcomeSidebarImage` and empty window roots are not accepted.
+Native errors,
 blocked startup and missing state evidence remain failures. Upload occurs before
 enforcement, retaining failure evidence without admitting unsuccessful CI to
 models. The gh-aw Linux consumer never launches Windows or repeats a scan.
@@ -208,7 +216,12 @@ when triage is None or deep review selects Native checks: None. Proposed repair
 publication has no post-fix build/test/native gate.
 
 This smoke is not complete keyboard, Narrator, high-contrast or 200% scaling
-coverage. Axe output uses its supported no-screenshot format; JSON is not an
+coverage. Sidebar is a deterministic synthetic tab/pane control fixture; this
+scan does not certify populated history, session routing/persistence,
+terminal-window or lifecycle behavior. Fixture toolbar controls are also within
+the scanned window. Error-level rules alone are reported; Warning and NeedsReview
+coverage is explicitly Unknown, not zero or PASS.
+Axe output uses its supported no-screenshot format; JSON is not an
 `.a11ytest` recording. TestHost uses the production view model and
 `NavigateToPageArgs` constructor with normal Frame navigation; no special
 Agents-page constructor is needed. The full Settings MainPage requires desktop

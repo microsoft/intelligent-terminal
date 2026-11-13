@@ -154,6 +154,12 @@ when the deep model skipped or selected Native checks: None. Failed/skipped
 native consumption or missing/invalid native-ci.json means **review incomplete**,
 not "No issues"; no rebuild fallback exists. Successful consumption authenticates
 original-head CI evidence only, not comprehensive accessibility certification.
+Report all four receipt surfaces: FRE, Agents, FRE-settings after Next, Sidebar.
+Sidebar requires a visible FixtureSidebar, its production ItemsList and visible
+TreeItem tab rows, not welcomeSidebarImage or an empty window. Its synthetic
+fixture does not prove populated history, sessions, terminal-window lifecycle,
+full keyboard, Narrator, contrast or scaling. Error-level Axe results are known;
+Warning and NeedsReview coverage is Unknown, not zero or PASS.
 
 Use a table only for actual findings:
 | Severity | Disposition | File:line | Finding and user impact | Proposed fix commit | Blocker / reviewer action |

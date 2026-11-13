@@ -13,7 +13,7 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory)]
-    [ValidateSet('fre', 'fre-settings', 'agents')]
+    [ValidateSet('fre', 'fre-settings', 'agents', 'sidebar')]
     [string]$ScanId
 )
 
@@ -66,8 +66,37 @@ $markerId = switch ($ScanId)
     'fre' { 'NextButton' }
     'fre-settings' { 'AgentComboBox' }
     'agents' { 'AcpAgentComboBox' }
+    'sidebar' { 'FixtureSidebar' }
 }
 $marker = Wait-VisibleElement -AutomationId $markerId
+if ($ScanId -eq 'sidebar')
+{
+    # This populated fixture is the real TabStrip, not FRE's welcomeSidebarImage.
+    if ($marker.Current.ControlType -ne [Windows.Automation.ControlType]::Tab -or
+        $marker.Current.ClassName -ne 'TabStrip')
+    {
+        throw 'The sidebar marker is not the production TabStrip automation peer.'
+    }
+    $null = Wait-VisibleElement -AutomationId 'ItemsList'
+    $itemCondition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::AutomationIdProperty, 'ItemsList')
+    $sidebarItems = $marker.FindFirst([Windows.Automation.TreeScope]::Descendants, $itemCondition)
+    if (-not $sidebarItems -or $sidebarItems.Current.IsOffscreen)
+    {
+        throw 'The sidebar has no visible production tab list.'
+    }
+    $tabCondition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TreeItem)
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+    do
+    {
+        $rows = @($sidebarItems.FindAll([Windows.Automation.TreeScope]::Descendants, $tabCondition) |
+            Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $ProcessId })
+        if ($rows.Count -gt 0) { break }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTimeOffset]::UtcNow -lt $deadline)
+    if ($rows.Count -eq 0) { throw 'The populated sidebar fixture has no visible production tab rows.' }
+}
 $elements = $root.FindAll(
     [Windows.Automation.TreeScope]::Subtree, [Windows.Automation.Condition]::TrueCondition)
 $hierarchy = @(
@@ -80,6 +109,7 @@ $hierarchy = @(
             automation_id = $element.Current.AutomationId
             name = $element.Current.Name
             control_type = $element.Current.ControlType.ProgrammaticName
+            class_name = $element.Current.ClassName
             is_offscreen = $element.Current.IsOffscreen
             is_keyboard_focusable = $element.Current.IsKeyboardFocusable
             process_id = $element.Current.ProcessId
@@ -125,6 +155,9 @@ $findings = @(
     window_count = @($output.WindowScanOutputs).Count
     error_count = $findings.Count
     errors = $findings
+    rule_scope = 'Error'
+    warning_coverage = 'Unknown'
+    needs_review_coverage = 'Unknown'
 } |
     ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath $OutputPath -Encoding utf8NoBOM

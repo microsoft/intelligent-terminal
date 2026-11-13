@@ -37,7 +37,34 @@ UNIT_DLLS = {
     "ConAdapter.Unit.Tests.dll", "ConParser.Unit.Tests.dll", "Control.Unit.Tests.dll",
     "SettingsModel.Unit.Tests.dll", "Terminal.Core.Unit.Tests.dll", "Terminal.App.Unit.Tests.dll",
 }
-SURFACES = {"fre": "NextButton", "agents": "AcpAgentComboBox", "fre-settings": "AgentComboBox"}
+SURFACES = {"fre": "NextButton", "agents": "AcpAgentComboBox", "fre-settings": "AgentComboBox",
+            "sidebar": "FixtureSidebar"}
+
+
+def sidebar_state(tree, process):
+    """Require the production TreeView list and a visible row under the sidebar marker."""
+    parents = {tuple(n.get("runtime_id", [])): n for n in tree if n.get("runtime_id")}
+
+    def visible(node):
+        return node.get("process_id") == process and node.get("is_offscreen") is False
+
+    def beneath(node, ancestor):
+        seen = set()
+        parent = tuple(node.get("parent_runtime_id", []))
+        target = tuple(ancestor.get("runtime_id", []))
+        while parent and parent not in seen:
+            if parent == target:
+                return True
+            seen.add(parent)
+            parent = tuple(parents.get(parent, {}).get("parent_runtime_id", []))
+        return False
+
+    markers = [n for n in tree if visible(n) and n.get("automation_id") == SURFACES["sidebar"] and
+               n.get("control_type") == "ControlType.Tab" and n.get("class_name") == "TabStrip"]
+    lists = [n for n in tree if visible(n) and n.get("automation_id") == "ItemsList"]
+    rows = [n for n in tree if visible(n) and n.get("control_type") == "ControlType.TreeItem"]
+    return any(beneath(items, marker) and any(beneath(row, items) for row in rows)
+               for marker in markers for items in lists)
 
 
 def safe_path(value):
@@ -325,9 +352,10 @@ def native_summary(read, environment):
                     scan["visible_state_marker"] != marker or type(errors) is not int or errors < 0 or
                     not isinstance(scan["errors"], list) or len(scan["errors"]) != errors or scan_path.name != "axe-results.json" or
                     scan_path.parent.name != surface or tree_path != scan_path.with_name("uia-tree.json") or
-                    not isinstance(tree, list) or not any(
+                    not isinstance(tree, list) or not all(isinstance(n, dict) for n in tree) or not any(
                         n.get("automation_id") == marker and n.get("is_offscreen") is False and
-                        n.get("process_id") == process for n in tree)):
+                        n.get("process_id") == process for n in tree) or
+                    (surface == "sidebar" and not sidebar_state(tree, process))):
                 raise ValueError("Native surface identity/state differs")
             summary.update(process_id=process, error_count=errors)
             if result["status"] == "PASS" and errors == 0:
