@@ -3070,7 +3070,7 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>הזן מזהה מודל שהסוכן הזה תומך בו. השאר ריק כדי להשתמש בתצורה של הסוכן עצמו. חל על הפעלות חדשות.</value>
+    <value>הזן מזהה מודל שהסוכן הזה תומך בו. השאר ריק כדי להשתמש בתצורה של הסוכן עצמו.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3120,5 +3120,17 @@ Alt+Shift+/ הזן הנחיה; Alt+Shift+B הפעל ללא הנחיה התחלת
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal מוסיף אוטומטית את כלי שורת הפקודה של הסוכנים המותקנים כפרופילים. כדי להתחיל, פתח אחד מהם מתפריט הכרטיסייה החדשה.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>פרופיל סוכן</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>ארגומנטים לחידוש</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>נוספים אחרי ארגומנטי האתחול הרגילים רק בעת חידוש הפעלה. מזהה ההפעלה מצורף בסוף באופן אוטומטי.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

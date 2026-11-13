@@ -454,7 +454,7 @@ pub enum SessionEvent {
     ResumeDispatched {
         key: AgentKey,
     },
-    /// A dispatched ACP `session/load` did not complete. Revert an optimistic
+    /// A dispatched resume attempt failed. Revert an optimistic
     /// live-without-pane row to a retryable historical state.
     ResumeFailed {
         key: AgentKey,
@@ -1238,6 +1238,17 @@ impl AgentSessionRegistry {
     /// on-disk artefact has no resumable content).
     pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
         self.sessions.get(key)
+    }
+
+    /// Master snapshot rows are not otherwise mirrored into the helper registry.
+    /// Retain the selected candidate before applying its local pending transition.
+    pub(crate) fn retain_resume_candidate(&mut self, candidate: &AgentSession) {
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            self.sessions.entry(candidate.key.clone())
+        {
+            entry.insert(candidate.clone());
+            self.dirty = true;
+        }
     }
 
     /// Update the `origin` field on an existing session entry. No-op if

@@ -9,6 +9,7 @@
 #include "TerminalSettingsSerializationHelpers.h"
 #include "AppearanceConfig.h"
 #include "FontConfig.h"
+#include "../inc/AgentProfileUtils.h"
 
 #include "Profile.g.cpp"
 
@@ -27,6 +28,11 @@ static constexpr std::string_view NameKey{ "name" };
 static constexpr std::string_view GuidKey{ "guid" };
 static constexpr std::string_view SourceKey{ "source" };
 static constexpr std::string_view HiddenKey{ "hidden" };
+
+bool Profile::IsDeletable() const
+{
+    return !::Microsoft::Terminal::AgentProfiles::IsProtected(*this);
+}
 
 static constexpr std::string_view FontInfoKey{ "font" };
 static constexpr std::string_view PaddingKey{ "padding" };

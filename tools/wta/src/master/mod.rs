@@ -8639,7 +8639,13 @@ async fn execute_session_activation(
     let profile = provider_id
         .as_deref()
         .map(crate::agent_registry::lookup_profile_by_id);
-    if profile.is_none_or(|profile| profile.id == crate::agent_registry::DEFAULT_PROFILE.id) {
+    let host_custom_profile = matches!(row.location, crate::agent_sessions::SessionLocation::Host)
+        && provider_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("custom:"));
+    if !host_custom_profile
+        && profile.is_none_or(|profile| profile.id == crate::agent_registry::DEFAULT_PROFILE.id)
+    {
         return respond!(
             "not_resumable",
             false,
@@ -8652,7 +8658,9 @@ async fn execute_session_activation(
         key: row.session_id.to_string(),
         cli_source: cli_source.clone(),
         load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
-        cli_supports_resume_flag: profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
+        cli_supports_resume_flag: host_custom_profile
+            || matches!(row.location, crate::agent_sessions::SessionLocation::Host)
+            || profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
         cli_can_resume_acp_sessions: profile
             .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
         is_wsl: row.location.is_wsl(),
@@ -8666,7 +8674,8 @@ async fn execute_session_activation(
         .origin
         .as_ref()
         .is_none_or(|origin| *origin == SessionOrigin::Unknown)
-        && profile.is_some_and(|profile| !profile.resume_flag.is_empty())
+        && (matches!(row.location, crate::agent_sessions::SessionLocation::Host)
+            || profile.is_some_and(|profile| !profile.resume_flag.is_empty()))
     {
         // This is an explicit sidebar activation, not evidence of external
         // ownership. Native hook admission leaves origin unset, which has
@@ -8748,10 +8757,14 @@ async fn execute_session_activation(
                     Some("The selected session has an invalid CLI resume identifier.".to_string())
                 );
             }
-            if state
-                .allowed_agent_ids
-                .as_ref()
-                .is_some_and(|allowed| !allowed.contains(&provider_id))
+            // This allowlist governs ACP provider spawning. Custom native
+            // launches carry no command from the peer: Terminal resolves its
+            // configured profile and enforces AllowCustomAgents itself.
+            if !host_custom_profile
+                && state
+                    .allowed_agent_ids
+                    .as_ref()
+                    .is_some_and(|allowed| !allowed.contains(&provider_id))
             {
                 return respond!(
                     "resume_cli",
@@ -8759,17 +8772,15 @@ async fn execute_session_activation(
                     Some("The selected session provider is blocked by policy.".to_string())
                 );
             }
-            let runtimes =
-                crate::coordinator::default_delegate_agent_runtimes(Some(&provider_id), None, None);
-            let runtime = &runtimes[0];
             let commandline = match &row.location {
-                crate::agent_sessions::SessionLocation::Host => {
-                    crate::coordinator::build_delegate_resume_commandline(
-                        runtime,
-                        &row.session_id.to_string(),
-                    )
-                }
+                crate::agent_sessions::SessionLocation::Host => Ok(String::new()),
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                    let runtimes = crate::coordinator::default_delegate_agent_runtimes(
+                        Some(&provider_id),
+                        None,
+                        None,
+                    );
+                    let runtime = &runtimes[0];
                     if provider_id == crate::agent_registry::ANTIGRAVITY_AGENT_ID
                         && !crate::agent_source::is_safe_wsl_distro_name(distro)
                     {
@@ -8819,6 +8830,12 @@ async fn execute_session_activation(
                 "background": true,
                 "native_agent_provider_id": provider_id,
             });
+            if matches!(row.location, crate::agent_sessions::SessionLocation::Host) {
+                params["native_profile_resume"] = serde_json::json!({
+                    "agent_id": provider_id,
+                    "session_id": row.session_id.to_string(),
+                });
+            }
             if matches!(row.location, crate::agent_sessions::SessionLocation::Host)
                 && !row.cwd.as_os_str().is_empty()
             {

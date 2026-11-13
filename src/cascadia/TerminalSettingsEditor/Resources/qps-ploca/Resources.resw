@@ -3004,7 +3004,7 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Ｅｎｔｅｒ ａ ｍｏｄｅｌ ｉｄｅｎｔｉｆｉｅｒ ｓｕｐｐｏｒｔｅｄ ｂｙ ｔｈｉｓ ａｇｅｎｔ. Ｌｅａｖｅ ｅｍｐｔｙ ｔｏ ｕｓｅ ｔｈｅ ａｇｅｎｔ'ｓ ｏｗｎ ｃｏｎｆｉｇｕｒａｔｉｏｎ. Ａｐｐｌｉｅｓ ｔｏ ｎｅｗ ｓｅｓｓｉｏｎｓ. !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <value>Ｅｎｔｅｒ ａ ｍｏｄｅｌ ｉｄｅｎｔｉｆｉｅｒ ｓｕｐｐｏｒｔｅｄ ｂｙ ｔｈｉｓ ａｇｅｎｔ. Ｌｅａｖｅ ｅｍｐｔｙ ｔｏ ｕｓｅ ｔｈｅ ａｇｅｎｔ'ｓ ｏｗｎ ｃｏｎｆｉｇｕｒａｔｉｏｎ. !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3070,5 +3070,17 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal ａｕｔｏｍａｔｉｃａｌｌｙ ａｄｄｓ ｙｏｕｒ ｉｎｓｔａｌｌｅｄ ａｇｅｎｔ ＣＬＩｓ ａｓ ｐｒｏｆｉｌｅｓ. Ｏｐｅｎ ｏｎｅ ｆｒｏｍ ｔｈｅ ｎｅｗ ｔａｂ ｍｅｎｕ ｔｏ ｇｅｔ ｓｔａｒｔｅｄ. !!! !!! !!! !!! !!!</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>[!!_Ａｇｅｎｔ ｐｒｏｆｉｌｅ_!!]</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>[!!_Ｒｅｓｕｍｅ ａｒｇｕｍｅｎｔｓ_!!]</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>[!!_Ａｄｄｅｄ ａｆｔｅｒ ｔｈｅ ｎｏｒｍａｌ ｓｔａｒｔｕｐ ａｒｇｕｍｅｎｔｓ ｏｎｌｙ ｗｈｅｎ ｒｅｓｕｍｉｎｇ ａ ｓｅｓｓｉｏｎ. Ｔｈｅ ｓｅｓｓｉｏｎ ＩＤ ｉｓ ａｐｐｅｎｄｅｄ ａｕｔｏｍａｔｉｃａｌｌｙ._!!]</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

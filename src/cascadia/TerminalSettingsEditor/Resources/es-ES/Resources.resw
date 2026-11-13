@@ -3007,7 +3007,7 @@ Alt+Shift+/ introduzca una consulta; Alt+Shift+B inicie sin una consulta inicial
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Escribe un identificador de modelo compatible con este agente. Déjalo vacío para usar la configuración propia del agente. Se aplica a las sesiones nuevas.</value>
+    <value>Escribe un identificador de modelo compatible con este agente. Déjalo vacío para usar la configuración propia del agente.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3077,5 +3077,17 @@ Alt+Shift+/ introduzca una consulta; Alt+Shift+B inicie sin una consulta inicial
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal añade automáticamente las CLI de agentes instaladas como perfiles. Abre uno desde el menú de nueva pestaña para empezar.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>Perfil de agente</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>Argumentos de reanudación</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>Se añaden después de los argumentos de inicio normales solo al reanudar una sesión. El identificador de sesión se agrega automáticamente al final.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

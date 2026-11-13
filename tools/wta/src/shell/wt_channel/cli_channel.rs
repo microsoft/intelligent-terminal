@@ -217,6 +217,10 @@ fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
 }
 
+fn native_profile_resume_event(params: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"event", "method":"resume_in_new_agent_tab", "params":params})
+}
+
 fn managed_listener_args<'a>(parent_pid: &'a str, ready_token: &'a str) -> [&'a str; 7] {
     [
         "--json",
@@ -603,7 +607,24 @@ pub struct CliChannel {
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
     event_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<serde_json::Value>>>,
     listener_shutdown: std::sync::Mutex<Option<oneshot::Sender<()>>>,
+    native_resume_replies:
+        std::sync::Mutex<std::collections::HashMap<String, oneshot::Sender<serde_json::Value>>>,
     wtcli_path: String,
+}
+
+struct NativeResumeWait<'a> {
+    channel: &'a CliChannel,
+    request_id: &'a str,
+}
+
+impl Drop for NativeResumeWait<'_> {
+    fn drop(&mut self) {
+        self.channel
+            .native_resume_replies
+            .lock()
+            .unwrap()
+            .remove(self.request_id);
+    }
 }
 
 impl Drop for CliChannel {
@@ -627,6 +648,18 @@ fn listener_command(wtcli: &str, parent_pid: &str, ready_token: &str) -> tokio::
 }
 
 impl CliChannel {
+    fn complete_native_resume_reply(&self, value: &serde_json::Value) -> bool {
+        if value["method"] != "native_profile_resume_result" {
+            return false;
+        }
+        if let Some(id) = value["params"]["request_id"].as_str() {
+            if let Some(reply) = self.native_resume_replies.lock().unwrap().remove(id) {
+                let _ = reply.send(value["params"].clone());
+            }
+        }
+        true
+    }
+
     #[cfg(test)]
     pub(crate) fn with_test_executable(wtcli_path: String) -> Self {
         Self {
@@ -634,6 +667,7 @@ impl CliChannel {
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
             listener_shutdown: std::sync::Mutex::new(None),
+            native_resume_replies: std::sync::Mutex::new(std::collections::HashMap::new()),
             wtcli_path,
         }
     }
@@ -649,6 +683,7 @@ impl CliChannel {
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
             listener_shutdown: std::sync::Mutex::new(None),
+            native_resume_replies: std::sync::Mutex::new(std::collections::HashMap::new()),
             wtcli_path: resolve_wtcli_path(),
         })
     }
@@ -779,6 +814,9 @@ impl CliChannel {
                                         }
                                         if val.get("method").and_then(serde_json::Value::as_str) == Some("wt_listener_ready") {
                                             tracing::debug!(target: "wtcli", "ignored externally supplied listener readiness event");
+                                            continue;
+                                        }
+                                        if this.complete_native_resume_reply(&val) {
                                             continue;
                                         }
                                         let tx = this.event_tx.lock().unwrap();
@@ -1079,6 +1117,58 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "create_tab" => {
+                if params["native_profile_resume"].is_object() {
+                    let request_id = uuid::Uuid::new_v4().to_string();
+                    let mut event = params["native_profile_resume"].clone();
+                    event["request_id"] = serde_json::json!(request_id);
+                    event["resume_target"] = serde_json::json!("native");
+                    event["agent_source"] = serde_json::json!("host");
+                    event["window_id"] =
+                        serde_json::json!(params["window_id"].to_string().trim_matches('"'));
+                    for key in ["cwd", "title"] {
+                        if let Some(value) = params.get(key) {
+                            event[key] = value.clone();
+                        }
+                    }
+                    if let Some(profile) = params.get("profile") {
+                        event["profile_id"] = profile.clone();
+                    }
+                    let event = native_profile_resume_event(event);
+                    let (tx, rx) = oneshot::channel();
+                    self.native_resume_replies
+                        .lock()
+                        .unwrap()
+                        .insert(request_id.clone(), tx);
+                    let _pending = NativeResumeWait {
+                        channel: self,
+                        request_id: &request_id,
+                    };
+                    let sent = self
+                        .run_wtcli(&["publish", "--existing-only", &event.to_string()])
+                        .await;
+                    if let Err(error) = sent {
+                        self.native_resume_replies
+                            .lock()
+                            .unwrap()
+                            .remove(&request_id);
+                        return Err(error);
+                    }
+                    let result = tokio::time::timeout(WTCLI_ONE_SHOT_TIMEOUT, rx).await;
+                    self.native_resume_replies
+                        .lock()
+                        .unwrap()
+                        .remove(&request_id);
+                    let reply = result.map_err(|_| WtcliOneShotError::TimedOut {
+                        timeout: WTCLI_ONE_SHOT_TIMEOUT,
+                        kill_error: None,
+                        reap_error: None,
+                        reap_timeout: None,
+                    })??;
+                    if reply["success"] != true {
+                        bail!("Native profile resume failed: {}", reply["error"]);
+                    }
+                    return Ok(reply["result"].clone());
+                }
                 let mut args = vec!["new-tab"];
                 if let Some(provider) = params
                     .get("native_agent_provider_id")
@@ -1516,6 +1606,59 @@ mod tests {
             }
             other => panic!("expected timeout, got {other}"),
         }
+    }
+
+    #[test]
+    fn native_profile_resume_publishes_an_internal_event_not_a_legacy_hook_event() {
+        let event = native_profile_resume_event(
+            serde_json::json!({"session_id":"known","request_id":"owned"}),
+        );
+        assert_eq!(event["method"], "resume_in_new_agent_tab");
+        assert_eq!(event["params"]["session_id"], "known");
+        assert!(event["params"].get("event").is_none());
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_reply_matches_only_its_request() {
+        let channel = CliChannel::with_test_executable("unused".into());
+        let (tx, mut rx) = oneshot::channel();
+        channel
+            .native_resume_replies
+            .lock()
+            .unwrap()
+            .insert("owned".into(), tx);
+        assert!(!channel.complete_native_resume_reply(&serde_json::json!({
+            "method": "agent.session.start", "params": {"request_id": "owned"}
+        })));
+        assert!(channel.complete_native_resume_reply(&serde_json::json!({
+            "method": "native_profile_resume_result", "params": {"request_id": "other", "success": true}
+        })));
+        assert!(rx.try_recv().is_err());
+        assert!(channel.complete_native_resume_reply(&serde_json::json!({
+            "method": "native_profile_resume_result",
+            "params": {"request_id": "owned", "success": true, "result": {"session_id": "created-pane"}}
+        })));
+        let result = rx.await.unwrap();
+        assert_eq!(result["result"]["session_id"], "created-pane");
+        assert!(channel.native_resume_replies.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn cancelled_native_profile_resume_removes_pending_reply() {
+        let channel = CliChannel::with_test_executable("unused".into());
+        let (tx, _rx) = oneshot::channel();
+        channel
+            .native_resume_replies
+            .lock()
+            .unwrap()
+            .insert("cancelled".into(), tx);
+        {
+            let _pending = NativeResumeWait {
+                channel: &channel,
+                request_id: "cancelled",
+            };
+        }
+        assert!(channel.native_resume_replies.lock().unwrap().is_empty());
     }
 
     #[test]

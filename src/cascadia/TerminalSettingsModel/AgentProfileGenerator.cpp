@@ -3,13 +3,32 @@
 
 #include "pch.h"
 #include "AgentProfileGenerator.h"
+#include "GlobalAppSettings.h"
 #include "DynamicProfileUtils.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/CustomAgentId.h"
 #include <mutex>
+#include <set>
 
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 namespace AgentProfiles = ::Microsoft::Terminal::AgentProfiles;
+
+AgentProfileGenerator::AgentProfileGenerator(const implementation::GlobalAppSettings* settings)
+{
+    if (settings)
+    {
+        for (const auto& commands : { settings->AcpCustomCommands(), settings->DelegateCustomCommands() })
+        {
+            for (const auto& command : commands)
+            {
+                _customCommands.emplace_back(command);
+            }
+        }
+        _customCommands.emplace_back(settings->AcpCustomCommand());
+        _customCommands.emplace_back(settings->DelegateCustomCommand());
+    }
+}
 
 std::wstring_view AgentProfileGenerator::GetNamespace() const noexcept
 {
@@ -27,7 +46,8 @@ std::wstring_view AgentProfileGenerator::GetIcon() const noexcept
 }
 
 const AgentProfileGenerator::DiscoveryCache::Snapshot& AgentProfileGenerator::DiscoveryCache::Get(
-    const std::chrono::steady_clock::time_point now, const std::function<Snapshot()>& probe)
+    const std::chrono::steady_clock::time_point now,
+    const std::function<Snapshot()>& probe)
 {
     if (!_snapshot || now - _lastProbe >= std::chrono::seconds{ 30 })
     {
@@ -64,12 +84,38 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         {
             continue;
         }
-        const auto identity = std::wstring{ AgentProfiles::Source } + L":" + std::wstring{ agent.id };
-        auto profile = CreateDynamicProfile(identity);
+        auto profile = CreateDynamicProfile(AgentProfiles::GeneratedIdentity(agent.id));
         profile->Name(winrt::hstring{ agent.displayName });
         profile->Icon(winrt::hstring{ L"ms-appx:///AgentIcons/" + std::wstring{ agent.id } + L".svg" });
         profile->AgentProfileId(winrt::hstring{ agent.id });
+        profile->StartingDirectory(L"%USERPROFILE%");
+        // Generation defaults only. Runtime resume always reads the effective profile.
+        const auto resume = agent.id == L"opencode"    ? L"--session" :
+                            agent.id == L"codex"       ? L"resume" :
+                            agent.id == L"antigravity" ? L"--conversation" :
+                                                         L"--resume";
+        profile->AgentProfileResumeArguments(resume);
         profile->Commandline(winrt::hstring{ AgentProfiles::BuildCommand(found->second.native(), agent.id, {}, {}, {}) });
         profiles.emplace_back(std::move(profile));
+    }
+    if (::Microsoft::Terminal::Settings::Model::AgentPolicy::IsCustomAgentAllowed())
+    {
+        std::set<std::wstring> seen;
+        for (const auto& command : _customCommands)
+        {
+            const auto id = L"custom:" + std::wstring{ ::Microsoft::Terminal::Settings::Model::DeriveCustomAgentId(command) };
+            if (command.empty() || id == L"custom:" || !seen.insert(id).second)
+            {
+                continue;
+            }
+            auto profile = CreateDynamicProfile(AgentProfiles::GeneratedIdentity(id));
+            profile->Name(winrt::hstring{ id.substr(7) });
+            profile->AgentProfileId(winrt::hstring{ id });
+            profile->StartingDirectory(L"%USERPROFILE%");
+            // An ACP command may name an adapter (npx/uvx/etc.), not a TUI.
+            // Require a separately configured native command; never guess one.
+            profile->Commandline(L"");
+            profiles.emplace_back(std::move(profile));
+        }
     }
 }

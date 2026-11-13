@@ -376,13 +376,16 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
         duplicated->AgentProfileModel(source.AgentProfileModel());
         duplicated->AgentProfilePermissionMode(source.AgentProfilePermissionMode());
         duplicated->AgentProfileArguments(source.AgentProfileArguments());
+        duplicated->AgentProfileResumeArguments(source.AgentProfileResumeArguments());
         duplicated->DefaultSplitProfile(source.DefaultSplitProfile());
-        if (!::Microsoft::Terminal::AgentProfiles::IsManaged(source))
+        if (!::Microsoft::Terminal::AgentProfiles::IsManaged(source) ||
+            std::wstring_view{ source.AgentProfileId() }.starts_with(L"custom:"))
         {
             duplicated->Commandline(source.Commandline());
         }
     }
-    if (::Microsoft::Terminal::AgentProfiles::IsManaged(source))
+    if (::Microsoft::Terminal::AgentProfiles::IsManaged(source) &&
+        !std::wstring_view{ source.AgentProfileId() }.starts_with(L"custom:"))
     {
         duplicated->ClearCommandline();
     }
@@ -809,8 +812,9 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
         const auto provider = ::Microsoft::Terminal::Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(
             std::wstring_view{ savedProvider });
         const auto managedRestore = !newTerminalArgs.Profile().empty() && newTerminalArgs.Commandline().empty() &&
-                                    std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
-                                                        [&](const auto& agent) { return agent.id == std::wstring_view{ provider }; });
+                                    (!newTerminalArgs.NativeAgentSessionId().empty() ||
+                                     std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
+                                                         [&](const auto& agent) { return agent.id == std::wstring_view{ provider }; }));
         if (const auto name = newTerminalArgs.Profile(); !name.empty())
         {
             if (auto profile = GetProfileByName(name))
@@ -828,8 +832,7 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
                                     "Invalid orphaned native agent identity");
                     for (const auto& agent : Registry::BuiltinNativeProfileAgents)
                     {
-                        const auto name = std::wstring{ ::Microsoft::Terminal::AgentProfiles::Source } + L":" + std::wstring{ agent.id };
-                        const winrt::guid generatedGuid{ Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ name })) };
+                        const auto generatedGuid = ::Microsoft::Terminal::AgentProfiles::GeneratedGuid(agent.id);
                         if (profile.Guid() == generatedGuid)
                         {
                             THROW_HR_IF_MSG(E_INVALIDARG, !identity.empty() && identity != agent.id,

@@ -183,6 +183,10 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
 
     inline constexpr bool SupportsNativeProfile(const std::wstring_view providerId) noexcept
     {
+        if (providerId.starts_with(L"custom:"))
+        {
+            return !CanonicalNativeAgentProviderId(providerId).empty();
+        }
         for (const auto& agent : BuiltinNativeProfileAgents)
         {
             if (agent.id == providerId)

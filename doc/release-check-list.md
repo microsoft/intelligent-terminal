@@ -32,6 +32,14 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C005` `[MANUAL]` **Agent CLI versions:** Copilot, Claude, Codex, Gemini, and any custom agent versions are recorded.
 - [ ] `C006` `[MANUAL]` **Known limitations:** Expected limitations are written down before sign-off.
 
+## Native agent profiles
+
+- [ ] `C501` `[new]` `[E2E]` **Native profile resume uses effective launch and resume arguments only when requested:** Explicit native resume uses the selected profile's command, model and startup arguments followed by configured resume arguments and the automatic session ID, with Sessions on or off. Ordinary launches omit the resume suffix. Both launch paths expose provider/Sidebar Idle/cwd within five seconds while the owned master is paused, before hooks or new-pane snapshots. Repeated correctly shaped controlled hooks produce authoritative Working with Sessions on, retaining exactly one conversation on the same provider/pane without affecting the ordinary sibling. _(E2E: `Feature.AgentProfileResume`; deterministic native custom fixture, no installed hook mutation.)_
+- [ ] `C502` `[new]` `[E2E]` **Agent profile settings expose an indicator and automatic session ID guidance:** Native profile Settings identify the profile as an Agent profile and explain that resume appends the session ID automatically. _(E2E: `Feature.AgentProfileResume`.)_
+- [ ] `C503` `[new]` `[E2E]` **Master native history activation uses edited profile settings and preserves its receipt:** Resuming the exact unbound native fixture row through the owning master uses the corresponding generated profile's edited model and resume arguments; replay retains the same successful creation receipt without launching again. _(E2E: `Feature.AgentProfileResume`; real private-package master, COM and ConPTY boundary, mock ACP only.)_
+- [ ] `C504` `[new]` `[E2E]` **Agent profiles default to home and migrate empty startup folders only once:** A generated custom profile starts in `%USERPROFILE%`; upgrade migrates empty startup folders and persists completion together, while a later deliberate empty value survives reload. _(E2E: `Feature.AgentProfileResume`.)_
+- [ ] `C505` `[new]` `[E2E]` **Agent profile icon edits update live tabs and recent sessions without changing identity:** Built-in and custom profiles retain their provider/GUID relationship through renaming, and both rendered rows follow profile artwork changes. _(E2E: `Feature.AgentProfileResume`; owned-window pixel assertions.)_
+
 ## 0. First-run experience (FRE)
 
 **Feature definition:** FRE guides first-time users through agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup. Display preferences remain available in normal Settings.

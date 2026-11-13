@@ -12231,7 +12231,54 @@ async fn sidebar_activation_uses_exact_collision_row_and_replays_receipt() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn sidebar_activation_host_shim_capabilities_are_explicit_and_replayed() {
+async fn sidebar_custom_native_resume_uses_profile_data_and_existing_pane_receipt() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
+    let mock = Arc::new(MockWtChannel::responding(
+        serde_json::json!({"session_id":"custom-pane"}),
+    ));
+    let mut state = make_state_with_wt(mock.clone());
+    Arc::get_mut(&mut state).unwrap().allowed_agent_ids = Some(HashSet::new());
+    let mut row = SessionInfo::new(SessionId::new("custom-session"), PathBuf::from("C:\\repo"));
+    row.cli_source = Some(CliSource::parse(Some("custom:example")));
+    row.provider_id = Some("custom:example".into());
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Working);
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+    let params = SessionActivateParams {
+        identity: identity.clone(),
+        window_id: 42,
+        activation_id: "custom-resume".into(),
+    };
+    let response = tokio::task::LocalSet::new()
+        .run_until(handle_session_activate(&state, &params))
+        .await
+        .unwrap();
+    let response = crate::session_registry::parse_session_activate_response(&response.0).unwrap();
+    assert!(response.accepted, "{response:?}");
+    let calls = mock.calls();
+    assert_eq!(calls[0].0, "create_tab");
+    assert_eq!(calls[0].1["commandline"], "");
+    assert_eq!(
+        calls[0].1["native_profile_resume"],
+        serde_json::json!({"agent_id":"custom:example","session_id":"custom-session"})
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&identity)
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("custom-pane")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_host_profiles_defer_executable_validation_and_replay_receipts() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crate::session_registry::{SessionActivateParams, SessionIdentity, SessionInfo};
 
@@ -12285,8 +12332,7 @@ async fn sidebar_activation_host_shim_capabilities_are_explicit_and_replayed() {
                 "session_id": "shim-resumed-pane"
             })));
             let state = make_state_with_wt(mock.clone());
-            let mut row =
-                SessionInfo::new(SessionId::new("literal & %PATH% ' id"), "C:\\repo".into());
+            let mut row = SessionInfo::new(SessionId::new("shim-session"), "C:\\repo".into());
             row.provider_id = cli.canonical_provider_id();
             row.cli_source = Some(cli.clone());
             row.location = SessionLocation::Host;
@@ -12305,37 +12351,17 @@ async fn sidebar_activation_host_shim_capabilities_are_explicit_and_replayed() {
             let receipt =
                 crate::session_registry::parse_session_activate_response(&response.0).unwrap();
             assert_eq!(receipt.action, "resume_cli");
-            assert_eq!(receipt.accepted, companion, "{cli:?}: {receipt:?}");
+            assert!(receipt.accepted, "{cli:?}: {receipt:?}");
             let calls = mock.calls();
-            if companion {
-                assert_eq!(calls.len(), 2);
-                assert_eq!(calls[0].0, "create_tab");
-                assert!(calls[0].1["commandline"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("powershell.exe -NoLogo -NoProfile -EncodedCommand "));
-                assert_eq!(calls[1].0, "focus_pane");
-                assert_eq!(calls[1].1["session_id"], "shim-resumed-pane");
-            } else {
-                let detail = if exists {
-                    "without an adjacent PowerShell companion"
-                } else {
-                    "shim not found"
-                };
-                assert!(
-                    receipt.detail.as_deref().unwrap().contains(detail),
-                    "{receipt:?}"
-                );
-                assert!(calls.is_empty());
-                assert_eq!(
-                    state
-                        .registry
-                        .lookup_identity(&params.identity)
-                        .await
-                        .unwrap(),
-                    row
-                );
-            }
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].0, "create_tab");
+            assert_eq!(calls[0].1["commandline"], "");
+            assert_eq!(
+                calls[0].1["native_profile_resume"]["session_id"],
+                "shim-session"
+            );
+            assert_eq!(calls[1].0, "focus_pane");
+            assert_eq!(calls[1].1["session_id"], "shim-resumed-pane");
             let replay = handle_session_activate(&state, &params).await.unwrap();
             assert_eq!(
                 crate::session_registry::parse_session_activate_response(&replay.0).unwrap(),
@@ -12392,11 +12418,6 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
                 activation_id: "unconfirmed-external".to_string(),
             };
             let provider = cli.canonical_provider_id().unwrap();
-            let runtimes =
-                crate::coordinator::default_delegate_agent_runtimes(Some(&provider), None, None);
-            let invocation =
-                crate::coordinator::build_delegate_resume_commandline(&runtimes[0], "live-unbound")
-                    .expect("all registered native providers support resume");
             let response = tokio::task::LocalSet::new()
                 .run_until(handle_session_activate(&state, &params))
                 .await
@@ -12412,7 +12433,11 @@ async fn sidebar_activation_explicit_live_unknown_origin_resumes_current_window_
                     "create_tab".to_string(),
                     serde_json::json!({
                         "window_id": 42,
-                        "commandline": invocation,
+                        "commandline": "",
+                        "native_profile_resume": {
+                            "agent_id": provider,
+                            "session_id": "live-unbound",
+                        },
                         "background": true,
                         "native_agent_provider_id": provider,
                         "cwd": "C:\\repo",
@@ -12602,7 +12627,15 @@ async fn sidebar_activation_resume_quotes_session_and_wsl_distro_through_registe
             let calls = mock.calls();
             assert_eq!(calls.len(), 2);
             assert_eq!(calls[0].0, "create_tab");
-            assert_eq!(calls[0].1["commandline"], expected);
+            if location.is_wsl() {
+                assert_eq!(calls[0].1["commandline"], expected);
+            } else {
+                assert_eq!(calls[0].1["commandline"], "");
+                assert_eq!(
+                    calls[0].1["native_profile_resume"]["session_id"],
+                    session_id
+                );
+            }
             assert_eq!(calls[0].1["window_id"], 42);
             assert_eq!(calls[1].0, "focus_pane");
             assert_eq!(calls[1].1["session_id"], "resumed-quoted-pane");
@@ -12941,17 +12974,10 @@ async fn sidebar_activation_external_history_does_not_require_ownership_verifica
             assert_eq!(calls[0].0, "create_tab");
             assert_eq!(calls[0].1["window_id"], 42);
             assert_eq!(calls[0].1["native_agent_provider_id"], "copilot");
+            assert_eq!(calls[0].1["commandline"], "");
             assert_eq!(
-                calls[0].1["commandline"],
-                crate::coordinator::build_delegate_resume_commandline(
-                    &crate::coordinator::default_delegate_agent_runtimes(
-                        Some("copilot"),
-                        None,
-                        None
-                    )[0],
-                    row.session_id.0.as_ref(),
-                )
-                .unwrap()
+                calls[0].1["native_profile_resume"]["session_id"],
+                row.session_id.0.as_ref()
             );
             assert_eq!(calls[1].0, "focus_pane");
             assert_eq!(calls[1].1["session_id"], "external-resume-pane");
@@ -13013,10 +13039,8 @@ async fn sidebar_activation_native_hook_unset_origin_resumes_without_reclassifyi
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].0, "create_tab");
     assert_eq!(calls[0].1["window_id"], 42);
-    assert!(calls[0].1["commandline"]
-        .as_str()
-        .unwrap()
-        .contains("--resume"));
+    assert_eq!(calls[0].1["commandline"], "");
+    assert_eq!(calls[0].1["native_profile_resume"]["agent_id"], "copilot");
     assert_eq!(calls[1].0, "focus_pane");
     let resumed = state.registry.lookup_identity(&identity).await.unwrap();
     assert_eq!(resumed.origin, None);
@@ -14039,13 +14063,14 @@ async fn sidebar_antigravity_resume_preserves_interface_and_source() {
                         "{command}"
                     );
                 } else {
-                    assert!(
-                        command.starts_with(r"C:\wta-unit-mock\agy.exe "),
-                        "{command}"
+                    assert!(command.is_empty(), "{command}");
+                    assert_eq!(
+                        calls[0].1["native_profile_resume"]["agent_id"],
+                        "antigravity"
                     );
-                    assert!(
-                        command.contains("--conversation antigravity-history"),
-                        "{command}"
+                    assert_eq!(
+                        calls[0].1["native_profile_resume"]["session_id"],
+                        "antigravity-history"
                     );
                 }
                 assert_eq!(calls[0].1["native_agent_provider_id"], "antigravity");

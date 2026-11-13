@@ -54,6 +54,7 @@ namespace winrt::TerminalApp::implementation
         {
             return _profile;
         }
+        winrt::hstring NativeAgentSessionId() const { return _nativeAgentSessionId; }
 
         winrt::hstring Title() { return _control.Title(); }
         uint64_t TaskbarState() { return _control.TaskbarState(); }
@@ -79,6 +80,7 @@ namespace winrt::TerminalApp::implementation
         bool _isDefTermSession{ false };
         bool _usesManagedAgentCommand{ false };
         winrt::hstring _managedAgentProviderId;
+        winrt::hstring _nativeAgentSessionId;
 
         struct ControlEventTokens
         {

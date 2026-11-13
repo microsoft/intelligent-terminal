@@ -2690,6 +2690,16 @@ impl App {
                 }
             }
             AppEvent::AgentSessionEvent(ev) => {
+                if let crate::agent_sessions::SessionEvent::ResumeFailed { key, .. } = &ev {
+                    if !self.agent_sessions.get(key).is_some_and(|row| {
+                        row.status == crate::agent_sessions::AgentStatus::Idle
+                            && row.pane_session_id.is_none()
+                    }) {
+                        // A hook/birth or successful receipt won the race. Do not
+                        // publish a stale failure to the authoritative registry.
+                        return;
+                    }
+                }
                 tracing::debug!(
                     target: "agent_session_registry",
                     event = ?ev,

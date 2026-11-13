@@ -331,8 +331,7 @@
                                     VerticalContentAlignment="Stretch"
                                     AutomationProperties.AccessibilityView="Raw"
                                     AutomationProperties.Name="{x:Bind ProviderDisplayName}"
-                                    Content="{Binding Foreground, ElementName=HistoryTitleText}"
-                                    ContentTemplate="{x:Bind IconTemplate}"
+                                    Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
                                     IsTabStop="False" />
                     <Grid x:Name="HistoryTitleGroup"
                           Grid.Column="1"

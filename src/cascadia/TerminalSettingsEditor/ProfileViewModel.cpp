@@ -58,6 +58,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     hstring ProfileViewModel::LaunchCommandline() const
     {
+        if (std::wstring_view{ _profile.AgentProfileId() }.starts_with(L"custom:"))
+        {
+            // Edit the native command independently of structured startup options;
+            // never save the composed preview back and append those options twice.
+            return Commandline();
+        }
         return IsManagedAgentProfile() ?
                    hstring{ ::Microsoft::Terminal::AgentProfiles::Command(_profile) } :
                    Commandline();
@@ -654,7 +660,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     bool ProfileViewModel::CanDeleteProfile() const
     {
-        return !IsBaseLayer();
+        return !IsBaseLayer() && _profile.IsDeletable();
     }
 
     bool ProfileViewModel::Orphaned() const
@@ -1105,6 +1111,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void ProfileViewModel::DeleteProfile()
     {
+        if (!CanDeleteProfile())
+        {
+            return;
+        }
         const auto deleteProfileArgs{ winrt::make_self<DeleteProfileEventArgs>(Guid()) };
         DeleteProfileRequested.raise(*this, *deleteProfileArgs);
     }

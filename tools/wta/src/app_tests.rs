@@ -8928,6 +8928,263 @@ fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
     );
 }
 
+type HelperNativeResumeRequest = (
+    serde_json::Value,
+    tokio::sync::oneshot::Sender<anyhow::Result<serde_json::Value>>,
+);
+
+struct HelperNativeResumeChannel {
+    requests: mpsc::UnboundedSender<HelperNativeResumeRequest>,
+}
+
+#[async_trait::async_trait]
+impl crate::shell::wt_channel::WtChannel for HelperNativeResumeChannel {
+    async fn request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        if method == "focus_pane" {
+            return Ok(json!({}));
+        }
+        assert_eq!(method, "create_tab");
+        let (reply, response) = tokio::sync::oneshot::channel();
+        self.requests.send((params, reply)).unwrap();
+        match tokio::time::timeout(std::time::Duration::from_secs(30), response).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(anyhow::anyhow!("Native receipt channel closed")),
+            Err(_) => Err(anyhow::anyhow!("Native profile resume timed out")),
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
+fn helper_native_resume_fixture() -> (
+    App,
+    mpsc::UnboundedReceiver<HelperNativeResumeRequest>,
+    mpsc::UnboundedReceiver<AppEvent>,
+    mpsc::UnboundedReceiver<QueuedSessionHook>,
+    crate::agent_sessions::AgentSession,
+) {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    let mut app = test_app();
+    let (requests, requests_rx) = mpsc::unbounded_channel();
+    app.shell_mgr = Arc::new(
+        crate::shell::ShellManager::new()
+            .with_wt_channel(Arc::new(HelperNativeResumeChannel { requests })),
+    );
+    app.window_id = Some("42".into());
+    app.owner_tab_id = Some("origin-tab".into());
+    let mut snapshot = session_info_for_test("helper-resume");
+    snapshot.status = Some(AgentStatus::Historical);
+    snapshot.cli_source = Some(CliSource::Copilot);
+    snapshot.provider_id = Some("copilot".into());
+    snapshot.cwd = std::env::temp_dir();
+    app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+    app.current_tab_mut().agents_view.latest_request_id = Some(7);
+    app.handle_agents_snapshot_loaded(7, vec![snapshot]);
+    let row = app
+        .agents_rows_for_tab(DEFAULT_TAB_ID)
+        .into_iter()
+        .next()
+        .unwrap();
+    assert!(
+        app.agent_sessions.get(&row.key).is_none(),
+        "the production master-snapshot path must not seed the local registry"
+    );
+    let (events, events_rx) = mpsc::unbounded_channel();
+    app.set_agent_event_tx(events);
+    let (published, published_rx) = mpsc::unbounded_channel();
+    app.set_session_hook_tx(published);
+    (app, requests_rx, events_rx, published_rx, row)
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_rejection_is_published_and_retryable() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let master = InMemoryRegistry::new();
+    master
+        .upsert(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone())
+        .await;
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    assert_eq!(
+        app.agent_sessions.get(&key).unwrap().status,
+        AgentStatus::Idle
+    );
+    assert!(app
+        .agent_sessions
+        .get(&key)
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    let (request, reply) = requests.recv().await.unwrap();
+    assert_eq!(request["native_profile_resume"]["session_id"], key);
+    assert_eq!(request["native_profile_resume"]["tab_id"], "origin-tab");
+    reply
+        .send(Err(anyhow::anyhow!("No corresponding agent profile")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    let failed = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(failed.status, AgentStatus::Historical);
+    assert!(failed.pane_session_id.is_none());
+    assert!(failed
+        .last_error
+        .as_deref()
+        .unwrap()
+        .contains("No corresponding agent profile"));
+    let pending = published.try_recv().unwrap();
+    assert!(matches!(&pending, SessionEvent::ResumeDispatched { .. }));
+    assert!(master.apply_event(pending).await);
+    let failure = published.try_recv().unwrap();
+    assert!(
+        matches!(&failure, SessionEvent::ResumeFailed { key: failed_key, .. } if failed_key == &key)
+    );
+    assert!(master.apply_event(failure).await);
+    let master_row = master
+        .lookup(&agent_client_protocol::schema::v1::SessionId::new(
+            key.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(master_row.status, Some(AgentStatus::Historical));
+    assert!(master_row.pane_session_id.is_none());
+
+    let retry = app.agent_sessions.get(&key).unwrap().clone();
+    app.activate_agent_session_routed(&retry);
+    let (_, reply) = requests.recv().await.unwrap();
+    reply
+        .send(Ok(json!({"session_id":"created-pane"})))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    assert_eq!(
+        app.agent_sessions
+            .get(&key)
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("created-pane")
+    );
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumeDispatched { .. }
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumePaneAssigned { .. }
+    ));
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_pending_double_enter_uses_one_request() {
+    let (mut app, mut requests, mut events, _published, row) = helper_native_resume_fixture();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    // Even a stale pre-dispatch view snapshot must not submit again.
+    app.activate_agent_session_routed(&row);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    reply.send(Err(anyhow::anyhow!("Rejected"))).unwrap();
+    app.handle_event(events.recv().await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn helper_native_resume_snapshot_only_timeout_applies_and_publishes_failure() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    tokio::time::advance(std::time::Duration::from_secs(30)).await;
+    app.handle_event(events.recv().await.unwrap());
+    let failed = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(failed.status, AgentStatus::Historical);
+    assert!(failed.pane_session_id.is_none());
+    assert!(failed.last_error.as_deref().unwrap().contains("timed out"));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumeDispatched { .. }
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumeFailed { .. }
+    ));
+    assert!(reply.send(Ok(json!({"session_id":"late-pane"}))).is_err());
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_late_failure_cannot_demote_or_publish_after_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ResumePaneAssigned {
+            key: key.clone(),
+            pane_session_id: "successful-pane".into(),
+        },
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumeDispatched { .. }
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumePaneAssigned { .. }
+    ));
+    reply
+        .send(Err(anyhow::anyhow!("Late missing-profile/timeout failure")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    let bound = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(bound.status, AgentStatus::Idle);
+    assert_eq!(bound.pane_session_id.as_deref(), Some("successful-pane"));
+    assert!(bound.last_error.is_none());
+    assert!(published.try_recv().is_err());
+}
+
+#[test]
+fn custom_native_history_resume_does_not_select_an_acp_or_hardcoded_cli_command() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    let mut app = test_app();
+    app.window_id = Some("42".into());
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "custom-session".into(),
+        cli_source: CliSource::parse(Some("custom:example")),
+        pane_session_id: "old-pane".into(),
+        cwd: std::env::temp_dir(),
+        title: "Native custom".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "custom-session".into(),
+        reason: "exit".into(),
+    });
+    let row = app
+        .agent_sessions
+        .get(&"custom-session".into())
+        .unwrap()
+        .clone();
+    app.activate_agent_session_routed(&row);
+    let command = app.last_dispatched_command_for_test().unwrap();
+    assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(
+        request["native_profile_resume"]["agent_id"],
+        "custom:example"
+    );
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "custom-session"
+    );
+    assert!(request.get("commandline").is_none());
+}
+
 #[test]
 fn enter_on_history_row_dispatches_new_tab_with_resume() {
     use crate::agent_sessions::{CliSource, SessionEvent};
@@ -8960,61 +9217,16 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
-    let argv = cmd.argv.join(" ");
-    // The dispatch must use `wtcli new-tab` (not `split-pane`) so the
-    // resumed CLI lands in its own WT tab instead of carving up the
-    // originating tab.
-    assert!(argv.contains("new-tab"), "argv: {}", argv);
+    assert_eq!(cmd.argv[0], "create_tab");
+    let request: serde_json::Value = serde_json::from_str(&cmd.argv[1]).unwrap();
+    assert_eq!(request["window_id"], 42);
+    assert_eq!(request["native_profile_resume"]["agent_id"], "claude");
+    assert_eq!(request["native_profile_resume"]["session_id"], "abc-123");
+    assert_eq!(request["title"], "Fix the build");
+    assert_eq!(request["cwd"], real_cwd_str);
     assert!(
-        argv.contains("--window-id 42"),
-        "resume must target the owning window: {argv}"
-    );
-    assert!(
-        !argv.contains("split-pane"),
-        "argv must NOT use split-pane: {}",
-        argv
-    );
-    assert!(
-        cmd.argv
-            .windows(2)
-            .any(|args| args == ["--title", "Fix the build"]),
-        "resume tab must use the session title: {:?}",
-        cmd.argv
-    );
-    // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
-    // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
-    // cwd is threaded through wtcli's `-d` flag now. Issue #135:
-    // a muted "Resuming … session …" banner is prepended so the
-    // user sees immediate feedback while the CLI cold-starts; the
-    // CLI's alt-screen TUI overwrites it on success. (Previously
-    // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
-    // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
-    // low-contrast tone similar to the cwd line in a typical
-    // Copilot-CLI shell prompt.)
-    assert!(
-        argv.contains("cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"),
-        "expected dim-white Resuming banner echo; argv: {:?}",
-        argv
-    );
-    assert!(
-        argv.contains("&& claude --resume abc-123"),
-        "expected resume command chained after banner; argv: {}",
-        argv
-    );
-    assert!(
-        !argv.contains("cd /d"),
-        "argv must NOT contain cd /d (cwd is now passed via -d): {}",
-        argv
-    );
-    // Resume is keyed off the session's project cwd — the new tab's
-    // primary pane must start in that directory so the CLI's session
-    // store lookup (`~/.claude/projects/<encoded-cwd>/...`) succeeds.
-    let expected = format!("-d {}", real_cwd_str);
-    assert!(
-        argv.contains(&expected),
-        "expected `{}` in argv: {}",
-        expected,
-        argv
+        request.get("commandline").is_none(),
+        "Terminal must read effective profile options"
     );
 }
 
@@ -9167,19 +9379,9 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
-    let argv = cmd.argv.join(" ");
-    assert!(argv.contains("new-tab"), "argv: {}", argv);
-    // The stale cwd must NOT have leaked through as `-d`.
-    assert!(
-        !argv.contains("-d "),
-        "argv must omit -d when cwd is missing: {}",
-        argv
-    );
-    assert!(
-        !argv.contains(&missing.to_string_lossy().to_string()),
-        "argv must not embed the stale cwd: {}",
-        argv
-    );
+    assert_eq!(cmd.argv[0], "create_tab");
+    let request: serde_json::Value = serde_json::from_str(&cmd.argv[1]).unwrap();
+    assert_eq!(request["cwd"], "");
 }
 
 #[test]
@@ -9256,10 +9458,13 @@ fn external_in_use_row_dispatches_cli_resume_instead_of_focus() {
 
     let command = app.last_dispatched_command_for_test().unwrap();
     assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
-    assert!(command
-        .argv
-        .join(" ")
-        .contains("copilot --resume external-in-use"));
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(request["native_profile_resume"]["agent_id"], "copilot");
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "external-in-use"
+    );
+    assert!(request.get("commandline").is_none());
     assert!(!command
         .argv
         .iter()
@@ -10802,10 +11007,12 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         .last_dispatched_command_for_test()
         .expect("resume dispatched");
     assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
-    assert!(command
-        .argv
-        .join(" ")
-        .contains("claude --resume history-without-hooks"));
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(request["native_profile_resume"]["agent_id"], "claude");
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "history-without-hooks"
+    );
 }
 
 #[tokio::test]
