@@ -4651,7 +4651,9 @@ namespace winrt::TerminalApp::implementation
             // History projection and hidden/recycled rows can clear native selection.
             _syncingViewportSelection = true;
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = false; });
-            SidebarTree().SelectedItem(DisplayItemForTab(SelectedItem()));
+            // This can be the intermediate removal inside a native TreeView
+            // Select operation. Do not reenter its node selection model here.
+            ItemsList().SelectedItem(DisplayItemForTab(SelectedItem()));
             return;
         }
         _setSelectedTabItem(added);
