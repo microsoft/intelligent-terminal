@@ -132,32 +132,13 @@ jobs:
     if: needs.prepare.outputs.admitted == 'true'
     timeout-minutes: 35
 
-  freshness:
+  safe_outputs:
     needs: [agent]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    if: needs.agent.result == 'success' && needs.detection.result == 'success'
     permissions:
       contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          persist-credentials: false
-      - name: Reject stale review before publication
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        with:
-          script: |
-            const { pathToFileURL } = require('node:url');
-            const { verifySnapshot } = await import(pathToFileURL(
-              `${process.env.GITHUB_WORKSPACE}/.github/workflows/ghaw-pr-architecture-design/scripts/architecture-design-review.mjs`));
-            const expected = context.payload.pull_request;
-            const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: expected.number })).data;
-            verifySnapshot(pr, expected, context.payload.repository);
-
-  safe_outputs:
-    needs: [agent, freshness]
-    if: needs.agent.result == 'success' && needs.freshness.result == 'success' && needs.detection.result == 'success'
+      issues: write
+      pull-requests: write
 
 pre-agent-steps:
   - name: Prepare the admitted snapshot using trusted code
@@ -178,6 +159,21 @@ pre-agent-steps:
 
 safe-outputs:
   runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.workflow_sha }}
+        persist-credentials: false
+    - name: Reject stale review before publication
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+      with:
+        script: |
+          const { pathToFileURL } = require('node:url');
+          const { verifySnapshot } = await import(pathToFileURL(
+            `${process.env.GITHUB_WORKSPACE}/.github/workflows/ghaw-pr-architecture-design/scripts/architecture-design-review.mjs`));
+          const expected = context.payload.pull_request;
+          const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: expected.number })).data;
+          verifySnapshot(pr, expected, context.payload.repository);
   add-comment:
     target: triggering
     max: 1

@@ -29,18 +29,17 @@ test('compiled dependency graph gates inference and detection before publication
     assert.match(job(compiled, 'detection'), /needs\.agent\.result != 'skipped'/);
     const publisher = job(compiled, 'safe_outputs');
     assert.match(publisher, /runs-on: ubuntu-latest/);
-    for (const dependency of ['agent', 'freshness', 'detection'])
+    for (const dependency of ['agent', 'detection'])
         assert.match(publisher, new RegExp(`needs:[\\s\\S]*?- ${dependency}`));
+    assert.doesNotMatch(publisher, /needs\.freshness/);
     const publishCondition = publisher.match(/^ {4}if: >\r?\n([\s\S]*?)(?=^ {4}\S)/m)?.[1].trim();
     assert.ok(publishCondition);
     const publish = new Function('needs', 'cancelled', `return ${publishCondition};`);
     for (const agentResult of ['success', 'failure', 'skipped', 'cancelled']) {
-        for (const freshness of ['success', 'failure', 'skipped']) {
-            for (const detection of ['success', 'failure', 'skipped']) {
-                assert.equal(publish({ agent: { result: agentResult }, freshness: { result: freshness },
-                    detection: { result: detection, outputs: {} } }, () => false),
-                agentResult === 'success' && freshness === 'success' && detection === 'success');
-            }
+        for (const detection of ['success', 'failure', 'skipped']) {
+            assert.equal(publish({ agent: { result: agentResult },
+                detection: { result: detection, outputs: {} } }, () => false),
+            agentResult === 'success' && detection === 'success');
         }
     }
 });
@@ -104,10 +103,25 @@ test('compiled inference steps isolate telemetry while native runner configurati
     }
 });
 
-test('actual freshness job rejects stale, closed and draft results before handler execution', async () => {
-    const block = job(source, 'freshness');
-    const script = block.match(/script: \|\r?\n([\s\S]*)/)?.[1].split(/\r?\n/)
-        .map(line => line.slice(12)).join('\n');
+test('compiled publisher revalidates after detection and artifact setup before native mutation', () => {
+    const publisher = job(compiled, 'safe_outputs');
+    const steps = publisher.split(/^      - /m);
+    const check = steps.findIndex(step => step.startsWith('name: Reject stale review before publication'));
+    const handler = steps.findIndex(step => step.startsWith('name: Process Safe Outputs'));
+    const download = steps.findIndex(step => step.includes('uses: actions/download-artifact@'));
+    assert.ok(check > download && download > 0);
+    assert.ok(handler > check);
+    assert.match(steps[check - 1], /uses: actions\/checkout@/);
+    assert.match(steps[check - 1], /ref: \$\{\{ github\.workflow_sha \}\}/);
+    assert.doesNotMatch(steps[check], /continue-on-error: true/);
+    assert.doesNotMatch(steps[handler], /\b(?:always|failure|cancelled)\(\)/);
+    assert.match(publisher, /permissions:\r?\n {6}contents: read/);
+});
+
+test('actual publisher check rejects changes during detection before handler execution', async () => {
+    const block = source.match(/^safe-outputs:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
+    const script = block?.match(/script: \|\r?\n((?: {10}[^\r\n]*(?:\r?\n|$))+)/)?.[1].split(/\r?\n/)
+        .map(line => line.slice(10)).join('\n');
     assert.ok(script);
     const execute = new AsyncFunction('github', 'context', 'process', 'require', script);
     const repo = { id: 4, full_name: 'example/project' };
@@ -126,8 +140,13 @@ test('actual freshness job rejects stale, closed and draft results before handle
             assert.equal(request.pull_number, 2);
             return { data: pr };
         } } } };
-        const run = execute(github, context, environment, createRequire(import.meta.url));
-        if (mutation) await assert.rejects(run, /stale/);
-        else await run;
+        let published = false;
+        const publishAfterDetection = async () => {
+            await execute(github, context, environment, createRequire(import.meta.url));
+            published = true;
+        };
+        if (mutation) await assert.rejects(publishAfterDetection(), /stale/);
+        else await publishAfterDetection();
+        assert.equal(published, mutation === null);
     }
 });

@@ -76,9 +76,10 @@ architecture. The workflow neither executes candidate code nor claims
 build/test success, and does not alter native CI or its gates.
 
 Preparation revalidates the PR before and after fetching, and again before
-inference. A separate freshness job checks live head/base, refs, repositories,
-open state and draft status before the built-in safe-output handler publishes
-one non-blocking comment. Detection failure prevents publication. Every report
+inference. After detection and artifact setup, the trusted safe-output steps
+check live head/base, refs, repositories, open state and draft status before
+the built-in handler publishes one non-blocking comment. Check or detection
+failure prevents publication. Every report
 identifies its exact comparison base/head and immutable citations. GitHub
 comment creation has no atomic head-SHA precondition: an update after the final
 freshness check can still leave a clearly snapshot-labeled historical report.
