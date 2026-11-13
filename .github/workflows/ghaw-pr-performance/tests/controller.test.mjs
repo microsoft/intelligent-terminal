@@ -73,6 +73,20 @@ test('stale CI completions cannot preempt a different admitted run or attempt', 
     assert.equal(resolve(100, 2), resolve(100, 2), 'duplicate deliveries of one CI attempt may coalesce');
 });
 
+test('stale dispatches cannot cancel a different CI worker before its admission checks', () => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const group = worker.match(/^  group: (.+)$/m)?.[1];
+    assert.ok(group);
+    const resolve = (id, attempt) => group.replace(/\$\{\{\s*([\s\S]*?)\s*\}\}/g, (_, source) =>
+        expression(source, { github: { event: { inputs: {
+            pr_number: '42', ci_run_id: String(id), ci_run_attempt: String(attempt),
+        } } } }));
+    const current = resolve(100, 2);
+    assert.notEqual(resolve(99, 1), current, 'older runs must not share the active worker cancellation group');
+    assert.notEqual(resolve(100, 1), current, 'older attempts must not share the active worker cancellation group');
+    assert.equal(resolve(100, 2), current, 'duplicate dispatches of the same CI identity may coalesce');
+});
+
 function temporaryDirectory(prefix) {
     const generated = path.join(process.cwd(), 'Generated Files');
     fs.mkdirSync(generated, { recursive: true });
