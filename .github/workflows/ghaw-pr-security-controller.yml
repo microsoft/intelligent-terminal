@@ -1,34 +1,21 @@
 name: Intelligent Terminal Security Review
-run-name: ${{ github.event_name == 'pull_request_target' && format('Cancel previous review for PR {0}', github.event.number) || format('Security Review after CI {0}', github.event.workflow_run.id) }}
+run-name: Security Review after CI ${{ github.event.workflow_run.id }}
 
 on:
   workflow_run:
     workflows: ['PR CI']
     types: [completed]
-  pull_request_target:
-    types: [synchronize]
 
 permissions: {}
 
 concurrency:
-  group: ghaw-pr-security-controller-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-${{ github.event.number }}-${{ github.event.before }}
+  group: ghaw-pr-security-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: true
 
 env:
   GIT_NO_REPLACE_OBJECTS: '1'
 
 jobs:
-  cancel-outdated-review:
-    if: github.event_name == 'pull_request_target' && github.event.before != '' && github.event.pull_request.head.repo.id == github.event.repository.id
-    name: Cancel previous-head security review
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    concurrency:
-      group: ghaw-pr-security-repair-${{ github.event.number }}-${{ github.event.before }}
-      cancel-in-progress: true
-    steps:
-      - run: ':'
-
   security-review:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
     name: Intelligent Terminal security review
