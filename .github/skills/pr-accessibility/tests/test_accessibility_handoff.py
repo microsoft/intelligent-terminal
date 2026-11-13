@@ -248,6 +248,14 @@ class CompiledGraphTests(unittest.TestCase):
             self.assertEqual("verified original CI result", verified.read_text())
             self.assertEqual("forged PASS", (root / "triage-input/native/fre/result.json").read_text())
 
+    def test_native_selection_output_stays_at_explicit_run_root_after_triage_isolation(self):
+        source = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/native-checks.md` at the run root", source)
+        self.assertNotIn("beside the triage", source)
+        selector = next(s for s in self.jobs["native-selection"]["steps"] if s.get("id") == "selection")
+        self.assertIn('"Generated Files/$ACCESSIBILITY_RUN/native-checks.md"', selector["run"])
+        self.assertNotIn("/triage-input/native-checks.md", str(selector))
+
     def test_domain_outputs_are_generated_and_not_publication_paths(self):
         deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("/tmp/gh-aw/accessibility/", deep)
