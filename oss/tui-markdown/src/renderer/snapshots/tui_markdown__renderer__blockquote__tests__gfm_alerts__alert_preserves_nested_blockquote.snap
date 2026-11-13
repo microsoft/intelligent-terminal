@@ -1,0 +1,31 @@
+---
+source: tui-markdown/src/renderer/blockquote.rs
+expression: |-
+  from_str(indoc!("
+                  > [!NOTE]
+                  > Parent
+                  >> Child
+              "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("ℹ\u{fe0f} Note").blue().bold(),
+    ]).blue(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("Parent"),
+    ]).blue(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+    ]).blue(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("Child"),
+    ]).green(),
+])

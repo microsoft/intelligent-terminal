@@ -1,0 +1,25 @@
+---
+source: tui-markdown/src/renderer/blockquote.rs
+expression: |-
+  from_str(indoc!("
+                  > Blockquote 1
+                  >
+                  > Blockquote 2
+              "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("Blockquote 1"),
+    ]).green(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+    ]).green(),
+    Line::from_iter([
+        Span::from(">"),
+        Span::from(" "),
+        Span::from("Blockquote 2"),
+    ]).green(),
+])

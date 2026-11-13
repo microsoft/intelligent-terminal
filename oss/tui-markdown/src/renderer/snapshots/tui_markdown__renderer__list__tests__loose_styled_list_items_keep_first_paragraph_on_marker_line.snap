@@ -1,0 +1,32 @@
+---
+source: tui-markdown/src/renderer/list.rs
+expression: |-
+  from_str(indoc!("
+                  - *Emphasized first item.*
+  
+                  - **Strong second item.**
+  
+                  1. **Strong first item.**
+  
+                  2. *Emphasized second item.*
+              "))
+---
+Text::from_iter([
+    Line::from_iter([
+        Span::from("- "),
+        Span::from("Emphasized first item.").italic(),
+    ]),
+    Line::from_iter([
+        Span::from("- "),
+        Span::from("Strong second item.").bold(),
+    ]),
+    Line::default(),
+    Line::from_iter([
+        Span::from("1. ").light_blue(),
+        Span::from("Strong first item.").bold(),
+    ]),
+    Line::from_iter([
+        Span::from("2. ").light_blue(),
+        Span::from("Emphasized second item.").italic(),
+    ]),
+])

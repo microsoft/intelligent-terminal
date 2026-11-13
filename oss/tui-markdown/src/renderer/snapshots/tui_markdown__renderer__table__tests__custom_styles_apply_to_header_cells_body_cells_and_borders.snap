@@ -1,0 +1,23 @@
+---
+source: tui-markdown/src/renderer/table.rs
+expression: text
+---
+Text::from_iter([
+    Line::from(Span::from("┌───┐").red()),
+    Line::from_iter([
+        Span::from("│").red(),
+        Span::from(" ").on_blue(),
+        Span::from("A").on_blue(),
+        Span::from(" ").on_blue(),
+        Span::from("│").red(),
+    ]),
+    Line::from(Span::from("├───┤").red()),
+    Line::from_iter([
+        Span::from("│").red(),
+        Span::from(" ").red().on_green(),
+        Span::from("a").red().on_green(),
+        Span::from(" ").red().on_green(),
+        Span::from("│").red(),
+    ]),
+    Line::from(Span::from("└───┘").red()),
+])
