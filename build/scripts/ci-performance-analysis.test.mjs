@@ -103,6 +103,58 @@ int main()
         assert.equal(checked.status, 0, checked.stdout + checked.stderr);
     });
 
+test('tab-count telemetry compiles with both MSVC and Clang',
+    { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
+        const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
+        fs.mkdirSync(parent, { recursive: true });
+        const root = fs.mkdtempSync(path.join(parent, 'tab-telemetry-'));
+        t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+        const page = fs.readFileSync(new URL('../../src/cascadia/TerminalApp/TerminalPage.cpp', import.meta.url), 'utf8');
+        const fields = [...page.matchAll(/TraceLogging(?:Value|UInt32)\((?:this->)?NumberOfTabs\(\), "[^"]+", "[^"]+"\)/g)];
+        assert.equal(fields.length, 4, 'Exercise every direct tab-count telemetry call site.');
+        const source = path.join(root, 'telemetry.cpp');
+        fs.writeFileSync(source, `#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <TraceLoggingProvider.h>
+#include <cassert>
+#include <cstdint>
+
+TRACELOGGING_DEFINE_PROVIDER(provider, "TabTelemetryRegression",
+    (0xa8c2c725, 0x8e45, 0x4633, 0x96, 0xeb, 0x43, 0xc8, 0xf1, 0x22, 0xb6, 0xf9));
+
+struct TabCounter
+{
+    mutable unsigned reads{};
+    uint32_t NumberOfTabs() const { ++reads; return 7; }
+    void Emit()
+    {
+${fields.map(([field]) => `        TraceLoggingWrite(provider, "TabCount", ${field});`).join('\n')}
+    }
+};
+
+int main()
+{
+    TabCounter counter;
+    counter.Emit();
+    assert(counter.reads == 0); // Disabled telemetry must not evaluate the payload.
+}
+`);
+        const exe = path.join(root, 'telemetry.exe');
+        execFileSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc',
+            `/Fe${exe}`, `/Fo${path.join(root, 'telemetry.obj')}`, source, '/link', 'advapi32.lib'],
+        { cwd: root, encoding: 'utf8', timeout: 120000, stdio: 'pipe' });
+        execFileSync(exe, [], { cwd: root, timeout: 15000, stdio: 'pipe' });
+        const clang = path.join(process.env.VCINSTALLDIR, 'Tools', 'Llvm', 'x64', 'bin', 'clang-tidy.exe');
+        const checked = spawnSync(clang, [source, '--checks=-*,performance-move-const-arg', '--extra-arg=-Wno-error',
+            '--', '--driver-mode=cl', '/std:c++20', '/EHsc'],
+        { cwd: root, encoding: 'utf8', timeout: 120000 });
+        assert.equal(checked.error, undefined);
+        const evidence = path.join(process.cwd(), 'Generated Files', 'ci-performance-validation');
+        fs.mkdirSync(evidence, { recursive: true });
+        fs.writeFileSync(path.join(evidence, 'tab-telemetry-clang.log'), checked.stdout + checked.stderr);
+        assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+    });
+
 test('real CI profiles preserve performance warnings but reject actual compilation errors',
     { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
         const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
