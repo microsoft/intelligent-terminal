@@ -17,6 +17,8 @@ Revision History:
 
 #pragma once
 
+#include "WinrtDependencyProperty.h"
+
 // This type is identical to winrt::fire_and_forget, but its unhandled_exception
 // handler logs the exception instead of terminating the application.
 //
@@ -203,79 +205,6 @@ protected:                                                                      
     {                                                                                     \
         _##name = value;                                                                  \
     };
-
-// This macro defines a dependency property for a WinRT class.
-// Use this in your class' header file after declaring it in the idl.
-// Remember to register your dependency property in the respective cpp file.
-#ifndef DEPENDENCY_PROPERTY
-#define DEPENDENCY_PROPERTY(type, name)                                                       \
-public:                                                                                       \
-    static winrt::Windows::UI::Xaml::DependencyProperty name##Property()                      \
-    {                                                                                         \
-        return _##name##Property;                                                             \
-    }                                                                                         \
-    type name() const                                                                         \
-    {                                                                                         \
-        auto&& temp{ GetValue(_##name##Property) };                                           \
-        if (temp)                                                                             \
-        {                                                                                     \
-            return winrt::unbox_value<type>(temp);                                            \
-        }                                                                                     \
-                                                                                              \
-        if constexpr (std::is_same_v<type, winrt::hstring>)                                   \
-        {                                                                                     \
-            return winrt::hstring{};                                                          \
-        }                                                                                     \
-        else if constexpr (std::is_base_of_v<winrt::Windows::Foundation::IInspectable, type>) \
-        {                                                                                     \
-            return { nullptr };                                                               \
-        }                                                                                     \
-        else                                                                                  \
-        {                                                                                     \
-            return {};                                                                        \
-        }                                                                                     \
-    }                                                                                         \
-    void name(const type& value)                                                              \
-    {                                                                                         \
-        SetValue(_##name##Property, winrt::box_value(value));                                 \
-    }                                                                                         \
-                                                                                              \
-private:                                                                                      \
-    static winrt::Windows::UI::Xaml::DependencyProperty _##name##Property;
-#endif
-
-#ifndef ATTACHED_DEPENDENCY_PROPERTY
-#define ATTACHED_DEPENDENCY_PROPERTY(type, name)                                                       \
-public:                                                                                                \
-    static winrt::Windows::UI::Xaml::DependencyProperty name##Property()                               \
-    {                                                                                                  \
-        return _##name##Property;                                                                      \
-    }                                                                                                  \
-    static type Get##name(winrt::Windows::UI::Xaml::DependencyObject const& target)                    \
-    {                                                                                                  \
-        auto&& temp{ target.GetValue(_##name##Property) };                                             \
-        if (temp)                                                                                      \
-        {                                                                                              \
-            return winrt::unbox_value<type>(temp);                                                     \
-        }                                                                                              \
-                                                                                                       \
-        if constexpr (std::is_base_of_v<winrt::Windows::Foundation::IInspectable, type>)               \
-        {                                                                                              \
-            return { nullptr };                                                                        \
-        }                                                                                              \
-        else                                                                                           \
-        {                                                                                              \
-            return {};                                                                                 \
-        }                                                                                              \
-    }                                                                                                  \
-    static void Set##name(winrt::Windows::UI::Xaml::DependencyObject const& target, const type& value) \
-    {                                                                                                  \
-        target.SetValue(_##name##Property, winrt::box_value(value));                                   \
-    }                                                                                                  \
-                                                                                                       \
-private:                                                                                               \
-    static winrt::Windows::UI::Xaml::DependencyProperty _##name##Property;
-#endif
 
 // Use this macro for quickly defining the factory_implementation part of a
 // class. CppWinrt requires these for the compiler, but more often than not,

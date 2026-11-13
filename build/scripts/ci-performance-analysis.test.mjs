@@ -8,6 +8,101 @@ import { validatePerformanceFiles, validatePerformanceResult } from '../../.gith
 
 const script = fileURLToPath(new URL('./Invoke-CiPerformanceAnalysis.ps1', import.meta.url));
 
+test('dependency property defaults preserve values and compile with both MSVC and Clang',
+    { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
+        const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
+        fs.mkdirSync(parent, { recursive: true });
+        const root = fs.mkdtempSync(path.join(parent, 'dependency-properties-'));
+        t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+        fs.copyFileSync(new URL('../../src/cascadia/inc/WinrtDependencyProperty.h', import.meta.url),
+            path.join(root, 'WinrtDependencyProperty.h'));
+        const source = path.join(root, 'properties.cpp');
+        fs.writeFileSync(source, `#include <cassert>
+// This property test does not exercise DirectX intrinsics.
+#define _XM_NO_INTRINSICS_
+#include <winrt/Windows.Foundation.Collections.h>
+#ifdef GetCurrentTime
+#undef GetCurrentTime
+#endif
+#include <winrt/Windows.UI.Xaml.h>
+#include "WinrtDependencyProperty.h"
+
+using winrt::Windows::Foundation::IInspectable;
+using winrt::Windows::UI::Xaml::DependencyProperty;
+using winrt::Windows::UI::Xaml::Style;
+using winrt::Windows::UI::Xaml::Visibility;
+using Rows = winrt::Windows::Foundation::Collections::IVector<winrt::hstring>;
+
+// No XAML objects are activated; the fake store exercises null and boxed values.
+struct Properties
+{
+    IInspectable value{ nullptr };
+    IInspectable GetValue(const DependencyProperty&) const { return value; }
+    void SetValue(const DependencyProperty&, const IInspectable& next) { value = next; }
+    DEPENDENCY_PROPERTY(winrt::hstring, Text);
+    DEPENDENCY_PROPERTY(bool, Flag);
+    DEPENDENCY_PROPERTY(int, Number);
+    DEPENDENCY_PROPERTY(double, Opacity);
+    DEPENDENCY_PROPERTY(Visibility, Display);
+    DEPENDENCY_PROPERTY(IInspectable, Object);
+    DEPENDENCY_PROPERTY(Style, Appearance);
+    DEPENDENCY_PROPERTY(Rows, Items);
+};
+DependencyProperty Properties::_TextProperty{ nullptr };
+DependencyProperty Properties::_FlagProperty{ nullptr };
+DependencyProperty Properties::_NumberProperty{ nullptr };
+DependencyProperty Properties::_OpacityProperty{ nullptr };
+DependencyProperty Properties::_DisplayProperty{ nullptr };
+DependencyProperty Properties::_ObjectProperty{ nullptr };
+DependencyProperty Properties::_AppearanceProperty{ nullptr };
+DependencyProperty Properties::_ItemsProperty{ nullptr };
+
+struct AttachedProperties
+{
+    ATTACHED_DEPENDENCY_PROPERTY(winrt::hstring, Text);
+    ATTACHED_DEPENDENCY_PROPERTY(bool, Flag);
+    ATTACHED_DEPENDENCY_PROPERTY(Style, Appearance);
+};
+DependencyProperty AttachedProperties::_TextProperty{ nullptr };
+DependencyProperty AttachedProperties::_FlagProperty{ nullptr };
+DependencyProperty AttachedProperties::_AppearanceProperty{ nullptr };
+
+int main()
+{
+    Properties p;
+    assert(p.Text().empty());
+    assert(!p.Flag());
+    assert(p.Number() == 0);
+    assert(p.Opacity() == 0.0);
+    assert(p.Display() == Visibility::Visible);
+    assert(!p.Object());
+    assert(!p.Appearance());
+    assert(!p.Items());
+    p.Number(42);
+    assert(p.Number() == 42);
+    p.Flag(true);
+    assert(p.Flag());
+    p.Text(L"preserved");
+    assert(p.Text() == L"preserved");
+}
+`);
+        const sdk = path.join(process.env.WindowsSdkDir, 'Include', '10.0.26100.0', 'cppwinrt');
+        const exe = path.join(root, 'properties.exe');
+        execFileSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc', `/I${sdk}`,
+            `/Fe${exe}`, `/Fo${path.join(root, 'properties.obj')}`, source, '/link', 'WindowsApp.lib'],
+        { cwd: root, encoding: 'utf8', timeout: 120000, stdio: 'pipe' });
+        execFileSync(exe, [], { cwd: root, timeout: 15000, stdio: 'pipe' });
+        const clang = path.join(process.env.VCINSTALLDIR, 'Tools', 'Llvm', 'x64', 'bin', 'clang-tidy.exe');
+        const checked = spawnSync(clang, [source, '--checks=-*,performance-move-const-arg', '--extra-arg=-Wno-error',
+            '--', '--driver-mode=cl', '/std:c++20', '/EHsc', `/I${sdk}`],
+            { cwd: root, encoding: 'utf8', timeout: 120000 });
+        assert.equal(checked.error, undefined);
+        const evidence = path.join(process.cwd(), 'Generated Files', 'ci-performance-validation');
+        fs.mkdirSync(evidence, { recursive: true });
+        fs.writeFileSync(path.join(evidence, 'dependency-property-clang.log'), checked.stdout + checked.stderr);
+        assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+    });
+
 test('real CI profiles preserve performance warnings but reject actual compilation errors',
     { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
         const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
