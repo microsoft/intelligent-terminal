@@ -21,6 +21,7 @@ tools:
     - 'git diff:*'
     - 'git show:*'
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
   # A non-system artifact output suppresses gh-aw's default create-issue tool.
   upload-artifact:
     allowed-paths:

@@ -976,8 +976,9 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // including Antigravity, while rejecting option-shaped session IDs.
     // v12: compensate for missing-drive errors from the default drive-switch
     // functions, whose non-terminating Set-Location errors leave $? true.
+    // v14: limit shell integration to Intelligent Terminal using its host marker.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 12;
+    inline constexpr int kVersion = 14;
 
     inline std::wstring ScriptFileName()
     {
@@ -1022,6 +1023,10 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 #
 # Compatible with Windows PowerShell 5.1+ and PowerShell 7+.
 # Safe to source multiple times (idempotent guard).
+
+if ($env:INTELLIGENT_TERMINAL -ne '1') {
+    return
+}
 
 if (-not $Global:__ShellInteg_Installed) {
 
