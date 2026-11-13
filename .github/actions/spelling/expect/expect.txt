@@ -1841,6 +1841,7 @@ uwu
 uxtheme
 Vanara
 vararg
+VCINSTALLDIR
 vclib
 vcxitems
 VERCTRL
