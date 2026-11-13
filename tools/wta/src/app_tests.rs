@@ -9030,6 +9030,145 @@ mod qualified_hook_routing_tests {
     };
     use crate::session_registry::{InMemoryRegistry, SessionHookParams, SessionRegistry};
 
+    #[test]
+    fn fresh_wsl_admission_preserves_location_through_hook_lifecycle() {
+        for birth in [
+            "agent.session.started",
+            "agent.prompt.submit",
+            "session_born_bound",
+        ] {
+            let mut app = test_app();
+            let mut params = json!({
+                "event": birth,
+                "cli_source": "copilot",
+                "agent": "copilot",
+                "agent_session_id": "fresh-wsl",
+                "wsl_distro": "Ubuntu",
+                "payload": {"cwd": "/home/test/project"},
+                "cwd": "/home/test/project"
+            });
+            app.handle_event(AppEvent::WtEvent {
+                method: if birth == "session_born_bound" {
+                    birth
+                } else {
+                    "agent_event"
+                }
+                .into(),
+                pane_id: "pane-wsl".into(),
+                tab_id: None,
+                params: params.clone(),
+            });
+            assert_eq!(
+                app.agent_sessions
+                    .owner_for_pane("pane-wsl")
+                    .unwrap()
+                    .location,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into()
+                },
+                "{birth}"
+            );
+            for (event, status) in [
+                ("agent.prompt.submit", AgentStatus::Working),
+                ("agent.tool.starting", AgentStatus::Working),
+                ("agent.notification", AgentStatus::Attention),
+                ("agent.session.end", AgentStatus::Ended),
+            ] {
+                params["event"] = json!(event);
+                params["payload"] = json!({"tool_name": "read", "message": "approval"});
+                app.handle_event(AppEvent::WtEvent {
+                    method: "agent_event".into(),
+                    pane_id: "pane-wsl".into(),
+                    tab_id: None,
+                    params: params.clone(),
+                });
+                let row = app.agent_sessions.get(&"fresh-wsl".into()).unwrap();
+                assert_eq!(row.status, status, "{birth}: {event}");
+                assert_eq!(row.location.distro(), Some("Ubuntu"));
+            }
+            assert!(app.agent_sessions.owner_for_pane("pane-wsl").is_none());
+        }
+    }
+
+    #[test]
+    fn wsl_admission_does_not_relabel_rejected_or_existing_host_owner() {
+        for birth in ["agent.session.started", "session_born_bound"] {
+            for source in ["copilot", "claude"] {
+                for pane in ["pane-host", "wrong-pane"] {
+                    let mut app = test_app();
+                    app.agent_sessions.apply(SessionEvent::SessionStarted {
+                        key: "shared-id".into(),
+                        cli_source: CliSource::Copilot,
+                        pane_session_id: "pane-host".into(),
+                        cwd: "C:\\project".into(),
+                        title: "host".into(),
+                    });
+                    let before = app
+                        .agent_sessions
+                        .owner_for_pane("pane-host")
+                        .unwrap()
+                        .clone();
+                    app.handle_event(AppEvent::WtEvent {
+                        method: if birth == "session_born_bound" {
+                            birth
+                        } else {
+                            "agent_event"
+                        }
+                        .into(),
+                        pane_id: pane.into(),
+                        tab_id: None,
+                        params: json!({
+                            "event": birth,
+                            "agent": source,
+                            "cli_source": source,
+                            "agent_session_id": "shared-id",
+                            "wsl_distro": "Ubuntu",
+                            "payload": {}
+                        }),
+                    });
+                    let after = app.agent_sessions.owner_for_pane("pane-host").unwrap();
+                    assert_eq!(after.identity(), before.identity(), "{birth}: {source}");
+                    assert_eq!(after.status, before.status);
+                    assert_eq!(after.title, before.title);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn host_admission_preserves_private_qualified_row_with_same_raw_id() {
+        let (_, _, _, _, mut retained) = helper_native_resume_fixture();
+        retained.key = "shared-id".into();
+        retained.cli_source = CliSource::Claude;
+        retained.location = SessionLocation::Host;
+        let mut app = test_app();
+        app.agent_sessions.retain_resume_candidate(&retained);
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".into(),
+            pane_id: "pane-copilot".into(),
+            tab_id: None,
+            params: json!({
+                "event": "agent.session.started",
+                "cli_source": "copilot",
+                "agent_session_id": "shared-id",
+                "payload": {"cwd": "C:\\project"}
+            }),
+        });
+
+        let owner = app.agent_sessions.owner_for_pane("pane-copilot").unwrap();
+        assert_eq!(owner.key, "shared-id");
+        assert_eq!(owner.cli_source, CliSource::Copilot);
+        assert_eq!(owner.location, SessionLocation::Host);
+        let preserved = app
+            .agent_sessions
+            .get_identity(&retained.identity())
+            .unwrap();
+        assert_eq!(preserved.status, retained.status);
+        assert_eq!(preserved.pane_session_id, retained.pane_session_id);
+        assert_eq!(app.agent_sessions.iter_sorted().len(), 2);
+    }
+
     #[tokio::test]
     async fn qualified_hook_routing_preserves_colliding_owners_and_forwarded_activity() {
         let (_, _, _, _, template) = helper_native_resume_fixture();

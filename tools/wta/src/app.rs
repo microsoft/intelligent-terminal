@@ -1133,7 +1133,17 @@ where
         } else {
             ev
         };
-        reg.apply(ev.clone());
+        let location = params
+            .get("wsl_distro")
+            .and_then(serde_json::Value::as_str)
+            .filter(|distro| !distro.is_empty())
+            .map(|distro| crate::agent_sessions::SessionLocation::Wsl {
+                distro: distro.to_string(),
+            })
+            .unwrap_or(crate::agent_sessions::SessionLocation::Host);
+        if !reg.apply_with_location(ev.clone(), location) {
+            return false;
+        }
         hook_sink(ev);
     }
 

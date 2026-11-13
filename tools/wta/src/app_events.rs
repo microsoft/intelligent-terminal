@@ -470,7 +470,14 @@ impl App {
         event: crate::agent_sessions::SessionEvent,
         wsl_distro: Option<String>,
     ) {
-        self.agent_sessions.apply(event.clone());
+        let location = wsl_distro
+            .as_ref()
+            .map(|distro| crate::agent_sessions::SessionLocation::Wsl {
+                distro: distro.clone(),
+            })
+            .unwrap_or(crate::agent_sessions::SessionLocation::Host);
+        self.agent_sessions
+            .apply_with_location(event.clone(), location);
         if self
             .master_request_tx
             .send(

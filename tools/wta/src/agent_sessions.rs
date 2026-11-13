@@ -663,6 +663,62 @@ impl AgentSessionRegistry {
         self.apply_at(ev, SystemTime::now());
     }
 
+    pub(crate) fn apply_with_location(
+        &mut self,
+        ev: SessionEvent,
+        location: SessionLocation,
+    ) -> bool {
+        let SessionEvent::SessionStarted {
+            key,
+            cli_source,
+            pane_session_id,
+            ..
+        } = &ev
+        else {
+            self.apply(ev);
+            return true;
+        };
+        if pane_session_id.is_empty() && location.is_wsl() {
+            return false;
+        }
+        let existing = self
+            .owner_for_pane(pane_session_id)
+            .filter(|row| row.key == *key && row.cli_source == *cli_source);
+        if location.is_wsl()
+            && (existing.is_some_and(|row| row.location != location)
+                || (existing.is_none()
+                    && self.sessions.values().any(|row| {
+                        row.key == *key
+                            && (row.cli_source != *cli_source || row.location != location)
+                    })))
+        {
+            return false;
+        }
+        let fresh = !self
+            .sessions
+            .values()
+            .any(|row| row.key == *key && row.cli_source == *cli_source);
+        let (key, cli_source, pane) = (key.clone(), cli_source.clone(), pane_key(pane_session_id));
+        self.apply(ev);
+        if pane.is_empty() {
+            return true;
+        }
+        // A rejected start must not relabel an unrelated raw-ID match.
+        if let Some(row) = self
+            .active_by_pane
+            .get(&pane)
+            .and_then(|stored| self.sessions.get_mut(stored))
+            .filter(|row| row.key == key && row.cli_source == cli_source)
+        {
+            if fresh {
+                row.location = location;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     pub(crate) fn apply_at(&mut self, ev: SessionEvent, now: SystemTime) {
         let qualified_resume = matches!(
             &ev,

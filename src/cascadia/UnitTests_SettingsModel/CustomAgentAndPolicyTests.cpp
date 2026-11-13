@@ -544,34 +544,34 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::AgentProfileOriginalCaseReload()
     {
         namespace Agents = ::Microsoft::Terminal::AgentProfiles;
-        const auto guid = Agents::GeneratedGuid(L"custom:MyAgent");
+        const auto guid = Agents::GeneratedGuid(L"custom:Sample");
         const auto guidText = winrt::to_string(Utils::GuidToString(guid));
         const auto generated = std::string{ R"({"profiles":[{"guid":")" } + guidText +
-                               R"(","name":"MyAgent","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:MyAgent"}]})";
+                               R"(","name":"Sample","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:Sample"}]})";
         const auto user = std::string{ R"({"profiles":[{"guid":")" } + guidText +
-                          R"(","name":"Saved original","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:myagent",
-                          "commandline":"MyAgent.exe --interactive","icon":"C:\\art\\custom.svg","agentProfile.resumeArguments":"--load"},
+                          R"(","name":"Saved original","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:sample",
+                          "commandline":"Sample.exe --interactive","icon":"C:\\art\\custom.svg","agentProfile.resumeArguments":"--load"},
                           {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Copy",
-                          "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:myagent"}]})";
+                          "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:sample"}]})";
         const auto settings = winrt::make_self<implementation::CascadiaSettings>(user, generated);
         const auto reloaded = winrt::make_self<implementation::CascadiaSettings>(toString(settings->ToJson()), generated);
-        const auto original = Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent");
+        const auto original = Agents::FindOriginal(reloaded->AllProfiles(), L"custom:sample");
         VERIFY_IS_NOT_NULL(original);
         VERIFY_ARE_EQUAL(guid, original.Guid());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:myagent" }, original.AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:sample" }, original.AgentProfileId());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"Saved original" }, original.Name());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"MyAgent.exe --interactive" }, original.Commandline());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Sample.exe --interactive" }, original.Commandline());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\art\\custom.svg" }, original.Icon().Path());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"--load" }, original.AgentProfileResumeArguments());
         VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:unrelated"));
         const auto copy = reloaded->DuplicateProfile(original);
-        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:MYAGENT").Guid());
+        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:SAMPLE").Guid());
         copy.Source(winrt::hstring{ Agents::Source });
-        copy.AgentProfileId(L"custom:myagent");
-        copy.Guid(Agents::GeneratedGuid(L"custom:myagent"));
-        VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent"));
+        copy.AgentProfileId(L"custom:sample");
+        copy.Guid(Agents::GeneratedGuid(L"custom:sample"));
+        VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:sample"));
         copy.Source(L"unrelated");
-        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent").Guid());
+        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:sample").Guid());
         original.AgentProfileId(L"custom:other");
         VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:other"));
     }
