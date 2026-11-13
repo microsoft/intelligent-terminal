@@ -163,7 +163,7 @@ launch settings, then appends its resume arguments and the session ID. Normal
 new tabs and splits do not receive that suffix. Generated profiles provide
 provider-specific defaults; changing the setting changes resume behavior rather
 than being overridden by another runtime provider-to-flag table. Reset restores
-the inherited value. An explicit empty value appends the session ID positionally,
+the inherited value. An explicit empty value appends the session ID as the final argument,
 without a resume flag or verb, for built-in and custom profiles alike; it does not
 disable resume.
 

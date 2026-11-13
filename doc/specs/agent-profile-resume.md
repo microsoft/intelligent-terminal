@@ -14,7 +14,7 @@ added in AI Agents settings did not receive corresponding profiles.
 | Annotation | Change |
 | --- | --- |
 | 1 | Show an explicit **Agent profile** badge and provider name. Use existing `agentProfile.id` identity, not the editable display name. The separate managed-original protection message explains why Delete is unavailable; a user-created agent-profile copy still has the badge but remains deletable. |
-| 2 | Add **Resume arguments** below additional startup arguments. Enter only the argument or verb, such as `--resume` or `resume`. Hint: **Added after the normal startup arguments only when resuming a session. The session ID is appended automatically.** No placeholder input and no command preview. Built-ins inherit profile defaults with reset/inheritance affordances; an empty override adds the ID positionally with no resume prefix. |
+| 2 | Add **Resume arguments** below additional startup arguments. Enter only the argument or verb, such as `--resume` or `resume`. Hint: **Added after the normal startup arguments only when resuming a session. The session ID is appended automatically.** No placeholder input and no command preview. Built-ins inherit profile defaults with reset and inheritance controls; an empty override adds the ID as the final argument with no resume prefix. |
 | 3 | The help text explains composition: **Your launch command and additional startup arguments are kept. Resume arguments and the session ID are added only when you resume a session.** This is explanatory text, not another control. |
 | 4 | Replace Delete with **This profile is managed by AI Agents. You can hide it instead.** Keep appearance, hide, and copy controls. Protect the managed original, not user-created copies. |
 | 5 | Each custom agent saved in AI Agents gets one corresponding managed profile. Configure its native CLI using that profile's existing **Command line** setting and its **Resume arguments**. No second custom-agent editor or duplicate native-command setting is needed; an ACP command is not assumed to be an interactive CLI command. |
@@ -41,7 +41,7 @@ executable, shell script, or conversation ID:
 ```
 
 An omitted value inherits the profile default. An explicit empty string adds
-the session ID positionally, without a resume flag/verb, for both built-in and
+the session ID as the final argument, without a resume flag/verb, for both built-in and
 custom profiles. It does not disable resume. The UI shows the automatic-ID hint
 beside the field; users never type `{sessionId}`. Parse resume arguments using the same
 argument rules as additional startup arguments, then append the validated,
@@ -144,7 +144,7 @@ command is unavailable, report an actionable error; never launch a default
 shell or silently resume through a different profile. Legacy WSL history keeps
 its exact distro and Linux cwd on the existing WSL route; never substitute a host
 executable path or Windows environment.
-Unavailable stored directories retain the existing reported fallback to the
+Unavailable stored directories keep the existing behavior: fall back to the
 selected profile's directory.
 
 Live sessions still focus their existing pane. ACP-origin sessions retain

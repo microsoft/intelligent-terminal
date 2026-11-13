@@ -112,7 +112,7 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
             profile->Name(winrt::hstring{ id.substr(7) });
             profile->AgentProfileId(winrt::hstring{ id });
             profile->StartingDirectory(L"%USERPROFILE%");
-            // An ACP command may name an adapter (npx/uvx/etc.), not a TUI.
+            // An ACP command may name an adapter, not an interactive CLI.
             // Require a separately configured native command; never guess one.
             profile->Commandline(L"");
             profiles.emplace_back(std::move(profile));
