@@ -676,7 +676,6 @@ fn master_session_management_reconciliation_defaults_on_and_can_be_disabled() {
 }
 
 // ── json_str_or_num: tolerant scalar extraction for human table rows ─────────
-
 #[test]
 fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     let v = serde_json::json!({ "s": "hi", "n": 42, "b": true, "nl": null });

@@ -603,6 +603,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
+        TEST_METHOD(CustomNativeAgentsUseHooklessStatusInBothModes);
+        TEST_METHOD(CustomAgentCatalogEditsPreserveExistingAgentPane);
         TEST_METHOD(NativeAgentProgressFollowsConfirmedOwner);
         TEST_METHOD(NativeAgentAcceptedOwnerSurvivesUnreadyReceiver);
         TEST_METHOD(NativeAgentSessionsOffObservesParsedSignals);
@@ -25894,6 +25896,125 @@ namespace TerminalAppLocalTests
             snapshot.byPane.at(control.Connection().SessionId()));
         page->_PreserveNativeAgentIdentity(control);
         page->_agentSnapshotLoaded = true;
+    }
+
+    void TabTests::CustomNativeAgentsUseHooklessStatusInBothModes()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto enabled : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(enabled);
+                page->_SyncNativeAgentStatusMode();
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                std::vector<Json::Value> events;
+                const auto capture = [&](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder builder;
+                    std::istringstream stream{ winrt::to_string(json) };
+                    std::string errors;
+                    if (Json::parseFromStream(builder, stream, &event, &errors) &&
+                        event.get("method", "").asString() == "native_agent_observation")
+                    {
+                        events.push_back(event["params"]);
+                    }
+                };
+                const auto token = page->ProtocolVtSequenceReceived(capture);
+                const auto managerToken = manager->DetachedSessionEvent(capture);
+                const auto revoke = wil::scope_exit([&]() {
+                    page->ProtocolVtSequenceReceived(token);
+                    manager->DetachedSessionEvent(managerToken);
+                });
+                for (const auto provider : { L"custom:qwen", L"custom:kimi" })
+                {
+                    for (const auto managedProfile : { false, true })
+                    {
+                        const winrt::guid paneId{ Utils::CreateGuid() };
+                        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                        NewTerminalArgs args;
+                        const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                        const auto previousAgent = profile.AgentProfileId();
+                        const auto previousCommandline = profile.Commandline();
+                        const auto restoreProfile = wil::scope_exit([&]() {
+                            profile.AgentProfileId(previousAgent);
+                            profile.Commandline(previousCommandline);
+                        });
+                        if (managedProfile)
+                        {
+                            profile.AgentProfileId(provider);
+                            profile.Commandline(L"cmd.exe /d /k");
+                            args.Profile(Utils::GuidToString(profile.Guid()));
+                        }
+                        else
+                        {
+                            args.NativeAgentProviderId(provider);
+                        }
+                        const auto pane = page->_MakePane(args, nullptr, *connection);
+                        VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                        const auto control = pane->GetTerminalControl();
+                        events.clear();
+                        page->_PublishNativeAgentObservation(control, "reset", true);
+                        VERIFY_IS_FALSE(events.empty());
+                        VERIFY_IS_FALSE(events.front()["tracking_enabled"].asBool());
+                        VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ provider }), events.front()["provider_id"].asString());
+                        events.clear();
+                        page->_PublishNativeAgentSignal(control, false, 3);
+                        page->_PublishNativeAgentSignal(control, true, 0);
+                        VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+                        VERIFY_ARE_EQUAL(std::string{ "progress" }, events[0]["kind"].asString());
+                        VERIFY_ARE_EQUAL(std::string{ "bell" }, events[1]["kind"].asString());
+                        _applyNativeRegistrySnapshot(page, control, "Attention");
+                        const auto info = page->_RichTabAgentInfoForControl(control);
+                        VERIFY_IS_TRUE(info.has_value());
+                        VERIFY_ARE_EQUAL(std::string{ "Attention" }, info->status);
+                        const auto foreign = _keepRunningHook(paneId, "agent.session.start", "foreign", "copilot");
+                        page->_manager.OnPaneAgentSessionChanged(foreign);
+                        page->OnPaneAgentSessionChanged(foreign);
+                        VERIFY_IS_TRUE(manager->AgentSessionEvent(control.ContentId()).empty());
+                        VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                        events.clear();
+                        control.Close();
+                        VERIFY_IS_FALSE(events.empty());
+                        VERIFY_ARE_EQUAL(std::string{ "removed" }, events.back()["kind"].asString());
+                    }
+                }
+            });
+        }
+    }
+
+    void TabTests::CustomAgentCatalogEditsPreserveExistingAgentPane()
+    {
+        auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            const auto tab = page->_GetFocusedTabImpl();
+            auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Left, 0.5f, pane);
+            const auto content = tab->FindAgentPaneContent();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            impl->SetAgentSessionId(L"preserved-acp-session");
+            const auto transferId = impl->TransferId();
+            for (const auto selected : { L"copilot", L"custom:existing" })
+            {
+                globals.AcpAgent(selected);
+                globals.AcpCustomCommand(L"existing --acp");
+                page->_lastAgentSettings = page->_CaptureAgentSettingsSnapshot();
+                page->_agentSettingsSnapshotInitialized = true;
+                for (const auto command : { L"qwen --acp", L"qwen --acp --changed", L"" })
+                {
+                    globals.AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ command }));
+                    page->_ReconcileAgentSettings();
+                    VERIFY_IS_TRUE(tab->FindAgentPaneContent() == content);
+                    VERIFY_ARE_EQUAL(transferId, impl->TransferId());
+                    VERIFY_IS_TRUE(impl->AgentSessionId() == L"preserved-acp-session");
+                    VERIFY_IS_FALSE(page->_agentLifecycleOperationInProgress);
+                }
+            }
+        });
     }
 
     void TabTests::NativeAgentSessionsOnPublishesProgressForHookOwner()

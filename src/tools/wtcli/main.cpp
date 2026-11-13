@@ -17,6 +17,8 @@
 #include "ITerminalProtocol.h"
 #include "../../cascadia/inc/TerminalProtocolProxyRegistration.h"
 #include "../../cascadia/inc/WslDistroName.h"
+#include "../../cascadia/inc/AgentPolicy.h"
+#include "../../cascadia/inc/CustomAcpAgentCommands.h"
 
 #include <CLI/CLI.hpp>
 
@@ -659,7 +661,18 @@ int wmain(int argc, wchar_t** argv)
 
     // ── get-settings ──
     auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    bool customAcpCommands = false;
+    getSettingsCmd->add_flag("--custom-acp-commands", customAcpCommands, "Project the policy-allowed configured custom ACP commands");
     getSettingsCmd->callback([&]() {
+        if (customAcpCommands)
+        {
+            Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+            if (!Microsoft::Terminal::Settings::Model::AgentPolicy::IsCustomAgentAllowed())
+            {
+                PrintJson(Json::Value{ Json::objectValue });
+                return;
+            }
+        }
         auto server = connect();
         if (!server) return;
         Json::Value settings;
@@ -669,6 +682,19 @@ int wmain(int argc, wchar_t** argv)
             fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
             return;
+        }
+        if (customAcpCommands)
+        {
+            try
+            {
+                settings = Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings);
+            }
+            catch (...)
+            {
+                fprintf(stderr, "Custom ACP catalog projection failed: invalid catalog settings\n");
+                exitCode = 1;
+                return;
+            }
         }
         PrintJson(settings);
     });
