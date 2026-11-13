@@ -2,6 +2,15 @@ name: Native PR CI
 
 on:
   workflow_call:
+    inputs:
+      performance_base_sha:
+        required: false
+        type: string
+        default: ''
+      run_unit_tests:
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   actions: read
@@ -43,16 +52,27 @@ jobs:
       - name: Resolve performance comparison base
         id: scope
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          MANUAL_PERFORMANCE_BASE_SHA: ${{ inputs.performance_base_sha }}
         with:
           retries: 2
           script: |
-            if (context.eventName !== 'pull_request') return;
-            const pr = context.payload.pull_request;
+            let base, head;
+            if (context.eventName === 'pull_request') {
+              base = context.payload.pull_request.base.sha;
+              head = context.payload.pull_request.head.sha;
+            } else if (context.eventName === 'workflow_dispatch' && process.env.MANUAL_PERFORMANCE_BASE_SHA) {
+              base = process.env.MANUAL_PERFORMANCE_BASE_SHA;
+              head = context.sha;
+              if (!/^[0-9a-f]{40}$/.test(base)) throw Error('Manual comparison requires an immutable SHA.');
+            } else return;
             const { data } = await github.rest.repos.compareCommits({
-              ...context.repo, base: pr.base.sha, head: pr.head.sha, per_page: 1,
+              ...context.repo, base, head, per_page: 1,
             });
             const sha = data.merge_base_commit?.sha;
             if (!/^[0-9a-f]{40}$/.test(sha || '')) throw Error('Invalid performance comparison base.');
+            if (context.eventName === 'workflow_dispatch' && sha !== base)
+              throw Error('Manual comparison base must be an ancestor of the build head.');
             core.setOutput('comparison_base_sha', sha);
 
   cpp:
@@ -160,6 +180,7 @@ jobs:
           if errorlevel 1 exit /b 1
 
       - name: Test all C++ units
+        if: github.event_name != 'workflow_dispatch' || inputs.run_unit_tests
         run: |
           $ErrorActionPreference = 'Stop'
           $expected = @(
@@ -267,6 +288,7 @@ jobs:
           }
 
       - name: Test all x64 Rust units
+        if: github.event_name != 'workflow_dispatch' || inputs.run_unit_tests
         run: |
           foreach ($manifest in @('tools\wta\Cargo.toml', 'installer\bootstrap\Cargo.toml')) {
             cargo +1.93.0 test --locked --bins --target x86_64-pc-windows-msvc --manifest-path $manifest

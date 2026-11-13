@@ -23,6 +23,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      performance_base_sha:
+        description: 'Immutable ancestor used to exercise real production performance scope'
+        required: false
+        type: string
+      run_unit_tests:
+        description: 'Execute unit tests during this manual validation'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   actions: read
@@ -35,3 +45,6 @@ concurrency:
 jobs:
   native:
     uses: ./.github/workflows/pr-ci-native.yml
+    with:
+      performance_base_sha: ${{ inputs.performance_base_sha || '' }}
+      run_unit_tests: ${{ github.event_name != 'workflow_dispatch' || inputs.run_unit_tests }}
