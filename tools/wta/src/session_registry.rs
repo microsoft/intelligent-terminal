@@ -542,6 +542,8 @@ pub enum ProgramBlockKind {
 pub struct ProgramStatusSnapshot {
     pub revision: u64,
     pub observed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_lease_active: Option<bool>,
     pub state: Option<ProgramState>,
     #[serde(default)]
     pub kind: Option<ProgramBlockKind>,
@@ -568,6 +570,10 @@ pub struct ProgramStatusSnapshot {
 }
 
 impl ProgramStatusSnapshot {
+    fn native_lease_active(&self) -> bool {
+        self.native_lease_active.unwrap_or(self.observed)
+    }
+
     fn is_valid(&self) -> bool {
         let counts = [self.working, self.blocked, self.done, self.error];
         self.revision <= (1_u64 << 53) - 1
@@ -3607,7 +3613,7 @@ fn apply_native_observation_locked(
         program
             .snapshot
             .as_ref()
-            .is_some_and(|snapshot| snapshot.observed)
+            .is_some_and(ProgramStatusSnapshot::native_lease_active)
     }) {
         return false;
     }
@@ -6048,6 +6054,70 @@ mod tests {
             registry.pane_status_snapshot().await.0[0].status,
             AgentStatus::Attention
         );
+    }
+
+    #[tokio::test]
+    async fn program_status_released_lease_accepts_legacy_progress() {
+        let (registry, identity) = native_bound_registry().await;
+        registry
+            .apply_native_observation(native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+                1,
+            ))
+            .await;
+        assert!(
+            registry
+                .apply_native_observation(native_event(
+                    serde_json::json!({
+                        "kind":"program_status",
+                        "program_status":{
+                            "revision":1,
+                            "observed":true,
+                            "native_lease_active":false,
+                            "state":null,
+                            "working":0,
+                            "blocked":0,
+                            "done":0,
+                            "error":0,
+                            "unseen_done":0,
+                            "unseen_error":0
+                        }
+                    }),
+                    1,
+                ))
+                .await
+        );
+        assert!(
+            registry
+                .apply_native_observation(native_event(
+                    serde_json::json!({"kind":"progress", "progress_state":1}),
+                    1,
+                ))
+                .await
+        );
+        assert_eq!(
+            registry.lookup_identity(&identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[test]
+    fn program_status_snapshot_preserves_explicit_lease() {
+        let snapshot: ProgramStatusSnapshot = serde_json::from_value(serde_json::json!({
+            "revision":1,
+            "observed":true,
+            "native_lease_active":false,
+            "state":null,
+            "working":0,
+            "blocked":0,
+            "done":0,
+            "error":0,
+            "unseen_done":0,
+            "unseen_error":0
+        }))
+        .unwrap();
+        let wire = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(wire["native_lease_active"], false);
     }
 
     #[tokio::test]

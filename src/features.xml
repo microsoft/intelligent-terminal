@@ -4,7 +4,10 @@
     <feature>
         <name>Feature_ProgramStatusProtocol</name>
         <description>Enables OSC 7501 program status reporting and presentation.</description>
-        <stage>AlwaysEnabled</stage>
+        <stage>AlwaysDisabled</stage>
+        <alwaysEnabledBrandingTokens>
+            <brandingToken>Dev</brandingToken>
+        </alwaysEnabledBrandingTokens>
     </feature>
 
     <feature>

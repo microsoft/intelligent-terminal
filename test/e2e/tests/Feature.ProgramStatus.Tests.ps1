@@ -131,15 +131,16 @@ Describe 'Feature: OSC 7501 program status' -Tag @('Feature', 'ProgramStatus') {
         $rows[0].native_agent_provider_id | Should -BeNullOrEmpty
     }
 
-    It 'OSC 7501 prompt cleanup retains unread results but removes live tasks' {
+    It 'OSC 7501 prompt markers preserve unrelated live tasks and unread results' {
         $wire = New-ProgramWire @(
             'id=result:state=done',
             'id=running:state=working',
             'id=approval:state=blocked:kind=permission'
         )
         Write-ProgramWire ($wire + [char]27 + ']133;A' + [char]27 + '\')
-        $snapshot = Wait-ProgramSnapshot { param($value) $value.working -eq 0 -and $value.blocked -eq 0 -and $value.unseen_done -eq 1 }
+        $snapshot = Wait-ProgramSnapshot { param($value) $value.working -eq 1 -and $value.blocked -eq 1 -and $value.unseen_done -eq 1 }
         $snapshot.done | Should -Be 1
+        $snapshot.native_lease_active | Should -BeTrue
         Assert-ProgramMetadata 'Completed'
     }
 }

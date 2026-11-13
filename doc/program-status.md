@@ -1,6 +1,6 @@
 # OSC 7501 program status
 
-All builds recognize revision 0.4 of the
+Dev builds recognize revision 0.4 of the
 [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status).
 
 Programs report `idle`, `working`, `blocked`, `done` or `error`. `clear` removes
@@ -139,11 +139,20 @@ persisted history state.
 
 ## Lifecycle and limits
 
-Reports have no heartbeat or timeout. OSC 133 A and actual process exit remove
-live Working/Blocked/Idle records while retaining results. RIS clears protocol
-state; DECSTR and alternate-screen transitions preserve it. Once accepted,
-program status takes precedence over legacy OSC 9;4/BEL activity until RIS;
-Clear does not resurrect stale legacy progress.
+Reports have no heartbeat or timeout. Prompt markers such as OSC 133 A and
+iTerm2 SetMark do not identify the producer of a status record, so they do not
+clear program status. Actual process exit removes live Working/Blocked/Idle
+records while retaining results. RIS clears protocol state; DECSTR and
+alternate-screen transitions preserve it.
+
+The first live report acquires a native-status lease and suppresses any legacy
+OSC 9;4 progress that preceded it. Legacy OSC 9;4 progress and WTA's BEL/progress
+status arbitration do not take ownership while that lease is active; audible
+and visual bell behavior is unchanged. A root Clear or actual process exit
+releases the lease without resurrecting discarded legacy progress; new legacy
+reports received after release are accepted. Subtree Clear never acquires an
+inactive lease and does not release an active one. Idle retains the lease so
+long-lived agents do not hand taskbar ownership back between turns.
 
 The parser uses a conservative 4087-byte body budget and counts extra OSC prefix
 bytes against the 4096-byte sequence limit, reserving two bytes for termination.

@@ -26,6 +26,7 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
     struct PaneStatus
     {
         bool observed{};
+        bool nativeLeaseActive{};
         uint32_t working{};
         uint32_t blocked{};
         uint32_t unseenDone{};

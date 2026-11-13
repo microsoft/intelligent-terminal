@@ -151,7 +151,6 @@ public:
     bool IsConPTY() const noexcept override;
     bool SupportsProgramStatus() const noexcept override;
     void ApplyProgramStatus(const Microsoft::Console::VirtualTerminal::ProgramStatus::Command& command) override;
-    void ProgramStatusPromptStarted() override;
     void ResetProgramStatus() override;
     Microsoft::Console::VirtualTerminal::StateMachine& GetStateMachine() noexcept override;
     BufferState GetBufferAndViewport() noexcept override;

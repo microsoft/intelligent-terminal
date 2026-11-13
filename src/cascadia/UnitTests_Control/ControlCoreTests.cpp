@@ -155,6 +155,8 @@ namespace ControlUnitTests
                    L"\x1b]7501;id=job:state=working:progress=42:title=SGk=:msg=b2s=\x7");
         auto json = Json::JsonObject::Parse(core->ProgramStatusJson());
         VERIFY_IS_TRUE(json.GetNamedBoolean(L"observed"));
+        VERIFY_IS_TRUE(json.HasKey(L"native_lease_active"));
+        VERIFY_IS_TRUE(json.GetNamedBoolean(L"native_lease_active"));
         VERIFY_ARE_EQUAL(L"working", json.GetNamedString(L"state"));
         VERIFY_ARE_EQUAL(42.0, json.GetNamedNumber(L"progress"));
         VERIFY_ARE_EQUAL(L"ok", json.GetNamedString(L"message"));
@@ -192,9 +194,11 @@ namespace ControlUnitTests
         VERIFY_ARE_EQUAL(4u, core->TaskbarState());
 
         conn->Emit(L"\x1b]7501;state=clear\x7\x1b]9;4;1;99\x7");
-        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
-        VERIFY_ARE_EQUAL(0u, core->TaskbarProgress());
-        VERIFY_IS_TRUE(Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedBoolean(L"observed"));
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(99u, core->TaskbarProgress());
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_IS_TRUE(json.GetNamedBoolean(L"observed"));
+        VERIFY_IS_FALSE(json.GetNamedBoolean(L"native_lease_active"));
     }
 
     void ControlCoreTests::ProgramStatusResultsAndAcknowledgment()
@@ -265,6 +269,10 @@ namespace ControlUnitTests
         VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"working"));
         VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"done"));
         VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"unseen_done"));
+        VERIFY_IS_FALSE(json.GetNamedBoolean(L"native_lease_active"));
+        conn->Emit(L"\x1b]9;4;1;64\x7");
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(64u, core->TaskbarProgress());
         conn->Emit(L"\x1b]7501;id=late-live:state=working\x7\x1b]7501;id=late-result:state=done\x7");
         json = Json::JsonObject::Parse(core->ProgramStatusJson());
         VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"working"));

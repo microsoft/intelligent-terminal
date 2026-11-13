@@ -71,7 +71,7 @@ namespace TerminalCoreUnitTests
             VERIFY_IS_FALSE(f.terminal.GetProgramStatusSnapshot().observed);
         }
 
-        TEST_METHOD(TaskbarLatchDoesNotResurrectLegacyProgress)
+        TEST_METHOD(TaskbarOwnershipReleasesAtExplicitBoundaries)
         {
             Fixture f;
             const auto lock = f.terminal.LockForWriting();
@@ -81,10 +81,31 @@ namespace TerminalCoreUnitTests
             f.Report(L"state=working");
             f.terminal.SetTaskbarProgress(TaskbarState::Set, 99);
             VERIFY_ARE_EQUAL(size_t{ 17 }, f.terminal.GetTaskbarProgress());
+            f.Report(L"state=clear");
+            f.terminal.SetTaskbarProgress(TaskbarState::Set, 73);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetTaskbarState());
+            VERIFY_ARE_EQUAL(size_t{ 73 }, f.terminal.GetTaskbarProgress());
+            f.Report(L"state=working");
+            f.terminal.ProgramStatusProcessExited();
+            f.terminal.SetTaskbarProgress(TaskbarState::Set, 61);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetTaskbarState());
+            VERIFY_ARE_EQUAL(size_t{ 61 }, f.terminal.GetTaskbarProgress());
             f.terminal.GetStateMachine().ProcessString(L"\033c");
             VERIFY_ARE_EQUAL(size_t{ 0 }, f.terminal.GetTaskbarState());
             VERIFY_ARE_EQUAL(size_t{ 0 }, f.terminal.GetTaskbarProgress());
-            VERIFY_ARE_EQUAL(size_t{ 1 }, legacyChanges);
+            VERIFY_ARE_EQUAL(size_t{ 3 }, legacyChanges);
+        }
+
+        TEST_METHOD(InactiveSubtreeClearDoesNotTakeTaskbarOwnership)
+        {
+            Fixture f;
+            const auto lock = f.terminal.LockForWriting();
+            f.terminal.SetTaskbarProgress(TaskbarState::Set, 17);
+            f.Report(L"state=clear:id=missing");
+            VERIFY_IS_TRUE(f.terminal.GetProgramStatusSnapshot().observed);
+            f.terminal.SetTaskbarProgress(TaskbarState::Set, 81);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetTaskbarState());
+            VERIFY_ARE_EQUAL(size_t{ 81 }, f.terminal.GetTaskbarProgress());
         }
 
         TEST_METHOD(InvalidIdsAndAtomicLimits)
@@ -337,10 +358,10 @@ namespace TerminalCoreUnitTests
             f.terminal.GetStateMachine().ProcessString(L"\x1b[!p\x1b[?1049h\x1b[?1049l");
             VERIFY_ARE_EQUAL(size_t{ 4 }, f.terminal.GetProgramStatusSnapshot().records.size());
             f.terminal.GetStateMachine().ProcessString(L"\x1b]133;A\a");
-            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().records.size());
+            VERIFY_ARE_EQUAL(size_t{ 4 }, f.terminal.GetProgramStatusSnapshot().records.size());
             f.Report(L"state=working:id=b");
             f.terminal.GetStateMachine().ProcessString(L"\x1b]1337;SetMark\a");
-            VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().records.size());
+            VERIFY_ARE_EQUAL(size_t{ 4 }, f.terminal.GetProgramStatusSnapshot().records.size());
             f.Report(L"state=working:id=b");
             f.terminal.ProgramStatusProcessExited();
             VERIFY_ARE_EQUAL(size_t{ 1 }, f.terminal.GetProgramStatusSnapshot().records.size());

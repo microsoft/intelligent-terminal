@@ -251,6 +251,36 @@ namespace NativeMock
         puts("Listener timestamp formatting tests passed.");
     }
 
+    void CheckListenEventFiltering()
+    {
+        const auto matches = [](const char* json, const char* filter) {
+            return wtcli::MatchesEventFilter(json, "", filter);
+        };
+
+        Require(matches(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "program_status_changed"));
+        Require(matches(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "program_status*"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent_event"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent.task.completed"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent.*"));
+        Require(!matches(R"({"method":"program_status_changed","params":{"event":"agent.task.completed"}})", "agent.task.completed"));
+
+        for (const auto* subtype : {
+                 R"({"method":"agent_event","params":{}})",
+                 R"({"method":"agent_event","params":{"event":1}})",
+                 R"({"method":"agent_event","params":{"event":true}})",
+                 R"({"method":"agent_event","params":{"event":{}}})",
+                 R"({"method":"agent_event","params":{"event":[]}})",
+             })
+        {
+            Require(matches(subtype, "agent_event"));
+            Require(!matches(subtype, "agent.*"));
+        }
+
+        Require(wtcli::MatchesEventFilter(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "owner", "program_status_changed"));
+        Require(!wtcli::MatchesEventFilter(R"({"method":"program_status_changed","params":{"pane_id":"other"}})", "owner", "program_status_changed"));
+        puts("Listener event filtering tests passed.");
+    }
+
     int Listen(bool existingOnly)
     {
         wchar_t executable[] = L"wtcli";
@@ -323,6 +353,7 @@ int wmain()
     try
     {
         CheckListenTimestampFormatting();
+        CheckListenEventFiltering();
         SetEnvironmentVariableW(L"WT_COM_CLSID", L"{11111111-1111-1111-1111-111111111111}");
         CheckProfileQueries();
         for (const auto failLoad : { false, true })

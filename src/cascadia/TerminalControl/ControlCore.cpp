@@ -640,6 +640,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         JsonObject root;
         root.SetNamedValue(L"observed", JsonValue::CreateBooleanValue(snapshot.observed));
+        root.SetNamedValue(L"native_lease_active", JsonValue::CreateBooleanValue(snapshot.nativeLeaseActive));
         root.SetNamedValue(L"state", summary.current ? JsonValue::CreateStringValue(hstring{ programStatusStateName(summary.current->state) }) : null);
         root.SetNamedValue(L"kind", summary.current ? optionalKind(summary.current->kind) : null);
         root.SetNamedValue(L"task_id", summary.current ? JsonValue::CreateStringValue(winrt::to_hstring(summary.current->id)) : null);
@@ -1912,7 +1913,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             {
                 return static_cast<size_t>(DispatchTypes::TaskbarState::Error);
             }
-            return snapshot.observed ? static_cast<size_t>(programStatusTaskbarState(summarizeProgramStatus(snapshot))) : _terminal->GetTaskbarState();
+            return snapshot.nativeLeaseActive ? static_cast<size_t>(programStatusTaskbarState(summarizeProgramStatus(snapshot))) : _terminal->GetTaskbarState();
         }
         CATCH_LOG();
         return 0;
@@ -1928,7 +1929,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             const auto lock = _terminal->LockForReading();
             const auto snapshot = _terminal->GetProgramStatusSnapshot();
-            return snapshot.observed ? summarizeProgramStatus(snapshot).progress.value_or(0) : _terminal->GetTaskbarProgress();
+            if (snapshot.observed && ConnectionState() == TerminalConnection::ConnectionState::Failed)
+            {
+                return summarizeProgramStatus(snapshot).progress.value_or(0);
+            }
+            return snapshot.nativeLeaseActive ? summarizeProgramStatus(snapshot).progress.value_or(0) : _terminal->GetTaskbarProgress();
         }
         CATCH_LOG();
         return 0;

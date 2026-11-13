@@ -3676,10 +3676,6 @@ void AdaptDispatch::DoProgramStatus(const ProgramStatus::Command& command)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 {
-    if (string == L"SetMark" || string.starts_with(L"SetMark;"))
-    {
-        _api.ProgramStatusPromptStarted();
-    }
     if constexpr (!Feature_ScrollbarMarks::IsEnabled())
     {
         return;
@@ -3715,10 +3711,6 @@ void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoFinalTermAction(const std::wstring_view string)
 {
-    if (string == L"A" || string.starts_with(L"A;"))
-    {
-        _api.ProgramStatusPromptStarted();
-    }
     if constexpr (!Feature_ScrollbarMarks::IsEnabled())
     {
         return;

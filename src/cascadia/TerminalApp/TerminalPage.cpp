@@ -13315,6 +13315,7 @@ namespace winrt::TerminalApp::implementation
     {
         ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus result;
         result.observed = snapshot.get("observed", false).asBool();
+        result.nativeLeaseActive = snapshot.get("native_lease_active", result.observed).asBool();
         result.working = snapshot.get("working", 0).asUInt();
         result.blocked = snapshot.get("blocked", 0).asUInt();
         result.unseenDone = snapshot.get("unseen_done", 0).asUInt();
@@ -13348,6 +13349,7 @@ namespace winrt::TerminalApp::implementation
         const auto counts = { "working", "blocked", "unseen_done", "unseen_error" };
         const auto strings = { "state", "kind", "title", "message", "task_id" };
         if (statuses.size() != 1 || !program.isObject() || !program["observed"].isBool() ||
+            (!program["native_lease_active"].isNull() && !program["native_lease_active"].isBool()) ||
             std::ranges::any_of(counts, [&](const auto key) { return !program[key].isUInt() || program[key].asUInt() > 256; }) ||
             std::ranges::any_of(strings, [&](const auto key) { return !program[key].isNull() && !program[key].isString(); }) ||
             (!program["progress"].isNull() && (!program["progress"].isUInt() || program["progress"].asUInt() > 100)))
@@ -13362,6 +13364,7 @@ namespace winrt::TerminalApp::implementation
         const auto& canonical = statuses.front();
         auto result = ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus{
             true,
+            program.get("native_lease_active", program["observed"]).asBool(),
             program["working"].asUInt(),
             program["blocked"].asUInt(),
             program["unseen_done"].asUInt(),
@@ -13596,7 +13599,8 @@ namespace winrt::TerminalApp::implementation
         for (size_t i = 0; i < panes.size(); ++i)
         {
             const auto& pane = panes[i];
-            if (!pane.observed)
+            const auto canonicalOverlay = pane.canonicalInput || pane.canonicalAttention || pane.connectionError || pane.canonicalWorking;
+            if (!pane.nativeLeaseActive && !canonicalOverlay)
             {
                 continue;
             }

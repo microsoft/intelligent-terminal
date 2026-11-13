@@ -4,6 +4,7 @@
 #include "ProgramStatus.hpp"
 
 #include <algorithm>
+#include <utility>
 
 using namespace Microsoft::Console::VirtualTerminal::ProgramStatus;
 
@@ -38,11 +39,22 @@ bool Store::Apply(const Command& command)
     {
         changed |= std::erase_if(_records, [&](const auto& entry) { return inSubtree(entry.record.id, command.record.id); }) != 0;
         changed |= std::erase_if(_results, [&](const auto& result) { return inSubtree(result.record.id, command.record.id); }) != 0;
+        if (command.record.id.empty() && _nativeLeaseActive)
+        {
+            _nativeLeaseActive = false;
+            changed = true;
+        }
         if (changed)
         {
             ++_revision;
         }
         return changed;
+    }
+
+    if (!_nativeLeaseActive)
+    {
+        _nativeLeaseActive = true;
+        changed = true;
     }
 
     auto entry = std::find_if(_records.begin(), _records.end(), [&](const auto& item) { return item.record.id == command.record.id; });
@@ -108,7 +120,9 @@ bool Store::Apply(const Command& command)
 
 bool Store::ProcessExited()
 {
-    if (std::erase_if(_records, [](const auto& entry) { return !isResult(entry.record.state); }))
+    auto changed = std::erase_if(_records, [](const auto& entry) { return !isResult(entry.record.state); }) != 0;
+    changed |= std::exchange(_nativeLeaseActive, false);
+    if (changed)
     {
         ++_revision;
         return true;
@@ -136,11 +150,12 @@ bool Store::Acknowledge(const uint64_t observedRevision)
 
 bool Store::Reset()
 {
-    if (!_observed && _records.empty() && _results.empty())
+    if (!_observed && !_nativeLeaseActive && _records.empty() && _results.empty())
     {
         return false;
     }
     _observed = false;
+    _nativeLeaseActive = false;
     _records.clear();
     _results.clear();
     // Revisions deliberately survive RIS/connection replacement, so a queued
@@ -169,7 +184,7 @@ std::optional<std::string> Store::_EffectiveApp(std::string_view id) const
 
 Snapshot Store::GetSnapshot() const
 {
-    Snapshot snapshot{ _observed, _revision, {}, _results };
+    Snapshot snapshot{ _observed, _nativeLeaseActive, _revision, {}, _results };
     snapshot.records.reserve(_records.size());
     for (const auto& entry : _records)
     {

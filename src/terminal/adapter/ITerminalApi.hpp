@@ -46,7 +46,6 @@ namespace Microsoft::Console::VirtualTerminal
         // unsupported endpoints must neither answer nor write to that pipe.
         virtual bool SupportsProgramStatus() const noexcept { return false; }
         virtual void ApplyProgramStatus(const ProgramStatus::Command& /*command*/) {}
-        virtual void ProgramStatusPromptStarted() {}
         virtual void ResetProgramStatus() {}
 
         struct BufferState

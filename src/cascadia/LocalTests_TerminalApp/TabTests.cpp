@@ -14504,6 +14504,12 @@ namespace TerminalAppLocalTests
             return state.State() == 1 && state.Progress() == 37;
         });
         TestOnUIThread([&]() {
+            Json::Value snapshot;
+            std::string errors;
+            std::istringstream stream{ winrt::to_string(control.ProgramStatusJson()) };
+            VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, stream, &snapshot, &errors));
+            VERIFY_IS_TRUE(snapshot.isMember("native_lease_active"));
+            VERIFY_IS_TRUE(snapshot["native_lease_active"].asBool());
             const auto state = tab->GetCombinedTaskbarStateWithContentId();
             VERIFY_ARE_EQUAL(tab->GetRootPane()->ContentId().value(), state.ContentId.value());
             VERIFY_ARE_EQUAL(uint64_t{ 1 }, state.CombinedState.State());
@@ -14533,6 +14539,22 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, unseenDone());
             page->_AcknowledgeProgramStatusForTab(*tab);
             VERIFY_ARE_EQUAL(0u, unseenDone());
+        });
+        emit(u"\x1b]7501;state=clear\x1b\\\x1b]9;4;1;73\x7");
+        _waitForContentTransferReviewUI([&]() {
+            const auto state = tab->GetCombinedTaskbarState();
+            return state.State() == 1 && state.Progress() == 73;
+        });
+        TestOnUIThread([&]() {
+            Json::Value snapshot;
+            std::string errors;
+            std::istringstream stream{ winrt::to_string(control.ProgramStatusJson()) };
+            VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, stream, &snapshot, &errors));
+            VERIFY_IS_FALSE(snapshot["native_lease_active"].asBool());
+            const auto state = tab->GetCombinedTaskbarStateWithContentId();
+            VERIFY_ARE_EQUAL(tab->GetRootPane()->ContentId().value(), state.ContentId.value());
+            VERIFY_ARE_EQUAL(uint64_t{ 1 }, state.CombinedState.State());
+            VERIFY_ARE_EQUAL(uint64_t{ 73 }, state.CombinedState.Progress());
         });
     }
 

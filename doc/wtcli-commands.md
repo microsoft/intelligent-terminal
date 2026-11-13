@@ -73,7 +73,7 @@ scripts) are not counted.
 | `kill-pane` | `killp` | Close a pane. | `wtcli kill-pane -t 4` | ✅ `cli_channel.rs` (`close_pane`) |
 | `focus-pane` | `focusp` | Move focus to the given pane. | `wtcli focus-pane -t 3` | ✅ `cli_channel.rs` (`focus_pane`) |
 | `wait-for` | — | Block (poll `pane-status`) until the pane process exits. `--interval` is poll period in ms; `--timeout` is seconds (`0` = forever). | `wtcli wait-for -t 3 --timeout 60` | ❌ Not called. (`wta` exposes its own `wait-for` subcommand at `tools/wta/src/main.rs:209`, but its handler polls by shelling out to `wtcli pane-status` in a Rust loop — it does **not** invoke `wtcli wait-for`.) |
-| `listen` | — | Long-running. Subscribe to `IProtocolServer` and stream every event JSON line to stdout until Ctrl-C. `-t` filters by pane id; `--event` filters by type and supports a trailing `*` wildcard. `--existing-only` never activates Terminal. Internal callers use `--parent-pid` to terminate the listener if its owner crashes. | `wtcli --json listen --event "agent.*"` | ✅ `cli_channel.rs` (non-activating background listener task) |
+| `listen` | — | Long-running. Subscribe to `IProtocolServer` and stream every event JSON line to stdout until Ctrl-C. `-t` filters by pane id; `--event` filters ordinary protocol events by top-level `method`, and filters `agent_event` by either that envelope name or its string `params.event` subtype. A trailing `*` wildcard is supported. `--existing-only` never activates Terminal. Internal callers use `--parent-pid` to terminate the listener if its owner crashes. | `wtcli --json listen --event "agent.*"` | ✅ `cli_channel.rs` (non-activating background listener task) |
 | `send-event` | `se` | Publish an event using the `agent_event` envelope: sets `type=event`, `method=agent_event`, fills `params.event` from `-e` and `params.pane_id` from `-p`. Omitting `-p` publishes an empty `pane_id` meaning "source pane unknown" — it is **not** attributed to the focused pane, because guessing a pane corrupts session-to-pane binding, while an unattributed event is routed by `cli_source` instead. Extra params come from the trailing JSON object. | `wtcli send-event -p 3 -e agent.task.completed '{"exit_code":0}'` | ❌ Not called from in-tree code. Kept as the transport for legacy PowerShell hook bundles (guarded by `Feature.LegacyHookBundle.Tests.ps1`) and as the public CLI surface for external agents in `doc/specs/llm-agent-event-integration.md`. |
 | `publish` | — | Low-level escape hatch: forwards raw JSON straight to `IProtocolServer::SendEvent` with no envelope. Pass JSON as a positional argument for compatibility, or use `--stdin` for payloads that may exceed the Windows command-line limit. The two input forms are mutually exclusive. `--existing-only` prevents COM activation. | `Get-Content event.json -Raw \| wtcli publish --stdin` | ✅ `tools/wta/src/wt_protocol_events.rs` (non-activating managed notifications) |
 | `info` | — | Print `WT_COM_CLSID`, connection status, protocol version, and the server's `GetCapabilities()` method list. | `wtcli --json info` | ✅ `cli_channel.rs` maps `get_capabilities` → `wtcli info` |
@@ -119,8 +119,9 @@ COM entry points. They verify default activation, class-unregistered recovery
 through the running factory, existing-factory routing, and
 failure without activation when the factory is absent or incompatible for
 `listen` and both `publish` input forms; no Terminal or agent is launched.
-They also check JSON-listener timestamp normalization, raw-listener pass-through,
-existing ISO strings, unchanged unrelated fields, and invalid timestamp handling.
+They also check schema-aware event filtering, JSON-listener timestamp
+normalization, raw-listener pass-through, existing ISO strings, unchanged
+unrelated fields, and invalid timestamp handling.
 Profile-query cases cover successful and empty results, query failures,
 malformed responses, and rejecting unsupported servers before invoking the
 appended COM method.

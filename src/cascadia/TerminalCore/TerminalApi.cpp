@@ -68,26 +68,39 @@ void Terminal::ApplyProgramStatus(const ProgramStatus::Command& command)
         return;
     }
 
-    if (_programStatus.Apply(command) && _pfnProgramStatusChanged)
+    const auto leaseWasActive = _programStatus.NativeLeaseActive();
+    if (_programStatus.Apply(command))
     {
+        if (leaseWasActive && !_programStatus.NativeLeaseActive())
+        {
+            _taskbarState = 0;
+            _taskbarProgress = 0;
+        }
         // Like other Core callbacks, this runs in stream order under the
         // terminal lock. Consumers must only enqueue a nonblocking invalidation.
-        _pfnProgramStatusChanged();
-    }
-}
-
-void Terminal::ProgramStatusPromptStarted()
-{
-    if (_programStatus.ProcessExited() && _pfnProgramStatusChanged)
-    {
-        _pfnProgramStatusChanged();
+        if (_pfnProgramStatusChanged)
+        {
+            _pfnProgramStatusChanged();
+        }
     }
 }
 
 void Terminal::ProgramStatusProcessExited()
 {
     const auto lock = LockForWriting();
-    ProgramStatusPromptStarted();
+    const auto leaseWasActive = _programStatus.NativeLeaseActive();
+    if (_programStatus.ProcessExited())
+    {
+        if (leaseWasActive)
+        {
+            _taskbarState = 0;
+            _taskbarProgress = 0;
+        }
+        if (_pfnProgramStatusChanged)
+        {
+            _pfnProgramStatusChanged();
+        }
+    }
 }
 
 void Terminal::AcknowledgeProgramStatus(const uint64_t observedRevision)
@@ -264,7 +277,7 @@ void Terminal::SetTaskbarProgress(const ::Microsoft::Console::VirtualTerminal::D
 {
     _assertLocked();
 
-    if (_programStatus.Observed())
+    if (_programStatus.NativeLeaseActive())
     {
         return;
     }

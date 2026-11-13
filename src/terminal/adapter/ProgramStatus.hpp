@@ -58,6 +58,8 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
     {
         // First valid report latches this until RIS or connection replacement.
         bool observed = false;
+        // Native status owns legacy progress arbitration only while this lease is active.
+        bool nativeLeaseActive = false;
         // Monotonic even across reset, so an old acknowledgment cannot see a new result.
         uint64_t revision = 0;
         std::vector<Record> records;
@@ -88,6 +90,7 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
     public:
         [[nodiscard]] Snapshot GetSnapshot() const;
         [[nodiscard]] bool Observed() const noexcept { return _observed; }
+        [[nodiscard]] bool NativeLeaseActive() const noexcept { return _nativeLeaseActive; }
         bool Apply(const Command& command);
         bool ProcessExited();
         bool Acknowledge(uint64_t observedRevision);
@@ -106,5 +109,6 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         uint64_t _revision = 0;
         uint64_t _clock = 0;
         bool _observed = false;
+        bool _nativeLeaseActive = false;
     };
 }
