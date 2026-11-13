@@ -38,6 +38,7 @@ extends:
     official: ${{ parameters.official }}
     branding: ${{ parameters.branding }}
     buildTerminal: true
+    buildPlatforms: [x64, arm64]
     pgoBuildMode: Optimize
     codeSign: true
     signingIdentity:
@@ -66,6 +67,6 @@ extends:
             storageAccount: $(AzureStorageAccount)
             storageContainer: $(AzureStorageContainer)
             buildConfiguration: Release
-            buildPlatforms: [x64, x86, arm64]
+            buildPlatforms: [x64, arm64]
             environment: production-${{ lower(parameters.branding) }}
 
