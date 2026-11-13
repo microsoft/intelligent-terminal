@@ -17,6 +17,11 @@ The agent writes the findings table, including each proposal's actual commit
 link. No script builds a second findings summary, and no JSON report/card
 protocol is required.
 
+CI warning level does not set review importance. The reviewer starts from the
+PR diff and affected callers, uses diagnostics as evidence, and reports only
+introduced or worsened HIGH/MEDIUM costs as findings. LOW advice and unchanged
+baseline warnings are grouped in checks, not repeated as a diagnostic backlog.
+
 ## Autofix policy
 
 Only high-confidence HIGH findings supported by relevant scenario evidence
