@@ -32,6 +32,7 @@ namespace winrt::TerminalApp::implementation
         _manager{ manager }
     {
         _usesManagedAgentCommand = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(_control.Settings())->UsesManagedAgentCommand();
+        _nativeAgentSessionId = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(_control.Settings())->NativeAgentSessionId();
         if (_usesManagedAgentCommand)
         {
             _managedAgentProviderId = _profile.AgentProfileId();
@@ -152,6 +153,11 @@ namespace winrt::TerminalApp::implementation
         {
         case BuildStartupKind::Content:
         case BuildStartupKind::MovePane:
+            if (!_nativeAgentSessionId.empty())
+            {
+                args.NativeAgentSessionId(_nativeAgentSessionId);
+                args.Commandline(L"");
+            }
             // Only fill in the ContentId if absolutely needed. If you fill in a number
             // here (even 0), we'll serialize that number, AND treat that action as an
             // "attach existing" rather than a "create"
@@ -335,7 +341,16 @@ namespace winrt::TerminalApp::implementation
     {
         // Reload our profile from the settings model to propagate bell mode, icon, and close on exit mode (anything that uses _profile).
         const auto profile{ settings.FindProfile(_profile.Guid()) };
-        _profile = profile ? profile : settings.ProfileDefaults();
+        if (profile)
+        {
+            _profile = profile;
+        }
+        else if (!_usesManagedAgentCommand)
+        {
+            _profile = settings.ProfileDefaults();
+        }
+        // A running managed launch retains its original profile identity if the
+        // user deletes that profile. Saving must not relabel it as Defaults.
 
         if (const auto settings{ _cache->TryLookup(_profile) })
         {

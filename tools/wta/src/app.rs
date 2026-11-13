@@ -1089,20 +1089,34 @@ where
     } else {
         pane_session_id.to_string()
     };
+    let owner = reg.owner_for_pane(&owner_pane);
+    let qualified_owner = owner.filter(|row| row.key == key && row.cli_source == cli_source);
+    let hook_identity = qualified_owner.map(|row| row.identity());
+    if hook_identity.is_none()
+        && reg.raw_key_is_ambiguous(&key)
+        && !matches!(event, "agent.session.started" | "agent.session.start")
+    {
+        return false;
+    }
+    if qualified_owner.is_some_and(|row| {
+        params
+            .get("wsl_distro")
+            .and_then(serde_json::Value::as_str)
+            .map_or(row.location.is_wsl(), |distro| {
+                row.location.distro() != Some(distro)
+            })
+    }) {
+        return false;
+    }
+    let known_row =
+        qualified_owner.or_else(|| reg.get(&key).filter(|row| row.cli_source == cli_source));
     let facts = AgentEventFacts {
         key: key.clone(),
-        session_known: reg
-            .get(&key)
-            .is_some_and(|row| row.cli_source == cli_source),
-        session_status: reg
-            .get(&key)
-            .filter(|row| row.cli_source == cli_source)
-            .map(|row| row.status.clone()),
-        pane_owned_by_other: reg.key_for_pane(&owner_pane).is_some_and(|owner| {
-            reg.get(&owner).is_some_and(|row| {
-                row.liveness() == crate::agent_sessions::LivenessState::Live
-                    && (owner != key || row.cli_source != cli_source)
-            })
+        session_known: known_row.is_some(),
+        session_status: known_row.map(|row| row.status.clone()),
+        pane_owned_by_other: owner.is_some_and(|row| {
+            row.liveness() == crate::agent_sessions::LivenessState::Live
+                && (row.key != key || row.cli_source != cli_source)
         }),
     };
     let plan = plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
@@ -1114,7 +1128,22 @@ where
     }
 
     for ev in plan.events {
-        reg.apply(ev.clone());
+        let ev = if let Some(identity) = hook_identity.as_ref() {
+            ev.qualify_hook(identity.clone(), &owner_pane)
+        } else {
+            ev
+        };
+        let location = params
+            .get("wsl_distro")
+            .and_then(serde_json::Value::as_str)
+            .filter(|distro| !distro.is_empty())
+            .map(|distro| crate::agent_sessions::SessionLocation::Wsl {
+                distro: distro.to_string(),
+            })
+            .unwrap_or(crate::agent_sessions::SessionLocation::Host);
+        if !reg.apply_with_location(ev.clone(), location) {
+            return false;
+        }
         hook_sink(ev);
     }
 
@@ -3306,7 +3335,14 @@ impl App {
         // profile rather than a hard-coded flag.
         let profile = known_cli_id(&s.cli_source).map(crate::agent_registry::lookup_profile_by_id);
         let cli_supports_resume_flag =
-            profile.is_some_and(|profile| !profile.resume_flag.is_empty());
+            if matches!(s.location, crate::agent_sessions::SessionLocation::Host) {
+                profile.is_some()
+                    || s.cli_source
+                        .canonical_provider_id()
+                        .is_some_and(|id| id.starts_with("custom:"))
+            } else {
+                profile.is_some_and(|profile| !profile.resume_flag.is_empty())
+            };
         let selected_agent_id = known_cli_id(&s.cli_source);
         let targets_current_agent = selected_agent_id
             .is_some_and(|id| id.eq_ignore_ascii_case(&self.current_agent_id))
@@ -3429,31 +3465,132 @@ impl App {
         }
     }
 
-    /// Open a new WT tab whose primary pane runs `<cli> <resume_flag>
-    /// <session_key>` to rehydrate a Historical/Ended agent session from
-    /// the CLI's on-disk session store. Silent no-op for CLIs without a
-    /// resume flag or unknown CLI sources.
-    ///
-    /// Flow:
-    ///   1. Apply `ResumeDispatched` synchronously so a rapid second Enter
-    ///      on the same row no-ops while this resume is in flight.
-    ///   2. Issue `wtcli --json new-tab -c "<cli> <flag> <key>" -d "<cwd>"`
-    ///      on a background thread via
-    ///      `spawn_wtcli_split_then_focus_with_callback` — the helper is
-    ///      generic (parses `session_id` from JSON and focuses the new
-    ///      pane), so it works equally well for new-tab and split-pane.
-    ///      Routing through `new-tab` keeps the originating tab clean
-    ///      and matches user expectation that resuming a historical
-    ///      session is a "go open my session" action, not a "split my
-    ///      workspace" action.
-    ///   3. The callback posts `AgentSessionEvent(ResumePaneAssigned{...})`
-    ///      through `agent_event_tx` so the registry can bind the new
-    ///      tab's primary pane GUID to the row even for hook-less CLIs
-    ///      (Gemini), allowing a later `PaneClosed` to transition the
-    ///      row back to Ended.
-    ///      Host resumes also publish the known agent/session/pane identity to
-    ///      Terminal's persistence map, independently of CLI hooks or banners.
+    /// Resume in a new tab without blocking helper input/rendering. Host
+    /// sessions use the correlated profile-resume request; WSL retains its
+    /// distro-aware command route. Publish the pending transition immediately,
+    /// then bind the receipt's pane or roll back a confirmed failed attempt.
+    /// Unknown creation outcomes stay pending to prevent duplicate tabs.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
+        if matches!(s.location, crate::agent_sessions::SessionLocation::Host) {
+            let Some(window_id) = self
+                .window_id
+                .as_deref()
+                .and_then(|id| id.parse::<u64>().ok())
+                .filter(|id| *id != 0)
+            else {
+                return;
+            };
+            let Some(provider) = s.cli_source.canonical_provider_id() else {
+                return;
+            };
+            if known_cli_id(&s.cli_source).is_none() && !provider.starts_with("custom:") {
+                return;
+            }
+            if !crate::agent_sessions::is_safe_cli_resume_id(&s.key) {
+                return;
+            }
+            // The selected view can still hold the pre-dispatch snapshot.
+            let identity = s.identity();
+            if self
+                .agent_sessions
+                .get_identity(&identity)
+                .is_some_and(|row| {
+                    row.status == crate::agent_sessions::AgentStatus::Idle
+                        && row.pane_session_id.is_none()
+                })
+            {
+                return;
+            }
+            self.agent_sessions.retain_resume_candidate(s);
+            let resume_event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                identity: identity.clone(),
+                event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            };
+            self.agent_sessions.apply(resume_event.clone());
+            self.publish_session_hook(resume_event);
+            let request = serde_json::json!({
+                "window_id": window_id,
+                "native_profile_resume": {
+                    "tab_id": self.owner_tab_id.as_deref().unwrap_or_default(),
+                    "session_id": s.key,
+                    "agent_id": provider,
+                },
+                "cwd": crate::cwd_util::validate_starting_directory(&s.cwd).unwrap_or_default(),
+                "title": s.title,
+            });
+            #[cfg(test)]
+            {
+                self.last_dispatched_command = Some(DispatchedCommand {
+                    kind: DispatchedCommandKind::NewTabResume,
+                    session_id: Some(s.key.clone()),
+                    argv: vec!["create_tab".to_string(), request.to_string()],
+                });
+            }
+            if let Some(tx) = self.agent_event_tx.clone() {
+                let manager = Arc::clone(&self.shell_mgr);
+                tokio::spawn(async move {
+                    // This is the same correlated request/timeout used by History.
+                    // Never wait for it on the helper's input/render loop.
+                    let result = manager
+                        .wt_create_tab_request(request)
+                        .await
+                        .and_then(|result| {
+                            result
+                                .get("session_id")
+                                .or_else(|| result.get("SessionId"))
+                                .or_else(|| result.get("sessionId"))
+                                .and_then(serde_json::Value::as_str)
+                                .filter(|id| !id.trim().is_empty())
+                                .map(str::to_owned)
+                                .ok_or_else(|| {
+                                    crate::shell::wt_channel::InvalidNativeResumeReceipt(
+                                        "Native resume returned no pane ID",
+                                    )
+                                    .into()
+                                })
+                        });
+                    match result {
+                        Ok(pane_session_id) => {
+                            let event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                                identity,
+                                event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned {
+                                    pane_session_id: pane_session_id.clone(),
+                                },
+                            };
+                            if tx.send(AppEvent::AgentSessionEvent(event)).is_err() {
+                                tracing::warn!(target: "agents_view", "native resume completion receiver closed");
+                            }
+                            // A focus failure must not roll back a created/bound pane.
+                            if let Err(error) = manager.wt_focus_pane(&pane_session_id).await {
+                                tracing::warn!(target: "agents_view", %error, "native resume pane focus failed");
+                            }
+                        }
+                        Err(error) => {
+                            if crate::shell::wt_channel::request_outcome_unknown(&error) {
+                                tracing::warn!(
+                                    target: "agents_view",
+                                    session_id = %identity.session_id,
+                                    outcome_unknown = true,
+                                    %error,
+                                    "native resume outcome uncertain; keeping pending state",
+                                );
+                                return;
+                            }
+                            let event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                                identity,
+                                event: crate::agent_sessions::QualifiedResumeEvent::Failed {
+                                    reason: error.to_string(),
+                                },
+                            };
+                            if tx.send(AppEvent::AgentSessionEvent(event)).is_err() {
+                                tracing::warn!(target: "agents_view", "native resume failure receiver closed");
+                            }
+                        }
+                    }
+                });
+            }
+            return;
+        }
         let Some(window_id) = self
             .window_id
             .as_deref()

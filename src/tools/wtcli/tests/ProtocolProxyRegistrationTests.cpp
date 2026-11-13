@@ -196,6 +196,7 @@ public:
     std::atomic<bool> received{ false };
     std::atomic<bool> tabReceived{ false };
     std::atomic<bool> splitReceived{ false };
+    std::atomic<bool> nativeResumeReceived{ false };
 
     HRESULT STDMETHODCALLTYPE OnEvent(BSTR text) noexcept override
     {
@@ -227,6 +228,17 @@ public:
                         background == 1 && EqualBstr(providerId, L"copilot");
         RETURN_HR_IF(E_INVALIDARG, !splitReceived);
         *json = SysAllocString(L"{\"synthetic\":\"pane\",\"id\":73}");
+        return *json ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE CreateNativeProfileResumeTab(MIDL_uhyper windowId, BSTR eventJson, BSTR* json) noexcept override
+    {
+        RETURN_HR_IF_NULL(E_POINTER, json);
+        *json = nullptr;
+        nativeResumeReceived = windowId == 0x123456789abcdef0ULL &&
+                               EqualBstr(eventJson, L"{\"params\":{\"request_id\":\"owned\",\"session_id\":\"external\"}}");
+        RETURN_HR_IF(E_INVALIDARG, !nativeResumeReceived);
+        *json = SysAllocString(L"{\"request_id\":\"owned\",\"success\":true,\"result\":{\"session_id\":\"created-pane\",\"tab_id\":\"created-tab\"}}");
         return *json ? S_OK : E_OUTOFMEMORY;
     }
 };
@@ -481,6 +493,11 @@ try
             THROW_IF_FAILED(nativeAgent->SplitAgentCliPane(TestSession, direction.get(), 0.375f, profile.get(), commandline.get(),
                                                          1, provider.get(), splitJson.put()));
             Check(EqualBstr(splitJson.get(), L"{\"synthetic\":\"pane\",\"id\":73}"), "Native agent pane JSON crossed apartments");
+            auto resumeRequest = allocate(L"{\"params\":{\"request_id\":\"owned\",\"session_id\":\"external\"}}");
+            wil::unique_bstr resumeJson;
+            THROW_IF_FAILED(nativeAgent->CreateNativeProfileResumeTab(0x123456789abcdef0ULL, resumeRequest.get(), resumeJson.put()));
+            Check(EqualBstr(resumeJson.get(), L"{\"request_id\":\"owned\",\"success\":true,\"result\":{\"session_id\":\"created-pane\",\"tab_id\":\"created-tab\"}}"),
+                  "Native resume correlated receipt crossed apartments as a direct result");
             callbackResult = S_OK;
         }
         catch (...)

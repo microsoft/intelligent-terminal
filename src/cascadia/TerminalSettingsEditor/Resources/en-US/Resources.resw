@@ -3103,7 +3103,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Enter a model identifier supported by this agent. Leave empty to use the agent's own configuration. Applies to new sessions.</value>
+    <value>Enter a model identifier supported by this agent. Leave empty to use the agent's own configuration.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3125,5 +3125,17 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal automatically adds your installed agent CLIs as profiles. Open one from the new tab menu to get started.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>Agent profile</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>Resume arguments</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>Added after the normal startup arguments only when resuming a session. The session ID is appended automatically.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

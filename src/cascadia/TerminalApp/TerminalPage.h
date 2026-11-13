@@ -288,6 +288,8 @@ namespace winrt::TerminalApp::implementation
         void OnDefaultPasteRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        Windows::Foundation::IAsyncOperation<hstring> CreateNativeProfileResumeTab(hstring eventJson);
+        void _OnResumeInNewAgentTabRequested(hstring eventJson, Json::Value* creationReceipt);
         void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
@@ -1109,7 +1111,14 @@ namespace winrt::TerminalApp::implementation
         std::pair<bool, std::optional<std::string>> _RichTabAgentCwdForControl(const Microsoft::Terminal::Control::TermControl& control);
         bool _RichTabCwdDependentFieldsVisible() const;
         std::vector<std::string> _SelectedRichTabVisibleFields() const;
-        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
+        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control,
+                                            const winrt::hstring& profileIcon,
+                                            const winrt::Microsoft::Terminal::Settings::Model::Profile& profile = nullptr);
+        winrt::Microsoft::Terminal::Settings::Model::Profile _FindNativeAgentProfile(
+            const winrt::hstring& providerId,
+            const winrt::hstring& sessionId,
+            std::optional<winrt::guid> requestedGuid = std::nullopt);
+        winrt::hstring _ResolveSidebarHistoryIconPath(const TerminalApp::TabStripHistoryItem& item);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry(const char* source) const;

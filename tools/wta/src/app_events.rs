@@ -470,7 +470,14 @@ impl App {
         event: crate::agent_sessions::SessionEvent,
         wsl_distro: Option<String>,
     ) {
-        self.agent_sessions.apply(event.clone());
+        let location = wsl_distro
+            .as_ref()
+            .map(|distro| crate::agent_sessions::SessionLocation::Wsl {
+                distro: distro.clone(),
+            })
+            .unwrap_or(crate::agent_sessions::SessionLocation::Host);
+        self.agent_sessions
+            .apply_with_location(event.clone(), location);
         if self
             .master_request_tx
             .send(
@@ -2690,6 +2697,37 @@ impl App {
                 }
             }
             AppEvent::AgentSessionEvent(ev) => {
+                if let crate::agent_sessions::SessionEvent::QualifiedResume { identity, event } =
+                    &ev
+                {
+                    let row = self.agent_sessions.get_identity(identity);
+                    let valid = match event {
+                        crate::agent_sessions::QualifiedResumeEvent::Failed { .. } => row
+                            .is_some_and(|row| {
+                                row.status == crate::agent_sessions::AgentStatus::Idle
+                                    && row.pane_session_id.is_none()
+                            }),
+                        crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { .. } => row
+                            .is_some_and(|row| {
+                                row.status == crate::agent_sessions::AgentStatus::Idle
+                                    && row.pane_session_id.is_none()
+                            }),
+                        crate::agent_sessions::QualifiedResumeEvent::Dispatched => true,
+                    };
+                    if !valid {
+                        return;
+                    }
+                }
+                if let crate::agent_sessions::SessionEvent::ResumeFailed { key, .. } = &ev {
+                    if !self.agent_sessions.get(key).is_some_and(|row| {
+                        row.status == crate::agent_sessions::AgentStatus::Idle
+                            && row.pane_session_id.is_none()
+                    }) {
+                        // A hook/birth or successful receipt won the race. Do not
+                        // publish a stale failure to the authoritative registry.
+                        return;
+                    }
+                }
                 tracing::debug!(
                     target: "agent_session_registry",
                     event = ?ev,
