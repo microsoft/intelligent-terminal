@@ -237,13 +237,29 @@ version="0.1.0"
         write('tools/wta/src/main.rs', 'fn main() {}\n');
         const base = commit();
         write('src/probe/Probe.cpp', '#include <vector>\nstd::vector<int> copy(const std::vector<int>& v) { std::vector<int> r; for (int n : v) r.push_back(n); return r; }\n');
-        write('tools/wta/src/main.rs', 'fn main() { let mut v=Vec::new(); v.push(1); v.push(2); println!("{v:?}"); }\n');
+        write('tools/wta/src/main.rs', `fn style_only(value: usize) -> usize { return value; }
+fn copy_nonempty(rows: &[String]) -> Vec<String> {
+    rows.iter().cloned().filter(|row| !row.is_empty()).collect()
+}
+async fn hold_lock(lock: &std::sync::Mutex<()>) {
+    let guard=lock.lock().unwrap();
+    std::future::ready(()).await;
+    drop(guard);
+}
+fn main() {
+    let mut v=Vec::new(); v.push(1); v.push(2);
+    let count=std::env::args().collect::<Vec<_>>().len();
+    println!("{v:?} {} {:?}", style_only(count), copy_nonempty(&[String::from("a")]));
+    drop(hold_lock(&std::sync::Mutex::new(())));
+}
+`);
         const head = commit();
         execFileSync('MSBuild.exe', ['src\\probe\\Probe.vcxproj', '/nologo', '/t:Build',
             '/p:Configuration=Debug', '/p:Platform=x64'], { cwd: root, stdio: 'pipe', timeout: 120000 });
         for (const language of ['cpp', 'rust']) {
             const proof = run(language, head, base);
-            assert.equal(proof.result.status, 0, proof.result.stderr + JSON.stringify(proof.receipt));
+            assert.equal(proof.result.status, 0, proof.result.stderr + JSON.stringify(proof.receipt) +
+                fs.readFileSync(path.join(proof.output, language === 'cpp' ? 'diagnostics-1.log' : 'diagnostics.jsonl'), 'utf8'));
             assert.equal(proof.receipt.status, 'completed');
             assert.equal(proof.receipt.headSha, head);
             validatePerformanceResult(proof.receipt, language,
@@ -256,6 +272,13 @@ version="0.1.0"
             }
             assert.match(fs.readFileSync(path.join(proof.output, language === 'cpp' ? 'diagnostics-1.log' : 'diagnostics.jsonl'), 'utf8'),
                 language === 'cpp' ? /performance-inefficient-vector-operation/ : /vec_init_then_push/);
+            if (language === 'rust') {
+                const diagnostics = fs.readFileSync(path.join(proof.output, 'diagnostics.jsonl'), 'utf8');
+                assert.match(diagnostics, /clippy::iter_overeager_cloned/);
+                assert.match(diagnostics, /clippy::needless_collect/);
+                assert.match(diagnostics, /clippy::await_holding_lock/);
+                assert.doesNotMatch(diagnostics, /clippy::needless_return/);
+            }
             save(proof, `${language}-warnings`);
         }
         const shallow = path.join(root, '.git', 'shallow-checkout');
@@ -268,6 +291,13 @@ version="0.1.0"
         validatePerformanceResult(shallowProof.receipt, 'rust',
             { headSha: head, runId: '99', runAttempt: 2, comparisonBaseSha: base });
         save(shallowProof, 'rust-shallow-checkout');
+        write('tools/wta/src/main.rs', 'fn main() { let count=std::env::args().len(); println!("{}", count == count); }\n');
+        const incorrectHead = commit();
+        const incorrect = run('rust', incorrectHead, base);
+        assert.equal(incorrect.result.status, 1, JSON.stringify(incorrect.receipt));
+        assert.equal(incorrect.receipt.status, 'incomplete');
+        assert.match(fs.readFileSync(path.join(incorrect.output, 'diagnostics.jsonl'), 'utf8'), /clippy::eq_op/);
+        save(incorrect, 'rust-correctness-errors');
         write('src/probe/Probe.cpp', 'not valid C++;\n');
         write('tools/wta/src/main.rs', 'not valid Rust;\n');
         const invalidHead = commit();

@@ -76,7 +76,10 @@ try {
     }
     if ($Language -eq 'rust') {
         Invoke-AnalysisCommand 'cargo.exe' @('clippy', '--version') 'tool-version.log'
-        Invoke-AnalysisCommand 'cargo.exe' @('wta-perf-extended') 'diagnostics.jsonl'
+        # Restore the selected async check after group defaults; correctness errors stay fatal.
+        Invoke-AnalysisCommand 'cargo.exe' @('wta-perf-extended',
+            '-A', 'clippy::all', '-W', 'clippy::perf', '-W', 'clippy::await_holding_lock',
+            '-D', 'clippy::correctness') 'diagnostics.jsonl'
     }
     else {
         $projects = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)

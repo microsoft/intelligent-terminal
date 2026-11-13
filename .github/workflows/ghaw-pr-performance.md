@@ -179,7 +179,9 @@ pre-agent-steps:
       git checkout -B "performance-proposal-$PR_NUMBER" "$HEAD_SHA"
 
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
   report-failure-as-issue: false
+  report-failed-jobs: false
   report-incomplete:
     create-issue: false
   noop:
@@ -247,7 +249,7 @@ timeout-minutes: 60
 max-ai-credits: 500
 max-daily-ai-credits: 100000
 concurrency:
-  group: 'ghaw-pr-performance-repair-${{ github.event.inputs.pr_number }}'
+  group: 'ghaw-pr-performance-repair-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}'
   job-discriminator: ${{ github.run_id }}
   cancel-in-progress: true
 run-name: 'Performance repair ${{ github.event.inputs.dispatch_id }}'

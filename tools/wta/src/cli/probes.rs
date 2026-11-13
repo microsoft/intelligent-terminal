@@ -295,12 +295,14 @@ pub(crate) async fn run_host_sessions(agent: &str, retry_startup: bool) -> Resul
                 Vec::new()
             });
             let idx = crate::agent_pane_origin::load_default_index();
-            Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
+            let mut rows = crate::session_history::classify_and_map(
                 &sessions,
                 &idx,
                 SessionLocation::Host,
                 &cli_source,
-            ))
+            );
+            crate::session_history::retain_titled_history(&mut rows, &sessions);
+            Ok::<_, anyhow::Error>(rows)
         })
         .await
     {

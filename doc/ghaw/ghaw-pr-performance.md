@@ -114,7 +114,11 @@ not inferred from a later PR target change.
 
 Performance warnings remain advisory: the C++ analyzer explicitly uses
 `ClangTidyExtraArgs=-Wno-error` without changing the normal build's warning
-policy; Clippy uses the alias's warning flags. Compiler/parser errors, missing
+policy. The extra CI Clippy pass disables the default Clippy group, enables
+the official `clippy::perf` group and retains the alias's individual extra
+checks. `clippy::correctness` remains fatal; normal build/test checks are
+unchanged. Rust compiler diagnostics may still accompany the lint output and
+are not automatically performance findings. Compiler/parser errors, missing
 tools and analyzer execution failures still fail CI and prevent review kickoff.
 There is no second native build job in the performance reviewer.
 
