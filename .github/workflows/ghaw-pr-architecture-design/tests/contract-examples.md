@@ -99,6 +99,84 @@ Expected: accept specialization with consumer/contract evidence, no generic
 command-builder requirement, no claim of introduced debt from moved code.
 State that the excerpts alone do not prove all rename consumers remain valid.
 
+## Depth follows consequence, not volume
+
+Use the same protocol change with two independent admission metadata inputs:
+
+- Small: 104 relevant added+deleted lines across two files.
+- Large: 200,000 relevant lines across 1,200 files. The inventory groups
+  1,198 files as branding replacements and two as protocol changes. Available
+  representative branding diffs change text only; the full group has not
+  been inspected.
+
+Both meet the lower gate. The transport contract requires compatibility with
+already deployed peers; there is no version negotiation.
+
+Before `src/MessageKind.h:1`:
+
+```cpp
+enum class MessageKind { Open = 1, Close = 2 };
+```
+
+Changed `src/MessageKind.h:1`:
+
+```cpp
+enum class MessageKind { Refresh = 1, Open, Close };
+```
+
+Unchanged `src/Encoder.cpp:1`:
+
+```cpp
+uint32_t Encode(MessageKind kind) { return static_cast<uint32_t>(kind); }
+```
+
+Deployed peer `src/Peer.cpp:1`:
+
+```cpp
+void Dispatch(uint32_t kind)
+{
+    if (kind == 1) Open();
+    else if (kind == 2) Close();
+}
+```
+
+Expected: prioritize and trace the changed enum through encoding to the
+deployed peer in both sizes. An Open command now encodes as 2 and closes the
+peer's target. Preserve existing wire identities and allocate a new unused
+value; do not propose a protocol framework or bury this consequence beneath
+branding commentary. For the large input, use the inventory to focus research
+without claiming every branding file was verified or refusing solely on size.
+Stop this trace once the compatibility consequence and alternative are
+established rather than descending into unrelated implementation details.
+
+Counter-evidence variant: keep `Refresh = 1, Open, Close`, but the actual
+encoder uses a stable mapping:
+
+```cpp
+uint32_t Encode(MessageKind kind)
+{
+    switch (kind)
+    {
+    case MessageKind::Open: return 1;
+    case MessageKind::Close: return 2;
+    case MessageKind::Refresh: return 3;
+    }
+    throw UnsupportedKind{};
+}
+```
+
+Expected: refute the wire-identity concern; enum ordering alone is not a
+finding. Missing source for the new receiver remains a specific coverage gap,
+not proof that existing peers receive Refresh. Do not retain the disproven
+finding to meet a quota.
+
+Missing-evidence variant: the encoder and deployed-peer implementation are
+unavailable. Expected: identify those as the next consequential reads; do not
+assert the direct-cast consequence without evidence. If access remains
+unavailable, report the focused gap instead of exploring unrelated details
+or issuing a whole-change clean assessment. Lead with the unresolved
+compatibility assessment, not a no-findings headline.
+
 ## Below threshold: no review
 
 Metadata: `src/SettingsView.cpp`, 99 added+deleted lines, one relevant file.
