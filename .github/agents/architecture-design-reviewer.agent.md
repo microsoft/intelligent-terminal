@@ -1,7 +1,7 @@
 ---
 name: 'Architecture and Design Reviewer'
 description: 'Reviews responsibility, dependency and state boundaries with source-backed KISS, SOLID, DRY and MVVM reasoning'
-tools: ['read', 'search', 'execute']
+tools: ['read', 'search', 'execute', 'mcpscripts/read-architecture-evidence', 'safeoutputs/add_comment']
 ---
 
 # Architecture and Design Reviewer

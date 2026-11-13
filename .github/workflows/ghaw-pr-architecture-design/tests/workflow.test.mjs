@@ -68,6 +68,21 @@ test('hosted evidence has no Git shell wildcards and imports only fixed trusted 
     assert.match(compiled, /ARCHITECTURE_RUN_DIR.*|scope\.json/);
 });
 
+test('selected reviewer exposes the compiled evidence and report MCP tools', () => {
+    const selected = source.match(/^ {2}agent: ([\w-]+)$/m)?.[1];
+    assert.ok(selected);
+    const profilePath = `.github/agents/${selected}.agent.md`;
+    assert.ok(compiled.includes(`GH_AW_AGENT_FILE: "${profilePath}"`));
+    const profile = fs.readFileSync(new URL(`../../../agents/${selected}.agent.md`, import.meta.url), 'utf8');
+    const tools = JSON.parse(profile.match(/^tools: (\[.+\])$/m)[1].replaceAll("'", '"'));
+    const manifest = JSON.parse(compiled.match(/^# gh-aw-manifest: (.+)$/m)[1]);
+    for (const name of ['read-architecture-evidence', 'add_comment']) {
+        const server = manifest.mcp_servers.find(server => server.tools.includes(name));
+        assert.ok(server, `Missing compiled tool ${name}`);
+        assert.ok(tools.includes(`${server.name}/${name}`), `Selected profile excludes ${server.name}/${name}`);
+    }
+});
+
 test('new PR heads preempt the old run independently of size admission or CI events', () => {
     const concurrency = compiled.match(/^concurrency:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
     assert.ok(concurrency);
