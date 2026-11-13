@@ -255,14 +255,27 @@ def stage(workspace, output, environment):
     }, sort_keys=True), encoding="utf-8")
 
 
+def validate_unit_layout(paths):
+    # Match the existing PowerShell runner's Windows case-insensitive semantics.
+    # MSBuild actually emits til.Unit.Tests.dll, not the expectation's lowercase spelling.
+    names = {name.casefold() for name in paths}
+    if (len(names) != len(paths) or
+            not {name.casefold() for name in UNIT_DLLS} <= {PurePosixPath(n).name for n in names}):
+        raise ValueError("Incomplete or colliding ordinary C++ unit test payload")
+    for name in names:
+        if re.fullmatch(r".*unit\.test.*\.dll", PurePosixPath(name).name):
+            local = (PurePosixPath(name).parent / "te.exe").as_posix()
+            if "te.exe" not in names and local not in names:
+                raise ValueError(f"Missing ordinary C++ test runner for {name}")
+
+
 def stage_units(workspace, output, environment):
     """Transport all loose Debug runtime outputs, not symbols, libraries or TestHost."""
     root = Path(workspace).resolve(strict=True) / "bin/x64/Debug"
     files = {p.relative_to(root).as_posix(): regular(p) for p in root.rglob("*")
              if p.is_file() and p.relative_to(root).parts[0] != "TestHostApp" and
              p.suffix.lower() not in (".pdb", ".lib", ".exp", ".ilk", ".appxrecipe")}
-    if not UNIT_DLLS <= {p.name for p in files.values()} or not any(p.name == "te.exe" for p in files.values()):
-        raise ValueError("Incomplete ordinary C++ unit test payload")
+    validate_unit_layout(files)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     for name, source in files.items():
@@ -283,9 +296,9 @@ def check_units(output, environment):
     inventory = metadata.get("files", {})
     actual = {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
     if (metadata.get("version") != 1 or metadata.get("identity") != identity(environment, require_pr=False) or
-            actual != set(inventory) | {"unit-payload.json"} or
-            not UNIT_DLLS <= {PurePosixPath(n).name for n in inventory}):
+            actual != set(inventory) | {"unit-payload.json"}):
         raise ValueError("Unit payload inventory or provenance differs")
+    validate_unit_layout(inventory)
     for name, record in inventory.items():
         path = regular(root / safe_path(name))
         if path.stat().st_size != record["size"] or digest(path) != record["sha256"]:

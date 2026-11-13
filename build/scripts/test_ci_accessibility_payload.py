@@ -259,7 +259,10 @@ class PayloadTests(unittest.TestCase):
     def test_all_ordinary_units_and_loose_resources_survive_without_testhost_or_symbols(self):
         root = self.workspace / "bin/x64/Debug"
         for name in PAYLOAD.UNIT_DLLS | {"te.exe", "Wex.Common.dll", "resources.pri", "ignored.pdb", "ignored.lib"}:
-            path = root / "units" / name
+            # Actual MSBuild output in CI43214343855 (not the PowerShell
+            # expectation's lowercase spelling): til.Unit.Tests.dll.
+            actual_name = "til.Unit.Tests.dll" if name == "til.unit.tests.dll" else name
+            path = root / "units" / actual_name
             path.parent.mkdir(exist_ok=True)
             path.write_bytes(name.encode())
         PAYLOAD.stage_units(self.workspace, self.output, IDENTITY)
@@ -273,6 +276,18 @@ class PayloadTests(unittest.TestCase):
         (self.output / "units/te.exe").write_bytes(b"changed")
         with self.assertRaisesRegex(ValueError, "differs"):
             PAYLOAD.check_units(self.output, IDENTITY)
+
+    def test_unit_layout_requires_every_original_dll_and_a_runner_for_every_group(self):
+        paths = {f"group/{name}" for name in PAYLOAD.UNIT_DLLS} | {"other/te.exe"}
+        with self.assertRaisesRegex(ValueError, "runner"):
+            PAYLOAD.validate_unit_layout(paths)
+        paths.add("group/TE.exe")
+        PAYLOAD.validate_unit_layout(paths)
+        paths.remove("group/Conhost.Unit.Tests.dll")
+        with self.assertRaisesRegex(ValueError, "Incomplete"):
+            PAYLOAD.validate_unit_layout(paths)
+        with self.assertRaisesRegex(ValueError, "colliding"):
+            PAYLOAD.validate_unit_layout({"til.Unit.Tests.dll", "til.unit.tests.dll"})
 
 
 class NativeReceiptTests(unittest.TestCase):
