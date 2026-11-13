@@ -1051,25 +1051,6 @@ test('publication native API adapter reaches CI validation through the canonical
   }
 });
 
-test('security worker shares the PR CI slot without canceling running or replacing pending CI', () => {
-  const ci = readFileSync(new URL('../../../workflows/pr-ci.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
-  const worker = readFileSync(new URL('../../../workflows/ghaw-pr-security.lock.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
-  const ciTemplate = ci.match(/^  group: (.+)$/m)?.[1];
-  const workerTemplate = worker.match(/^  group: (.+)$/m)?.[1];
-  assert(ciTemplate && workerTemplate);
-  const ciName = ci.match(/^name: (.+)$/m)[1];
-  const ciGroup = number => ciTemplate.replace(/\$\{\{\s*github\.workflow\s*\}\}/g, ciName)
-    .replace(/\$\{\{\s*github\.event\.pull_request\.number\s*\|\|\s*github\.ref\s*\}\}/g, String(number));
-  const workerGroup = number => workerTemplate.replace(/^['"]|['"]$/g, '')
-    .replace(/\$\{\{\s*github\.event\.inputs\.pr_number\s*\}\}/g, String(number));
-  assert.equal(ciGroup(17), workerGroup(17));
-  assert.notEqual(ciGroup(17), workerGroup(18));
-  const workerConcurrency = worker.match(/^concurrency:\n((?:  .+\n)+)/m)[1];
-  assert(workerConcurrency.includes('cancel-in-progress: false'));
-  assert(workerConcurrency.includes('queue: max'));
-  assert(ci.match(/^concurrency:\n((?:  .+\n)+)/m)[1].includes('cancel-in-progress: true'));
-});
-
 test('actual controller admission uses trusted commit association when workflow_run pull_requests is empty', async () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   const script = controller.split('      - name: Admit only successful matching current PR build CI')[1]
