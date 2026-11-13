@@ -184,6 +184,7 @@ namespace winrt::TerminalApp::implementation
         void TitlebarClicked();
         void WindowVisibilityChanged(const bool showOrHide);
         void WindowMoved();
+        void WindowMoveSizeChanged(bool moving);
 
         float CalcSnappedDimension(const bool widthOrHeight, const float dimension) const;
 
@@ -443,6 +444,7 @@ namespace winrt::TerminalApp::implementation
 
         bool _activated{ false };
         bool _visible{ true };
+        bool _windowMoveSizeInProgress{ false };
 
         std::vector<std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs>> _previouslyClosedPanesAndTabs{};
 

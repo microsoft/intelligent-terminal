@@ -68,5 +68,6 @@ namespace Microsoft.Terminal.Settings.Editor
         void NavigateToAIAgents();
 
         void SetAgentProfilesIntroductionPresentationGate(AgentProfilesIntroductionPresentationGate gate);
+        void WindowMoveSizeChanged(Boolean moving);
     }
 }
