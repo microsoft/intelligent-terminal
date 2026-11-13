@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>系統找不到指定的檔案。</value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>終端機當地語系化發佈重新測試訊息。</value>
+  </data>
 </root>
