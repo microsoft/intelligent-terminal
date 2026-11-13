@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { validateCiDefinition, validateCiPull, validateCiRun, verifyCiSecurity } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
+import { buildScope, readImmutableHunks, validateCiDefinition, validateCiPull, validateCiRun, verifyCiSecurity } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
 
 function nativeCiReference(run, repository) {
     const matches = run.referenced_workflows?.filter(item =>
@@ -158,8 +158,104 @@ export function validatePerformanceFiles(directory, language, identity) {
     }
 }
 
-function collect(output) {
+function parsePerformanceDiagnostics(text, language) {
+    const diagnostics = [];
+    const record = (filename, line, endLine, column, rule, message) => {
+        let file = typeof filename === 'string' ? filename.replaceAll('\\', '/') : '';
+        const prefix = language === 'rust' ? 'tools/wta/' : 'src/';
+        const absolutePrefix = file.lastIndexOf(`/${prefix}`);
+        if (absolutePrefix >= 0) file = file.slice(absolutePrefix + 1);
+        else if (language === 'rust' && !file.startsWith(prefix) && !/^(?:\/|[A-Za-z]:)/.test(file))
+            file = `${prefix}${file}`;
+        file = path.posix.normalize(file);
+        diagnostics.push({ file: typeof filename === 'string' && file.startsWith(prefix) ? file : null,
+            line, endLine, column, rule, message });
+    };
+    if (language === 'rust') {
+        for (const line of text.split(/\r?\n/)) {
+            if (!line.startsWith('{')) continue;
+            const entry = JSON.parse(line);
+            if (entry.reason !== 'compiler-message' || entry.message?.level !== 'warning' ||
+                !entry.message.code?.code?.startsWith('clippy::')) continue;
+            let span = entry.message.spans?.find(item => item.is_primary);
+            while (span?.expansion?.span) span = span.expansion.span;
+            record(span?.file_name, span?.line_start, span?.line_end, span?.column_start,
+                entry.message.code.code, entry.message.message);
+        }
+    } else if (language === 'cpp') {
+        for (const line of text.split(/\r?\n/)) {
+            const match = /^\s*(.+?):(\d+):(\d+): warning: (.*?) \[(performance-[^\]]+)\]$/.exec(line);
+            if (match) record(match[1], Number(match[2]), Number(match[2]), Number(match[3]), match[5], match[4]);
+            else if (/warning:.*\[performance-/.test(line)) record(undefined);
+        }
+    } else throw Error('Unsupported performance diagnostic language.');
+    return diagnostics;
+}
+
+function scopeDiagnostics(diagnostics, changedFiles) {
+    const result = { candidateOccurrences: diagnostics.length, outsideChangedLines: 0, unlocated: 0, duplicates: 0, diagnostics: [] };
+    const files = new Map(changedFiles.map(file => [file.path, file.hunks]));
+    const seen = new Set();
+    for (const diagnostic of diagnostics) {
+        const { file, line, endLine } = diagnostic;
+        if (!file || !Number.isSafeInteger(line) || line < 1 ||
+            !Number.isSafeInteger(endLine) || endLine < line) {
+            result.unlocated++;
+            continue;
+        }
+        if (!files.get(file)?.some(hunk => hunk.headCount > 0 &&
+            line <= hunk.headStart + hunk.headCount - 1 && endLine >= hunk.headStart)) {
+            result.outsideChangedLines++;
+            continue;
+        }
+        const key = JSON.stringify(diagnostic);
+        if (seen.has(key)) {
+            result.duplicates++;
+            continue;
+        }
+        seen.add(key);
+        result.diagnostics.push(diagnostic);
+    }
+    return result;
+}
+
+export function scopePerformanceDiagnostics(text, language, changedFiles) {
+    return scopeDiagnostics(parsePerformanceDiagnostics(text, language), changedFiles);
+}
+
+export function preparePrDiagnostics(output, scope, workspace = process.cwd()) {
+    const parsed = {};
+    for (const language of ['cpp', 'rust']) {
+        const directory = path.join(output, language);
+        const logs = fs.readdirSync(directory).filter(name =>
+            language === 'rust' ? name === 'diagnostics.jsonl' : /^diagnostics-\d+\.log$/.test(name));
+        parsed[language] = parsePerformanceDiagnostics(logs.map(name =>
+            fs.readFileSync(path.join(directory, name), 'utf8')).join('\n'), language);
+    }
+    const locations = new Set(Object.values(parsed).flatMap(items => items.map(item => item.file)));
+    const candidates = new Set(scope.candidates.map(file => file.filename));
+    const changes = buildScope(scope.identity.baseSha, scope.identity.headSha, scope.identity.prNumber, 'same-repo',
+        execFileSync('git', ['-c', 'core.fsmonitor=false', 'diff', '--no-ext-diff', '--no-textconv',
+            '--find-renames', '--name-status', '-z', scope.identity.baseSha, scope.identity.headSha, '--'],
+        { cwd: workspace, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
+            env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' } }));
+    const hunks = readImmutableHunks({ ...changes,
+        changedFiles: changes.changedFiles.filter(file => candidates.has(file.path) && locations.has(file.path)) }, workspace);
+    const languages = Object.fromEntries(Object.entries(parsed).map(([language, items]) =>
+        [language, scopeDiagnostics(items, hunks)]));
+    const result = { identity: scope.identity, languages,
+        limitation: 'Changed-line diagnostics are discovery input, not a complete review or baseline comparison. Review changed callers and retrieve relevant raw evidence on demand.' };
+    fs.writeFileSync(path.join(output, 'pr-diagnostics.json'), JSON.stringify(result, null, 2));
+    return result;
+}
+
+function collect(output, scopeFile) {
     const verified = verifyPerformanceCi();
+    const scope = JSON.parse(fs.readFileSync(scopeFile, 'utf8'));
+    if (scope.identity?.headSha !== verified.identity.headSha ||
+        scope.identity.baseSha !== verified.identity.comparisonBaseSha ||
+        scope.identity.prNumber !== Number(process.env.PR_NUMBER) || !Array.isArray(scope.candidates))
+        throw Error('PR diagnostic scope does not match the admitted immutable CI identity.');
     fs.mkdirSync(output, { recursive: true });
     for (const artifact of verified.artifacts) {
         const directory = path.join(output, artifact.language);
@@ -174,9 +270,11 @@ function collect(output) {
         JSON.stringify(confirmed.artifacts) !== JSON.stringify(verified.artifacts))
         throw Error('CI identity changed during evidence download.');
     fs.writeFileSync(path.join(output, 'identity.json'), JSON.stringify(verified.identity));
+    preparePrDiagnostics(output, scope);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-    if (process.argv[2] !== 'collect' || !process.argv[3]) throw Error('Expected collect and an output directory.');
-    collect(path.resolve(process.argv[3]));
+    if (process.argv[2] !== 'collect' || !process.argv[3] || !process.argv[4])
+        throw Error('Expected collect, an output directory and the prepared PR scope file.');
+    collect(path.resolve(process.argv[3]), path.resolve(process.argv[4]));
 }

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { admitPerformanceCi, validatePerformanceArtifacts, validatePerformanceFiles, validatePerformanceResult, verifyPerformanceCi } from '../scripts/performance-ci.mjs';
+import { admitPerformanceCi, preparePrDiagnostics, scopePerformanceDiagnostics, validatePerformanceArtifacts, validatePerformanceFiles, validatePerformanceResult, verifyPerformanceCi } from '../scripts/performance-ci.mjs';
 import { CI_DEFINITION_PATHS } from '../../../skills/ghaw-pr-security/scripts/security-review.mjs';
 
 function fixture() {
@@ -49,6 +50,88 @@ function fixture() {
     }, async paginate(method) { return method === 'jobs' ? jobs : [pr]; } };
     return { run, pr, tree, artifacts, environment, request, context, github, head, trusted, merge, jobs, commit, comparison };
 }
+
+function rustWarning(file, line, code = 'clippy::needless_collect') {
+    return JSON.stringify({ reason: 'compiler-message', message: { level: 'warning',
+        code: { code }, message: 'Candidate warning', spans: [{ file_name: file,
+            line_start: line, line_end: line, column_start: 3, is_primary: true }] } });
+}
+
+test('hundreds of unchanged warnings never enter the default PR diagnostic input', () => {
+    const changed = [{ path: 'tools/wta/src/app.rs', hunks: [{ headStart: 10, headCount: 2 }] }];
+    const text = [...Array.from({ length: 400 }, (_, i) => rustWarning('src\\app.rs', 100 + i)),
+        rustWarning('src\\app.rs', 10), rustWarning('src\\app.rs', 10),
+        rustWarning('src\\app.rs', 10, 'dead_code')].join('\n');
+    const scoped = scopePerformanceDiagnostics(text, 'rust', changed);
+    assert.equal(scoped.candidateOccurrences, 402);
+    assert.equal(scoped.outsideChangedLines, 400);
+    assert.equal(scoped.duplicates, 1);
+    assert.equal(scoped.diagnostics.length, 1);
+    assert.equal(scoped.diagnostics[0].file, 'tools/wta/src/app.rs');
+    assert.equal(scoped.diagnostics[0].line, 10);
+});
+
+test('native locations are scoped by immutable added lines, not merely touched files', () => {
+    const changed = [{ path: 'src/renderer/sample.cpp', hunks: [
+        { headStart: 20, headCount: 2 }, { headStart: 40, headCount: 0 },
+    ] }];
+    const cpp = [19, 20, 40].map(line =>
+        ` D:\\a\\repo\\src\\renderer\\sample.cpp:${line}:3: warning: copy [performance-for-range-copy]`).join('\n');
+    const scoped = scopePerformanceDiagnostics(cpp, 'cpp', changed);
+    assert.deepEqual(scoped.diagnostics.map(item => item.line), [20]);
+    assert.equal(scoped.outsideChangedLines, 2);
+    const rust = scopePerformanceDiagnostics(rustWarning('D:\\a\\repo\\tools\\wta\\src\\app.rs', 5), 'rust',
+        [{ path: 'tools/wta/src/app.rs', hunks: [{ headStart: 5, headCount: 1 }] }]);
+    assert.equal(rust.diagnostics.length, 1);
+    assert.equal(scopePerformanceDiagnostics(rustWarning('src/app.rs', 5), 'rust', []).diagnostics.length, 0);
+    assert.equal(scopePerformanceDiagnostics(rustWarning('../outside.rs', 5), 'rust', []).unlocated, 1);
+    assert.equal(scopePerformanceDiagnostics(rustWarning('src/helpers/../app.rs', 5), 'rust',
+        [{ path: 'tools/wta/src/app.rs', hunks: [{ headStart: 5, headCount: 1 }] }]).diagnostics.length, 1);
+    const expanded = JSON.parse(rustWarning('/rustc/library/macros.rs', 30));
+    expanded.message.spans[0].expansion = { span: { file_name: 'src/app.rs', line_start: 5,
+        line_end: 6, column_start: 1 } };
+    assert.equal(scopePerformanceDiagnostics(JSON.stringify(expanded), 'rust',
+        [{ path: 'tools/wta/src/app.rs', hunks: [{ headStart: 6, headCount: 1 }] }]).diagnostics.length, 1);
+    assert.equal(scopePerformanceDiagnostics('warning: unknown format [performance-for-range-copy]', 'cpp', []).unlocated, 1);
+    assert.throws(() => scopePerformanceDiagnostics('{"broken":', 'rust', []), SyntaxError);
+});
+
+test('prepared PR evidence uses real immutable Git hunks and retains raw logs unchanged', t => {
+    const parent = path.join(process.cwd(), 'Generated Files');
+    fs.mkdirSync(parent, { recursive: true });
+    const root = fs.mkdtempSync(path.join(parent, 'pr-diagnostics-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    const source = path.join(root, 'tools', 'wta', 'src', 'app.rs');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    git(['init', '--quiet']);
+    const commit = () => {
+        git(['add', '--all']);
+        git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'fixture']);
+        return git(['rev-parse', 'HEAD']);
+    };
+    fs.writeFileSync(source, 'old\nunchanged\n');
+    const baseSha = commit();
+    fs.writeFileSync(source, 'new\nunchanged\n');
+    const headSha = commit();
+    const output = path.join(root, '.git', 'evidence');
+    for (const language of ['cpp', 'rust']) fs.mkdirSync(path.join(output, language), { recursive: true });
+    const raw = [rustWarning('src/app.rs', 1), rustWarning('src/app.rs', 2)].join('\n');
+    fs.writeFileSync(path.join(output, 'rust', 'diagnostics.jsonl'), raw);
+    const scoped = preparePrDiagnostics(output, { identity: { baseSha, headSha, prNumber: 42 },
+        candidates: [{ filename: 'tools/wta/src/app.rs' }] }, root);
+    assert.deepEqual(scoped.languages.rust.diagnostics.map(item => item.line), [1]);
+    assert.equal(scoped.languages.rust.outsideChangedLines, 1);
+    assert.equal(fs.readFileSync(path.join(output, 'rust', 'diagnostics.jsonl'), 'utf8'), raw);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(output, 'pr-diagnostics.json'), 'utf8')), scoped);
+    const moved = path.join(path.dirname(source), 'moved.rs');
+    fs.renameSync(source, moved);
+    const renamedHead = commit();
+    fs.writeFileSync(path.join(output, 'rust', 'diagnostics.jsonl'), rustWarning('src/moved.rs', 1));
+    const renamed = preparePrDiagnostics(output, { identity: { baseSha: headSha, headSha: renamedHead, prNumber: 42 },
+        candidates: [{ filename: 'tools/wta/src/moved.rs' }] }, root);
+    assert.equal(renamed.languages.rust.diagnostics.length, 0, 'pure renames do not reintroduce the old diagnostic backlog');
+});
 
 test('controller admits only successful current same-repository CI; drafts cost no inference', async () => {
     const f = fixture();
@@ -121,6 +204,10 @@ test('workflow wiring has no direct PR inference and no native rebuild in the wo
     assert.match(controller, /workflow_run\.conclusion == 'success'/);
     assert.match(worker, /Verify successful CI admission/);
     assert.match(worker, /Collect verified CI performance evidence/);
+    assert.ok(worker.indexOf('name: Prepare immutable review inputs') <
+        worker.indexOf('name: Collect verified CI performance evidence'));
+    assert.match(worker, /collect \/tmp\/gh-aw\/performance-ci \/tmp\/gh-aw\/performance-scope\.json/);
+    assert.match(worker, /`pr-diagnostics\.json`/);
     assert.match(worker, /Do not rely only on CI findings/);
     assert.doesNotMatch(worker, /\/t:ClangTidy|cargo wta-perf/);
     assert.match(ci, /Collect advisory C\+\+ performance diagnostics/);

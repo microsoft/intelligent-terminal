@@ -130,7 +130,17 @@ There is no second native build job in the performance reviewer.
 The worker checks CI identity again and downloads only matching performance artifacts
 before inference, then confirms run/attempt identity again. Missing, stale,
 failed or malformed evidence stops admission rather than looking clean.
-The agent inspects raw warnings in source, compares with the original base and
+Before inference, the existing collector uses immutable Git change hunks and
+native diagnostic locations to write `pr-diagnostics.json`. Only warnings
+overlapping added/replaced PR lines enter that default input; duplicate
+emissions are removed. Excluded counts stay visible without repeating the
+backlog text, and original raw logs remain unchanged.
+
+This is input scoping, not a severity classifier or proof that outside-line
+warnings are unrelated. The agent reviews changed callers and can retrieve
+relevant raw diagnostics when a change worsens an unchanged implementation.
+It does not read or re-triage the full excluded backlog by default.
+The agent inspects selected warnings in source, compares with the original base and
 continues intelligent diff/caller review even with no diagnostics. Head-only
 warnings do not establish a newly introduced regression or a HIGH finding.
 
