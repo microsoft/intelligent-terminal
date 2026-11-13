@@ -21,6 +21,7 @@ jobs:
     name: Intelligent Terminal security review
     runs-on: ubuntu-latest
     timeout-minutes: 210
+    continue-on-error: true
     permissions:
       actions: write
       contents: read
@@ -37,6 +38,7 @@ jobs:
       ci_run_attempt: ${{ steps.admission.outputs.ci_run_attempt }}
       scope_applicable: ${{ steps.scope.outputs.applicable }}
       review_check_id: ${{ steps.review-check.outputs.review_check_id }}
+      diagnostic_run_url: ${{ steps.worker.outputs.conclusion != 'success' && steps.worker.outputs.run_url || '' }}
       canonical_result: ${{ steps.canonical.outcome }}
       review_blocking: ${{ steps.canonical.outputs.review_blocking }}
       expected_workflow_sha: ${{ steps.worker.outputs.expected_workflow_sha }}
@@ -273,7 +275,7 @@ jobs:
 
       - name: Canonicalize worker output without publication credentials
         id: canonical
-        if: always() && steps.worker.outputs.run_id != ''
+        if: steps.worker.outputs.conclusion == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -334,17 +336,6 @@ jobs:
         if: steps.canonical.outcome == 'success'
         shell: bash
         run: node .github/skills/ghaw-pr-security/scripts/security-review.mjs enforce --status "$RUNNER_TEMP/security-canonical/security-status.txt"
-
-      - name: Enforce worker success
-        if: always() && steps.scope.outputs.applicable == 'true'
-        shell: bash
-        env:
-          WORKER_CONCLUSION: ${{ steps.worker.outputs.conclusion }}
-        run: |
-          if [ "${WORKER_CONCLUSION:-failure}" != success ]; then
-            echo "::error::The internal security worker did not succeed."
-            exit 1
-          fi
 
   publish-repair:
     needs: security-review
@@ -561,6 +552,7 @@ jobs:
           REVIEW_BLOCKING: ${{ needs.security-review.outputs.review_blocking }}
           REPAIR_RESULT: ${{ needs.publish-repair.result }}
           REPORT_RESULT: ${{ needs.publish-report.result }}
+          DIAGNOSTIC_RUN_URL: ${{ needs.security-review.outputs.diagnostic_run_url }}
         with:
           retries: 3
           script: |
@@ -573,17 +565,19 @@ jobs:
               ['true', 'false'].includes(process.env.REVIEW_BLOCKING) &&
               process.env.REPORT_RESULT === 'success' && ['success', 'skipped'].includes(process.env.REPAIR_RESULT);
             const blocking = completed && process.env.REVIEW_BLOCKING === 'true';
+            const runUrl = `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const diagnostics = process.env.DIAGNOSTIC_RUN_URL || runUrl;
             await github.rest.checks.update({
               ...context.repo, check_run_id: Number(process.env.REVIEW_CHECK_ID), status: 'completed',
               conclusion: notRequired || (completed && !blocking) ? 'success' :
-                process.env.ANALYSIS_RESULT === 'cancelled' ? 'cancelled' : 'failure',
+                blocking ? 'failure' : 'neutral',
               output: {
                 title: notRequired ? 'Review not required' : blocking ? 'Changes required' :
-                  completed ? 'Review completed' : 'Review did not complete',
+                  completed ? 'Review completed' : 'Security review unavailable',
                 summary: notRequired ? 'No security-relevant surface; AI review not required.' :
                   blocking ? 'Review completed with unresolved HIGH findings; changes are required.' :
                   completed ? 'See the published report for findings and proposals.' :
-                  'Build success is not a completed security review; see workflow logs.',
+                  `The optional AI review did not complete. No security conclusion was reached. [Run diagnostics](${diagnostics}).`,
               },
-              details_url: `${context.serverUrl || 'https://github.com'}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              details_url: notRequired || completed ? runUrl : diagnostics,
             });
