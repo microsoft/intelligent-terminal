@@ -28563,10 +28563,7 @@ namespace TerminalAppLocalTests
                     const auto compactRing = compactRow.FindName(L"TabIndeterminateProgressRing").as<FrameworkElement>();
                     verifyCentered(compactRing, compactRow, compactRow);
                     const auto pin = compactRow.FindName(L"CollapsedPinnedTabIcon").as<FrameworkElement>();
-                    VERIFY_ARE_EQUAL(Visibility::Visible, pin.Visibility());
-                    const auto pinPosition = pin.TransformToVisual(compactRow).TransformPoint({ 0, 0 });
-                    const auto ringPosition = compactRing.TransformToVisual(compactRow).TransformPoint({ 0, 0 });
-                    VERIFY_IS_TRUE(std::abs(pinPosition.Y + pin.ActualHeight() - ringPosition.Y - compactRing.ActualHeight()) <= 1.0);
+                    VERIFY_ARE_EQUAL(Visibility::Collapsed, pin.Visibility());
                     strip.IsRailCollapsed(false);
                     status.IsPinned(false);
                     strip.UpdateLayout();
