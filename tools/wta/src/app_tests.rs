@@ -1165,7 +1165,7 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
         assert!(
             matches!(
                 published.as_slice(),
-                [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::ToolStarting { .. }]
+                [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::QualifiedHook { .. }]
                     if key == "native-session"
                         && pane_session_id == pane
                         && cwd == &std::path::PathBuf::from("C:\\Users\\example\\project")
@@ -9020,6 +9020,270 @@ fn helper_native_resume_fixture_with_status(
     let (published, published_rx) = mpsc::unbounded_channel();
     app.set_session_hook_tx(published);
     (app, requests_rx, events_rx, published_rx, row)
+}
+
+mod qualified_hook_routing_tests {
+    use super::*;
+    use crate::agent_sessions::{
+        AgentSessionRegistry, AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent,
+        SessionLocation,
+    };
+    use crate::session_registry::{InMemoryRegistry, SessionHookParams, SessionRegistry};
+
+    #[tokio::test]
+    async fn qualified_hook_routing_preserves_colliding_owners_and_forwarded_activity() {
+        let (_, _, _, _, template) = helper_native_resume_fixture();
+        let mut local = AgentSessionRegistry::new();
+        let master = InMemoryRegistry::new();
+        let mut rows = Vec::new();
+        for (provider, source, pane, location) in [
+            (
+                "copilot",
+                CliSource::Copilot,
+                "pane-copilot",
+                SessionLocation::Host,
+            ),
+            (
+                "claude",
+                CliSource::Claude,
+                "pane-claude",
+                SessionLocation::Host,
+            ),
+            (
+                "copilot",
+                CliSource::Copilot,
+                "pane-wsl",
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+            ),
+        ] {
+            let mut row = template.clone();
+            row.key = "shared-id".into();
+            row.cli_source = source.clone();
+            row.location = location.clone();
+            local.retain_resume_candidate(&row);
+            local.apply(SessionEvent::QualifiedResume {
+                identity: row.identity(),
+                event: QualifiedResumeEvent::Dispatched,
+            });
+            local.apply(SessionEvent::QualifiedResume {
+                identity: row.identity(),
+                event: QualifiedResumeEvent::PaneAssigned {
+                    pane_session_id: pane.into(),
+                },
+            });
+            let mut info = session_info_for_test("shared-id");
+            info.provider_id = Some(provider.into());
+            info.cli_source = Some(source);
+            info.location = location;
+            info.status = Some(AgentStatus::Idle);
+            info.pane_session_id = Some(pane.into());
+            master.upsert(info).await;
+            rows.push((row, pane));
+        }
+        assert!(local.get(&"shared-id".into()).is_none());
+        for (index, (row, pane)) in rows.iter().enumerate() {
+            for (event, expected) in [
+                ("agent.prompt.submit", AgentStatus::Working),
+                ("agent.tool.starting", AgentStatus::Working),
+                ("agent.notification", AgentStatus::Attention),
+            ] {
+                let other = rows[(index + 1) % rows.len()].0.identity();
+                let before = local.get_identity(&other).unwrap().status.clone();
+                let master_before = master.lookup_identity(&other).await.unwrap();
+                let mut params = json!({"event": event, "cli_source": row.cli_source.canonical_provider_id().unwrap(), "agent_session_id": "shared-id", "payload": {"tool_name": "read", "message": "approval"}});
+                if let Some(distro) = row.location.distro() {
+                    params["wsl_distro"] = json!(distro);
+                }
+                let mut forwarded = Vec::new();
+                route_agent_event_to_registry_with_hook_sink(&mut local, pane, &params, |event| {
+                    forwarded.push(event)
+                });
+                assert_eq!(
+                    local.get_identity(&row.identity()).unwrap().status,
+                    expected
+                );
+                assert_eq!(local.get_identity(&other).unwrap().status, before);
+                assert!(!forwarded.is_empty());
+                for event in forwarded {
+                    let wire = serde_json::to_value(SessionHookParams::from(&event)).unwrap();
+                    let parsed: SessionHookParams = serde_json::from_value(wire).unwrap();
+                    master.apply_event(parsed.into()).await;
+                }
+                assert_eq!(
+                    master
+                        .lookup_identity(&row.identity())
+                        .await
+                        .unwrap()
+                        .status,
+                    Some(expected)
+                );
+                assert_eq!(master.lookup_identity(&other).await.unwrap(), master_before);
+            }
+        }
+        let before = local.iter_sorted().len();
+        let mut forwarded = Vec::new();
+        let nested = json!({"event":"agent.prompt.submit","cli_source":"copilot","agent_session_id":"nested-worker","payload":{"cwd":"C:\\work"}});
+        route_agent_event_to_registry_with_hook_sink(
+            &mut local,
+            "pane-copilot",
+            &nested,
+            |event| forwarded.push(event),
+        );
+        assert!(forwarded.is_empty());
+        assert_eq!(local.iter_sorted().len(), before);
+        assert!(local.get(&"nested-worker".into()).is_none());
+        let mut unknown_pane = Vec::new();
+        let params = json!({"event":"agent.prompt.submit","cli_source":"copilot","agent_session_id":"shared-id","payload":{}});
+        route_agent_event_to_registry_with_hook_sink(
+            &mut local,
+            "unqualified-pane",
+            &params,
+            |event| unknown_pane.push(event),
+        );
+        assert!(unknown_pane.is_empty());
+        let legacy = SessionEvent::ToolStarting {
+            key: "shared-id".into(),
+            tool_name: "legacy".into(),
+        };
+        let before = master.snapshot().await;
+        assert!(!master.apply_event(legacy).await);
+        assert_eq!(master.snapshot().await, before);
+        for params in [
+            json!({"event":"agent.notification","cli_source":"codex","agent_session_id":"shared-id","payload":{}}),
+            json!({"event":"agent.notification","cli_source":"copilot","agent_session_id":"shared-id","wsl_distro":"Ubuntu","payload":{}}),
+        ] {
+            let mut rejected = Vec::new();
+            route_agent_event_to_registry_with_hook_sink(
+                &mut local,
+                "pane-copilot",
+                &params,
+                |event| rejected.push(event),
+            );
+            assert!(rejected.is_empty());
+        }
+        let start = json!({"event":"agent.session.started","cli_source":"copilot","agent_session_id":"shared-id","payload":{}});
+        route_agent_event_to_registry(&mut local, "pane-copilot", &start);
+        assert_eq!(
+            local.owner_for_pane("pane-copilot").unwrap().identity(),
+            rows[0].0.identity()
+        );
+    }
+}
+
+mod native_resume_transport_tests {
+    use super::*;
+    use crate::shell::wt_channel::{
+        classify_wtcli_output, native_profile_resume_result, request_outcome_unknown,
+        WtcliOneShotError,
+    };
+    use std::os::windows::process::ExitStatusExt;
+
+    fn process_result(code: u32, stdout: &str) -> anyhow::Result<serde_json::Value> {
+        classify_wtcli_output(
+            std::process::Output {
+                status: std::process::ExitStatus::from_raw(code),
+                stdout: stdout.as_bytes().to_vec(),
+                stderr: b"COM/CallJson receipt failure".to_vec(),
+            },
+            Some("owned"),
+        )
+        .and_then(|reply| native_profile_resume_result("owned", reply))
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_post_creation_exit_keeps_helper_pending() {
+        for stdout in [
+            "",
+            "{",
+            r#"{"request_id":"foreign","success":false,"error":"Rejected"}"#,
+            r#"{"request_id":"owned","error":"Malformed receipt"}"#,
+            r#"{"request_id":"owned","success":true,"result":{}}"#,
+        ] {
+            let (mut app, mut requests, mut events, mut published, row) =
+                helper_native_resume_fixture();
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            // Simulate creation before COM/CLI loses the correlated receipt.
+            let result = process_result(1, stdout);
+            assert!(request_outcome_unknown(result.as_ref().unwrap_err()));
+            reply.send(result).unwrap();
+            tokio::task::yield_now().await;
+            assert!(events.try_recv().is_err());
+            published.try_recv().unwrap();
+            assert!(published.try_recv().is_err());
+            let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+            assert_eq!(pending.status, crate::agent_sessions::AgentStatus::Idle);
+            assert!(pending.pane_session_id.is_none());
+            assert!(pending.last_error.is_none());
+            app.activate_agent_session_routed(&row);
+            tokio::task::yield_now().await;
+            assert!(requests.try_recv().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_confirmed_rejection_and_spawn_failure_allow_retry() {
+        let spawn_error = WtcliOneShotError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "wtcli missing",
+        ));
+        let rejection = r#"{"request_id":"owned","success":false,"error":"Blocked by policy"}"#;
+        for result in [
+            Err(anyhow::Error::new(spawn_error)),
+            process_result(0, rejection),
+            process_result(1, rejection),
+        ] {
+            assert!(!request_outcome_unknown(result.as_ref().unwrap_err()));
+            let (mut app, mut requests, mut events, _published, row) =
+                helper_native_resume_fixture();
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            reply.send(result).unwrap();
+            app.handle_event(events.recv().await.unwrap());
+            let failed = app.agent_sessions.get_identity(&row.identity()).unwrap();
+            assert_eq!(
+                failed.status,
+                crate::agent_sessions::AgentStatus::Historical
+            );
+            assert!(failed.last_error.is_some());
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            reply.send(Err(anyhow::anyhow!("Rejected"))).unwrap();
+            app.handle_event(events.recv().await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_exact_process_receipt_binds_helper() {
+        let (mut app, mut requests, mut events, _published, row) = helper_native_resume_fixture();
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        let pane_id = "8cf9d04a-c16d-42be-9e78-982a5ecb4549";
+        reply
+            .send(process_result(
+                0,
+                &json!({
+                    "request_id": "owned", "success": true,
+                    "result": {
+                        "session_id": pane_id,
+                        "tab_id": "046ca37b-72b3-429b-a7d3-67402f41e332"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        app.handle_event(events.recv().await.unwrap());
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some(pane_id)
+        );
+    }
 }
 
 #[tokio::test]

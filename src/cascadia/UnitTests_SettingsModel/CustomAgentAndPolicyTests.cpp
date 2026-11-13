@@ -79,6 +79,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(CustomAgentNativeProfileGeneration);
         TEST_METHOD(CustomAgentOriginalProtectionSurvivesPolicy);
         TEST_METHOD(GeneratedAgentProfileGuidCompatibility);
+        TEST_METHOD(AgentProfileOriginalCaseReload);
+        TEST_METHOD(AgentProfileBuiltinOrphanProtectionReload);
         TEST_METHOD(AgentProfileStartingDirectoryMigration);
         TEST_METHOD(AgentProfileStartingDirectoryMigrationPreservesDefaults);
         TEST_METHOD(AgentProfileArgumentValidation);
@@ -537,6 +539,82 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(args->Equals(restoredArgs));
         const auto missingProfileSettings = MakeSettings(R"("acpAgent":"")");
         VERIFY_THROWS(missingProfileSettings->GetProfileForArgs(restoredArgs), wil::ResultException);
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileOriginalCaseReload()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const auto guid = Agents::GeneratedGuid(L"custom:MyAgent");
+        const auto guidText = winrt::to_string(Utils::GuidToString(guid));
+        const auto generated = std::string{ R"({"profiles":[{"guid":")" } + guidText +
+                               R"(","name":"MyAgent","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:MyAgent"}]})";
+        const auto user = std::string{ R"({"profiles":[{"guid":")" } + guidText +
+                          R"(","name":"Saved original","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:myagent",
+                          "commandline":"MyAgent.exe --interactive","icon":"C:\\art\\custom.svg","agentProfile.resumeArguments":"--load"},
+                          {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Copy",
+                          "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:myagent"}]})";
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(user, generated);
+        const auto reloaded = winrt::make_self<implementation::CascadiaSettings>(toString(settings->ToJson()), generated);
+        const auto original = Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent");
+        VERIFY_IS_NOT_NULL(original);
+        VERIFY_ARE_EQUAL(guid, original.Guid());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:myagent" }, original.AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Saved original" }, original.Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"MyAgent.exe --interactive" }, original.Commandline());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\art\\custom.svg" }, original.Icon().Path());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"--load" }, original.AgentProfileResumeArguments());
+        VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:unrelated"));
+        const auto copy = reloaded->DuplicateProfile(original);
+        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:MYAGENT").Guid());
+        copy.Source(winrt::hstring{ Agents::Source });
+        copy.AgentProfileId(L"custom:myagent");
+        copy.Guid(Agents::GeneratedGuid(L"custom:myagent"));
+        VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent"));
+        copy.Source(L"unrelated");
+        VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(reloaded->AllProfiles(), L"custom:myagent").Guid());
+        original.AgentProfileId(L"custom:other");
+        VERIFY_IS_NULL(Agents::FindOriginal(reloaded->AllProfiles(), L"custom:other"));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileBuiltinOrphanProtectionReload()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
+        {
+            const auto guid = Agents::GeneratedGuid(agent.id);
+            const auto guidText = winrt::to_string(Utils::GuidToString(guid));
+            const auto generated = std::string{ R"({"profiles":[{"guid":")" } + guidText +
+                                   R"(","name":"Builtin","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":")" +
+                                   winrt::to_string(agent.id) + R"("}]})";
+            const auto user = std::string{ R"({"defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+                "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},{"guid":")" } +
+                              guidText +
+                              R"(","name":"Saved builtin","source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen"}]})";
+            const auto installed = winrt::make_self<implementation::CascadiaSettings>(user, generated);
+            VERIFY_IS_FALSE(installed->FindProfile(guid).HasAgentProfileId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ agent.id }, installed->FindProfile(guid).AgentProfileId());
+            VERIFY_ARE_EQUAL(guid, Agents::FindOriginal(installed->AllProfiles(), agent.id).Guid());
+            const auto removed = winrt::make_self<implementation::CascadiaSettings>(
+                toString(installed->ToJson()), std::string_view{ R"({"profiles":[]})" });
+            const auto orphan = removed->FindProfile(guid);
+            VERIFY_IS_TRUE(orphan.Orphaned());
+            VERIFY_IS_TRUE(orphan.AgentProfileId().empty());
+            VERIFY_IS_FALSE(orphan.IsDeletable());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"chosen" }, orphan.AgentProfileModel());
+            const auto copy = removed->DuplicateProfile(orphan);
+            VERIFY_IS_TRUE(copy.IsDeletable());
+            winrt::get_self<implementation::Profile>(copy)->Orphaned(true);
+            copy.Source(winrt::hstring{ Agents::Source });
+            VERIFY_IS_TRUE(copy.IsDeletable());
+            copy.Guid(Agents::GeneratedGuid(L"custom:retired"));
+            VERIFY_IS_TRUE(copy.IsDeletable());
+            copy.Guid(guid);
+            copy.Source(L"unrelated");
+            VERIFY_IS_TRUE(copy.IsDeletable());
+            copy.Source(winrt::hstring{ Agents::Source });
+            copy.AgentProfileId(L"retired-provider");
+            VERIFY_IS_TRUE(copy.IsDeletable());
+        }
     }
 
     void CustomAgentAndPolicyTests::GeneratedAgentProfileGuidCompatibility()

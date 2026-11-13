@@ -1,5 +1,9 @@
 mod cli_channel;
 
+#[cfg(test)]
+pub(crate) use cli_channel::classify_wtcli_output;
+#[cfg(test)]
+pub(crate) use cli_channel::native_profile_resume_result;
 pub(crate) use cli_channel::request_outcome_unknown;
 pub(crate) use cli_channel::resolve_wtcli_path;
 pub use cli_channel::spawn_wtcli_split_then_focus_with_callback;

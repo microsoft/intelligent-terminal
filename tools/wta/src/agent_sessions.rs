@@ -426,6 +426,11 @@ impl QualifiedResumeEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionEvent {
+    QualifiedHook {
+        identity: crate::session_registry::SessionIdentity,
+        pane_session_id: String,
+        event: QualifiedHookActivity,
+    },
     QualifiedResume {
         identity: crate::session_registry::SessionIdentity,
         event: QualifiedResumeEvent,
@@ -520,6 +525,71 @@ pub enum SessionEvent {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum QualifiedHookActivity {
+    ToolStarting {
+        tool_name: String,
+    },
+    ToolCompleted,
+    ToolReturned {
+        timestamp_ms: Option<u64>,
+    },
+    Notification {
+        message: String,
+        timestamp_ms: Option<u64>,
+    },
+}
+
+impl QualifiedHookActivity {
+    pub(crate) fn into_event(self, key: AgentKey) -> SessionEvent {
+        match self {
+            Self::ToolStarting { tool_name } => SessionEvent::ToolStarting { key, tool_name },
+            Self::ToolCompleted => SessionEvent::ToolCompleted { key },
+            Self::ToolReturned { timestamp_ms } => SessionEvent::ToolReturned { key, timestamp_ms },
+            Self::Notification {
+                message,
+                timestamp_ms,
+            } => SessionEvent::Notification {
+                key,
+                message,
+                timestamp_ms,
+            },
+        }
+    }
+}
+
+impl SessionEvent {
+    pub(crate) fn qualify_hook(
+        self,
+        identity: crate::session_registry::SessionIdentity,
+        pane_session_id: &str,
+    ) -> Self {
+        let event = match self {
+            Self::ToolStarting { tool_name, .. } => {
+                QualifiedHookActivity::ToolStarting { tool_name }
+            }
+            Self::ToolCompleted { .. } => QualifiedHookActivity::ToolCompleted,
+            Self::ToolReturned { timestamp_ms, .. } => {
+                QualifiedHookActivity::ToolReturned { timestamp_ms }
+            }
+            Self::Notification {
+                message,
+                timestamp_ms,
+                ..
+            } => QualifiedHookActivity::Notification {
+                message,
+                timestamp_ms,
+            },
+            other => return other,
+        };
+        Self::QualifiedHook {
+            identity,
+            pane_session_id: pane_key(pane_session_id),
+            event,
+        }
+    }
+}
+
 /// Tool names that mean "the agent is soliciting input from the user".
 ///
 /// This list is **half of a cross-language contract**. The hook producer
@@ -594,8 +664,24 @@ impl AgentSessionRegistry {
     }
 
     pub(crate) fn apply_at(&mut self, ev: SessionEvent, now: SystemTime) {
-        let qualified_resume = matches!(&ev, SessionEvent::QualifiedResume { .. });
+        let qualified_resume = matches!(
+            &ev,
+            SessionEvent::QualifiedResume { .. } | SessionEvent::QualifiedHook { .. }
+        );
         let mut ev = match ev {
+            SessionEvent::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            } => {
+                let Some(key) = self.identity_storage_key(&identity) else {
+                    return;
+                };
+                if self.active_by_pane.get(&pane_key(&pane_session_id)) != Some(&key) {
+                    return;
+                }
+                event.into_event(key)
+            }
             SessionEvent::QualifiedResume { identity, event } => {
                 let Some(key) = self.identity_storage_key(&identity) else {
                     return;
@@ -773,7 +859,7 @@ impl AgentSessionRegistry {
             other => other,
         };
         match ev {
-            SessionEvent::QualifiedResume { .. } => return,
+            SessionEvent::QualifiedResume { .. } | SessionEvent::QualifiedHook { .. } => return,
             SessionEvent::SessionStarted {
                 key,
                 cli_source,
@@ -1401,6 +1487,15 @@ impl AgentSessionRegistry {
             .and_then(|key| self.sessions.get(key))
     }
 
+    pub(crate) fn raw_key_is_ambiguous(&self, key: &str) -> bool {
+        self.sessions
+            .values()
+            .filter(|row| row.key == key)
+            .take(2)
+            .count()
+            > 1
+    }
+
     fn raw_storage_key(&self, raw: &str) -> Option<&str> {
         let mut rows = self.sessions.iter().filter(|(_, row)| row.key == raw);
         let (key, _) = rows.next()?;
@@ -1482,6 +1577,11 @@ impl AgentSessionRegistry {
     pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
         let key = self.active_by_pane.get(&pane_key(pane_session_id))?;
         self.sessions.get(key).map(|row| row.key.clone())
+    }
+
+    pub(crate) fn owner_for_pane(&self, pane_session_id: &str) -> Option<&AgentSession> {
+        let key = self.active_by_pane.get(&pane_key(pane_session_id))?;
+        self.sessions.get(key)
     }
 
     /// Look up the [`SessionOrigin`] of whatever session is currently

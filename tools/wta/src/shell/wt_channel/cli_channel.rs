@@ -23,6 +23,10 @@ pub(crate) enum WtcliOneShotError {
     Wait(std::io::Error),
     ReadStdout(std::io::Error),
     ReadStderr(std::io::Error),
+    UncorrelatedNativeResumeExit {
+        status: std::process::ExitStatus,
+        stderr: String,
+    },
     TimedOut {
         timeout: Duration,
         kill_error: Option<std::io::Error>,
@@ -38,6 +42,10 @@ impl std::fmt::Display for WtcliOneShotError {
             Self::Wait(error) => write!(f, "failed to wait for wtcli: {error}"),
             Self::ReadStdout(error) => write!(f, "failed to read wtcli stdout: {error}"),
             Self::ReadStderr(error) => write!(f, "failed to read wtcli stderr: {error}"),
+            Self::UncorrelatedNativeResumeExit { status, stderr } => write!(
+                f,
+                "native profile resume outcome unknown after wtcli exited with {status}: {stderr}"
+            ),
             Self::TimedOut {
                 timeout,
                 kill_error,
@@ -67,7 +75,7 @@ impl std::error::Error for WtcliOneShotError {
             | Self::Wait(error)
             | Self::ReadStdout(error)
             | Self::ReadStderr(error) => Some(error),
-            Self::TimedOut { .. } => None,
+            Self::TimedOut { .. } | Self::UncorrelatedNativeResumeExit { .. } => None,
         }
     }
 }
@@ -89,6 +97,39 @@ pub(crate) fn request_outcome_unknown(error: &anyhow::Error) -> bool {
         .is_some_and(|error| !matches!(error, WtcliOneShotError::Spawn(_)))
         || error.downcast_ref::<serde_json::Error>().is_some()
         || error.downcast_ref::<InvalidNativeResumeReceipt>().is_some()
+}
+
+pub(crate) fn classify_wtcli_output(
+    output: std::process::Output,
+    native_resume_request_id: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if let Some(request_id) = native_resume_request_id {
+            // COM may have created the pane before receipt allocation,
+            // marshalling, or CLI parsing failed. Only a correlated receipt
+            // can distinguish rejection from an unacknowledged creation.
+            if let Ok(reply) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+                if reply["request_id"].as_str() == Some(request_id) && reply["success"].is_boolean()
+                {
+                    return Ok(reply);
+                }
+            }
+            return Err(WtcliOneShotError::UncorrelatedNativeResumeExit {
+                status: output.status,
+                stderr: stderr.trim().to_owned(),
+            }
+            .into());
+        }
+        bail!("wtcli failed: {}", stderr.trim());
+    }
+
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")
 }
 
 async fn read_pipe<R>(pipe: Option<R>) -> std::io::Result<Vec<u8>>
@@ -261,7 +302,7 @@ where
     native_profile_resume_result(&request_id, reply)
 }
 
-fn native_profile_resume_result(
+pub(crate) fn native_profile_resume_result(
     request_id: &str,
     reply: serde_json::Value,
 ) -> anyhow::Result<serde_json::Value> {
@@ -1001,6 +1042,14 @@ impl CliChannel {
     /// Run a wtcli subcommand and return the parsed JSON output.
     /// wtcli inherits WT_COM_CLSID from this process's env.
     async fn run_wtcli(&self, args: &[&str]) -> anyhow::Result<serde_json::Value> {
+        self.run_wtcli_with_native_resume_id(args, None).await
+    }
+
+    async fn run_wtcli_with_native_resume_id(
+        &self,
+        args: &[&str],
+        native_resume_request_id: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
         let args: Vec<String> = std::iter::once("--json".to_string())
             .chain(args.iter().map(|arg| (*arg).to_string()))
             .collect();
@@ -1009,19 +1058,7 @@ impl CliChannel {
                 .await
                 .context("Failed to run wtcli")?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("wtcli failed: {}", stderr.trim());
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return Ok(serde_json::Value::Null);
-        }
-        let val: serde_json::Value =
-            serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
-        Ok(val)
+        classify_wtcli_output(output, native_resume_request_id)
     }
 }
 
@@ -1158,12 +1195,15 @@ impl WtChannel for CliChannel {
                         let window_id = event["params"]["window_id"]
                             .as_str()
                             .context("Native profile resume requires a window ID")?;
-                        self.run_wtcli(&[
-                            "native-profile-resume",
-                            "--window-id",
-                            window_id,
-                            &event.to_string(),
-                        ])
+                        self.run_wtcli_with_native_resume_id(
+                            &[
+                                "native-profile-resume",
+                                "--window-id",
+                                window_id,
+                                &event.to_string(),
+                            ],
+                            event["params"]["request_id"].as_str(),
+                        )
                         .await
                     })
                     .await;
@@ -1615,6 +1655,24 @@ mod tests {
         assert_eq!(event["method"], "resume_in_new_agent_tab");
         assert_eq!(event["params"]["session_id"], "known");
         assert!(event["params"].get("event").is_none());
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_process_exit_without_receipt_is_uncertain() {
+        let args = vec![
+            "/D".to_string(),
+            "/S".to_string(),
+            "/C".to_string(),
+            "(echo CallJson failed 1>&2) & exit /b 1".to_string(),
+        ];
+        let output = run_wtcli_one_shot("cmd.exe", &args, true, true, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(!output.status.success());
+        let ordinary_error = classify_wtcli_output(output.clone(), None).unwrap_err();
+        assert!(!request_outcome_unknown(&ordinary_error));
+        let native_error = classify_wtcli_output(output, Some("owned")).unwrap_err();
+        assert!(request_outcome_unknown(&native_error));
     }
 
     #[tokio::test]

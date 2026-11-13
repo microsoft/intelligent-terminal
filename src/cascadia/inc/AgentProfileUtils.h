@@ -28,6 +28,41 @@ namespace Microsoft::Terminal::AgentProfiles
         return winrt::guid{ ::Microsoft::Console::Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ identity })) };
     }
 
+    template<typename Profiles>
+    auto FindOriginal(const Profiles& profiles, const std::wstring_view providerId)
+    {
+        using Profile = decltype(profiles.GetAt(0));
+        Profile original{ nullptr };
+        if (Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(providerId).empty())
+        {
+            return original;
+        }
+        for (const auto& profile : profiles)
+        {
+            const auto id = profile.AgentProfileId();
+            const auto inherited = profile.AgentProfileIdOverrideSource();
+            // A saved case-only override does not change the generated parent's identity.
+            const auto originalId = inherited && inherited.Source() == Source && inherited.Guid() == profile.Guid() &&
+                                            (inherited.Origin() == winrt::Microsoft::Terminal::Settings::Model::OriginTag::Generated ||
+                                             inherited.Origin() == winrt::Microsoft::Terminal::Settings::Model::OriginTag::InBox) &&
+                                            Settings::Model::AgentRegistry::AgentIdEquals(inherited.AgentProfileId(), id) ?
+                                        inherited.AgentProfileId() :
+                                        id;
+            if (profile.Source() == Source &&
+                Settings::Model::AgentRegistry::AgentIdEquals(id, providerId) &&
+                profile.Guid() == GeneratedGuid(originalId))
+            {
+                // Case-distinct generated identities must not select an arbitrary original.
+                if (original)
+                {
+                    return Profile{ nullptr };
+                }
+                original = profile;
+            }
+        }
+        return original;
+    }
+
     inline std::wstring NativePath()
     {
         til::env environment;
@@ -289,6 +324,9 @@ namespace Microsoft::Terminal::AgentProfiles
         const auto id = std::wstring_view{ provider };
         return profile.Guid() == winrt::guid{ L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}" } ||
                (profile.Source() == Source &&
-                (!profile.Orphaned() || (!id.starts_with(L"custom:") && Settings::Model::AgentRegistry::SupportsNativeProfile(id))));
+                (!profile.Orphaned() ||
+                 (id.empty() && std::ranges::any_of(Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
+                                                    [&](const auto& agent) { return profile.Guid() == GeneratedGuid(agent.id); })) ||
+                 (!id.starts_with(L"custom:") && Settings::Model::AgentRegistry::SupportsNativeProfile(id))));
     }
 }

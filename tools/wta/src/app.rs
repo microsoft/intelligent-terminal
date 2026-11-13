@@ -1089,20 +1089,34 @@ where
     } else {
         pane_session_id.to_string()
     };
+    let owner = reg.owner_for_pane(&owner_pane);
+    let qualified_owner = owner.filter(|row| row.key == key && row.cli_source == cli_source);
+    let hook_identity = qualified_owner.map(|row| row.identity());
+    if hook_identity.is_none()
+        && reg.raw_key_is_ambiguous(&key)
+        && !matches!(event, "agent.session.started" | "agent.session.start")
+    {
+        return false;
+    }
+    if qualified_owner.is_some_and(|row| {
+        params
+            .get("wsl_distro")
+            .and_then(serde_json::Value::as_str)
+            .map_or(row.location.is_wsl(), |distro| {
+                row.location.distro() != Some(distro)
+            })
+    }) {
+        return false;
+    }
+    let known_row =
+        qualified_owner.or_else(|| reg.get(&key).filter(|row| row.cli_source == cli_source));
     let facts = AgentEventFacts {
         key: key.clone(),
-        session_known: reg
-            .get(&key)
-            .is_some_and(|row| row.cli_source == cli_source),
-        session_status: reg
-            .get(&key)
-            .filter(|row| row.cli_source == cli_source)
-            .map(|row| row.status.clone()),
-        pane_owned_by_other: reg.key_for_pane(&owner_pane).is_some_and(|owner| {
-            reg.get(&owner).is_some_and(|row| {
-                row.liveness() == crate::agent_sessions::LivenessState::Live
-                    && (owner != key || row.cli_source != cli_source)
-            })
+        session_known: known_row.is_some(),
+        session_status: known_row.map(|row| row.status.clone()),
+        pane_owned_by_other: owner.is_some_and(|row| {
+            row.liveness() == crate::agent_sessions::LivenessState::Live
+                && (row.key != key || row.cli_source != cli_source)
         }),
     };
     let plan = plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
@@ -1114,6 +1128,11 @@ where
     }
 
     for ev in plan.events {
+        let ev = if let Some(identity) = hook_identity.as_ref() {
+            ev.qualify_hook(identity.clone(), &owner_pane)
+        } else {
+            ev
+        };
         reg.apply(ev.clone());
         hook_sink(ev);
     }

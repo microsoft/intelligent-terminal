@@ -22827,6 +22827,171 @@ async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
 /// describes a live but failing session; its pane-keyed reducer needs the
 /// synthetic start to establish the binding before ConnectionFailed lands.
 #[tokio::test]
+async fn qualified_hook_routing_master_com_and_forwarded_owner_context() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    let state = make_state();
+    let mut identities = Vec::new();
+    for (provider, source, pane, location) in [
+        (
+            "copilot",
+            CliSource::Copilot,
+            "host-copilot",
+            SessionLocation::Host,
+        ),
+        (
+            "claude",
+            CliSource::Claude,
+            "host-claude",
+            SessionLocation::Host,
+        ),
+        (
+            "copilot",
+            CliSource::Copilot,
+            "wsl-copilot",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        ),
+    ] {
+        let mut row = SessionInfo::new(SessionId::new("hook-collision"), "C:\\repo".into());
+        row.provider_id = Some(provider.into());
+        row.cli_source = Some(source);
+        row.location = location;
+        row.status = Some(AgentStatus::Idle);
+        row.pane_session_id = Some(pane.into());
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        identities.push((identity, provider, pane));
+    }
+    for (identity, provider, pane) in &identities {
+        for (event, status) in [
+            ("agent.prompt.submit", AgentStatus::Working),
+            ("agent.tool.starting", AgentStatus::Working),
+            ("agent.notification", AgentStatus::Attention),
+        ] {
+            let before = state.registry.snapshot().await;
+            let mut params = serde_json::json!({
+                "event": event, "cli_source": provider, "agent_session_id": "hook-collision",
+                "pane_id": pane, "payload": {"tool_name":"read", "message":"approval"}
+            });
+            if *pane == "wsl-copilot" {
+                params["wsl_distro"] = serde_json::json!("Ubuntu");
+            }
+            handle_master_agent_event(&state, &params).await;
+            assert_eq!(
+                state
+                    .registry
+                    .lookup_identity(identity)
+                    .await
+                    .unwrap()
+                    .status,
+                Some(status)
+            );
+            for other in before {
+                let other_identity = SessionIdentity::from_info(&other);
+                if &other_identity != identity {
+                    assert_eq!(
+                        state
+                            .registry
+                            .lookup_identity(&other_identity)
+                            .await
+                            .unwrap(),
+                        other
+                    );
+                }
+            }
+        }
+    }
+    let before = state.registry.snapshot().await;
+    for (sid, provider, distro) in [
+        ("nested-worker", "copilot", None),
+        ("hook-collision", "codex", None),
+        ("hook-collision", "copilot", Some("Ubuntu")),
+    ] {
+        let mut params = serde_json::json!({"event":"agent.prompt.submit","cli_source":provider,"agent_session_id":sid,"pane_id":"host-copilot","payload":{}});
+        if let Some(distro) = distro {
+            params["wsl_distro"] = serde_json::json!(distro);
+        }
+        handle_master_agent_event(&state, &params).await;
+        assert_eq!(state.registry.snapshot().await, before);
+    }
+    let legacy = SessionEvent::Notification {
+        key: "hook-collision".into(),
+        message: "legacy".into(),
+        timestamp_ms: None,
+    };
+    assert!(
+        !apply_master_session_event(&state, legacy, false, SessionLocation::Host)
+            .await
+            .0
+    );
+    assert!(!state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&SessionId::new("hook-collision")));
+    let wrong_owner = SessionEvent::ToolStarting {
+        key: "hook-collision".into(),
+        tool_name: "foreign".into(),
+    }
+    .qualify_hook(identities[0].0.clone(), "host-claude");
+    assert!(
+        !apply_master_session_event(&state, wrong_owner, false, SessionLocation::Host)
+            .await
+            .0
+    );
+    assert_eq!(state.registry.snapshot().await, before);
+    let mut conflicting = state
+        .registry
+        .lookup_identity(&identities[0].0)
+        .await
+        .unwrap();
+    conflicting.provider_id = Some("codex".into());
+    conflicting.cli_source = Some(CliSource::Codex);
+    let conflicting_identity = SessionIdentity::from_info(&conflicting);
+    state.registry.upsert(conflicting).await;
+    state
+        .born_bound
+        .lock()
+        .await
+        .insert(SessionId::new("hook-collision"));
+    let before = state.registry.snapshot().await;
+    for event in ["agent.prompt.submit", "agent.session.start"] {
+        handle_master_agent_event(
+            &state,
+            &serde_json::json!({
+                "event": event, "cli_source": "codex", "agent_session_id": "hook-collision",
+                "pane_id": "host-copilot", "payload": {"cwd":"C:\\foreign"}
+            }),
+        )
+        .await;
+        assert_eq!(state.registry.snapshot().await, before);
+    }
+    let conflicting_event = SessionEvent::ToolStarting {
+        key: "hook-collision".into(),
+        tool_name: "foreign".into(),
+    }
+    .qualify_hook(conflicting_identity, "host-copilot");
+    assert!(
+        !apply_master_session_event(&state, conflicting_event, false, SessionLocation::Host)
+            .await
+            .0
+    );
+    assert_eq!(state.registry.snapshot().await, before);
+    assert!(!state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&SessionId::new("hook-collision")));
+    assert!(state
+        .born_bound
+        .lock()
+        .await
+        .contains(&SessionId::new("hook-collision")));
+}
+
+#[tokio::test]
 async fn master_com_agent_error_for_unknown_session_records_the_failure() {
     let state = make_state();
     let sid = acp::schema::v1::SessionId::new("direct-error".to_string());

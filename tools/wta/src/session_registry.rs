@@ -1166,6 +1166,11 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
+    QualifiedHook {
+        identity: SessionIdentity,
+        pane_session_id: String,
+        event: crate::agent_sessions::QualifiedHookActivity,
+    },
     QualifiedResume {
         identity: SessionIdentity,
         event: crate::agent_sessions::QualifiedResumeEvent,
@@ -1242,6 +1247,15 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
     fn from(value: &crate::agent_sessions::SessionEvent) -> Self {
         use crate::agent_sessions::SessionEvent;
         match value {
+            SessionEvent::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            } => Self::QualifiedHook {
+                identity: identity.clone(),
+                pane_session_id: pane_session_id.clone(),
+                event: event.clone(),
+            },
             SessionEvent::QualifiedResume { identity, event } => Self::QualifiedResume {
                 identity: identity.clone(),
                 event: event.clone(),
@@ -1344,6 +1358,15 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
 impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
     fn from(value: SessionHookParams) -> Self {
         match value {
+            SessionHookParams::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            } => Self::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            },
             SessionHookParams::QualifiedResume { identity, event } => {
                 Self::QualifiedResume { identity, event }
             }
@@ -4053,6 +4076,26 @@ fn apply_event_qualified_at_ms(
     qualified_activity: Option<&SessionIdentity>,
     now: u64,
 ) -> bool {
+    if let SessionEvent::QualifiedHook {
+        identity,
+        pane_session_id,
+        event,
+    } = ev
+    {
+        let pane = pane_key(&pane_session_id);
+        if identity.history_key.is_none()
+            || state.active_by_pane.get(&pane) != Some(&identity)
+            || state.native_panes.contains_key(&pane)
+            || !state
+                .sessions
+                .get(&identity)
+                .is_some_and(|row| row.session_universe.is_none())
+        {
+            return false;
+        }
+        let key = identity.session_id.to_string();
+        return apply_event_qualified_at_ms(state, event.into_event(key), Some(&identity), now);
+    }
     if let SessionEvent::QualifiedResume { identity, event } = ev {
         if identity.history_key.is_none() {
             return false;
@@ -4831,7 +4874,7 @@ fn apply_event_qualified_at_ms(
             }
             assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
-        SessionEvent::QualifiedResume { .. } => false,
+        SessionEvent::QualifiedResume { .. } | SessionEvent::QualifiedHook { .. } => false,
     }
 }
 

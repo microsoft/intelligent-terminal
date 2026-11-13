@@ -8042,16 +8042,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
-        const auto canonical = Registry::CanonicalNativeAgentProviderId(std::wstring_view{ providerId });
-        if (canonical.empty())
-        {
-            return nullptr;
-        }
-        const auto guid = Profiles::GeneratedGuid(canonical);
-        const auto profile = _settings.FindProfile(guid);
-        return profile && profile.Source() == Profiles::Source && Registry::AgentIdEquals(profile.AgentProfileId(), providerId) ?
-                   profile :
-                   nullptr;
+        return Profiles::FindOriginal(_settings.AllProfiles(), providerId);
     }
 
     winrt::hstring TerminalPage::_ResolveSidebarHistoryIconPath(const TerminalApp::TabStripHistoryItem& item)
