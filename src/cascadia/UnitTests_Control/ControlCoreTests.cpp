@@ -53,6 +53,9 @@ namespace ControlUnitTests
         TEST_METHOD(TestSelectOutputExactWrap);
 
         TEST_METHOD(TestSimpleClickSelection);
+        TEST_METHOD(TestAgentHookProgress);
+        TEST_METHOD(TestAgentHookPreservesNativeProgress);
+        TEST_METHOD(TestAgentHookProgressAfterConnectionReplacement);
 
         TEST_CLASS_SETUP(ModuleSetup)
         {
@@ -117,6 +120,76 @@ namespace ControlUnitTests
 
         auto core = createCore(*settings, *conn);
         VERIFY_IS_NOT_NULL(core);
+    }
+
+    void ControlCoreTests::TestAgentHookProgress()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        const auto emit = [&](const std::wstring_view event) {
+            const auto output = fmt::format(
+                L"\x1b]9001;AgentEvent;{{\"event\":\"{}\",\"cli_source\":\"copilot\",\"payload\":{{\"session_id\":\"fixture\"}}}}\x7", event);
+            conn->WriteInput(winrt_wstring_to_array_view(output));
+        };
+        emit(L"agent.prompt.submit");
+        VERIFY_ARE_EQUAL(3u, core->TaskbarState());
+        emit(L"agent.notification");
+        VERIFY_ARE_EQUAL(4u, core->TaskbarState());
+        emit(L"agent.tool.finished");
+        VERIFY_ARE_EQUAL(3u, core->TaskbarState());
+        emit(L"agent.stop");
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        emit(L"agent.tool.finished");
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        emit(L"agent.prompt.submit");
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]133;A\x7"));
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+    }
+
+    void ControlCoreTests::TestAgentHookPreservesNativeProgress()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        conn->WriteInput(winrt_wstring_to_array_view(
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.prompt.submit\",\"cli_source\":\"copilot\",\"payload\":{\"session_id\":\"fixture\"}}\x7"
+            L"\x1b]9;4;1;42\x7"));
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(42u, core->TaskbarProgress());
+        conn->WriteInput(winrt_wstring_to_array_view(
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.notification\",\"cli_source\":\"copilot\",\"payload\":{\"session_id\":\"fixture\"}}\x7"));
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(42u, core->TaskbarProgress());
+        conn->WriteInput(winrt_wstring_to_array_view(
+            L"\x1b]9;4\x7"
+            L"\x1b]9;4;1;42\x7"
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.session.start\",\"cli_source\":\"custom:fixture\",\"agent_session_id\":\"custom-fixture\"}\x7"
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.prompt.submit\",\"cli_source\":\"custom:fixture\",\"agent_session_id\":\"custom-fixture\"}\x7"));
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(42u, core->TaskbarProgress());
+        conn->WriteInput(winrt_wstring_to_array_view(
+            L"\x1b]9;4;\x7"
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.prompt.submit\",\"cli_source\":\"custom:fixture\",\"agent_session_id\":\"custom-fixture\"}\x7"));
+        VERIFY_ARE_EQUAL(3u, core->TaskbarState());
+    }
+
+    void ControlCoreTests::TestAgentHookProgressAfterConnectionReplacement()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]9;4;1;42\x7"));
+        VERIFY_ARE_EQUAL(1u, core->TaskbarState());
+
+        auto replacement = winrt::make_self<MockConnection>();
+        core->Connection(*replacement);
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        replacement->WriteInput(winrt_wstring_to_array_view(
+            L"\x1b]9001;AgentEvent;{\"event\":\"agent.prompt.submit\",\"cli_source\":\"copilot\",\"payload\":{\"session_id\":\"restarted\"}}\x7"));
+        VERIFY_ARE_EQUAL(3u, core->TaskbarState());
     }
 
     void ControlCoreTests::TestInitialize()

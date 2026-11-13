@@ -22,6 +22,7 @@
 #include "../../audio/midi/MidiAudio.hpp"
 #include "../../buffer/out/search.h"
 #include "../../cascadia/TerminalCore/Terminal.hpp"
+#include "../TerminalProtocol/AgentEventParsing.h"
 #include "../../renderer/inc/FontInfoDesired.hpp"
 
 namespace Microsoft::Console::Render::Atlas
@@ -480,6 +481,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         std::unique_ptr<::Microsoft::Console::Render::Atlas::AtlasEngine> _renderEngine{ nullptr }; // 3.
         std::unique_ptr<::Microsoft::Console::Render::Renderer> _renderer{ nullptr }; // 3.
         std::shared_ptr<::Microsoft::Terminal::Core::Terminal> _terminal{ nullptr }; // 1.
+        ::Microsoft::Terminal::Protocol::Parsing::AgentHookProgress _agentHookProgress;
 
         // ↑ MOST IMPORTANTLY: `_outputIdle` takes dependency on the raw `this` pointer (necessarily).
         // Destroying SharedState here will block until all pending `debounced_func_trailing` calls are completed.

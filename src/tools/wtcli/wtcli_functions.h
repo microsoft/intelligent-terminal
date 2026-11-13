@@ -298,6 +298,32 @@ namespace wtcli
         }
     }
 
+    inline bool IsAgentUserInputTool(std::string toolName)
+    {
+        std::transform(toolName.begin(), toolName.end(), toolName.begin(), [](const unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        static constexpr const char* userInputTools[] = {
+            "ask_user",
+            "askuser",
+            "ask-user",
+            "ask_question",
+            "askquestion",
+            "askuserquestion",
+            "ask_user_question",
+            "ask_for_clarification",
+            "request_input",
+            "request_user_input",
+            "user_input",
+            "prompt_user",
+            "clarification_request",
+            "question",
+        };
+        return std::any_of(std::begin(userInputTools), std::end(userInputTools), [&](const auto value) {
+            return toolName == value;
+        });
+    }
+
     // Build an agent hook event directly from the hook JSON delivered on stdin.
     // This is the native equivalent of the former PowerShell bridge.
     //
@@ -489,31 +515,7 @@ namespace wtcli
                     break;
                 }
             }
-            std::transform(toolName.begin(), toolName.end(), toolName.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
-
-            static constexpr const char* userInputTools[] = {
-                "ask_user",
-                "askuser",
-                "ask-user",
-                "ask_question",
-                "askquestion",
-                "askuserquestion",
-                "ask_user_question",
-                "ask_for_clarification",
-                "request_input",
-                "request_user_input",
-                "user_input",
-                "prompt_user",
-                "clarification_request",
-                "question",
-            };
-            const auto isUserInputTool = std::any_of(
-                std::begin(userInputTools),
-                std::end(userInputTools),
-                [&](const char* value) { return toolName == value; });
-            if (!isUserInputTool)
+            if (!IsAgentUserInputTool(toolName))
             {
                 payload.removeMember("tool_input");
                 payload.removeMember("toolInput");

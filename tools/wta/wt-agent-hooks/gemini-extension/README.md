@@ -44,15 +44,15 @@ Claude / Copilot bundles cover those events.
 ## Requirements
 
 - Running inside a Windows Terminal pane (the script no-ops outside).
-- `wtcli` on PATH (automatic inside the deployed Windows Terminal package).
+- The packaged VT hook writer (automatic inside Intelligent Terminal).
+- `wtcli` is used only when no owning console is available or an older Terminal
+  version has not published the writer path.
 
 ## Notes
 
-- This extension uses `${extensionPath}` (Gemini's variable). The
-  Claude/Copilot bundles use `${CLAUDE_PLUGIN_ROOT}` instead — both
-  resolve to the plugin's installed root directory.
+- The writer path comes from `WT_AGENT_HOOK_DIR`, so hook commands do not depend
+  on a provider-specific plugin-root placeholder.
 - Event names differ from Claude/Copilot (`BeforeTool`/`AfterTool` vs.
   `PreToolUse`/`PostToolUse`); see the [Gemini hooks reference][hooks-ref].
 
 [hooks-ref]: https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md
-

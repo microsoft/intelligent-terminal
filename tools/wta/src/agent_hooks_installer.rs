@@ -8,9 +8,9 @@
 //
 // The wta agent-pane registry transitions a session out of `IDLE` only when
 // it receives `agent_event` broadcasts from the COM server. Those events
-// originate from the native `wtcli agent-hook` bridge. If the user hasn't run
-// a manual plugin-install step, the CLI never invokes the bridge, the registry
-// stays empty, and the session management list looks frozen.
+// originate in owning-console VT hooks or the native `wtcli agent-hook`
+// compatibility bridge. Without the manual plugin-install step, the CLI never
+// invokes either producer and the session management list stays empty.
 //
 // Bundle = single source of truth (issue #20)
 // -------------------------------------------

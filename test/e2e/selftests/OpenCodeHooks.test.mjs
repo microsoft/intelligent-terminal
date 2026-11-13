@@ -21,7 +21,11 @@ const tuiPluginPath = fileURLToPath(new URL(
   "../../../tools/wta/wt-agent-hooks/opencode/v2/tui.js", import.meta.url,
 ))
 const tuiPlugin = await loadPlugin(tuiPluginPath)
-const environmentKeys = ["WT_COM_CLSID", "WT_SESSION", "WTCLI_PATH", "OPENCODE_CLIENT", "WTA_HOOK_LOG_DIR"]
+const bridgeSource = await readFile(fileURLToPath(new URL(
+  "../../../tools/wta/wt-agent-hooks/opencode/shared/bridge.js", import.meta.url,
+)))
+const { tryWriteHookVt } = await import(`data:text/javascript;base64,${bridgeSource.toString("base64")}`)
+const environmentKeys = ["WT_COM_CLSID", "WT_SESSION", "WTCLI_PATH", "WT_AGENT_HOOK_DIR", "OPENCODE_CLIENT", "WTA_HOOK_LOG_DIR"]
 let originalEnvironment
 let originalBun
 let calls
@@ -35,6 +39,7 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
     process.env.WTCLI_PATH = "C:\\fixture with spaces\\wtcli.exe"
     delete process.env.OPENCODE_CLIENT
     delete process.env.WTA_HOOK_LOG_DIR
+    delete process.env.WT_AGENT_HOOK_DIR
     calls = []
     globalThis.Bun = {
       spawn(options) {
@@ -42,6 +47,25 @@ describe("OpenCode bundled hook behavior", { skip: process.platform !== "win32" 
         return { exited: Promise.resolve(0) }
       },
     }
+  })
+
+  it("writes encoded events in process and falls back when the owning console is unavailable", () => {
+    process.env.WT_AGENT_HOOK_DIR = "C:\\fixture with spaces\\wt-agent-hooks"
+    const payload = { session_id: "root", message: "question\x1b]9;4;2\x07" }
+    let sequence
+    assert.equal(tryWriteHookVt("agent.notification", "root", payload, (path, value, options) => {
+      assert.equal(path, "CONOUT$")
+      assert.equal(options.flag, "r+")
+      sequence = value
+    }), true)
+    const match = /^\x1b\]9001;AgentEvent64;([A-Za-z0-9+/=]+)\x07$/.exec(sequence)
+    assert.ok(match, "payload control bytes must not escape the OSC envelope")
+    assert.deepEqual(JSON.parse(Buffer.from(match[1], "base64").toString("utf8")), {
+      event: "agent.notification", cli_source: "opencode", agent_session_id: "root", payload,
+    })
+    assert.equal(tryWriteHookVt("agent.notification", "root", payload, () => {
+      throw Object.assign(new Error("no controlling console"), { code: "ENXIO" })
+    }), false)
   })
 
   it("relays server-owned status through a bound local TUI without server Terminal identity", async () => {
