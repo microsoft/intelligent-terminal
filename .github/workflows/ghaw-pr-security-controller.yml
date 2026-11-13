@@ -4,7 +4,7 @@ run-name: Security Review after CI ${{ github.event.workflow_run.id }}
 on:
   workflow_run:
     workflows: ['PR CI']
-    types: [completed]
+    types: [requested, completed]
 
 permissions: {}
 
@@ -16,6 +16,48 @@ env:
   GIT_NO_REPLACE_OBJECTS: '1'
 
 jobs:
+  cancel-outdated-review:
+    if: github.event.action == 'requested' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
+    name: Cancel outdated security review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Cancel running review of an older PR head
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const source = context.payload.workflow_run;
+            const repositoryId = context.payload.repository.id;
+            const pulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { ...context.repo, commit_sha: source.head_sha, per_page: 100 });
+            const current = pulls.filter(pr => pr.state === 'open' &&
+              pr.head?.ref === source.head_branch &&
+              pr.head?.repo?.id === repositoryId && pr.base?.repo?.id === repositoryId);
+            if (!current.length) return;
+            if (current.length !== 1) throw Error('Ambiguous PR for requested CI.');
+            const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: current[0].number })).data;
+            if (pr.state !== 'open' || pr.head.ref !== source.head_branch || pr.head.repo.id !== repositoryId) return;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              ...context.repo, workflow_id: 'ghaw-pr-security.lock.yml',
+              event: 'workflow_dispatch', status: 'in_progress', per_page: 100,
+            });
+            for (const run of runs) {
+              const binding = /^Security Repair ghaw-pr-security-(\d+)-([0-9a-f]{40})-\d+-\d+$/.exec(run.display_title);
+              if (run.repository?.id !== repositoryId || run.path !== '.github/workflows/ghaw-pr-security.lock.yml' ||
+                  binding?.[1] !== String(pr.number) || binding[2] === pr.head.sha) continue;
+              try {
+                await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: run.id });
+              } catch (error) {
+                if (error.status !== 409 ||
+                    (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: run.id })).data.status !== 'completed') throw error;
+                continue;
+              }
+              core.info(`Cancellation requested for outdated security worker ${run.id}.`);
+            }
+
   security-review:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
     name: Intelligent Terminal security review
