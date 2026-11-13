@@ -176,6 +176,17 @@ jobs:
 
 safe-outputs:
 
+  report-failure-as-issue: false
+  report-failed-jobs: false
+  noop:
+    report-as-issue: false
+  missing-tool:
+    create-issue: false
+  missing-data:
+    create-issue: false
+  report-incomplete:
+    create-issue: false
+
   github-token: ${{ secrets.GITHUB_TOKEN }}
 
   push-to-pull-request-branch:

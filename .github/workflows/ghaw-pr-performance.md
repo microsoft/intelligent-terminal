@@ -133,7 +133,9 @@ pre-agent-steps:
       git checkout -B "performance-proposal-$PR_NUMBER" "$HEAD_SHA"
 
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
   report-failure-as-issue: false
+  report-failed-jobs: false
   report-incomplete:
     create-issue: false
   noop:

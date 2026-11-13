@@ -7360,9 +7360,16 @@ async fn sync_host_history(
         .iter()
         .map(|row| row.session_id.to_string())
         .collect();
-    let rows = host_history_via_acp(state, agent, &sessions)
+    let mut rows = host_history_via_acp(state, agent, &sessions)
         .await
         .ok_or(HistoryRefreshFailure::Other)?;
+    // Identity inference must see untitled candidates too; otherwise filtering
+    // history could turn an ambiguous inventory into a false unique match.
+    let inference_inventory: Vec<_> = rows
+        .iter()
+        .map(crate::session_registry::agent_session_to_session_info)
+        .collect();
+    crate::session_history::retain_titled_history(&mut rows, &sessions);
     let _mutation = agent.history_refresh.mutation_gate.lock().await;
     if agent
         .history_refresh
@@ -7380,8 +7387,8 @@ async fn sync_host_history(
         crate::agent_sessions::CliSource::Unknown(agent.resolved_agent_id.clone())
     });
     let listing_cli = Some(&listing_cli);
-    // Ids THIS agent listed before and no longer lists — the only rows it may
-    // drop. `cli_source` alone is not a session universe: host Copilot and an
+    // Ids THIS agent observed before but no longer includes in visible history.
+    // `cli_source` alone is not a session universe: host Copilot and an
     // in-distro Copilot both stamp `Some(Copilot)` while listing disjoint
     // sessions, so a set-difference against the whole registry would have each
     // one delete the other's rows on every poll, forever.
@@ -7389,13 +7396,24 @@ async fn sync_host_history(
         let mut ever = agent.listed_ever.lock().await;
         // A full inference inventory may have populated rows beyond page one.
         // A later ordinary first-page refresh cannot prove those rows deleted.
-        let prunable = if refresh.query.last_response_complete() {
+        let mut prunable: HashSet<_> = if refresh.query.last_response_complete() {
             ever.difference(&listed_ids).cloned().collect()
         } else {
             HashSet::new()
         };
+        // An explicitly untitled row is rejected even when later pages are unknown.
+        prunable.extend(
+            inference_inventory
+                .iter()
+                .map(|row| row.session_id.to_string())
+                .filter(|id| !listed_ids.contains(id)),
+        );
         let previous = ever.clone();
-        ever.extend(listed_ids.iter().cloned());
+        ever.extend(
+            inference_inventory
+                .iter()
+                .map(|row| row.session_id.to_string()),
+        );
         (prunable, previous)
     };
 
@@ -7411,17 +7429,13 @@ async fn sync_host_history(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    let listed_rows: Vec<_> = rows
-        .iter()
-        .map(crate::session_registry::agent_session_to_session_info)
-        .collect();
     // Partial pages retain first-list evidence but never establish uniqueness.
     let mut changed = state
         .registry
         .enrich_native_from_listing(
             &agent.resolved_agent_id,
             &agent.source.session_location(),
-            &listed_rows,
+            &inference_inventory,
             &previously_listed,
             listing_started_at_ms,
             listing_completed_at_ms,
@@ -7589,9 +7603,9 @@ async fn refresh_titles_from_listing(
 
 /// Whether a registry row is stale history to drop during reconcile:
 /// a terminal (Historical / Ended) shell row belonging to
-/// `listing_cli` whose id is in `prunable_ids` — the set the listing agent
-/// previously returned from `session/list` and no longer returns. Live rows
-/// (Working / Idle) and agent panes (ACP-driven) are never reconciled away.
+/// `listing_cli` whose id is in `prunable_ids` — previously listed IDs absent
+/// from a complete inventory, or observed entries rejected by the title filter.
+/// Live rows (Working / Idle) and agent panes (ACP-driven) are never reconciled away.
 /// The caller must additionally enforce exact provider, source, and universe
 /// ownership with `row_belongs_to_agent`, including for WSL. Pure for unit testing.
 ///
