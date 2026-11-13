@@ -133,10 +133,12 @@ test('controller reports execution status on the admitted PR commit, not the wor
     ['success', 'true', 'success', 'success', 'false', 'success'],
     ['success', 'false', 'skipped', 'skipped', '', 'success'],
     ['failure', 'true', 'skipped', 'success', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'failure', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', 'true', 'failure'],
     ['failure', 'true', 'skipped', 'skipped', '', 'neutral'],
     ['cancelled', 'true', 'skipped', 'skipped', '', 'neutral'],
     ['success', 'true', 'skipped', 'skipped', '', 'neutral'],
-    ['success', 'true', 'failure', 'skipped', 'false', 'neutral'],
+    ['success', 'true', 'failure', 'skipped', 'false', 'failure'],
     ['success', 'true', 'success', 'failure', 'false', 'neutral'],
   ]) {
     const calls = [], outputs = {};
@@ -148,6 +150,7 @@ test('controller reports execution status on the admitted PR commit, not the wor
     const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
       SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report,
       REVIEW_BLOCKING: blocking, CANONICAL_RESULT: blocking ? 'success' : 'failure',
+      PUBLICATION: repair === 'skipped' ? 'none' : 'push',
       DIAGNOSTIC_RUN_URL: analysis !== 'success' ? 'https://github.com/owner/repo/actions/runs/789' : '',
       GITHUB_RUN_ATTEMPT: '1' } };
     await execute(pending)(github, context, process, core);
@@ -160,7 +163,7 @@ test('controller reports execution status on the admitted PR commit, not the wor
     assert(calls[0].details_url.endsWith('/actions/runs/456'));
     const diagnosticRun = process.env.DIAGNOSTIC_RUN_URL ? '789' : '456';
     assert(calls[1].details_url.endsWith(`/actions/runs/${expected === 'neutral' ? diagnosticRun : '456'}`));
-    if (blocking === 'true') assert.equal(calls[1].output.title, 'Changes required');
+    if (expected === 'failure') assert.equal(calls[1].output.title, 'Changes required');
     else if (expected === 'neutral') {
       assert.equal(calls[1].output.title, 'Security review unavailable');
       assert.match(calls[1].output.summary, /No security conclusion/);
