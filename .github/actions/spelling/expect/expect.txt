@@ -920,6 +920,7 @@ LOGFONT
 LOGFONTA
 LOGFONTW
 logissue
+logon
 losslessly
 loword
 lparam
@@ -1001,6 +1002,7 @@ mdmerge
 MDs
 MEASUREITEM
 megamix
+MEI
 memallocator
 meme
 MENUCHAR

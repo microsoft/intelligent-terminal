@@ -8,13 +8,15 @@
 // TerminalSettingsEditor (AIAgentsViewModel) can use them without
 // duplicating logic.
 //
-// Pure Win32 + STL, no WinRT dependency.
+// Uses C++/WinRT for optional asynchronous resource retirement.
 
 #pragma once
 
 #include <atomic>
 #include <filesystem>
 #include <string>
+
+#include "WtaProcessResources.h"
 
 namespace Microsoft::Terminal::WtaProcess
 {
@@ -84,6 +86,9 @@ namespace Microsoft::Terminal::WtaProcess
         bool timedOut{ false };
     };
 
+    // Large runtime trees can outlast the master shutdown grace period.
+    inline constexpr DWORD ResourceRecoveryTimeoutMs = 30000;
+
     // Spawn `wta.exe <argsAfterExe>` and capture its output regardless of
     // exit code. Synchronous — call from a background thread.
     // Optionally accepts a custom environment block (double-null-terminated
@@ -104,13 +109,15 @@ namespace Microsoft::Terminal::WtaProcess
     // deadlocking a chatty child, and every wta subcommand already mirrors
     // its diagnostics into the wta logs.
     // The optional cancellation flag must outlive this call. Only the captured
-    // child is terminated, never its descendants or a shared WTA master.
+    // child is terminated unless a provider explicitly requests managed resources.
+    // Internal cleanup passes can opt into containment without enabling provider policy.
     inline CaptureResult RunWtaCapture(const std::wstring& wtaPath,
                                        const std::wstring& argsAfterExe,
                                        DWORD timeoutMs,
                                        wchar_t* envBlock = nullptr,
                                        bool mergeStderr = true,
-                                       const std::atomic<bool>* cancellation = nullptr)
+                                       const std::atomic<bool>* cancellation = nullptr,
+                                       bool containProcess = false)
     {
         CaptureResult result;
         const auto cancelled = [&]() {
@@ -125,6 +132,11 @@ namespace Microsoft::Terminal::WtaProcess
         {
             return result;
         }
+
+        ProcessResourceScope resources;
+        auto resourceJob = resources.CreateJob();
+        auto resourceEnvironment = resources.Environment(envBlock);
+        envBlock = resourceEnvironment.data();
 
         SECURITY_ATTRIBUTES sa{};
         sa.nLength = sizeof(sa);
@@ -180,6 +192,14 @@ namespace Microsoft::Terminal::WtaProcess
         {
             flags |= CREATE_UNICODE_ENVIRONMENT;
         }
+        if (containProcess)
+        {
+            if (!resourceJob)
+            {
+                return result;
+            }
+            flags |= CREATE_SUSPENDED;
+        }
 
         PROCESS_INFORMATION pi{};
         const BOOL launched = CreateProcessW(
@@ -199,6 +219,34 @@ namespace Microsoft::Terminal::WtaProcess
         }
         wil::unique_handle proc{ pi.hProcess };
         wil::unique_handle thread{ pi.hThread };
+        const auto retireResources = wil::scope_exit([&]() noexcept {
+            try
+            {
+                resources.BeginRetirement(resourceJob.get());
+                if (resources.RetirementPending())
+                {
+                    RetireProcessResourcesWithRetry(resources, resourceJob, [wtaPath, environment = resourceEnvironment]() mutable {
+                        const auto cleanup = RunWtaCapture(wtaPath, L"recover-process-resources", ResourceRecoveryTimeoutMs, environment.data(), false, nullptr, true);
+                        LOG_HR_IF(E_FAIL, !cleanup.completed || cleanup.exitCode != 0);
+                    });
+                }
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+        });
+        if (containProcess)
+        {
+            if (!AssignProcessToJobObject(resourceJob.get(), proc.get()) ||
+                ResumeThread(thread.get()) == static_cast<DWORD>(-1))
+            {
+                LOG_LAST_ERROR();
+                LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(proc.get(), 1));
+                return result;
+            }
+            resources.Attached();
+        }
 
         // Close write end so pipe sees EOF when child exits (if no grandchildren).
         writeHandle.reset();
@@ -245,6 +293,7 @@ namespace Microsoft::Terminal::WtaProcess
                 LOG_LAST_ERROR_IF(wait == WAIT_FAILED);
                 return result;
             }
+            resources.AttachRequested(proc.get(), resourceJob.get());
             drainAvailable();
             if (WaitForSingleObject(proc.get(), 50) == WAIT_OBJECT_0)
             {

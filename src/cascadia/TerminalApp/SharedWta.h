@@ -28,6 +28,7 @@
 #include <chrono>
 #include <deque>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -38,6 +39,7 @@
 
 #include <wil/resource.h>
 #include <winrt/Windows.Foundation.h>
+#include "../inc/WtaProcessResources.h"
 
 namespace TerminalAppUnitTests
 {
@@ -396,7 +398,7 @@ namespace winrt::TerminalApp::implementation
                                   std::span<const std::wstring> extraArgs,
                                   std::span<const std::pair<std::wstring, std::wstring>> environment,
                                   bool explicitRetry = false);
-        void _StopLocked() noexcept;
+        void _StopLocked(bool drainResources = true) noexcept;
         bool _SpawnLocked(const std::wstring_view wtaPath,
                           std::span<const std::wstring> extraArgs,
                           std::span<const std::pair<std::wstring, std::wstring>> environment,
@@ -404,7 +406,10 @@ namespace winrt::TerminalApp::implementation
         bool _RestartLocked(const std::wstring_view wtaPath,
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
-        wil::unique_handle _CleanupLocked();
+        wil::unique_handle _CleanupLocked(bool* retiredResources = nullptr);
+        void _QueueResourceRetirement();
+        void _DrainResourceRetirements() noexcept;
+        static void _RecoverManagedResources(const std::wstring& wtaPath);
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
         // a free function. The `context` PVOID carries a monotonically
@@ -418,6 +423,13 @@ namespace winrt::TerminalApp::implementation
         wil::unique_handle _process;
         wil::unique_handle _job;
         wil::unique_handle _shutdownEvent;
+        ::Microsoft::Terminal::WtaProcess::ProcessResourceScope _resourceScope;
+        struct PendingResourceRetirement
+        {
+            winrt::Windows::Foundation::IAsyncAction action;
+            std::shared_ptr<wil::unique_handle> completed;
+        };
+        std::vector<PendingResourceRetirement> _pendingResourceRetirements;
         HANDLE _waitHandle{ nullptr };
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;

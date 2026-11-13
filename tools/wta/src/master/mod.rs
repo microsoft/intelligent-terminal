@@ -4782,6 +4782,7 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
         agent_cmd = %config.agent,
         "=== wta-master starting ==="
     );
+    tokio::task::spawn_blocking(crate::agent_lifecycle::providers::recover_runtime_resources);
 
     if config.session_management_enabled {
         // Reconciliation is fire-and-forget so slow third-party plugin
@@ -5980,13 +5981,19 @@ async fn wait_for_agent_exit(
         Ok(startup) => match status {
             Ok(status) => Ok(status),
             Err(error) => {
+                let files_pending = error.is::<crate::agent_lifecycle::RuntimeCleanupPending>();
                 let failure = startup.failed(
                     error
                         .context("ACP runtime cleanup failed")
                         .context(crate::agent_lifecycle::StartupPhase::Cleanup),
                 );
-                tracing::error!(target: "master", agent = %key, %failure,
-                    "replacement blocked after unconfirmed ACP cleanup");
+                if files_pending {
+                    tracing::warn!(target: "master", agent = %key, %failure,
+                        "ACP process exit confirmed; temporary-file cleanup remains pending");
+                } else {
+                    tracing::error!(target: "master", agent = %key, %failure,
+                        "replacement blocked after unconfirmed ACP cleanup");
+                }
                 Err(failure)
             }
         },
@@ -6093,7 +6100,9 @@ async fn spawn_one_agent(
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
         provider_binding.spawn_selection(),
-    ) {
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => {
             cold_start.complete(Some(ColdStartFailureKind::SpawnFailed));
@@ -6279,7 +6288,8 @@ async fn spawn_one_agent(
                     ColdStartFailureKind::InitializeFailed,
                     stderr_log.finish_failed_startup(&mut child, stderr_task),
                 )
-                .await?;
+                .await
+                .with_context(|| format!("ACP initialize also failed: {e}"))?;
             let error = anyhow::Error::new(e).context(format!(
                 "ACP initialize failed for {}{}",
                 describe_agent_target(agent_cmd, source),
@@ -6297,7 +6307,10 @@ async fn spawn_one_agent(
                     ColdStartFailureKind::Timeout,
                     stderr_log.finish_failed_startup(&mut child, stderr_task),
                 )
-                .await?;
+                .await
+                .with_context(|| {
+                    format!("ACP initialize also timed out after {init_timeout_secs}s")
+                })?;
             let error = anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI {} did not respond{}",
                 describe_agent_target(agent_cmd, source),

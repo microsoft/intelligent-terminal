@@ -62,6 +62,7 @@ pub(crate) async fn start_probe_with_provider(
         environment,
         provider,
     )
+    .await
     .context(StartupPhase::Spawn)?;
     tracing::info!(
         target: "acp_startup",
@@ -132,6 +133,7 @@ pub(crate) async fn start_probe_with_provider(
             let lines = stderr
                 .finish_failed_startup(&mut spawned.child, stderr_task)
                 .await
+                .with_context(|| format!("ACP startup also failed: {error:#}"))
                 .context(StartupPhase::Cleanup)?;
             Err(crate::agent_lifecycle::StartupDetails::attach(
                 error, &lines,

@@ -9,6 +9,7 @@ use anyhow::Result;
 use futures::future::BoxFuture;
 
 use crate::agent_source::AgentSource;
+use crate::protocol::acp::process::{PreparedProcessResources, ProcessResources, ResourceRecovery};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DependencyKind {
@@ -57,6 +58,15 @@ pub(crate) trait ProviderLifecycleAdapter: Sync {
     }
     fn host_bootstrap_available(&self, _launch_ready: bool) -> bool {
         false
+    }
+    fn runtime_resources(
+        &self,
+        _source: &AgentSource,
+    ) -> Result<Option<Box<dyn ProcessResources>>> {
+        Ok(None)
+    }
+    fn recover_runtime_resources(&self) -> Result<ResourceRecovery> {
+        Ok(ResourceRecovery::default())
     }
     fn prepare<'a>(
         &'a self,
@@ -130,9 +140,141 @@ pub(crate) async fn prepare(
     }
 }
 
+pub(crate) async fn prepare_runtime_resources(
+    command: &str,
+    agent_id: Option<&str>,
+    source: &AgentSource,
+) -> Result<Option<PreparedProcessResources>> {
+    let id = agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(command));
+    let Some(provider) = lookup(id) else {
+        return Ok(None);
+    };
+    let source = source.clone();
+    prepare_runtime_resources_with(move || provider.runtime_resources(&source)).await
+}
+
+async fn prepare_runtime_resources_with(
+    prepare: impl FnOnce() -> Result<Option<Box<dyn ProcessResources>>> + Send + 'static,
+) -> Result<Option<PreparedProcessResources>> {
+    use anyhow::Context;
+
+    tokio::task::spawn_blocking(move || {
+        // Cancellation detaches blocking work. Establish cleanup ownership
+        // before the result can be discarded by the cancelled receiver.
+        prepare().map(|resources| resources.map(PreparedProcessResources::new))
+    })
+    .await
+    .context("prepare ACP process resources task failed")?
+}
+
+pub(crate) fn recover_runtime_resources() -> ResourceRecovery {
+    let mut result = ResourceRecovery::default();
+    for provider in PROVIDERS {
+        match provider.recover_runtime_resources() {
+            Ok(report) => {
+                result.reclaimed += report.reclaimed;
+                result.deferred += report.deferred;
+                result.failed += report.failed;
+            }
+            Err(error) => {
+                result.failed += 1;
+                tracing::warn!(target: "acp_process", agent = provider.family_id(), error = %format!("{error:#}"),
+                    "provider runtime recovery incomplete");
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct CleanupWitness {
+        cleaned: bool,
+        dropped: Option<tokio::sync::oneshot::Sender<bool>>,
+    }
+
+    impl ProcessResources for CleanupWitness {
+        fn job_name(&self) -> &str {
+            unreachable!("cancelled preparation must not create a process")
+        }
+
+        fn configure(&self, _command: &mut tokio::process::Command) {
+            unreachable!("cancelled preparation must not configure a process")
+        }
+
+        fn cleanup(&mut self) -> Result<()> {
+            assert!(
+                !self.cleaned,
+                "unused resources must be reclaimed only once"
+            );
+            self.cleaned = true;
+            Ok(())
+        }
+    }
+
+    impl Drop for CleanupWitness {
+        fn drop(&mut self) {
+            if let Some(dropped) = self.dropped.take() {
+                let _ = dropped.send(self.cleaned);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn rust_review_cancelled_blocking_preparation_reclaims_unused_resources() {
+        let (started, preparing) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let (dropped, reclaimed) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(prepare_runtime_resources_with(move || {
+            let resources = CleanupWitness {
+                cleaned: false,
+                dropped: Some(dropped),
+            };
+            started.send(()).unwrap();
+            released
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            Ok(Some(Box::new(resources) as Box<dyn ProcessResources>))
+        }));
+        preparing.await.unwrap();
+        task.abort();
+        assert!(task.await.err().unwrap().is_cancelled());
+        release.send(()).unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), reclaimed)
+                .await
+                .unwrap()
+                .unwrap(),
+            "the detached preparation must reclaim resources that no process ever owned"
+        );
+    }
+
+    #[tokio::test]
+    async fn rust_review_unclaimed_preparation_result_reclaims_unused_resources() {
+        let (dropped, mut reclaimed) = tokio::sync::oneshot::channel();
+        let resources = prepare_runtime_resources_with(move || {
+            Ok(Some(Box::new(CleanupWitness {
+                cleaned: false,
+                dropped: Some(dropped),
+            }) as Box<dyn ProcessResources>))
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            reclaimed.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty),
+            "preparation must retain resources until handoff or cancellation"
+        );
+        drop(resources);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), reclaimed)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+    }
 
     #[test]
     fn provider_adapters_cover_the_registry_without_owning_custom_commands() {

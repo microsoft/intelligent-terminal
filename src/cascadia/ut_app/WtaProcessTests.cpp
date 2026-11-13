@@ -22,6 +22,11 @@ namespace TerminalAppUnitTests
         TEST_METHOD(TimeoutStillStopsChild);
         TEST_METHOD(LaunchFailureIsNotTimeout);
         TEST_METHOD(CapturePreservesOutputAndExitCode);
+        TEST_METHOD(ManagedResourcesAreOptIn);
+        TEST_METHOD(ManagedResourceRetirementRequiresConfirmedJob);
+        TEST_METHOD(RetirementClosesFirstResourceAdmission);
+        TEST_METHOD(ManagedResourceRetirementRetriesReceipt);
+        TEST_METHOD(UnusedResourceScopeDoesNotCreateRetirementCache);
 
         void _cancelChild(bool writeContinuously);
     };
@@ -33,6 +38,144 @@ namespace TerminalAppUnitTests
         THROW_LAST_ERROR_IF(length == 0);
         THROW_HR_IF(E_UNEXPECTED, length >= ARRAYSIZE(systemDirectory));
         return (std::filesystem::path{ systemDirectory } / relativePath).wstring();
+    }
+
+    static std::wstring _environmentValue(const std::wstring& block, const wchar_t* key)
+    {
+        const auto prefix = std::wstring{ key } + L"=";
+        for (auto entry = block.c_str(); *entry; entry += wcslen(entry) + 1)
+        {
+            if (_wcsnicmp(entry, prefix.c_str(), prefix.size()) == 0)
+            {
+                return entry + prefix.size();
+            }
+        }
+        return {};
+    }
+
+    void WtaProcessTests::ManagedResourcesAreOptIn()
+    {
+        Wta::ProcessResourceScope scope;
+        auto job = scope.CreateJob();
+        VERIFY_IS_NOT_NULL(job.get());
+        std::wstring original = L"CUSTOM=preserved";
+        original.push_back(L'\0');
+        original.append(L"WTA_PROCESS_RESOURCE_SCOPE=caller-cannot-replace-owner");
+        original.push_back(L'\0');
+        original.push_back(L'\0');
+        const auto environment = scope.Environment(original.c_str());
+        VERIFY_ARE_EQUAL(std::wstring{ L"preserved" }, _environmentValue(environment, L"CUSTOM"));
+        VERIFY_ARE_EQUAL(size_t{ 32 }, _environmentValue(environment, L"WTA_PROCESS_RESOURCE_SCOPE").size());
+        scope.Attached();
+        VERIFY_IS_FALSE(scope.BeginRetirement(job.get()));
+        VERIFY_IS_FALSE(scope.RetirementPending());
+        const auto eventName = L"Local\\wta-resources-used-" + _environmentValue(environment, L"WTA_PROCESS_RESOURCE_SCOPE");
+        wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName.c_str()) };
+        VERIFY_IS_NOT_NULL(requested.get());
+        VERIFY_IS_TRUE(SetEvent(requested.get()));
+        VERIFY_IS_TRUE(scope.BeginRetirement(job.get()));
+        VERIFY_IS_TRUE(scope.RetirementPending());
+    }
+
+    void WtaProcessTests::RetirementClosesFirstResourceAdmission()
+    {
+        Wta::ProcessResourceScope scope;
+        auto job = scope.CreateJob();
+        VERIFY_IS_NOT_NULL(job.get());
+        const auto environment = scope.Environment(nullptr);
+        const auto id = _environmentValue(environment, L"WTA_PROCESS_RESOURCE_SCOPE");
+        scope.Attached();
+        VERIFY_IS_FALSE(scope.Retire(job.get()));
+        wil::unique_handle ready{ OpenEventW(SYNCHRONIZE, FALSE, (L"Local\\wta-resources-ready-" + id).c_str()) };
+        VERIFY_IS_NOT_NULL(ready.get());
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_TIMEOUT }, WaitForSingleObject(ready.get(), 0));
+    }
+
+    void WtaProcessTests::ManagedResourceRetirementRequiresConfirmedJob()
+    {
+        Wta::ProcessResourceScope scope;
+        auto job = scope.CreateJob();
+        VERIFY_IS_NOT_NULL(job.get());
+        const auto seed = scope.Environment(nullptr);
+        const auto id = _environmentValue(seed, L"WTA_PROCESS_RESOURCE_SCOPE");
+        const auto local = std::filesystem::temp_directory_path() / (L"WtaResourceTest-" + id);
+        const auto root = IntelligentTerminal::AcpRuntimeRoot(local);
+        std::filesystem::create_directories(root);
+        const auto removeFixture = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(local, error);
+            LOG_HR_IF(E_FAIL, static_cast<bool>(error));
+        });
+        auto original = L"LOCALAPPDATA=" + local.wstring();
+        original.push_back(L'\0');
+        original.push_back(L'\0');
+        scope.Environment(original.c_str());
+        scope.Attached();
+        wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, (L"Local\\wta-resources-used-" + id).c_str()) };
+        VERIFY_IS_NOT_NULL(requested.get());
+        VERIFY_IS_TRUE(SetEvent(requested.get()));
+        const auto receipt = root / (L".retired-" + id);
+        VERIFY_IS_FALSE(scope.Retire(INVALID_HANDLE_VALUE, 0));
+        VERIFY_IS_FALSE(std::filesystem::exists(receipt));
+        VERIFY_IS_TRUE(scope.Retire(job.get()));
+        VERIFY_IS_TRUE(std::filesystem::is_regular_file(receipt));
+        VERIFY_ARE_EQUAL(uintmax_t{ 0 }, std::filesystem::file_size(receipt));
+    }
+
+    void WtaProcessTests::ManagedResourceRetirementRetriesReceipt()
+    {
+        auto completed = std::make_shared<wil::unique_handle>(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        std::filesystem::path local;
+        std::filesystem::path receipt;
+        const auto removeFixture = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(local, error);
+            LOG_HR_IF(E_FAIL, static_cast<bool>(error));
+        });
+        {
+            Wta::ProcessResourceScope scope;
+            auto job = scope.CreateJob();
+            VERIFY_IS_NOT_NULL(job.get());
+            const auto id = _environmentValue(scope.Environment(nullptr), L"WTA_PROCESS_RESOURCE_SCOPE");
+            local = std::filesystem::temp_directory_path() / (L"WtaResourceRetry-" + id);
+            const auto root = IntelligentTerminal::AcpRuntimeRoot(local);
+            receipt = root / (L".retired-" + id);
+            std::filesystem::create_directories(receipt);
+            auto environment = L"LOCALAPPDATA=" + local.wstring();
+            environment.append(2, L'\0');
+            scope.Environment(environment.c_str());
+            scope.Attached();
+            wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, (L"Local\\wta-resources-used-" + id).c_str()) };
+            VERIFY_IS_TRUE(SetEvent(requested.get()));
+            Wta::RetireProcessResourcesWithRetry(scope, job, [completed]() {
+                LOG_IF_WIN32_BOOL_FALSE(SetEvent(completed->get()));
+            });
+        }
+        VERIFY_IS_TRUE(std::filesystem::remove(receipt));
+        VERIFY_ARE_EQUAL(DWORD{ WAIT_OBJECT_0 }, WaitForSingleObject(completed->get(), 5000));
+        VERIFY_IS_TRUE(std::filesystem::is_regular_file(receipt));
+    }
+
+    void WtaProcessTests::UnusedResourceScopeDoesNotCreateRetirementCache()
+    {
+        Wta::ProcessResourceScope scope;
+        auto job = scope.CreateJob();
+        VERIFY_IS_NOT_NULL(job.get());
+        const auto id = _environmentValue(scope.Environment(nullptr), L"WTA_PROCESS_RESOURCE_SCOPE");
+        const auto local = std::filesystem::temp_directory_path() / (L"WtaUnusedResource-" + id);
+        const auto removeFixture = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(local, error);
+            LOG_HR_IF(E_FAIL, static_cast<bool>(error));
+        });
+        auto environment = L"LOCALAPPDATA=" + local.wstring();
+        environment.append(2, L'\0');
+        scope.Environment(environment.c_str());
+        scope.Attached();
+        wil::unique_handle requested{ OpenEventW(EVENT_MODIFY_STATE, FALSE, (L"Local\\wta-resources-used-" + id).c_str()) };
+        VERIFY_IS_TRUE(SetEvent(requested.get()));
+        VERIFY_IS_TRUE(scope.Retire(job.get()));
+        VERIFY_IS_FALSE(std::filesystem::exists(local));
     }
 
     void WtaProcessTests::CancellationBeforeLaunch()

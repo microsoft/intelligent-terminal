@@ -468,6 +468,9 @@ pub(crate) enum Command {
         #[arg(long)]
         retry_startup: bool,
     },
+    /// Retry retired provider resources without starting an agent.
+    #[command(hide = true)]
+    RecoverProcessResources,
     /// One-shot ACP handshake to read an agent's advertised model list.
     /// Spawned by the Settings UI when the user picks a new ACP agent so
     /// the model dropdown can populate before any real agent pane is
