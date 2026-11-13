@@ -869,6 +869,40 @@ int wmain(int argc, wchar_t** argv)
             FormatCreatedTabHuman(result);
     });
 
+    // Internal native resume creation uses the same direct result transport as new-tab.
+    std::string nativeResumeJson;
+    uint64_t nativeResumeWindowId = 0;
+    auto* nativeResumeCmd = app.add_subcommand("native-profile-resume", "Create a native profile resume tab and return its receipt");
+    nativeResumeCmd->add_option("json", nativeResumeJson, "Native resume request JSON")->required();
+    nativeResumeCmd->add_option("-w,--window-id", nativeResumeWindowId, "Exact target window ID")->required();
+    nativeResumeCmd->callback([&]() {
+        auto server = ConnectToTerminal(nullptr, nullptr, false, false, false, TerminalConnectionMode::ExistingOnly);
+        if (!server)
+        {
+            fprintf(stderr, "Native profile resume requires a running Terminal.\n");
+            exitCode = 1;
+            return;
+        }
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) {
+            const auto support = SupportsCapability(server.get(), "create_native_profile_resume_tab");
+            RETURN_IF_FAILED(support);
+            RETURN_HR_IF(E_NOINTERFACE, support != S_OK);
+            winrt::com_ptr<ITerminalProtocolNativeAgent> nativeAgent;
+            RETURN_IF_FAILED(server->QueryInterface(__uuidof(ITerminalProtocolNativeAgent), nativeAgent.put_void()));
+            wil::unique_bstr request{ Bstr(nativeResumeJson) };
+            return nativeAgent->CreateNativeProfileResumeTab(nativeResumeWindowId, request.get(), j);
+        },
+                           result);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "Native profile resume failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(result);
+    });
+
     // ── split-pane ──
     std::string splitPaneTarget, splitPaneCommand, splitPaneDirection, splitPaneProfile, splitPaneAgentProvider;
     bool splitHorizontal = false, splitVertical = false;

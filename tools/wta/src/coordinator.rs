@@ -1577,6 +1577,8 @@ fn normalize_delegate_resume_alias(
     commandline.to_string()
 }
 
+// Legacy host invocation coverage only. Live host resume is profile-owned in Terminal.
+#[cfg(test)]
 pub(crate) fn build_delegate_resume_commandline(
     runtime: &DelegateAgentRuntime,
     session_id: &str,

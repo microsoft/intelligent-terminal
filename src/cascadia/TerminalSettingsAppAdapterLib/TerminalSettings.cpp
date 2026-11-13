@@ -129,7 +129,16 @@ namespace winrt::Microsoft::Terminal::Settings
             }
 
             // Override commandline, starting directory if they exist in newTerminalArgs
-            if (!newTerminalArgs.Commandline().empty())
+            if (!newTerminalArgs.NativeAgentSessionId().empty())
+            {
+                THROW_HR_IF(E_INVALIDARG, profile.AgentProfileId().empty() || !newTerminalArgs.Commandline().empty());
+                THROW_HR_IF(E_INVALIDARG, !newTerminalArgs.NativeAgentProviderId().empty() && !::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(profile.AgentProfileId(), newTerminalArgs.NativeAgentProviderId()));
+                defaultSettings->_Commandline = winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::ResumeCommand(profile, newTerminalArgs.NativeAgentSessionId()) };
+                defaultSettings->_NativeAgentSessionId = newTerminalArgs.NativeAgentSessionId();
+                // Preserve the profile's managed receipt. An arbitrary -c override
+                // below still explicitly revokes it.
+            }
+            else if (!newTerminalArgs.Commandline().empty())
             {
                 if (!newTerminalArgs.AppendCommandLine())
                 {

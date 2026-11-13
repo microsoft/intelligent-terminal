@@ -1165,7 +1165,7 @@ fn prompt_refreshes_existing_session_cwd_without_rebinding_its_pane() {
         assert!(
             matches!(
                 published.as_slice(),
-                [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::ToolStarting { .. }]
+                [SessionEvent::WorkingDirectoryChanged { key, pane_session_id, cwd }, SessionEvent::QualifiedHook { .. }]
                     if key == "native-session"
                         && pane_session_id == pane
                         && cwd == &std::path::PathBuf::from("C:\\Users\\example\\project")
@@ -8928,6 +8928,987 @@ fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
     );
 }
 
+type HelperNativeResumeRequest = (
+    serde_json::Value,
+    tokio::sync::oneshot::Sender<anyhow::Result<serde_json::Value>>,
+);
+
+struct HelperNativeResumeChannel {
+    requests: mpsc::UnboundedSender<HelperNativeResumeRequest>,
+}
+
+#[async_trait::async_trait]
+impl crate::shell::wt_channel::WtChannel for HelperNativeResumeChannel {
+    async fn request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        if method == "focus_pane" {
+            return Ok(json!({}));
+        }
+        assert_eq!(method, "create_tab");
+        let (reply, response) = tokio::sync::oneshot::channel();
+        self.requests.send((params, reply)).unwrap();
+        match tokio::time::timeout(std::time::Duration::from_secs(30), response).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(anyhow::anyhow!("Native receipt channel closed")),
+            Err(_) => Err(crate::shell::wt_channel::WtcliOneShotError::TimedOut {
+                timeout: std::time::Duration::from_secs(30),
+                kill_error: None,
+                reap_error: None,
+                reap_timeout: None,
+            }
+            .into()),
+        }
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
+fn helper_native_resume_fixture() -> (
+    App,
+    mpsc::UnboundedReceiver<HelperNativeResumeRequest>,
+    mpsc::UnboundedReceiver<AppEvent>,
+    mpsc::UnboundedReceiver<QueuedSessionHook>,
+    crate::agent_sessions::AgentSession,
+) {
+    helper_native_resume_fixture_with_status(crate::agent_sessions::AgentStatus::Historical, None)
+}
+
+fn helper_native_resume_fixture_with_status(
+    status: crate::agent_sessions::AgentStatus,
+    pane_hint: Option<&str>,
+) -> (
+    App,
+    mpsc::UnboundedReceiver<HelperNativeResumeRequest>,
+    mpsc::UnboundedReceiver<AppEvent>,
+    mpsc::UnboundedReceiver<QueuedSessionHook>,
+    crate::agent_sessions::AgentSession,
+) {
+    use crate::agent_sessions::CliSource;
+    let mut app = test_app();
+    let (requests, requests_rx) = mpsc::unbounded_channel();
+    app.shell_mgr = Arc::new(
+        crate::shell::ShellManager::new()
+            .with_wt_channel(Arc::new(HelperNativeResumeChannel { requests })),
+    );
+    app.window_id = Some("42".into());
+    app.owner_tab_id = Some("origin-tab".into());
+    let mut snapshot = session_info_for_test("helper-resume");
+    snapshot.status = Some(status);
+    snapshot.pane_session_id = pane_hint.map(str::to_owned);
+    snapshot.cli_source = Some(CliSource::Copilot);
+    snapshot.provider_id = Some("copilot".into());
+    snapshot.cwd = std::env::temp_dir();
+    app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+    app.current_tab_mut().agents_view.latest_request_id = Some(7);
+    app.handle_agents_snapshot_loaded(7, vec![snapshot]);
+    let row = app
+        .agents_rows_for_tab(DEFAULT_TAB_ID)
+        .into_iter()
+        .next()
+        .unwrap();
+    assert!(
+        app.agent_sessions.get(&row.key).is_none(),
+        "the production master-snapshot path must not seed the local registry"
+    );
+    let (events, events_rx) = mpsc::unbounded_channel();
+    app.set_agent_event_tx(events);
+    let (published, published_rx) = mpsc::unbounded_channel();
+    app.set_session_hook_tx(published);
+    (app, requests_rx, events_rx, published_rx, row)
+}
+
+mod qualified_hook_routing_tests {
+    use super::*;
+    use crate::agent_sessions::{
+        AgentSessionRegistry, AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent,
+        SessionLocation,
+    };
+    use crate::session_registry::{InMemoryRegistry, SessionHookParams, SessionRegistry};
+
+    #[test]
+    fn fresh_wsl_admission_preserves_location_through_hook_lifecycle() {
+        for birth in [
+            "agent.session.started",
+            "agent.prompt.submit",
+            "session_born_bound",
+        ] {
+            let mut app = test_app();
+            let mut params = json!({
+                "event": birth,
+                "cli_source": "copilot",
+                "agent": "copilot",
+                "agent_session_id": "fresh-wsl",
+                "wsl_distro": "Ubuntu",
+                "payload": {"cwd": "/home/test/project"},
+                "cwd": "/home/test/project"
+            });
+            app.handle_event(AppEvent::WtEvent {
+                method: if birth == "session_born_bound" {
+                    birth
+                } else {
+                    "agent_event"
+                }
+                .into(),
+                pane_id: "pane-wsl".into(),
+                tab_id: None,
+                params: params.clone(),
+            });
+            assert_eq!(
+                app.agent_sessions
+                    .owner_for_pane("pane-wsl")
+                    .unwrap()
+                    .location,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into()
+                },
+                "{birth}"
+            );
+            for (event, status) in [
+                ("agent.prompt.submit", AgentStatus::Working),
+                ("agent.tool.starting", AgentStatus::Working),
+                ("agent.notification", AgentStatus::Attention),
+                ("agent.session.end", AgentStatus::Ended),
+            ] {
+                params["event"] = json!(event);
+                params["payload"] = json!({"tool_name": "read", "message": "approval"});
+                app.handle_event(AppEvent::WtEvent {
+                    method: "agent_event".into(),
+                    pane_id: "pane-wsl".into(),
+                    tab_id: None,
+                    params: params.clone(),
+                });
+                let row = app.agent_sessions.get(&"fresh-wsl".into()).unwrap();
+                assert_eq!(row.status, status, "{birth}: {event}");
+                assert_eq!(row.location.distro(), Some("Ubuntu"));
+            }
+            assert!(app.agent_sessions.owner_for_pane("pane-wsl").is_none());
+        }
+    }
+
+    #[test]
+    fn wsl_admission_does_not_relabel_rejected_or_existing_host_owner() {
+        for birth in ["agent.session.started", "session_born_bound"] {
+            for source in ["copilot", "claude"] {
+                for pane in ["pane-host", "wrong-pane"] {
+                    let mut app = test_app();
+                    app.agent_sessions.apply(SessionEvent::SessionStarted {
+                        key: "shared-id".into(),
+                        cli_source: CliSource::Copilot,
+                        pane_session_id: "pane-host".into(),
+                        cwd: "C:\\project".into(),
+                        title: "host".into(),
+                    });
+                    let before = app
+                        .agent_sessions
+                        .owner_for_pane("pane-host")
+                        .unwrap()
+                        .clone();
+                    app.handle_event(AppEvent::WtEvent {
+                        method: if birth == "session_born_bound" {
+                            birth
+                        } else {
+                            "agent_event"
+                        }
+                        .into(),
+                        pane_id: pane.into(),
+                        tab_id: None,
+                        params: json!({
+                            "event": birth,
+                            "agent": source,
+                            "cli_source": source,
+                            "agent_session_id": "shared-id",
+                            "wsl_distro": "Ubuntu",
+                            "payload": {}
+                        }),
+                    });
+                    let after = app.agent_sessions.owner_for_pane("pane-host").unwrap();
+                    assert_eq!(after.identity(), before.identity(), "{birth}: {source}");
+                    assert_eq!(after.status, before.status);
+                    assert_eq!(after.title, before.title);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn host_admission_preserves_private_qualified_row_with_same_raw_id() {
+        let (_, _, _, _, mut retained) = helper_native_resume_fixture();
+        retained.key = "shared-id".into();
+        retained.cli_source = CliSource::Claude;
+        retained.location = SessionLocation::Host;
+        let mut app = test_app();
+        app.agent_sessions.retain_resume_candidate(&retained);
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_event".into(),
+            pane_id: "pane-copilot".into(),
+            tab_id: None,
+            params: json!({
+                "event": "agent.session.started",
+                "cli_source": "copilot",
+                "agent_session_id": "shared-id",
+                "payload": {"cwd": "C:\\project"}
+            }),
+        });
+
+        let owner = app.agent_sessions.owner_for_pane("pane-copilot").unwrap();
+        assert_eq!(owner.key, "shared-id");
+        assert_eq!(owner.cli_source, CliSource::Copilot);
+        assert_eq!(owner.location, SessionLocation::Host);
+        let preserved = app
+            .agent_sessions
+            .get_identity(&retained.identity())
+            .unwrap();
+        assert_eq!(preserved.status, retained.status);
+        assert_eq!(preserved.pane_session_id, retained.pane_session_id);
+        assert_eq!(app.agent_sessions.iter_sorted().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn qualified_hook_routing_preserves_colliding_owners_and_forwarded_activity() {
+        let (_, _, _, _, template) = helper_native_resume_fixture();
+        let mut local = AgentSessionRegistry::new();
+        let master = InMemoryRegistry::new();
+        let mut rows = Vec::new();
+        for (provider, source, pane, location) in [
+            (
+                "copilot",
+                CliSource::Copilot,
+                "pane-copilot",
+                SessionLocation::Host,
+            ),
+            (
+                "claude",
+                CliSource::Claude,
+                "pane-claude",
+                SessionLocation::Host,
+            ),
+            (
+                "copilot",
+                CliSource::Copilot,
+                "pane-wsl",
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+            ),
+        ] {
+            let mut row = template.clone();
+            row.key = "shared-id".into();
+            row.cli_source = source.clone();
+            row.location = location.clone();
+            local.retain_resume_candidate(&row);
+            local.apply(SessionEvent::QualifiedResume {
+                identity: row.identity(),
+                event: QualifiedResumeEvent::Dispatched,
+            });
+            local.apply(SessionEvent::QualifiedResume {
+                identity: row.identity(),
+                event: QualifiedResumeEvent::PaneAssigned {
+                    pane_session_id: pane.into(),
+                },
+            });
+            let mut info = session_info_for_test("shared-id");
+            info.provider_id = Some(provider.into());
+            info.cli_source = Some(source);
+            info.location = location;
+            info.status = Some(AgentStatus::Idle);
+            info.pane_session_id = Some(pane.into());
+            master.upsert(info).await;
+            rows.push((row, pane));
+        }
+        assert!(local.get(&"shared-id".into()).is_none());
+        for (index, (row, pane)) in rows.iter().enumerate() {
+            for (event, expected) in [
+                ("agent.prompt.submit", AgentStatus::Working),
+                ("agent.tool.starting", AgentStatus::Working),
+                ("agent.notification", AgentStatus::Attention),
+            ] {
+                let other = rows[(index + 1) % rows.len()].0.identity();
+                let before = local.get_identity(&other).unwrap().status.clone();
+                let master_before = master.lookup_identity(&other).await.unwrap();
+                let mut params = json!({"event": event, "cli_source": row.cli_source.canonical_provider_id().unwrap(), "agent_session_id": "shared-id", "payload": {"tool_name": "read", "message": "approval"}});
+                if let Some(distro) = row.location.distro() {
+                    params["wsl_distro"] = json!(distro);
+                }
+                let mut forwarded = Vec::new();
+                route_agent_event_to_registry_with_hook_sink(&mut local, pane, &params, |event| {
+                    forwarded.push(event)
+                });
+                assert_eq!(
+                    local.get_identity(&row.identity()).unwrap().status,
+                    expected
+                );
+                assert_eq!(local.get_identity(&other).unwrap().status, before);
+                assert!(!forwarded.is_empty());
+                for event in forwarded {
+                    let wire = serde_json::to_value(SessionHookParams::from(&event)).unwrap();
+                    let parsed: SessionHookParams = serde_json::from_value(wire).unwrap();
+                    master.apply_event(parsed.into()).await;
+                }
+                assert_eq!(
+                    master
+                        .lookup_identity(&row.identity())
+                        .await
+                        .unwrap()
+                        .status,
+                    Some(expected)
+                );
+                assert_eq!(master.lookup_identity(&other).await.unwrap(), master_before);
+            }
+        }
+        let before = local.iter_sorted().len();
+        let mut forwarded = Vec::new();
+        let nested = json!({"event":"agent.prompt.submit","cli_source":"copilot","agent_session_id":"nested-worker","payload":{"cwd":"C:\\work"}});
+        route_agent_event_to_registry_with_hook_sink(
+            &mut local,
+            "pane-copilot",
+            &nested,
+            |event| forwarded.push(event),
+        );
+        assert!(forwarded.is_empty());
+        assert_eq!(local.iter_sorted().len(), before);
+        assert!(local.get(&"nested-worker".into()).is_none());
+        let mut unknown_pane = Vec::new();
+        let params = json!({"event":"agent.prompt.submit","cli_source":"copilot","agent_session_id":"shared-id","payload":{}});
+        route_agent_event_to_registry_with_hook_sink(
+            &mut local,
+            "unqualified-pane",
+            &params,
+            |event| unknown_pane.push(event),
+        );
+        assert!(unknown_pane.is_empty());
+        let legacy = SessionEvent::ToolStarting {
+            key: "shared-id".into(),
+            tool_name: "legacy".into(),
+        };
+        let before = master.snapshot().await;
+        assert!(!master.apply_event(legacy).await);
+        assert_eq!(master.snapshot().await, before);
+        for params in [
+            json!({"event":"agent.notification","cli_source":"codex","agent_session_id":"shared-id","payload":{}}),
+            json!({"event":"agent.notification","cli_source":"copilot","agent_session_id":"shared-id","wsl_distro":"Ubuntu","payload":{}}),
+        ] {
+            let mut rejected = Vec::new();
+            route_agent_event_to_registry_with_hook_sink(
+                &mut local,
+                "pane-copilot",
+                &params,
+                |event| rejected.push(event),
+            );
+            assert!(rejected.is_empty());
+        }
+        let start = json!({"event":"agent.session.started","cli_source":"copilot","agent_session_id":"shared-id","payload":{}});
+        route_agent_event_to_registry(&mut local, "pane-copilot", &start);
+        assert_eq!(
+            local.owner_for_pane("pane-copilot").unwrap().identity(),
+            rows[0].0.identity()
+        );
+    }
+}
+
+mod native_resume_transport_tests {
+    use super::*;
+    use crate::shell::wt_channel::{
+        classify_wtcli_output, native_profile_resume_result, request_outcome_unknown,
+        WtcliOneShotError,
+    };
+    use std::os::windows::process::ExitStatusExt;
+
+    fn process_result(code: u32, stdout: &str) -> anyhow::Result<serde_json::Value> {
+        classify_wtcli_output(
+            std::process::Output {
+                status: std::process::ExitStatus::from_raw(code),
+                stdout: stdout.as_bytes().to_vec(),
+                stderr: b"COM/CallJson receipt failure".to_vec(),
+            },
+            Some("owned"),
+        )
+        .and_then(|reply| native_profile_resume_result("owned", reply))
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_post_creation_exit_keeps_helper_pending() {
+        for stdout in [
+            "",
+            "{",
+            r#"{"request_id":"foreign","success":false,"error":"Rejected"}"#,
+            r#"{"request_id":"owned","error":"Malformed receipt"}"#,
+            r#"{"request_id":"owned","success":true,"result":{}}"#,
+        ] {
+            let (mut app, mut requests, mut events, mut published, row) =
+                helper_native_resume_fixture();
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            // Simulate creation before COM/CLI loses the correlated receipt.
+            let result = process_result(1, stdout);
+            assert!(request_outcome_unknown(result.as_ref().unwrap_err()));
+            reply.send(result).unwrap();
+            tokio::task::yield_now().await;
+            assert!(events.try_recv().is_err());
+            published.try_recv().unwrap();
+            assert!(published.try_recv().is_err());
+            let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+            assert_eq!(pending.status, crate::agent_sessions::AgentStatus::Idle);
+            assert!(pending.pane_session_id.is_none());
+            assert!(pending.last_error.is_none());
+            app.activate_agent_session_routed(&row);
+            tokio::task::yield_now().await;
+            assert!(requests.try_recv().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_confirmed_rejection_and_spawn_failure_allow_retry() {
+        let spawn_error = WtcliOneShotError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "wtcli missing",
+        ));
+        let rejection = r#"{"request_id":"owned","success":false,"error":"Blocked by policy"}"#;
+        for result in [
+            Err(anyhow::Error::new(spawn_error)),
+            process_result(0, rejection),
+            process_result(1, rejection),
+        ] {
+            assert!(!request_outcome_unknown(result.as_ref().unwrap_err()));
+            let (mut app, mut requests, mut events, _published, row) =
+                helper_native_resume_fixture();
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            reply.send(result).unwrap();
+            app.handle_event(events.recv().await.unwrap());
+            let failed = app.agent_sessions.get_identity(&row.identity()).unwrap();
+            assert_eq!(
+                failed.status,
+                crate::agent_sessions::AgentStatus::Historical
+            );
+            assert!(failed.last_error.is_some());
+            app.activate_agent_session_routed(&row);
+            let (_, reply) = requests.recv().await.unwrap();
+            reply.send(Err(anyhow::anyhow!("Rejected"))).unwrap();
+            app.handle_event(events.recv().await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_exact_process_receipt_binds_helper() {
+        let (mut app, mut requests, mut events, _published, row) = helper_native_resume_fixture();
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        let pane_id = "8cf9d04a-c16d-42be-9e78-982a5ecb4549";
+        reply
+            .send(process_result(
+                0,
+                &json!({
+                    "request_id": "owned", "success": true,
+                    "result": {
+                        "session_id": pane_id,
+                        "tab_id": "046ca37b-72b3-429b-a7d3-67402f41e332"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        app.handle_event(events.recv().await.unwrap());
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some(pane_id)
+        );
+    }
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_rejection_is_published_and_retryable() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let master = InMemoryRegistry::new();
+    master
+        .upsert(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone())
+        .await;
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    assert_eq!(
+        app.agent_sessions.get(&key).unwrap().status,
+        AgentStatus::Idle
+    );
+    assert!(app
+        .agent_sessions
+        .get(&key)
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    let (request, reply) = requests.recv().await.unwrap();
+    assert_eq!(request["native_profile_resume"]["session_id"], key);
+    assert_eq!(request["native_profile_resume"]["tab_id"], "origin-tab");
+    reply
+        .send(Err(anyhow::anyhow!("No corresponding agent profile")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    let failed = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(failed.status, AgentStatus::Historical);
+    assert!(failed.pane_session_id.is_none());
+    assert!(failed
+        .last_error
+        .as_deref()
+        .unwrap()
+        .contains("No corresponding agent profile"));
+    let pending = published.try_recv().unwrap();
+    assert!(matches!(
+        &pending,
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
+    ));
+    assert!(master.apply_event(pending).await);
+    let failure = published.try_recv().unwrap();
+    assert!(
+        matches!(&failure, SessionEvent::QualifiedResume { identity, event: crate::agent_sessions::QualifiedResumeEvent::Failed { .. } } if identity.session_id.to_string() == key)
+    );
+    assert!(master.apply_event(failure).await);
+    let master_row = master
+        .lookup(&agent_client_protocol::schema::v1::SessionId::new(
+            key.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(master_row.status, Some(AgentStatus::Historical));
+    assert!(master_row.pane_session_id.is_none());
+
+    let retry = app.agent_sessions.get(&key).unwrap().clone();
+    app.activate_agent_session_routed(&retry);
+    let (_, reply) = requests.recv().await.unwrap();
+    reply
+        .send(Ok(json!({"session_id":"created-pane"})))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    assert_eq!(
+        app.agent_sessions
+            .get(&key)
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("created-pane")
+    );
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { .. },
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn helper_native_resume_equal_raw_ids_keep_qualified_pending_and_results() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    let (mut app, mut requests, mut events, mut published, row_a) = helper_native_resume_fixture();
+    let mut row_b = row_a.clone();
+    row_b.cli_source = CliSource::Claude;
+    let mut row_wsl = row_a.clone();
+    row_wsl.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.agent_sessions.retain_resume_candidate(&row_wsl);
+    let master = InMemoryRegistry::new();
+    let info_a = app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone();
+    let mut info_b = info_a.clone();
+    info_b.cli_source = Some(CliSource::Claude);
+    info_b.provider_id = Some("claude".into());
+    master.upsert(info_a).await;
+    master.upsert(info_b).await;
+    app.dispatch_resume(&row_a);
+    let (_, reply_a) = requests.recv().await.unwrap();
+    app.handle_event(agent_rebind_event_for_window(
+        "42",
+        "origin-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Host,
+    ));
+    assert_eq!(app.current_agent_id, "claude");
+    app.dispatch_resume(&row_b);
+    let (request_b, reply_b) = requests.recv().await.unwrap();
+    assert_eq!(request_b["native_profile_resume"]["session_id"], row_a.key);
+    assert_eq!(request_b["native_profile_resume"]["agent_id"], "claude");
+    app.dispatch_resume(&row_b);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    reply_b.send(Ok(json!({"session_id":"pane-b"}))).unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    reply_a
+        .send(Err(anyhow::anyhow!("provider A failed")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    while let Ok(event) = published.try_recv() {
+        assert!(master.apply_event(event).await);
+    }
+    let a = app.agent_sessions.get_identity(&row_a.identity()).unwrap();
+    let b = app.agent_sessions.get_identity(&row_b.identity()).unwrap();
+    assert_eq!(a.status, AgentStatus::Historical);
+    assert_eq!(b.pane_session_id.as_deref(), Some("pane-b"));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&row_wsl.identity())
+            .unwrap()
+            .status,
+        AgentStatus::Historical
+    );
+    assert_eq!(
+        master
+            .lookup_identity(&row_a.identity())
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Historical)
+    );
+    assert_eq!(
+        master
+            .lookup_identity(&row_b.identity())
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("pane-b")
+    );
+}
+
+#[tokio::test]
+async fn helper_native_resume_qualified_hook_binding_preserves_colliding_rows() {
+    use crate::agent_sessions::{AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent};
+    use std::path::PathBuf;
+    let (mut app, _requests, _events, mut published, a) = helper_native_resume_fixture();
+    let mut b = a.clone();
+    b.cli_source = CliSource::Claude;
+    for row in [&a, &b] {
+        app.agent_sessions.retain_resume_candidate(row);
+        app.agent_sessions.apply(SessionEvent::QualifiedResume {
+            identity: row.identity(),
+            event: QualifiedResumeEvent::Dispatched,
+        });
+    }
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+        key: b.key.clone(),
+        cli_source: b.cli_source.clone(),
+        pane_session_id: "hook-b".into(),
+        cwd: b.cwd.clone(),
+        title: "Hook B".into(),
+    }));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&a.identity())
+            .unwrap()
+            .status,
+        AgentStatus::Idle
+    );
+    assert!(app
+        .agent_sessions
+        .get_identity(&a.identity())
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&b.identity())
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("hook-b")
+    );
+    assert_eq!(
+        app.agent_sessions.key_for_pane("hook-b").as_deref(),
+        Some(b.key.as_str())
+    );
+    published.try_recv().unwrap();
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::QualifiedResume {
+        identity: b.identity(),
+        event: QualifiedResumeEvent::Failed {
+            reason: "late".into(),
+        },
+    }));
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::QualifiedResume {
+        identity: b.identity(),
+        event: QualifiedResumeEvent::PaneAssigned {
+            pane_session_id: "stale-b".into(),
+        },
+    }));
+    assert!(published.try_recv().is_err());
+    app.agent_sessions
+        .apply(SessionEvent::WorkingDirectoryChanged {
+            key: b.key.clone(),
+            pane_session_id: "hook-b".into(),
+            cwd: PathBuf::from("C:\\updated-b"),
+        });
+    assert_eq!(
+        app.agent_sessions.get_identity(&b.identity()).unwrap().cwd,
+        PathBuf::from("C:\\updated-b")
+    );
+    assert_ne!(
+        app.agent_sessions.get_identity(&a.identity()).unwrap().cwd,
+        PathBuf::from("C:\\updated-b")
+    );
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_pending_double_enter_uses_one_request() {
+    let (mut app, mut requests, mut events, _published, row) = helper_native_resume_fixture();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    // Even a stale pre-dispatch view snapshot must not submit again.
+    app.activate_agent_session_routed(&row);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    reply.send(Err(anyhow::anyhow!("Rejected"))).unwrap();
+    app.handle_event(events.recv().await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn helper_native_resume_snapshot_only_timeout_stays_pending_until_hook() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    tokio::time::advance(std::time::Duration::from_secs(30)).await;
+    tokio::task::yield_now().await;
+    assert!(events.try_recv().is_err());
+    let pending = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(pending.status, AgentStatus::Idle);
+    assert!(pending.pane_session_id.is_none());
+    assert!(pending.last_error.is_none());
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
+    ));
+    assert!(published.try_recv().is_err());
+    assert!(reply.send(Ok(json!({"session_id":"late-pane"}))).is_err());
+    app.activate_agent_session_routed(&row);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+        key: row.key.clone(),
+        cli_source: row.cli_source.clone(),
+        pane_session_id: "late-hook-pane".into(),
+        cwd: row.cwd.clone(),
+        title: "Late hook".into(),
+    }));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&row.identity())
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("late-hook-pane")
+    );
+}
+
+#[tokio::test]
+async fn helper_native_resume_in_use_snapshot_receipt_and_duplicate_enter() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    for hint in [None, Some("stale-pane")] {
+        let (mut app, mut requests, mut events, mut published, row) =
+            helper_native_resume_fixture_with_status(AgentStatus::InUse, hint);
+        assert_eq!(row.status, AgentStatus::InUse);
+        let mut foreign_provider = row.clone();
+        foreign_provider.cli_source = CliSource::Claude;
+        let mut foreign_location = row.clone();
+        foreign_location.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        for foreign in [&foreign_provider, &foreign_location] {
+            app.agent_sessions.retain_resume_candidate(foreign);
+        }
+        let master = InMemoryRegistry::new();
+        master
+            .upsert(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone())
+            .await;
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+        assert_eq!(pending.status, AgentStatus::Idle);
+        assert!(pending.pane_session_id.is_none());
+        let dispatched = published.try_recv().unwrap();
+        assert!(master.apply_event(dispatched).await);
+        let pending = master.lookup_identity(&row.identity()).await.unwrap();
+        assert_eq!(pending.status, Some(AgentStatus::Idle));
+        assert!(pending.pane_session_id.is_none());
+        app.activate_agent_session_routed(&row);
+        tokio::task::yield_now().await;
+        assert!(requests.try_recv().is_err());
+        reply
+            .send(Ok(json!({"session_id":"exact-receipt-pane"})))
+            .unwrap();
+        app.handle_event(events.recv().await.unwrap());
+        let receipt = published.try_recv().unwrap();
+        assert!(
+            matches!(&receipt, SessionEvent::QualifiedResume { identity, event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { pane_session_id } } if identity == &row.identity() && pane_session_id == "exact-receipt-pane")
+        );
+        assert!(master.apply_event(receipt).await);
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("exact-receipt-pane")
+        );
+        assert_eq!(
+            master
+                .lookup_identity(&row.identity())
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("exact-receipt-pane")
+        );
+        for foreign in [&foreign_provider, &foreign_location] {
+            let unchanged = app
+                .agent_sessions
+                .get_identity(&foreign.identity())
+                .unwrap();
+            assert_eq!(unchanged.status, AgentStatus::InUse);
+            assert_eq!(unchanged.pane_session_id.as_deref(), hint);
+        }
+    }
+}
+
+#[tokio::test]
+async fn helper_native_resume_invalid_or_missing_receipt_stays_pending_until_hook() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    use crate::shell::wt_channel::{request_outcome_unknown, InvalidNativeResumeReceipt};
+    let malformed: anyhow::Error = serde_json::from_str::<serde_json::Value>("{")
+        .unwrap_err()
+        .into();
+    let invalid: anyhow::Error = InvalidNativeResumeReceipt("Missing matching tab receipt").into();
+    assert!(request_outcome_unknown(&malformed));
+    assert!(request_outcome_unknown(&invalid));
+    for result in [Err(malformed), Err(invalid), Ok(json!({}))] {
+        let (mut app, mut requests, mut events, mut published, row) =
+            helper_native_resume_fixture();
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        published.try_recv().unwrap();
+        reply.send(result).unwrap();
+        tokio::task::yield_now().await;
+        assert!(events.try_recv().is_err());
+        assert!(published.try_recv().is_err());
+        let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+        assert_eq!(pending.status, AgentStatus::Idle);
+        assert!(pending.pane_session_id.is_none());
+        assert!(pending.last_error.is_none());
+        app.activate_agent_session_routed(&row);
+        tokio::task::yield_now().await;
+        assert!(requests.try_recv().is_err());
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+            key: row.key.clone(),
+            cli_source: row.cli_source.clone(),
+            pane_session_id: "late-hook".into(),
+            cwd: row.cwd.clone(),
+            title: "Late hook".into(),
+        }));
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("late-hook")
+        );
+    }
+}
+
+#[tokio::test]
+async fn helper_native_resume_snapshot_only_late_failure_cannot_demote_or_publish_after_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
+    let key = "helper-resume".to_string();
+    app.activate_agent_session_routed(&row);
+    let (_, reply) = requests.recv().await.unwrap();
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ResumePaneAssigned {
+            key: key.clone(),
+            pane_session_id: "successful-pane".into(),
+        },
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
+    ));
+    assert!(matches!(
+        published.try_recv().unwrap(),
+        SessionEvent::ResumePaneAssigned { .. }
+    ));
+    reply
+        .send(Err(anyhow::anyhow!("Late missing-profile/timeout failure")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    let bound = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(bound.status, AgentStatus::Idle);
+    assert_eq!(bound.pane_session_id.as_deref(), Some("successful-pane"));
+    assert!(bound.last_error.is_none());
+    assert!(published.try_recv().is_err());
+}
+
+#[test]
+fn custom_native_history_resume_does_not_select_an_acp_or_hardcoded_cli_command() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    let mut app = test_app();
+    app.window_id = Some("42".into());
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "custom-session".into(),
+        cli_source: CliSource::parse(Some("custom:example")),
+        pane_session_id: "old-pane".into(),
+        cwd: std::env::temp_dir(),
+        title: "Native custom".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "custom-session".into(),
+        reason: "exit".into(),
+    });
+    let row = app
+        .agent_sessions
+        .get(&"custom-session".into())
+        .unwrap()
+        .clone();
+    app.activate_agent_session_routed(&row);
+    let command = app.last_dispatched_command_for_test().unwrap();
+    assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(
+        request["native_profile_resume"]["agent_id"],
+        "custom:example"
+    );
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "custom-session"
+    );
+    assert!(request.get("commandline").is_none());
+}
+
 #[test]
 fn enter_on_history_row_dispatches_new_tab_with_resume() {
     use crate::agent_sessions::{CliSource, SessionEvent};
@@ -8960,67 +9941,24 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
-    let argv = cmd.argv.join(" ");
-    // The dispatch must use `wtcli new-tab` (not `split-pane`) so the
-    // resumed CLI lands in its own WT tab instead of carving up the
-    // originating tab.
-    assert!(argv.contains("new-tab"), "argv: {}", argv);
+    assert_eq!(cmd.argv[0], "create_tab");
+    let request: serde_json::Value = serde_json::from_str(&cmd.argv[1]).unwrap();
+    assert_eq!(request["window_id"], 42);
+    assert_eq!(request["native_profile_resume"]["agent_id"], "claude");
+    assert_eq!(request["native_profile_resume"]["session_id"], "abc-123");
+    assert_eq!(request["title"], "Fix the build");
+    assert_eq!(request["cwd"], real_cwd_str);
     assert!(
-        argv.contains("--window-id 42"),
-        "resume must target the owning window: {argv}"
-    );
-    assert!(
-        !argv.contains("split-pane"),
-        "argv must NOT use split-pane: {}",
-        argv
-    );
-    assert!(
-        cmd.argv
-            .windows(2)
-            .any(|args| args == ["--title", "Fix the build"]),
-        "resume tab must use the session title: {:?}",
-        cmd.argv
-    );
-    // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
-    // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
-    // cwd is threaded through wtcli's `-d` flag now. Issue #135:
-    // a muted "Resuming … session …" banner is prepended so the
-    // user sees immediate feedback while the CLI cold-starts; the
-    // CLI's alt-screen TUI overwrites it on success. (Previously
-    // SGR 1;36;5 — bold + cyan + slow-blink — was used, but the
-    // blink + bold were too noisy. Now SGR 2;37 = dim + white, a
-    // low-contrast tone similar to the cwd line in a typical
-    // Copilot-CLI shell prompt.)
-    assert!(
-        argv.contains("cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"),
-        "expected dim-white Resuming banner echo; argv: {:?}",
-        argv
-    );
-    assert!(
-        argv.contains("&& claude --resume abc-123"),
-        "expected resume command chained after banner; argv: {}",
-        argv
-    );
-    assert!(
-        !argv.contains("cd /d"),
-        "argv must NOT contain cd /d (cwd is now passed via -d): {}",
-        argv
-    );
-    // Resume is keyed off the session's project cwd — the new tab's
-    // primary pane must start in that directory so the CLI's session
-    // store lookup (`~/.claude/projects/<encoded-cwd>/...`) succeeds.
-    let expected = format!("-d {}", real_cwd_str);
-    assert!(
-        argv.contains(&expected),
-        "expected `{}` in argv: {}",
-        expected,
-        argv
+        request.get("commandline").is_none(),
+        "Terminal must read effective profile options"
     );
 }
 
 #[tokio::test]
 async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry() {
-    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionOrigin};
+    use crate::agent_sessions::{
+        AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent, SessionOrigin,
+    };
     use crate::protocol::acp::client::MasterExtRequest;
     use crate::session_registry::{InMemoryRegistry, SessionInfo, SessionRegistry};
 
@@ -9055,6 +9993,8 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
             let mut history = SessionInfo::new(sid.clone(), std::path::PathBuf::new());
             history.status = Some(AgentStatus::Historical);
             history.cli_source = Some(CliSource::Copilot);
+            history.provider_id = Some("copilot".into());
+            history.location = SessionLocation::Host;
             registry.upsert(history).await;
 
             app.activate_agent_session_routed(&row);
@@ -9062,7 +10002,17 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
             let wire = crate::session_registry::build_session_hook_request(&dispatch);
             let dispatch =
                 crate::session_registry::parse_session_hook_params(&wire.params).unwrap();
-            assert!(matches!(dispatch, SessionEvent::ResumeDispatched { .. }));
+            if origin == SessionOrigin::AgentPane {
+                assert!(
+                    matches!(&dispatch, SessionEvent::ResumeDispatched { key } if key == &row.key)
+                );
+            } else {
+                assert!(matches!(
+                    &dispatch,
+                    SessionEvent::QualifiedResume { identity, event: QualifiedResumeEvent::Dispatched }
+                        if identity == &row.identity()
+                ));
+            }
             assert!(registry.apply_event(dispatch).await);
             let assignment = SessionEvent::ResumePaneAssigned {
                 key: "resume-once".into(),
@@ -9104,7 +10054,22 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
                 .unwrap()
                 .clone();
             app.activate_agent_session_routed(&retry);
-            assert!(registry.apply_event(hook_rx.try_recv().unwrap()).await);
+            let retry_dispatch = hook_rx.try_recv().unwrap();
+            let retry_wire = crate::session_registry::build_session_hook_request(&retry_dispatch);
+            let retry_dispatch =
+                crate::session_registry::parse_session_hook_params(&retry_wire.params).unwrap();
+            if origin == SessionOrigin::AgentPane {
+                assert!(
+                    matches!(&retry_dispatch, SessionEvent::ResumeDispatched { key } if key == &row.key)
+                );
+            } else {
+                assert!(matches!(
+                    &retry_dispatch,
+                    SessionEvent::QualifiedResume { identity, event: QualifiedResumeEvent::Dispatched }
+                        if identity == &row.identity()
+                ));
+            }
+            assert!(registry.apply_event(retry_dispatch).await);
             assert!(master_rx.try_recv().is_err());
             assert!(!registry.apply_event(assignment).await);
             assert!(
@@ -9167,19 +10132,9 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
-    let argv = cmd.argv.join(" ");
-    assert!(argv.contains("new-tab"), "argv: {}", argv);
-    // The stale cwd must NOT have leaked through as `-d`.
-    assert!(
-        !argv.contains("-d "),
-        "argv must omit -d when cwd is missing: {}",
-        argv
-    );
-    assert!(
-        !argv.contains(&missing.to_string_lossy().to_string()),
-        "argv must not embed the stale cwd: {}",
-        argv
-    );
+    assert_eq!(cmd.argv[0], "create_tab");
+    let request: serde_json::Value = serde_json::from_str(&cmd.argv[1]).unwrap();
+    assert_eq!(request["cwd"], "");
 }
 
 #[test]
@@ -9256,10 +10211,13 @@ fn external_in_use_row_dispatches_cli_resume_instead_of_focus() {
 
     let command = app.last_dispatched_command_for_test().unwrap();
     assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
-    assert!(command
-        .argv
-        .join(" ")
-        .contains("copilot --resume external-in-use"));
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(request["native_profile_resume"]["agent_id"], "copilot");
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "external-in-use"
+    );
+    assert!(request.get("commandline").is_none());
     assert!(!command
         .argv
         .iter()
@@ -10802,10 +11760,12 @@ fn hookless_session_snapshot_renders_and_dispatches_resume() {
         .last_dispatched_command_for_test()
         .expect("resume dispatched");
     assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
-    assert!(command
-        .argv
-        .join(" ")
-        .contains("claude --resume history-without-hooks"));
+    let request: serde_json::Value = serde_json::from_str(&command.argv[1]).unwrap();
+    assert_eq!(request["native_profile_resume"]["agent_id"], "claude");
+    assert_eq!(
+        request["native_profile_resume"]["session_id"],
+        "history-without-hooks"
+    );
 }
 
 #[tokio::test]

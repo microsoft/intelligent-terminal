@@ -8,7 +8,10 @@ or panes, and selected with `wt -p`, just like a shell profile.
 
 The supported providers are GitHub Copilot, Claude, Codex, Gemini, OpenCode,
 and Google Antigravity.
-WSL installations and arbitrary custom agents are not automatically generated.
+WSL installations are not automatically generated. Custom agents saved in
+AI Agents settings receive corresponding profiles; configure their native
+interactive CLI in the generated profile's Command line setting. Terminal does
+not assume an ACP adapter command is a native interactive CLI command.
 Native profile discovery uses this dedicated provider list, not the broader
 ACP or delegation provider registry.
 Discovery does not install software, sign in, or start an ACP server. Native CLI
@@ -49,6 +52,7 @@ The profile uses these additional, flat JSON properties:
     "agentProfile.model": "",
     "agentProfile.permissionMode": "",
     "agentProfile.arguments": "",
+    "agentProfile.resumeArguments": "--resume",
     "startingDirectory": "C:\\source\\project",
     "defaultSplitProfile": "default"
 }
@@ -58,6 +62,37 @@ For generated profiles, keep their generated `guid` and `source` properties.
 Agent identity does not depend on the profile's display name. User overrides
 are layered on the generated settings and are retained if a CLI disappears.
 Copy a profile to create multiple project configurations for the same agent.
+Settings identifies these pages with an **Agent profile** label, including
+user-created copies.
+
+Agent selection and profile lookup use `agentProfile.id` and the generated
+profile's stable GUID, not its editable display name. Changing a profile's icon
+changes the icon for its running tabs and panes and corresponding recent-session
+rows. An existing native pane identifies its owning profile, including a copy.
+That association ends when the pane closes; host history without it uses the
+corresponding generated original. This does not persist arbitrary copied-profile
+ownership across pane closure or application restart.
+
+Resume an elevation-required native profile from an already elevated Terminal
+window. Receipt-based resume does not hand the launch off to another window.
+
+Supported generated agent profiles and the internal Agent Pane profile expose
+`IsDeletable = false` to the Settings model. The editor disables Delete Profile,
+but their other settings remain editable. Removing one of these profiles from
+JSON recreates its generated entry on the next settings load; explicitly hiding
+it remains supported. Copies and profiles for agents no longer supported remain
+deletable.
+
+New generated agent profiles default to `%USERPROFILE%` as their starting
+directory. On upgrade, existing agent profiles whose effective starting
+directory is empty are changed to `%USERPROFILE%` once. Non-empty values,
+including `.` and inherited profile defaults, are preserved; ordinary shell
+profiles are unchanged. After migration, choosing an empty directory again
+continues to inherit the launching process's directory.
+
+The hidden `internal.agentProfileStartingDirectoryMigrationCompleted` setting
+is saved with the migrated directories in `settings.json`. Removing this marker
+allows the migration to run again.
 
 An empty model or permission mode adds no corresponding managed option. The CLI
 keeps its configured default unless an explicitly provided additional argument
@@ -98,7 +133,8 @@ Do not put credentials in command-line arguments.
 `AllowedAgents` controls which native profiles are generated and offered.
 The native CLI validates configured options and manages its approval settings.
 
-The command-line field is directly editable, just like a shell profile. Saving
+For built-in agents, the command-line field is directly editable, just like a
+shell profile. Saving
 an explicit `commandline` runs that command unchanged by the agent command
 builder; structured model, permission, and additional-argument settings no
 longer apply and are hidden in Settings. Reset the command-line setting to
@@ -112,6 +148,33 @@ metadata. An explicit command supplied in a new-tab
 action also overrides the managed launch, following ordinary Terminal action
 precedence. An edited command is not a managed launcher or an operating-system
 security boundary.
+Custom profiles use their explicitly configured native command as the base;
+their structured model and additional startup arguments remain active.
+
+## Resuming sessions
+
+The **Resume arguments** setting contains only the arguments or verb before a
+session ID, for example `--resume` for Claude or `resume` for Codex. Terminal
+adds the selected session ID automatically; do not enter a placeholder.
+There is no resume command preview.
+
+On host-native resume, Terminal uses the corresponding profile's effective
+launch settings, then appends its resume arguments and the session ID. Normal
+new tabs and splits do not receive that suffix. Generated profiles provide
+provider-specific defaults; changing the setting changes resume behavior rather
+than being overridden by another runtime provider-to-flag table. Reset restores
+the inherited value. An explicit empty value appends the session ID as the final argument,
+without a resume flag or verb, for built-in and custom profiles alike; it does not
+disable resume.
+
+Native launch customization stays separate from ACP agent-pane loading.
+An explicit profile command line retains the override behavior described above.
+Custom profiles need both a native command and appropriate resume arguments.
+
+Launch-derived tab metadata does not wait for hooks: provider, initial status,
+and launch directory keep their existing immediate initialization. Later
+hook/registry events enrich that metadata through the existing ownership path.
+Missing hooks do not block chat, history listing, or resume.
 
 ## Splitting panes
 
@@ -200,8 +263,11 @@ probe failure propagates to the settings loader.
 Removing a CLI stops generation after the next successful uncached discovery.
 Its saved profile becomes orphaned and leaves the active profile list, while
 retaining user overrides. Reinstalling restores the same generated GUID and
-settings. Deleting a generated profile and saving settings suppresses it through
-Terminal's generated-profile state; rediscovery does not make it visible again.
+settings. Generated originals for supported agents and the internal Agent Pane
+profile cannot be deleted in Settings; hide them or make a copy instead.
+User-created copies remain deletable. Removing provider support or deleting the
+custom-agent entry releases protection on retained orphaned settings without
+discarding their overrides automatically.
 Managed launches resolve the executable again at connection creation, so a stale
 menu entry cannot run an unavailable CLI.
 

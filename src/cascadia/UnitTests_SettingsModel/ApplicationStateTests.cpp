@@ -5,6 +5,7 @@
 
 #include "../TerminalSettingsModel/ApplicationState.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
+#include "../TerminalSettingsModel/Profile.h"
 #include <til/io.h>
 
 using namespace Microsoft::Console;
@@ -61,6 +62,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfilesIntroductionStaleStatePreservesSharedDismissal);
         TEST_METHOD(AgentProfilesIntroductionFailedPreflightRemainsEligible);
         TEST_METHOD(AgentProfilesIntroductionFailedDismissalRetriesOnFlush);
+        TEST_METHOD(DeletedAgentProfilesAreRegenerated);
 
     private:
         static std::filesystem::path _tempRoot()
@@ -156,6 +158,45 @@ namespace SettingsModelUnitTests
             return settings.Warnings().IndexOf(SettingsLoadWarnings::FailedToWriteToSettings, index);
         }
     };
+
+    void ApplicationStateTests::DeletedAgentProfilesAreRegenerated()
+    {
+        const auto state = winrt::make_self<implementation::ApplicationState>(_sidebarRoot());
+        const winrt::guid agentId{ L"{00000000-0000-0000-0000-000000000002}" };
+        const winrt::guid customId{ L"{00000000-0000-0000-0000-000000000003}" };
+        const winrt::guid shellId{ L"{00000000-0000-0000-0000-000000000004}" };
+        const winrt::guid paneId{ L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}" };
+        state->GeneratedProfiles({ agentId, customId, shellId, paneId });
+        static constexpr std::string_view generated{ R"({"profiles":[
+            {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Claude","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude"},
+            {"guid":"{00000000-0000-0000-0000-000000000003}","name":"Custom","source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:fixture"},
+            {"guid":"{00000000-0000-0000-0000-000000000004}","name":"Shell","source":"Windows.Terminal.Wsl"},
+            {"guid":"{fd19208a-412b-4857-8a2d-9ca592b4b16e}","name":"Agent Pane","hidden":true}]})" };
+        implementation::SettingsLoader loader{ R"({"profiles":[]})", generated };
+        loader.MergeInboxIntoUserSettings();
+        loader.FinalizeLayering();
+        VERIFY_IS_TRUE(loader.DisableDeletedProfiles(*state));
+        auto settings = winrt::make_self<implementation::CascadiaSettings>(std::move(loader));
+        for (const auto id : { agentId, customId, paneId })
+        {
+            const auto profile = settings->FindProfile(id);
+            VERIFY_IS_FALSE(profile.IsDeletable());
+            VERIFY_IS_FALSE(winrt::get_self<implementation::Profile>(profile)->Deleted());
+            VERIFY_ARE_EQUAL(id == paneId, profile.Hidden());
+        }
+        VERIFY_IS_TRUE(settings->FindProfile(shellId).Hidden());
+        VERIFY_IS_TRUE(settings->FindProfile(shellId).IsDeletable());
+
+        implementation::SettingsLoader hidden{ R"({"profiles":[
+            {"guid":"{00000000-0000-0000-0000-000000000002}","hidden":true}]})",
+                                               generated };
+        hidden.MergeInboxIntoUserSettings();
+        hidden.FinalizeLayering();
+        hidden.DisableDeletedProfiles(*state);
+        settings = winrt::make_self<implementation::CascadiaSettings>(std::move(hidden));
+        VERIFY_IS_TRUE(settings->FindProfile(agentId).Hidden());
+        VERIFY_IS_FALSE(settings->FindProfile(agentId).IsDeletable());
+    }
 
     void ApplicationStateTests::SaveAndLookupWorkspace()
     {

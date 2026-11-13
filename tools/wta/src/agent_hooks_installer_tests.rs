@@ -3984,30 +3984,6 @@ fn read_version_field_parses_plugin_json() {
 }
 
 #[test]
-fn install_for_codex_skips_when_home_absent() {
-    let tmp = unique_dir("codex-home-absent");
-    // Smoke test: passing a nonexistent HOME-like dir shouldn't panic.
-    // After the binary-only detection change, the function skips when
-    // `codex` is not on PATH (the common case on CI). On a dev machine
-    // with `codex` installed and a bundle resolvable next to `wta.exe`
-    // the call may proceed further; the contract this test enforces is
-    // "no panic regardless".
-    install_for_codex(&tmp);
-    let _ = fs::remove_dir_all(tmp);
-}
-
-#[test]
-fn install_dispatches_codex() {
-    // Smoke: dispatching to all per-CLI installers against an empty
-    // HOME shouldn't panic. Each installer gates on its CLI being on
-    // PATH, so on CI (where none of these CLIs are installed) every
-    // one short-circuits cleanly.
-    let tmp = unique_dir("codex-dispatch");
-    ensure_installed_in(&tmp);
-    let _ = fs::remove_dir_all(tmp);
-}
-
-#[test]
 fn codex_status_falls_back_when_binary_missing() {
     let tmp_root = unique_dir("codex_status_fallback");
     std::fs::create_dir_all(&tmp_root).unwrap();

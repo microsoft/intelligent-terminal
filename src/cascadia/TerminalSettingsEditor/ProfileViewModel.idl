@@ -151,10 +151,12 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, DragDropDelimiter);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, AllowVtClipboardWrite);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, AllowOscNotifications);
+        Boolean IsAgentProfile { get; };
         Boolean IsManagedAgentProfile { get; };
         Boolean IsAgentProfilePolicyBlocked { get; };
         String LaunchCommandline;
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileModel);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileArguments);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentProfileResumeArguments);
     }
 }

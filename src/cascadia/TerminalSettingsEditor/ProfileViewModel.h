@@ -142,6 +142,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         OBSERVABLE_PROJECTED_SETTING(_profile, StartingDirectory);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileModel);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileArguments);
+        OBSERVABLE_PROJECTED_SETTING(_profile, AgentProfileResumeArguments);
         OBSERVABLE_PROJECTED_SETTING(_profile, AgentPaneBackend);
         OBSERVABLE_PROJECTED_SETTING(_profile, CommandPaletteAgent);
         OBSERVABLE_PROJECTED_SETTING(_profile, AntialiasingMode);

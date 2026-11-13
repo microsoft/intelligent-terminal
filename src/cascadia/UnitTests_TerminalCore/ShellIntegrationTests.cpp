@@ -116,6 +116,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     // BuildShellIntegrationBlock — pure generator.
     TEST_METHOD(BuildBlock_ContainsMarkersAndScriptFilename);
     TEST_METHOD(BuildBlock_HonoursEolParameter);
+    TEST_METHOD(PowerShell_OnlyInstallsInsideIntelligentTerminal);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_DriveSwitchErrors_PreserveHandledSuccess);
@@ -725,11 +726,78 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                    L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
 }
 
+void ShellIntegrationTests::PowerShell_OnlyInstallsInsideIntelligentTerminal()
+{
+    const auto integration = _scratchDir / ShellIntegrationScriptFileName();
+    _WriteFile(integration, std::string{ "\xef\xbb\xbf" } + ShellIntegrationScriptContent());
+    const auto runner = _scratchDir / L"host-marker-test.ps1";
+    _WriteFile(runner, R"PS($ErrorActionPreference = 'Stop'
+function Global:prompt { 'original> ' }
+function Global:PSConsoleHostReadLine { 'original input' }
+$originalPrompt = $function:prompt
+$originalReadLine = $function:PSConsoleHostReadLine
+$integration = Join-Path $PSScriptRoot ')PS" +
+                           til::u16u8(ShellIntegrationScriptFileName()) +
+                           R"PS('
+foreach ($marker in @($null, '0', 'true')) {
+    $env:INTELLIGENT_TERMINAL = $marker
+    . $integration
+    if ($function:prompt -ne $originalPrompt) { throw 'Changed prompt outside Intelligent Terminal' }
+    if ($function:PSConsoleHostReadLine -ne $originalReadLine) { throw 'Changed ReadLine outside Intelligent Terminal' }
+    if (Get-Variable -Name '__ShellInteg_*' -Scope Global -ErrorAction Ignore) {
+        throw 'Created integration state outside Intelligent Terminal'
+    }
+    if (Test-Path Function:\__ShellInteg_Rearm) { throw 'Installed rearm outside Intelligent Terminal' }
+    if ((prompt) -cne 'original> ') { throw 'Changed prompt output outside Intelligent Terminal' }
+}
+$env:INTELLIGENT_TERMINAL = '1'
+. $integration
+if (-not $Global:__ShellInteg_Installed) { throw 'Did not install inside Intelligent Terminal' }
+if ($function:prompt -eq $originalPrompt) { throw 'Did not wrap prompt inside Intelligent Terminal' }
+if ($function:PSConsoleHostReadLine -eq $originalReadLine) { throw 'Did not wrap ReadLine inside Intelligent Terminal' }
+$rendered = prompt
+if ($rendered -notmatch '\x1b]133;A\x07' -or
+    $rendered -notmatch 'original> \x1b]133;B\x07') {
+    throw 'Missing integrated prompt output'
+}
+$wrapper = $function:prompt
+$readLineWrapper = $function:PSConsoleHostReadLine
+. $integration
+if ($function:prompt -ne $wrapper -or $function:PSConsoleHostReadLine -ne $readLineWrapper) {
+    throw 'Repeated sourcing replaced integration wrappers'
+}
+'passed'
+)PS");
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
 void ShellIntegrationTests::PowerShell_ResumeCommand_EmitsOscBeforeExecution()
 {
     const auto runner = _scratchDir / L"resume-test.ps1";
     const auto script = std::string{ "\xef\xbb\xbf" } +
                         R"($ErrorActionPreference = 'Stop'
+$env:INTELLIGENT_TERMINAL = '1'
 function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
 )" +
                         ShellIntegrationScriptContent() +
@@ -856,6 +924,7 @@ void ShellIntegrationTests::PowerShell_DriveSwitchErrors_PreserveHandledSuccess(
     const auto runner = _scratchDir / L"drive-switch-test.ps1";
     const auto script = std::string{ "\xef\xbb\xbf" } +
                         R"($ErrorActionPreference = 'Continue'
+$env:INTELLIGENT_TERMINAL = '1'
 $Global:__DriveTestHistoryId = 0
 function Global:Get-History { param($Count) [pscustomobject]@{ Id = $Global:__DriveTestHistoryId } }
 function Global:PSConsoleHostReadLine { return $Global:__DriveTestLine }

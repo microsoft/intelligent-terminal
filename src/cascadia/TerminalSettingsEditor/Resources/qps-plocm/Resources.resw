@@ -3004,7 +3004,7 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>‮Ëñŧëŕ å ḿöđëŀ ïđëñŧïƒïëŕ šüƥƥöŕŧëđ ƀÿ ŧħïš åģëñŧ. Ŀëåṽë ëḿƥŧÿ ŧö üšë ŧħë åģëñŧ'š öŵñ çöñƒïģüŕåŧïöñ. Åƥƥŀïëš ŧö ñëŵ šëššïöñš.‬ !!! !!! !!! !!! !!! !!! !!! !!!</value>
+    <value>‮Ëñŧëŕ å ḿöđëŀ ïđëñŧïƒïëŕ šüƥƥöŕŧëđ ƀÿ ŧħïš åģëñŧ. Ŀëåṽë ëḿƥŧÿ ŧö üšë ŧħë åģëñŧ'š öŵñ çöñƒïģüŕåŧïöñ.‬ !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3070,5 +3070,17 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal‮ åüŧöḿåŧïçåŀŀÿ åđđš ÿöüŕ ïñšŧåŀŀëđ åģëñŧ ÇĿÏš åš ƥŕöƒïŀëš. Öƥëñ öñë ƒŕöḿ ŧħë ñëŵ ŧåƀ ḿëñü ŧö ģëŧ šŧåŕŧëđ.‬ !!! !!! !!! !!! !!!</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>[!! ‮Åģëñŧ ƥŕöƒïŀë‬ !!! !!! !!]</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>[!! ‮Ŕëšüḿë åŕģüḿëñŧš‬ !!! !!! !!]</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>[!! ‮Åđđëđ åƒŧëŕ ŧħë ñöŕḿåŀ šŧåŕŧüƥ åŕģüḿëñŧš öñŀÿ ŵħëñ ŕëšüḿïñģ å šëššïöñ. Ŧħë šëššïöñ ÏĐ ïš åƥƥëñđëđ åüŧöḿåŧïçåŀŀÿ.‬ !!! !!! !!! !!! !!! !!]</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

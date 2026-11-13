@@ -1021,19 +1021,6 @@ fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
     }
 }
 
-/// Run every per-CLI install flow against a specific home directory.
-///
-/// Test-only: it exists so tests can drive the installers against an isolated
-/// tempdir without mutating `USERPROFILE`/`HOME` for the whole process.
-#[cfg(test)]
-fn ensure_installed_in(home: &Path) {
-    install_for_claude(home);
-    install_for_copilot(home);
-    install_for_gemini(home);
-    install_for_codex(home);
-    install_for_opencode(home);
-}
-
 // ---------------------------------------------------------------------------
 // Per-CLI install flows
 // ---------------------------------------------------------------------------

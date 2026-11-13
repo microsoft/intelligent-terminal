@@ -3043,7 +3043,7 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>이 에이전트에서 지원하는 모델 식별자를 입력하세요. 비워 두면 에이전트 자체 구성이 사용됩니다. 새 세션에 적용됩니다.</value>
+    <value>이 에이전트에서 지원하는 모델 식별자를 입력하세요. 비워 두면 에이전트 자체 구성이 사용됩니다.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3113,5 +3113,17 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal은 설치된 에이전트 CLI를 프로필로 자동 추가합니다. 새 탭 메뉴에서 프로필을 열어 시작하세요.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>에이전트 프로필</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>재개 인수</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>세션을 재개할 때만 일반 시작 인수 뒤에 추가됩니다. 세션 ID는 끝에 자동으로 추가됩니다.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

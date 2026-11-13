@@ -260,5 +260,6 @@ namespace TerminalApp
         void ShutdownPanes();
         Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
         Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.ProfileInfo> > GetProtocolProfiles();
+        Windows.Foundation.IAsyncOperation<String> CreateNativeProfileResumeTab(String eventJson);
     }
 }
