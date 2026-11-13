@@ -101,6 +101,45 @@ class CiNativeGraphTests(unittest.TestCase):
             "${{ needs.cpp.outputs.payload-attempt }}", str(retained_producer))
         self.assertEqual("ci-cpp-units-91-1", name)
 
+    def test_domain_procedure_delegates_execution_but_retains_evidence_and_repairs(self):
+        skill = (ROOT / ".github/skills/pr-accessibility/SKILL.md").read_text(encoding="utf-8")
+        agent = (ROOT / ".github/agents/pr-accessibility.agent.md").read_text(encoding="utf-8")
+        # Execution belongs to the caller, not an alternate hosted/local procedure.
+        self.assertIn("owns execution, tools, paths, provisioning", skill)
+        self.assertNotIn("## Validation", skill)
+        self.assertNotIn("```powershell", skill)
+        self.assertNotIn("Generated Files/", skill + agent)
+        for domain in ("## Localization", "## Axe.Windows and runtime checks", "## Findings"):
+            self.assertIn(domain, skill)
+        for fact in ("native Windows UI", "interactive", "not a XAML/C++ source linter",
+                     "Source inspection", "Narrator", "200%", "AXSTATIC001-remove-raw-view",
+                     "SKIPPED", "BLOCKED", "No result"):
+            self.assertIn(fact, skill)
+        self.assertIn("caller-authorized", agent)
+        workflow = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+        self.assertIn("post-fix", workflow)
+        self.assertIn("one", workflow)
+
+    def test_compiled_worker_reuses_native_security_ci_queue_and_publication_admission(self):
+        def lock(name):
+            return yaml.safe_load((ROOT / f".github/workflows/{name}.lock.yml").read_text(encoding="utf-8"))
+        security, accessibility = lock("ghaw-pr-security"), lock("ghaw-pr-accessibility")
+        for key in ("cancel-in-progress", "queue"):
+            self.assertEqual(security["concurrency"][key], accessibility["concurrency"][key])
+        self.assertFalse(accessibility["concurrency"]["cancel-in-progress"])
+        self.assertEqual("max", accessibility["concurrency"]["queue"])
+        self.assertEqual("PR CI-${{ fromJSON(github.event.inputs.pull_request).number }}",
+                         accessibility["concurrency"]["group"])
+        jobs = accessibility["jobs"]
+        gate = jobs["publication-admission"]
+        self.assertIn(gate["needs"], ("agent", ["agent"]))
+        checkout = next(step for step in gate["steps"] if step.get("uses", "").startswith("actions/checkout@"))
+        self.assertEqual("${{ github.workflow_sha }}", checkout["with"]["ref"])
+        self.assertTrue(any(step.get("uses") == "./.github/actions/accessibility-ci-admission"
+                            for step in gate["steps"]))
+        self.assertIn("publication-admission", jobs["safe_outputs"]["needs"])
+        self.assertIn("needs.publication-admission.result == 'success'", jobs["safe_outputs"]["if"])
+
 
 if __name__ == "__main__":
     unittest.main()

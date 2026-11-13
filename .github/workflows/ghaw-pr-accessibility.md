@@ -29,9 +29,10 @@ permissions:
   copilot-requests: write
 
 concurrency:
-  group: accessibility-ci-worker-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
+  group: PR CI-${{ fromJSON(github.event.inputs.pull_request).number }}
   job-discriminator: ${{ github.run_id }}
   cancel-in-progress: false
+  queue: max
 
 engine:
   id: copilot
@@ -48,6 +49,7 @@ imports:
 env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
   ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+  GH_AW_HARNESS_MAX_RETRIES: '0'
 
 checkout:
   repository: ${{ github.repository }}
@@ -200,7 +202,7 @@ jobs:
 
   native-selection:
     needs: [agent]
-    if: ${{ !cancelled() && needs.agent.result != 'skipped' }}
+    if: needs.agent.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -222,8 +224,23 @@ jobs:
             "Generated Files/$ACCESSIBILITY_RUN/native-checks.md")"
           echo "native=$native" >> "$GITHUB_OUTPUT"
 
+  publication-admission:
+    needs: [agent]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/accessibility-ci-admission
+
   safe_outputs:
-    if: needs.agent.result == 'success'
+    needs: [agent, detection, publication-admission]
+    if: needs.agent.result == 'success' && needs.publication-admission.result == 'success'
 
   final-summary:
     needs: [admission, native-evidence, triage, triage-route, agent, native-selection, safe_outputs]
@@ -354,6 +371,16 @@ safe-outputs:
     fallback-as-pull-request: false
 
 post-steps:
+  - name: Require actual complete deep output
+    id: actual-output
+    if: always()
+    env:
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
+    run: |
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" deep \
+        "Generated Files/$ACCESSIBILITY_RUN" \
+        --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
   - name: Remove verified framework configuration changes
     shell: bash
     env:
@@ -406,12 +433,14 @@ post-steps:
     env:
       PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_STAGE: deep
+      PRODUCER_SOURCE: .github/workflows/ghaw-pr-accessibility.md
+      DIAGNOSTIC_ARTIFACT: agent
     run: |
-      mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
-      printf '%s\n' \
-        "run=$GITHUB_RUN_ID" "attempt=$GITHUB_RUN_ATTEMPT" \
-        "head=$PRODUCER_HEAD" "workflow=$PRODUCER_WORKFLOW" \
-        > "Generated Files/$ACCESSIBILITY_RUN/deep-producer.txt"
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" receipt \
+        "Generated Files/$ACCESSIBILITY_RUN/deep-producer.txt"
 
   - name: Upload deep review evidence even when incomplete
     if: always()
@@ -420,7 +449,12 @@ post-steps:
       # Stable per-run stage identity survives retained producers on partial reruns.
       name: accessibility-deep-${{ github.run_id }}
       overwrite: true
-      path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/
+      path: |
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/prepared.json
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/final.json
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/deep-summary.md
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native-checks.md
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/deep-producer.txt
       if-no-files-found: warn
       retention-days: 14
 ---
@@ -444,6 +478,10 @@ lifecycle, full keyboard journeys, Narrator, contrast or scaling.
 This selection cannot start or skip CI: path-gated CI scans already ran independently.
 Write all domain reports/handoffs under this run-specific Generated Files
 directory; never stage or commit them.
+Produce all three actual handoffs: final.json, deep-summary.md and native-checks.md.
+A final chat answer or noop is not a file handoff. Missing, empty, incomplete or
+crashed output is **No result**, not an empty no-finding report or guessed native
+None selection. Never manufacture final.json to conceal a producer failure.
 
 Review immutable PR head `${{ env.ACCESSIBILITY_HEAD_SHA }}`. First read
 the trusted prepared evidence and skill in

@@ -6,7 +6,7 @@ import { CI_DEFINITION_PATHS } from '../../skills/ghaw-pr-security/scripts/secur
 const HEAD = 'a'.repeat(40), BASE = 'b'.repeat(40), TRUSTED = 'c'.repeat(40);
 function fixture(dispatch = false) {
   const repo = { id: 42, full_name: 'microsoft/intelligent-terminal', default_branch: 'main' };
-  const run = { id: 91, run_attempt: 2, repository: repo, head_repository: repo,
+  const run = { id: 91, run_number: 14, run_attempt: 2, repository: repo, head_repository: repo,
     path: '.github/workflows/pr-ci.yml', name: 'PR CI', workflow_id: 7,
     event: 'pull_request', head_sha: HEAD, head_branch: 'dev/test',
     status: 'completed', conclusion: 'success', created_at: '2026-11-12T10:00:00Z' };
@@ -42,7 +42,7 @@ function fixture(dispatch = false) {
   const artifact = { id: 5, name: 'ci-accessibility-testhost-91-2', expired: false,
     digest: `sha256:${'d'.repeat(64)}`, size_in_bytes: 4096,
     workflow_run: { id: 91, head_sha: HEAD, repository_id: 42, head_repository_id: 42 } };
-  let associated = [pr], previous = [], files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
+  let associated = [pr], previous = [], ciRuns = [run], files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
   const nativeArtifact = { ...artifact, id: 6, name: 'ci-accessibility-native-91-2' };
   let jobs = [producer, units, rust, native], artifacts = [artifact, nativeArtifact], timeline = [];
   const github = { graphql: async () => ({ repository: { pullRequest: {
@@ -59,6 +59,12 @@ function fixture(dispatch = false) {
   }, pulls: { get: async () => ({ data: pr }), listFiles: 'files' } },
   paginate: async (method, options) => {
     if (method === 'jobs') assert.equal(options.attempt_number, 2);
+    if (method === 'runs' && options.workflow_id === 7) {
+      assert.equal(options.event, 'pull_request');
+      assert.equal(options.head_sha, HEAD);
+      assert.equal(options.branch, 'dev/test');
+      return ciRuns;
+    }
     return ({ associated, runs: previous, files, jobs, artifacts, timeline })[method];
   } };
   return { github, context, trustedSha: TRUSTED, repo, run, pr, trees, workflow, caller,
@@ -66,8 +72,29 @@ function fixture(dispatch = false) {
     setJobs: value => { jobs = value; }, setArtifacts: value => { artifacts = value; },
     setTimeline: value => { timeline = value; },
     setAssociated: value => { associated = value; }, setPrevious: value => { previous = value; },
-    setFiles: value => { files = value; } };
+    setFiles: value => { files = value; }, setCiRuns: value => { ciRuns = value; } };
 }
+
+for (const status of ['requested', 'queued', 'in_progress', 'completed']) {
+  test(`new same-head CI ${status} blocks controller and every worker admission`, async () => {
+    for (const dispatch of [false, true]) {
+      const f = fixture(dispatch);
+      f.setCiRuns([{ ...f.run, id: 92, run_number: 15, status, conclusion: null }]);
+      await assert.rejects(admit(f), /newer PR CI run/);
+    }
+  });
+}
+test('freshness uses CI workflow/source identity, not run IDs or unrelated reviews', async () => {
+  for (const change of [
+    { workflow_id: 8 }, { path: '.github/workflows/other.yml' }, { event: 'push' },
+    { repository: { id: 43 } }, { head_repository: { id: 43 } },
+    { head_branch: 'dev/other' }, { head_sha: BASE }, { run_number: 13 },
+  ]) {
+    const f = fixture(true);
+    f.setCiRuns([{ ...f.run, id: 9999, run_number: 15, ...change }]);
+    assert.equal((await admit(f)).ci_run_id, '91');
+  }
+});
 
 // Negative controls first: no costly work may follow these admission failures.
 for (const name of ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar']) {
@@ -215,29 +242,9 @@ for (const [name, change] of [
   ['pending producer', f => { f.producer.status = 'in_progress'; }],
   ['absent upload', f => { f.producer.steps = []; }],
   ['skipped upload', f => { f.producer.steps[0].conclusion = 'skipped'; }],
-  ['missing artifact', f => f.setArtifacts([])],
-  ['ambiguous artifact', f => f.setArtifacts([f.artifact, f.artifact])],
-  ['expired artifact', f => { f.artifact.expired = true; }],
-  ['wrong artifact head', f => { f.artifact.workflow_run.head_sha = BASE; }],
-  ['wrong artifact run', f => { f.artifact.workflow_run.id++; }],
-  ['wrong artifact attempt', f => { f.artifact.name = 'ci-accessibility-testhost-91-1'; }],
-  ['foreign artifact repository', f => { f.artifact.workflow_run.repository_id++; }],
-  ['fork artifact source', f => { f.artifact.workflow_run.head_repository_id++; }],
-  ['missing digest', f => { delete f.artifact.digest; }],
-  ['invalid digest', f => { f.artifact.digest = 'sha256:wrong'; }],
-  ['unbounded artifact', f => { f.artifact.size_in_bytes = 3 * 1024 ** 3; }],
-]) test(`native payload rejects ${name} without fallback`, async () => {
+]) test(`native results require original TestHost ${name} without fallback`, async () => {
   const f = fixture(true); change(f);
-  await assert.rejects(admit({ ...f, requirePayload: true }));
-});
-test('native admission returns only successful same-head exact-attempt artifact identity', async () => {
-  const f = fixture(true);
-  const result = await admit({ ...f, requirePayload: true });
-  assert.equal(result.artifact_id, '5');
-  assert.equal(result.artifact_digest, f.artifact.digest);
-  assert.equal(JSON.parse(result.pull_request).head.sha, HEAD);
-  f.pr.head.sha = BASE; // Confirmed own repair is never the artifact source.
-  assert.equal((await admit({ ...f, requirePayload: true, publishedSha: BASE })).artifact_id, '5');
+  await assert.rejects(admit({ ...f, requireNative: true }));
 });
 
 for (const [name, change] of [

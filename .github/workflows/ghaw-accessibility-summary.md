@@ -40,6 +40,7 @@ max-ai-credits: 150
 checkout:
   ref: ${{ github.workflow_sha }}
 env:
+  GH_AW_HARNESS_MAX_RETRIES: '0'
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
 jobs:
   admission:
@@ -80,6 +81,10 @@ safe-outputs:
     max-ai-credits: 30
     retries: 0
 steps:
+  - name: Stage trusted handoff validator
+    run: |
+      mkdir -p "Generated Files/$ACCESSIBILITY_RUN" "$RUNNER_TEMP/gh-aw/accessibility-trusted"
+      cp .github/skills/pr-accessibility/scripts/accessibility_handoff.py "$RUNNER_TEMP/gh-aw/accessibility-trusted/"
   - name: Download review handoffs
     continue-on-error: true
     uses: actions/download-artifact@v8
@@ -93,19 +98,45 @@ steps:
       name: accessibility-native-ci-${{ github.run_id }}
       path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
 post-steps:
+  - name: Require actual complete final output
+    id: actual-output
+    if: always()
+    env:
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
+    run: |
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" summary \
+        "Generated Files/$ACCESSIBILITY_RUN/summary.md" \
+        --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
   - name: Publish agent-written final summary
+    if: ${{ success() && steps.actual-output.outcome == 'success' }}
     run: |
       set -euo pipefail
       summary="Generated Files/$ACCESSIBILITY_RUN/summary.md"
       test -s "$summary"
       test "$(wc -c < "$summary")" -le 32768
       cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+  - name: Record summary producer identity even when incomplete
+    if: always()
+    env:
+      PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+      PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_STAGE: summary
+      PRODUCER_SOURCE: .github/workflows/ghaw-accessibility-summary.md
+      DIAGNOSTIC_ARTIFACT: ${{ needs.activation.outputs.artifact_prefix }}agent
+    run: |
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" receipt \
+        "Generated Files/$ACCESSIBILITY_RUN/summary-producer.txt"
   - name: Preserve final handoff
     if: always()
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
     with:
       name: accessibility-summary-${{ github.run_id }}-${{ github.run_attempt }}
-      path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/summary.md
+      path: |
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/summary.md
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/summary-producer.txt
       if-no-files-found: warn
       retention-days: 14
 ---
@@ -130,6 +161,15 @@ to the summarizer's current attempt. The native-ci.json receipt records the
 original PR CI repository/head/run/attempt and individual surfaces. Cite that
 identity, not this worker's run. Missing current evidence cannot be replaced by
 older scans or a rebuilt payload.
+Each producer receipt says Complete or **No result**. A file left by a crashed
+or incomplete producer is diagnostic evidence only, not a completed AI review.
+Never infer None or Uncertain from missing triage. Explicitly label the missing
+stage No result and explain the missing/invalid file or failed job. Preserve the
+receipt's actual sessionID (or `unknown`), diagnostic ID and native artifact name.
+Do not inspect another run's sessions, guess a session ID, create replacement
+final.json, reconstruct missing AI prose, or retry a model. If this final model
+does not produce its own complete summary.md, Actions retains the failed step,
+producer receipt and native diagnostic artifacts; no replacement report is rendered.
 
 Authoritative job outcomes:
 - Triage: `${{ inputs.triage-result }}`; validated route: `${{ inputs.route }}`.

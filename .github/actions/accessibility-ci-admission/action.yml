@@ -7,9 +7,6 @@ inputs:
   published-sha:
     default: ''
     description: Confirmed repair tip, wired only by the trusted worker for final summary.
-  require-payload:
-    default: 'false'
-    description: Require successful exact-attempt TestHost producer and protected artifact identity.
   require-native:
     default: 'false'
     description: Require successful exact-attempt CI native scans, enforcement and original-head result archive.
@@ -41,7 +38,6 @@ runs:
         TRUSTED_CI_SHA: ${{ github.workflow_sha }}
         DEDUPLICATE: ${{ inputs.deduplicate }}
         PUBLISHED_SHA: ${{ inputs.published-sha }}
-        REQUIRE_PAYLOAD: ${{ inputs.require-payload }}
         REQUIRE_NATIVE: ${{ inputs.require-native }}
       with:
         script: |
@@ -51,6 +47,5 @@ runs:
             `${process.env.GITHUB_WORKSPACE}/.github/actions/accessibility-ci-admission/admission.mjs`));
           const outputs = await admit({ github, context, trustedSha: process.env.TRUSTED_CI_SHA,
             deduplicate: process.env.DEDUPLICATE === 'true', publishedSha: process.env.PUBLISHED_SHA,
-            requirePayload: process.env.REQUIRE_PAYLOAD === 'true',
             requireNative: process.env.REQUIRE_NATIVE === 'true' });
           for (const [key, value] of Object.entries(outputs)) core.setOutput(key, value);

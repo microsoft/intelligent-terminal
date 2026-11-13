@@ -43,6 +43,7 @@ safe-outputs:
     max-ai-credits: 30
     retries: 0
 env:
+  GH_AW_HARNESS_MAX_RETRIES: '0'
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
   ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
   ACCESSIBILITY_BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
@@ -63,19 +64,34 @@ jobs:
     needs: [admission]
 steps:
   - name: Prepare run directory
-    run: mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
+    run: |
+      mkdir -p "Generated Files/$ACCESSIBILITY_RUN" "$RUNNER_TEMP/gh-aw/accessibility-trusted"
+      cp .github/skills/pr-accessibility/scripts/accessibility_handoff.py "$RUNNER_TEMP/gh-aw/accessibility-trusted/"
 post-steps:
+  - name: Require actual complete triage output
+    id: actual-output
+    if: always()
+    env:
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
+    run: |
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" triage \
+        "Generated Files/$ACCESSIBILITY_RUN/triage.md" \
+        --base "$ACCESSIBILITY_BASE_SHA" --head "$ACCESSIBILITY_HEAD_SHA" \
+        --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
   - name: Record triage producer identity even when incomplete
     if: always()
     env:
       PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
+      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
+      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_STAGE: triage
+      PRODUCER_SOURCE: .github/workflows/ghaw-accessibility-triage.md
+      DIAGNOSTIC_ARTIFACT: ${{ needs.activation.outputs.artifact_prefix }}agent
     run: |
-      mkdir -p "Generated Files/$ACCESSIBILITY_RUN"
-      printf '%s\n' \
-        "run=$GITHUB_RUN_ID" "attempt=$GITHUB_RUN_ATTEMPT" \
-        "head=$PRODUCER_HEAD" "workflow=$PRODUCER_WORKFLOW" \
-        > "Generated Files/$ACCESSIBILITY_RUN/triage-producer.txt"
+      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" receipt \
+        "Generated Files/$ACCESSIBILITY_RUN/triage-producer.txt"
   - name: Preserve original triage even when invalid
     if: always()
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -126,3 +142,7 @@ which existing CI native evidence applies. Path-gated CI scans already ran
 independently before triage; None does not skip CI or its cost.
 The final summarizer also receives this original
 handoff, including uncertainty. Request noop after writing it.
+Do not use the final chat message or a safe-output noop as the handoff itself.
+Missing, empty, incomplete or crashed output is **No result**; never replace it
+with a guessed None/Uncertain decision. Native job logs and its diagnostic
+receipt remain available in Actions; no retry or synthetic AI fallback is used.

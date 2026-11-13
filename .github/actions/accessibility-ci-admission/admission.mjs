@@ -1,6 +1,6 @@
 // Reuse the authoritative security CI foundation.
 import {
-  validateCiDefinition, validateCiRun, validateCiPull, validateCiArtifact,
+  validateCiDefinition, validateCiRun, validateCiPull, validateCiArtifact, validateCiFreshness,
 } from '../../skills/ghaw-pr-security/scripts/security-review.mjs';
 import { relevantPath } from '../../../build/scripts/ci-accessibility-scope.mjs';
 export { relevantPath };
@@ -58,7 +58,7 @@ export function validateNativeJobs(jobs, run) {
   }
 }
 
-export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '', requirePayload = false, requireNative = false }) {
+export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '', requireNative = false }) {
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   const metadata = (await github.rest.repos.get(context.repo)).data;
   const inputs = context.payload.inputs;
@@ -94,6 +94,11 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   })).data;
   if (workflow.id !== run.workflow_id || workflow.path !== '.github/workflows/pr-ci.yml' ||
       workflow.state !== 'active') throw Error('CI source workflow is not trusted.');
+  const ciRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
+    ...context.repo, workflow_id: workflow.id, event: 'pull_request',
+    branch: run.head_branch, head_sha: run.head_sha, created: `>=${run.created_at}`, per_page: 100,
+  });
+  validateCiFreshness(run, ciRuns);
   const comparison = (await github.rest.repos.compareCommits({
     ...context.repo, base: trustedSha, head: run.head_sha, per_page: 1,
   })).data;
@@ -153,7 +158,7 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
     files.some(file => relevantPath(file.filename) || relevantPath(file.previous_filename ?? ''));
   // A green workflow with skipped native work is not full relevant-PR CI.
   // Check this before every model entry, not only the archive consumer.
-  if (applicable) validateNativeJobs(jobs, run);
+  if (applicable || requireNative) validateNativeJobs(jobs, run);
   if (deduplicate) {
     const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
       { ...context.repo, workflow_id: worker, event: 'workflow_dispatch', per_page: 100 });
@@ -167,19 +172,17 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
     base: { sha: pr.base.sha, ref: pr.base.ref, repo: { id: metadata.id, full_name: repository } } };
   const outputs = { pull_request: JSON.stringify(pull), ci_run_id: String(run.id),
     ci_run_attempt: String(run.run_attempt), applicable: String(applicable) };
-  if (requirePayload || requireNative) {
+  if (requireNative) {
     validateTestHostProducer(jobs, run);
-    if (requireNative) validateNativeJobs(jobs, run);
     const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
       { ...context.repo, run_id: run.id, per_page: 100 });
-    const kind = requireNative ? 'native' : 'testhost';
-    const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-${kind}-${run.id}-${run.run_attempt}`);
+    const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-native-${run.id}-${run.run_attempt}`);
     if (!/^sha256:[0-9a-f]{64}$/.test(artifact.digest ?? '') ||
         artifact.workflow_run.repository_id !== run.repository.id ||
         artifact.workflow_run.head_repository_id !== run.head_repository.id ||
         !Number.isSafeInteger(artifact.size_in_bytes) || artifact.size_in_bytes < 1 ||
-        artifact.size_in_bytes > (requireNative ? 256 * 1024 ** 2 : 2 * 1024 ** 3)) {
-      throw Error(`Missing ${kind} artifact integrity identity; evidence incomplete.`);
+        artifact.size_in_bytes > 256 * 1024 ** 2) {
+      throw Error('Missing native artifact integrity identity; evidence incomplete.');
     }
     outputs.artifact_id = String(artifact.id);
     outputs.artifact_digest = artifact.digest;

@@ -991,6 +991,21 @@ export function validateCiPull(pull, run, identity) {
   }
 }
 
+export function validateCiFreshness(run, runs) {
+  if (!Number.isSafeInteger(run.run_number) || run.run_number < 1 || !Array.isArray(runs)) {
+    fail('CI freshness requires workflow-scoped run numbers');
+  }
+  // run_number is monotonic within a workflow; IDs and list order are not clocks.
+  if (runs.some(other => other.workflow_id === run.workflow_id &&
+      other.path === run.path && other.event === 'pull_request' &&
+      other.repository?.id === run.repository.id &&
+      other.head_repository?.id === run.head_repository.id &&
+      other.head_branch === run.head_branch && other.head_sha === run.head_sha &&
+      Number.isSafeInteger(other.run_number) && other.run_number > run.run_number)) {
+    fail('A newer PR CI run supersedes this review');
+  }
+}
+
 export function validateCiArtifact(artifacts, run, name) {
   const matches = artifacts.filter(item => item.name === name);
   if (matches.length !== 1 || matches[0].expired !== false ||

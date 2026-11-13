@@ -1719,7 +1719,10 @@ class WorkflowContractTests(unittest.TestCase):
                         workflow.index("name: Upload deep review evidence even when incomplete"))
         upload = workflow.split("name: Upload deep review evidence even when incomplete", 1)[1].split("\n---", 1)[0]
         self.assertIn("if: always()", upload)
-        self.assertIn("path: Generated Files/accessibility-", upload)
+        self.assertIn("path: |", upload)
+        for filename in ("prepared.json", "final.json", "deep-summary.md", "native-checks.md", "deep-producer.txt"):
+            self.assertIn(f"Generated Files/accessibility-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}/{filename}",
+                          upload)
         self.assertIn('Generated Files/$ACCESSIBILITY_RUN/final.json', workflow)
         self.assertIn('Generated Files/$ACCESSIBILITY_RUN/deep-summary.md', workflow)
 

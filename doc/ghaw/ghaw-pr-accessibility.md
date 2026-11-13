@@ -11,7 +11,7 @@ native accessibility certification.
 
 The source review also classifies TestHost XAML, C++, headers and project files.
 TestHost and project files can require review but are not eligible repair paths.
-The original daily AI-credit cap is 100,000.
+The daily AI-credit cap is 100,000.
 
 PR automation runs only for branches in the receiving repository. External-fork
 PRs are skipped.
@@ -25,8 +25,8 @@ dispatch review. A green unrelated check, a push/manual CI run, a merge SHA,
 an earlier head, or a stale run attempt is not sufficient.
 
 The thin `accessibility-ci-admission` action reuses security review's
-`validateCiRun`, `validateCiPull` and `validateCiDefinition` foundation
-(#1361, with CI path scoping from #1380). It re-reads the run and active workflow
+`validateCiRun`, `validateCiPull`, `validateCiFreshness` and
+`validateCiDefinition` foundation. It re-reads the run and active workflow
 identity, immutable CI implementation trees, commit-associated PR and live
 head/base. It does not trust the webhook's PR list or download candidate artifacts.
 Path eligibility remains additive: no relevant paths means no model work.
@@ -35,7 +35,8 @@ success alone never selects deep review.
 
 The worker is dispatched on the default branch with exact CI run/attempt,
 minimal PR identity and trusted workflow SHA. Admission rechecks before triage,
-deep review, CI evidence consumption and final summary, including reusable entrypoints.
+deep review, CI evidence consumption, repair publication and final summary,
+including reusable entrypoints.
 Calls from another workflow, candidate workflow revisions, rerunning the same
 worker, and duplicate dispatches for an already admitted CI attempt fail closed.
 A fresh successful CI attempt has a distinct identity. If the default branch or
@@ -44,6 +45,15 @@ substituted revision. As with publication, these live checks are not atomic.
 The final summary may accept this trusted worker's
 confirmed repair tip while retaining the original CI identity; that is not CI
 validation of the repairs. Unrelated live head changes still fail admission.
+
+The worker shares security review's native `PR CI-PR_NUMBER` concurrency group
+with `cancel-in-progress: false` and `queue: max`. New PR CI requests use that
+same group with cancellation enabled; workers do not cancel CI or unrelated
+runs. GitHub owns cancellation and queue scheduling, with no polling controller.
+Admission rejects an updated PR head, changed CI attempt or a newer same-head
+PR CI workflow run, including queued/in-progress runs. Workflow-scoped numeric
+run numbers establish order; unrelated workflows and source repositories do not.
+These checks do not make admission or publication atomic.
 
 PR CI builds production Terminal, TestHost and C++ tests once in **C++ build**,
 in parallel with Rust. Ordinary **C++ unit tests** consume the staged unit-test
@@ -91,7 +101,7 @@ No applicable existing static analyzer is being newly published or invented.
 Axe runs on an interactive Windows CI desktop using the original CI-built
 payload, not as proposed-fix validation. Deep review can select whether those
 existing scans inform its changed-UI scope; it cannot start or skip them.
-Related / None / Uncertain remains the #1197 routing contract. None skips the
+Related / None / Uncertain is the routing contract. None skips the
 deep model only, not independent path-gated CI scan cost or final reporting.
 
 Admission also checks successful C++/Rust build/test steps, not just a green
@@ -122,6 +132,38 @@ in `.github/workflows/ghaw-pr-accessibility.md`; the job displays its Markdown
 unchanged and retains it with the structured report. Safe-output processing
 shows whether publication succeeded. Do not mistake a local commit or queued
 push for confirmed remote publication.
+
+Every AI stage must emit its own non-empty file handoff. Missing, empty,
+incomplete or crashed production is **No result**. Files left by a failed
+producer are diagnostic evidence, not completed analysis. The final model
+receives actual files, producer receipts and job outcomes; it cannot invent a
+missing decision or report. If the final model fails, Actions exposes the failed
+job and artifacts without rendering a replacement AI summary. No automatic
+model retry is enabled.
+
+The existing gh-aw `agent` artifact is a downloadable diagnostic ZIP containing
+session logs, SDK events and stdio, using the framework's secret redaction.
+Reusable stages use the native artifact prefix. Producer receipts bind stage,
+source, head, run and attempt, and record actual SDK-created session IDs or
+`unknown`; only those owned session directories remain in native capture.
+Abrupt runner loss can prevent best-effort uploads.
+
+### Executable responsibilities
+
+| File | Single purpose | Disposition |
+| --- | --- | --- |
+| `.github/actions/accessibility-ci-admission/admission.mjs` | Authenticate CI producer steps/artifacts | Necessary; reuses shared security identity/freshness validators |
+| `build/scripts/ci-accessibility-scope.mjs` | One pure CI/admission path predicate | Reused by both owners |
+| `build/scripts/ci-accessibility-payload.py` | Stage/verify portable payloads, bounded archives, receipts and hashes | Necessary transport boundary |
+| `.github/skills/pr-accessibility/scripts/accessibility_handoff.py` | Validate actual handoffs and record producer/diagnostic identity | Reused across all AI stages |
+| `.github/skills/pr-accessibility/scripts/accessibility_review.py` | Prepare immutable source evidence and validate authorized repairs/commit series | Necessary repair boundary |
+| `test/accessibility/Invoke-AxeWindowsTestHost.ps1` | Own TestHost deployment/process lifetime and invoke scanner | Necessary native lifetime owner |
+| `test/accessibility/Invoke-AxeWindowsScan.ps1` | Collect per-state UIA/Axe evidence and enforce production-sidebar identity | Necessary native scan owner |
+
+These are separate trust or execution boundaries. CI identity helpers, native
+diagnostic ZIP/redaction and queue cancellation are reused, not duplicated.
+Tests stay with these owners; no test-only runner or recovery engine is needed.
+Admission consumes native receipts only; it has no TestHost-payload dispatch mode.
 
 ## Repair and summary policy
 

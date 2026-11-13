@@ -1,6 +1,9 @@
 """Markdown boundary and compiled-graph regression tests, not model evaluation."""
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -14,6 +17,7 @@ SPEC = importlib.util.spec_from_file_location(
 handoff = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(handoff)
 CHANGED = {"src/cascadia/TerminalApp/Test.xaml", "src/cascadia/TerminalApp/en-GB.resw"}
+SUMMARY = "## Outcome\nActual review.\n\n## Results\nNo findings.\n\n## Human action and limits\nRuntime gaps remain.\n"
 
 
 class MarkdownHandoffTests(unittest.TestCase):
@@ -55,6 +59,135 @@ class MarkdownHandoffTests(unittest.TestCase):
             handoff.native("# Native checks: None\n\n" + "x" * 16384)
 
 
+class ProducerOutputTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(dir=ROOT, prefix=".handoff-test-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.queue = self.root / "safeoutputs.jsonl"
+        self.queue.write_text('{"type":"noop"}\n', encoding="utf-8")
+        self.summary = self.root / "summary.md"
+        self.summary.write_text(SUMMARY, encoding="utf-8")
+        self.report = {
+            "version": 1, "source_sha": "a" * 40, "review_checks": [],
+            "runtime_checks": [], "findings": [], "dismissed_signals": [], "patch_files": [],
+        }
+        (self.root / "final.json").write_text(json.dumps(self.report), encoding="utf-8")
+        (self.root / "deep-summary.md").write_text(SUMMARY, encoding="utf-8")
+        (self.root / "native-checks.md").write_text(
+            "# Native checks: None\n\nActual source-only selection.\n", encoding="utf-8")
+
+    def run_producer(self, kind, path, outcome="success"):
+        revisions = ["--base", self.revision, "--head", self.revision] if kind == "triage" else []
+        return subprocess.run(
+            [sys.executable, str(SPEC.origin), kind, str(path),
+             "--producer-outcome", outcome, "--safe-outputs", str(self.queue), *revisions],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+
+    def assert_no_result(self, result):
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("", result.stdout)
+        self.assertIn("No result:", result.stderr)
+
+    def test_complete_real_files_are_accepted_unchanged(self):
+        for kind, path in (("summary", self.summary), ("deep", self.root)):
+            with self.subTest(kind=kind):
+                result = self.run_producer(kind, path)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("Complete\n", result.stdout)
+        self.assertEqual(SUMMARY, self.summary.read_text(encoding="utf-8"))
+        triage = self.root / "triage.md"
+        original = "# None\n\nActual source diff has no changes.\n"
+        triage.write_text(original, encoding="utf-8")
+        result = self.run_producer("triage", triage)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("None\n", result.stdout)
+        self.assertEqual(original, triage.read_text(encoding="utf-8"))
+
+    def test_crashed_cancelled_or_unknown_producer_cannot_reuse_complete_files(self):
+        for kind, path in (("summary", self.summary), ("deep", self.root),
+                           ("triage", self.root / "triage.md")):
+            path_to_write = path if kind == "triage" else None
+            if path_to_write:
+                path_to_write.write_text("# None\n\nActual decision.\n", encoding="utf-8")
+            for outcome in ("failure", "cancelled", "skipped", ""):
+                with self.subTest(kind=kind, outcome=outcome):
+                    self.assert_no_result(self.run_producer(kind, path, outcome))
+        self.assertEqual(SUMMARY, self.summary.read_text(encoding="utf-8"))
+
+    def test_real_producer_process_failure_leaves_diagnostics_not_a_successful_handoff(self):
+        for kind, filename, content in (
+            ("triage", "triage.md", "# None\n\nA file written before the crash.\n"),
+            ("deep", "final.json", json.dumps(self.report)),
+            ("summary", "summary.md", SUMMARY),
+        ):
+            with self.subTest(kind=kind):
+                crashed = subprocess.run(
+                    [sys.executable, "-c",
+                     "from pathlib import Path; import sys; "
+                     "Path(sys.argv[1]).write_text(sys.argv[2], encoding='utf-8'); "
+                     "raise RuntimeError('producer crashed after writing')",
+                     filename, content],
+                    cwd=self.root, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(0, crashed.returncode)
+                self.assertIn("producer crashed after writing", crashed.stderr)
+                path = self.root if kind == "deep" else self.root / filename
+                self.assert_no_result(self.run_producer(
+                    kind, path, "success" if crashed.returncode == 0 else "failure"))
+                self.assertEqual(content, (self.root / filename).read_text(encoding="utf-8"))
+
+    def test_missing_empty_and_incomplete_final_outputs_never_generate_replacements(self):
+        for text in (None, "", " \n", "## Outcome\nOnly a partial answer.\n",
+                     "## Outcome\nActual.\n## Results\n\n## Human action and limits\nGap.\n"):
+            with self.subTest(text=text):
+                self.summary.unlink(missing_ok=True)
+                if text is not None:
+                    self.summary.write_text(text, encoding="utf-8")
+                self.assert_no_result(self.run_producer("summary", self.summary))
+                if text is None:
+                    self.assertFalse(self.summary.exists())
+                else:
+                    self.assertEqual(text, self.summary.read_text(encoding="utf-8"))
+
+    def test_deep_requires_each_actual_file_and_complete_json(self):
+        for filename in ("final.json", "deep-summary.md", "native-checks.md"):
+            path = self.root / filename
+            original = path.read_text(encoding="utf-8")
+            for text in (None, "", "{}" if filename == "final.json" else "# Incomplete\n"):
+                with self.subTest(filename=filename, text=text):
+                    path.unlink(missing_ok=True)
+                    if text is not None:
+                        path.write_text(text, encoding="utf-8")
+                    self.assert_no_result(self.run_producer("deep", self.root))
+            path.write_text(original, encoding="utf-8")
+
+    def test_native_incomplete_and_missing_queue_override_plausible_files(self):
+        for text in (None, "", '{"items":[]}\n', 'invalid\n',
+                     '{"type":"report_incomplete","reason":"infrastructure_error"}\n',
+                     '{"type":"missing_data"}\n', '{"type":"missing_tool"}\n'):
+            with self.subTest(text=text):
+                self.queue.unlink(missing_ok=True)
+                if text is not None:
+                    self.queue.write_text(text, encoding="utf-8")
+                self.assert_no_result(self.run_producer("summary", self.summary))
+
+    def test_missing_or_empty_triage_is_not_none_or_uncertain(self):
+        triage = self.root / "triage.md"
+        for text in (None, "", " \n"):
+            with self.subTest(text=text):
+                triage.unlink(missing_ok=True)
+                if text is not None:
+                    triage.write_text(text, encoding="utf-8")
+                self.assert_no_result(self.run_producer("triage", triage))
+
+
 class CompiledGraphTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -83,21 +216,13 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("native-evidence", self.jobs["agent"]["needs"])
         self.assertNotIn("native-runtime", self.jobs)
 
-    def test_native_selection_survives_failed_deep_validation_but_not_skip_or_cancel(self):
+    def test_native_selection_requires_complete_deep_production(self):
         selector = self.jobs["native-selection"]
         self.assertEqual(
-            "${{ !cancelled() && needs.agent.result != 'skipped' }}",
+            "needs.agent.result == 'success'",
             selector["if"],
         )
-        # Explicit status function overrides GitHub's implicit success() gate.
-        # A failed report/repair validator may still leave a valid selection.
-        for cancelled, result, expected in (
-            (False, "success", True), (False, "failure", True),
-            (False, "skipped", False), (True, "failure", False),
-            (True, "cancelled", False),
-        ):
-            with self.subTest(cancelled=cancelled, result=result):
-                self.assertEqual(expected, not cancelled and result != "skipped")
+        # A file left by a crashed producer is diagnostic, not a valid decision.
         self.assertIn("needs.agent.result == 'success'", self.jobs["safe_outputs"]["if"])
         upload = next(step for step in self.jobs["agent"]["steps"]
                       if step.get("name") == "Upload deep review evidence even when incomplete")
@@ -234,7 +359,7 @@ class CompiledGraphTests(unittest.TestCase):
         # A hostile extra native member in a retained/model-authored artifact
         # still stays in the triage namespace, even though producer scope now
         # prevents publishing it. Use the actual compiled destination suffix.
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".handoff-test-") as directory:
             root = Path(directory)
             verified = root / "native/fre/result.json"
             verified.parent.mkdir(parents=True)
