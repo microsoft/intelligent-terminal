@@ -639,4 +639,7 @@
     <value>Canvia a les pestanyes verticals per a vore l’activitat dels agents d’una ullada. Fes clic amb el botó dret en una pestanya i tria {0}.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Subfinestra {0} de {1}</value>
+  </data>
 </root>

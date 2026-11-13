@@ -825,4 +825,7 @@
     <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟଙ୍କ କାର୍ଯ୍ୟକଳାପ ଏକ ନଜରରେ ଦେଖିବାକୁ ଭୂଲମ୍ବ ଟ୍ୟାବ୍‌କୁ ବଦଳାନ୍ତୁ। ଏକ ଟ୍ୟାବ୍‌ରେ ଡାହାଣ-କ୍ଲିକ୍ କରନ୍ତୁ ଏବଂ {0} ବାଛନ୍ତୁ।</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>ମୋଟ {1}ରୁ ପେନ୍ {0}</value>
+  </data>
 </root>

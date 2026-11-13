@@ -803,4 +803,7 @@
     <value>మీ ఏజెంట్ల కార్యకలాపాన్ని ఒక్క చూపులో చూడటానికి నిలువు ట్యాబ్‌లకు మారండి. ట్యాబ్‌పై కుడి-క్లిక్ చేసి, {0} ఎంచుకోండి.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>మొత్తం {1}లో పేన్ {0}</value>
+  </data>
 </root>

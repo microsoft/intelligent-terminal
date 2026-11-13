@@ -803,4 +803,7 @@
     <value>உங்கள் முகவர்களின் செயல்பாட்டை ஒரே பார்வையில் காண செங்குத்துத் தாவல்களுக்கு மாறவும். ஒரு தாவலில் வலது கிளிக் செய்து, {0} என்பதைத் தேர்ந்தெடுக்கவும்.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>மொத்தம் {1} இல் பலகம் {0}</value>
+  </data>
 </root>

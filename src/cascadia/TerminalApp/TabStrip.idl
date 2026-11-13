@@ -110,6 +110,8 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility CloseVisibility;
         Boolean HasUnreadActivity;
         IVector<TextEllipsisRange> MetadataEllipsisRanges;
+        // Append new members to preserve the existing default-interface slots.
+        String ActivationAutomationName { get; };
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

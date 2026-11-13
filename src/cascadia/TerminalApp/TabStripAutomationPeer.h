@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 //
-// Spec A §2.4: reports the vertical rail as a Tab control (not a plain
-// UserControl / List) so screen readers announce it correctly. Children
-// resolve to the hosted TabViewItems via the default GetChildrenCore path.
+// Groups sidebar chrome and the hosted TreeView. The native tree peer owns
+// selection and TreeItem children; the wrapper must not advertise a Tab.
 
 #pragma once
 
@@ -17,7 +16,7 @@ namespace winrt::TerminalApp::implementation
 
         winrt::hstring GetClassNameCore() const;
         winrt::Windows::UI::Xaml::Automation::Peers::AutomationControlType GetAutomationControlTypeCore() const;
-        winrt::hstring GetLocalizedControlTypeCore() const;
+        winrt::hstring GetNameCore() const;
         winrt::Windows::UI::Xaml::Automation::Peers::AutomationOrientation GetOrientationCore() const;
     };
 }

@@ -824,4 +824,7 @@
     <value>अपने एजेंट की गतिविधि एक नज़र में देखने के लिए लंबवत टैब पर स्विच करें। किसी टैब पर राइट-क्लिक करें और {0} चुनें।</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{1} में से पेन {0}</value>
+  </data>
 </root>
