@@ -8,7 +8,7 @@ regression claims.
 
 ## Competing state ownership: supported concern
 
-Metadata: `src/SettingsView.cpp`, 200 added+deleted lines, one relevant file.
+Metadata: `src/SettingsView.cpp`, 100 added+deleted lines, one relevant file.
 Before this change, `SettingsView` only called `SettingsModel::SetEnabled`;
 the model was the single writer and notifier.
 
@@ -63,7 +63,7 @@ an evidence gap rather than pretending the replacement was validated.
 
 ## Intentional specialization: accept
 
-Metadata: ten relevant changed files, zero changed lines (rename-only fixture).
+Metadata: five relevant changed files, zero changed lines (rename-only fixture).
 The snippets are moved unchanged. Review the move's consumers; resemblance
 alone does not establish a DRY defect.
 
@@ -101,7 +101,7 @@ State that the excerpts alone do not prove all rename consumers remain valid.
 
 ## Below threshold: no review
 
-Metadata: `src/SettingsView.cpp`, 199 added+deleted lines, one relevant file.
+Metadata: `src/SettingsView.cpp`, 99 added+deleted lines, one relevant file.
 Expected: the deterministic gate returns `admitted: false`; activation, review,
 detector inference and PR publication are skipped. Do not ask a reviewer to
 infer whether this small change is architecturally safe, or post a no-findings

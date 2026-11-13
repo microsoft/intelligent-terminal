@@ -12,13 +12,13 @@ not active instructions.
 
 The deterministic `prepare` job verifies live PR identity, fetches the exact
 head and observed base, resolves their merge base and reads Git numstat metadata.
-No model runs unless **relevant added+deleted lines >= 200 OR relevant changed
-files >= 10**. Equality passes; either threshold suffices independently.
+No model runs unless **relevant added+deleted lines >= 100 OR relevant changed
+files >= 5**. Equality passes; either threshold suffices independently.
 Tune only the two constants in
 `.github/workflows/ghaw-pr-architecture-design/scripts/architecture-design-review.mjs`.
 
 These are provisional effort/cost defaults, not an architectural-risk score:
-200 lines admits a substantial single-owner change; ten files admits a
+100 lines admits a material single-owner change; five files admits a
 distributed contract change even with small per-file edits. Small architectural
 changes can matter; request a local review when they fall below this cost gate.
 
@@ -69,6 +69,14 @@ identifies its exact comparison base/head and immutable citations. GitHub
 comment creation has no atomic head-SHA precondition: an update after the final
 freshness check can still leave a clearly snapshot-labeled historical report.
 No source approval or absolute regression guarantee is implied.
+
+PR #1399's latest CI-controller fix separates requested/completed event
+concurrency and rechecks the live PR immediately before cancelling an older
+security worker. This advisory workflow has no detached worker or CI-event
+controller: its PR-number concurrency cancels an older run directly on
+`synchronize`, even when the new head is below threshold. Freshness checks
+prevent stale publication. It therefore does not depend on #1399 or on a
+native CI trigger to review declarative changes.
 
 ## Local validation
 

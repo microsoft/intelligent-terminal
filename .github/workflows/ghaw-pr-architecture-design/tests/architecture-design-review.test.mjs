@@ -16,10 +16,10 @@ const expected = { number: 7, state: 'open', draft: false,
     base: { sha: base, ref: 'main', repo: repository } };
 
 test('admission is inclusive OR with independent line-only and file-only boundaries', () => {
-    assert.equal(classifyChanges([file('src/core.cpp', 99, 100)]).admitted, false);
-    assert.equal(classifyChanges([file('src/core.cpp', 99, 101)]).admitted, true);
-    assert.equal(classifyChanges(Array.from({ length: 9 }, (_, i) => file(`src/${i}.cpp`))).admitted, false);
-    const scope = classifyChanges(Array.from({ length: 10 }, (_, i) => file(`src/${i}.cpp`)));
+    assert.equal(classifyChanges([file('src/core.cpp', 49, 50)]).admitted, false);
+    assert.equal(classifyChanges([file('src/core.cpp', 49, 51)]).admitted, true);
+    assert.equal(classifyChanges(Array.from({ length: 4 }, (_, i) => file(`src/${i}.cpp`))).admitted, false);
+    const scope = classifyChanges(Array.from({ length: 5 }, (_, i) => file(`src/${i}.cpp`)));
     assert.equal(scope.relevantLines, 0);
     assert.equal(scope.admitted, true);
     assert.equal(classifyChanges([]).admitted, false);
@@ -36,7 +36,7 @@ test('generated/vendor/lock churn is ignored without excluding declarative archi
     for (const filename of ['.github/workflows/review.md', '.github/workflows/pr-ci.yml',
         '.github/agents/reviewer.agent.md', '.github/skills/review/SKILL.md',
         'AGENTS.md', 'docs/design.md', 'settings.json', 'src/generated/contract.h', 'tools/wta/Cargo.toml']) {
-        assert.equal(classifyChanges([file(filename, 200)]).admitted, true, filename);
+        assert.equal(classifyChanges([file(filename, 100)]).admitted, true, filename);
     }
 });
 
@@ -45,11 +45,11 @@ test('rename paths, removals and binary metadata have explicit counting semantic
     assert.deepEqual(renamed, [{ filename: 'new/name.cpp', previousFilename: 'old/name.cpp', additions: 0, deletions: 0 }]);
     assert.equal(classifyChanges(renamed).relevantFiles, 1);
     assert.equal(classifyChanges(renamed).relevantLines, 0);
-    const crossing = classifyChanges([{ ...file('vendor/name.cpp', 200), previousFilename: 'src/name.cpp' }]);
+    const crossing = classifyChanges([{ ...file('vendor/name.cpp', 100), previousFilename: 'src/name.cpp' }]);
     assert.equal(crossing.admitted, true);
     assert.equal(classifyChanges([{ ...file('src/name.cpp'), previousFilename: 'vendor/name.cpp' }]).relevantFiles, 1);
     assert.equal(classifyChanges([{ ...file('vendor/new.cpp', 300), previousFilename: 'vendor/old.cpp' }]).admitted, false);
-    assert.equal(classifyChanges(parseNumstat('0\t200\tsrc/deleted.cpp\0')).admitted, true);
+    assert.equal(classifyChanges(parseNumstat('0\t100\tsrc/deleted.cpp\0')).admitted, true);
     assert.equal(classifyChanges(parseNumstat('-\t-\tsrc/asset.bin\0')).relevantLines, 0);
 });
 
@@ -105,7 +105,7 @@ test('real Git metadata uses merge base and trusted preparation rejects post-fet
         git('init', '-q');
         git('config', 'user.name', 'Fixture');
         git('config', 'user.email', 'fixture@example.invalid');
-        fs.writeFileSync(path.join(fixture, 'deleted.cpp'), Array.from({ length: 200 }, (_, i) => `old ${i}\n`).join(''));
+        fs.writeFileSync(path.join(fixture, 'deleted.cpp'), Array.from({ length: 100 }, (_, i) => `old ${i}\n`).join(''));
         fs.writeFileSync(path.join(fixture, 'old.cpp'), 'rename-only\n');
         git('add', '.');
         git('commit', '-qm', 'base');
@@ -126,7 +126,7 @@ test('real Git metadata uses merge base and trusted preparation rejects post-fet
             base: { ...expected.base, sha: trustedSha, ref: 'advanced-base' } };
         const scope = resolveScope(fixture, snapshot);
         assert.equal(scope.comparisonBase, comparisonBase);
-        assert.equal(scope.relevantLines, 200);
+        assert.equal(scope.relevantLines, 100);
         assert.equal(scope.relevantFiles, 3);
         assert.equal(scope.admitted, true);
         assert.equal(scope.relevant.find(change => change.filename === 'new.cpp').previousFilename, 'old.cpp');

@@ -59,6 +59,17 @@ test('trusted checkout never activates candidate configuration or adds a repair 
     assert.doesNotMatch(job(source, 'prepare'), /copilot-requests|engine:/);
 });
 
+test('new PR heads preempt the old run independently of size admission or CI events', () => {
+    const concurrency = compiled.match(/^concurrency:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
+    assert.ok(concurrency);
+    assert.match(concurrency, /cancel-in-progress: true/);
+    const group = concurrency.match(/^ {2}group: (.+)$/m)?.[1];
+    assert.equal(group, 'ghaw-pr-architecture-design-${{ github.event.pull_request.number }}');
+    assert.match(source, /types: \[opened, reopened, synchronize, ready_for_review\]/);
+    assert.doesNotMatch(source, /workflow_run:|workflows: \['PR CI'\]/);
+    assert.doesNotMatch(source.match(/^if: (.+)$/m)?.[1] ?? '', /admitted|relevantLines|relevantFiles/);
+});
+
 test('actual freshness job rejects stale, closed and draft results before handler execution', async () => {
     const block = job(source, 'freshness');
     const script = block.match(/script: \|\r?\n([\s\S]*)/)?.[1].split(/\r?\n/)

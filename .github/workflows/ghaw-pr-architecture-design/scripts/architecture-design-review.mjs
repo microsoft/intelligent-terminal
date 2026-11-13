@@ -3,8 +3,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 // Tune these two thresholds here; admission is inclusive OR, not AND.
-export const MIN_RELEVANT_LINES = 200;
-export const MIN_RELEVANT_FILES = 10;
+export const MIN_RELEVANT_LINES = 100;
+export const MIN_RELEVANT_FILES = 5;
 const SHA = /^[0-9a-f]{40}$/;
 
 function validatePath(filename) {
