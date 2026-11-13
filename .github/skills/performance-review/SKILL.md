@@ -73,6 +73,10 @@ drop; collections may preserve iterator or clone side effects; boxing a large
 future trades stack size for allocation. Group membership and machine-fix
 availability do not establish impact or behavioral safety.
 
+Mixed analyzer output is not a performance-only backlog. Keep unrelated lint
+cleanup out of performance findings and repair counts. Do not batch-apply
+suggestions merely to reduce warning counts.
+
 Inspect existing evidence where relevant: `src/ConsolePerf.wprp`,
 `src/tools/ConsoleBench`, `test/e2e/Measure-PaneContext.ps1`,
 `build/scripts/Measure-AgentHookOverhead.ps1`, focused tests and duration
