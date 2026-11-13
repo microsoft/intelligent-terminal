@@ -80,8 +80,7 @@ def producer(outcome, safe_outputs):
 
 def deep(path):
     report = json.loads(read_output(path / "final.json", 1048576))
-    required = {"version", "source_sha", "review_checks", "runtime_checks",
-                "findings", "dismissed_signals", "patch_files"}
+    required = {"version", "source_sha", "runtime_checks", "findings", "patch_files"}
     if not isinstance(report, dict) or not required.issubset(report):
         raise ValueError("incomplete deep structured output")
     summary(read_output(path / "deep-summary.md", 32768))

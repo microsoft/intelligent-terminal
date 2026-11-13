@@ -110,6 +110,18 @@ class ProducerOutputTests(unittest.TestCase):
         self.assertEqual("None\n", result.stdout)
         self.assertEqual(original, triage.read_text(encoding="utf-8"))
 
+    def test_compact_no_finding_report_keeps_optional_records_optional(self):
+        compact = dict(self.report)
+        del compact["review_checks"]
+        del compact["dismissed_signals"]
+        report = self.root / "final.json"
+        original = json.dumps(compact)
+        report.write_text(original, encoding="utf-8")
+        result = self.run_producer("deep", self.root)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("Complete\n", result.stdout)
+        self.assertEqual(original, report.read_text(encoding="utf-8"))
+
     def test_crashed_cancelled_or_unknown_producer_cannot_reuse_complete_files(self):
         for kind, path in (("summary", self.summary), ("deep", self.root),
                            ("triage", self.root / "triage.md")):
