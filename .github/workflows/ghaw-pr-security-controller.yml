@@ -9,7 +9,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ghaw-pr-security-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  group: ghaw-pr-security-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-${{ github.event.action }}
   cancel-in-progress: true
 
 env:
@@ -48,6 +48,12 @@ jobs:
               const binding = /^Security Repair ghaw-pr-security-(\d+)-([0-9a-f]{40})-\d+-\d+$/.exec(run.display_title);
               if (run.repository?.id !== repositoryId || run.path !== '.github/workflows/ghaw-pr-security.lock.yml' ||
                   binding?.[1] !== String(pr.number) || binding[2] === pr.head.sha) continue;
+              const latest = (await github.rest.pulls.get({ ...context.repo, pull_number: pr.number })).data;
+              if (latest.state !== 'open' || latest.head.sha !== pr.head.sha ||
+                  latest.head.ref !== pr.head.ref || latest.head.repo.id !== repositoryId) {
+                core.info('PR changed during cancellation; ending this pass.');
+                return;
+              }
               try {
                 await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: run.id });
               } catch (error) {
