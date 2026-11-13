@@ -41,6 +41,14 @@ def source(name):
 
 
 class ActualOutputSourceTests(unittest.TestCase):
+    def test_delivery_status_does_not_infer_missing_analysis_from_later_job_failure(self):
+        for name in ("ghaw-accessibility-triage", "ghaw-pr-accessibility", "ghaw-accessibility-summary"):
+            record = next(step for step in source(name)["post-steps"]
+                          if step.get("name", "").startswith("Record "))
+            self.assertEqual(
+                "${{ steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}",
+                record["env"]["PRODUCER_RESULT"])
+
     def test_quick_stages_disable_existing_native_harness_retry(self):
         for name in ("ghaw-accessibility-triage", "ghaw-accessibility-summary"):
             self.assertEqual("0", source(name)["env"]["GH_AW_HARNESS_MAX_RETRIES"])

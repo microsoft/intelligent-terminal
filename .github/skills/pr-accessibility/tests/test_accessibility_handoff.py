@@ -121,6 +121,21 @@ class ProducerOutputTests(unittest.TestCase):
                     self.assert_no_result(self.run_producer(kind, path, outcome))
         self.assertEqual(SUMMARY, self.summary.read_text(encoding="utf-8"))
 
+    def test_complete_analysis_is_retained_when_a_later_stage_fails(self):
+        triage = self.root / "triage.md"
+        triage.write_text("# None\n\nActual source diff has no changes.\n", encoding="utf-8")
+        for kind, path in (("triage", triage), ("deep", self.root), ("summary", self.summary)):
+            with self.subTest(kind=kind):
+                produced = self.run_producer(kind, path)
+                self.assertEqual(0, produced.returncode, produced.stderr)
+                later = subprocess.run(
+                    [sys.executable, "-c", "raise RuntimeError('later validation failed')"],
+                    capture_output=True, text=True, check=False)
+                self.assertNotEqual(0, later.returncode)
+                self.assertNotIn("No result", produced.stdout + produced.stderr)
+                self.assertEqual(0, self.run_producer(kind, path).returncode)
+        self.assertEqual(SUMMARY, self.summary.read_text(encoding="utf-8"))
+
     def test_real_producer_process_failure_leaves_diagnostics_not_a_successful_handoff(self):
         for kind, filename, content in (
             ("triage", "triage.md", "# None\n\nA file written before the crash.\n"),

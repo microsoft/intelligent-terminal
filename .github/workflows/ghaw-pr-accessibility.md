@@ -434,7 +434,7 @@ post-steps:
       PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
       PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
-      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_RESULT: ${{ steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
       PRODUCER_STAGE: deep
       PRODUCER_SOURCE: .github/workflows/ghaw-pr-accessibility.md
       DIAGNOSTIC_ARTIFACT: agent

@@ -140,6 +140,9 @@ receives actual files, producer receipts and job outcomes; it cannot invent a
 missing decision or report. If the final model fails, Actions exposes the failed
 job and artifacts without rendering a replacement AI summary. No automatic
 model retry is enabled.
+Complete describes file delivery only. A later report-validation or publication
+failure does not erase the actual AI handoff or change it to No result; that
+failure remains a separate unsuccessful review/publication outcome.
 
 The existing gh-aw `agent` artifact is a downloadable diagnostic ZIP containing
 session logs, SDK events and stdio, using the framework's secret redaction.

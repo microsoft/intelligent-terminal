@@ -122,7 +122,7 @@ post-steps:
       PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
       PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
-      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_RESULT: ${{ steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
       PRODUCER_STAGE: summary
       PRODUCER_SOURCE: .github/workflows/ghaw-accessibility-summary.md
       DIAGNOSTIC_ARTIFACT: ${{ needs.activation.outputs.artifact_prefix }}agent
@@ -163,6 +163,9 @@ identity, not this worker's run. Missing current evidence cannot be replaced by
 older scans or a rebuilt payload.
 Each producer receipt says Complete or **No result**. A file left by a crashed
 or incomplete producer is diagnostic evidence only, not a completed AI review.
+Complete means successful file delivery, not accepted analysis or publication.
+Keep an actual complete handoff when a later validation/publication stage fails;
+report that later failure separately, not as producer No result.
 Never infer None or Uncertain from missing triage. Explicitly label the missing
 stage No result and explain the missing/invalid file or failed job. Preserve the
 receipt's actual sessionID (or `unknown`), diagnostic ID and native artifact name.

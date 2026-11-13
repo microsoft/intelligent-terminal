@@ -85,7 +85,7 @@ post-steps:
       PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
       PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
       PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
-      PRODUCER_RESULT: ${{ job.status == 'success' && steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
+      PRODUCER_RESULT: ${{ steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
       PRODUCER_STAGE: triage
       PRODUCER_SOURCE: .github/workflows/ghaw-accessibility-triage.md
       DIAGNOSTIC_ARTIFACT: ${{ needs.activation.outputs.artifact_prefix }}agent
