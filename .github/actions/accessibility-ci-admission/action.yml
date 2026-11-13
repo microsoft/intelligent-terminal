@@ -1,0 +1,51 @@
+name: Admit accessibility from PR CI
+description: Revalidate authoritative exact-head PR CI before accessibility work.
+inputs:
+  deduplicate:
+    default: 'false'
+    description: Reject a previously admitted CI attempt at the worker boundary.
+  published-sha:
+    default: ''
+    description: Confirmed repair tip, wired only by the trusted worker for final summary.
+  require-native:
+    default: 'false'
+    description: Require successful exact-attempt CI native scans, enforcement and original-head result archive.
+outputs:
+  pull_request:
+    value: ${{ steps.admit.outputs.pull_request }}
+    description: Validated minimal PR identity.
+  ci_run_id:
+    value: ${{ steps.admit.outputs.ci_run_id }}
+    description: Authoritative build run.
+  ci_run_attempt:
+    value: ${{ steps.admit.outputs.ci_run_attempt }}
+    description: Authoritative build attempt.
+  applicable:
+    value: ${{ steps.admit.outputs.applicable }}
+    description: Existing accessibility path eligibility.
+  artifact_id:
+    value: ${{ steps.admit.outputs.artifact_id }}
+    description: Exact CI artifact ID (native results when require-native is true).
+  artifact_digest:
+    value: ${{ steps.admit.outputs.artifact_digest }}
+    description: GitHub-authenticated SHA-256 of the artifact archive.
+runs:
+  using: composite
+  steps:
+    - id: admit
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+      env:
+        TRUSTED_CI_SHA: ${{ github.workflow_sha }}
+        DEDUPLICATE: ${{ inputs.deduplicate }}
+        PUBLISHED_SHA: ${{ inputs.published-sha }}
+        REQUIRE_NATIVE: ${{ inputs.require-native }}
+      with:
+        script: |
+          if (process.env.GITHUB_RUN_ATTEMPT !== '1') throw Error('A CI attempt may start accessibility only once.');
+          const { pathToFileURL } = require('node:url');
+          const { admit } = await import(pathToFileURL(
+            `${process.env.GITHUB_WORKSPACE}/.github/actions/accessibility-ci-admission/admission.mjs`));
+          const outputs = await admit({ github, context, trustedSha: process.env.TRUSTED_CI_SHA,
+            deduplicate: process.env.DEDUPLICATE === 'true', publishedSha: process.env.PUBLISHED_SHA,
+            requireNative: process.env.REQUIRE_NATIVE === 'true' });
+          for (const [key, value] of Object.entries(outputs)) core.setOutput(key, value);

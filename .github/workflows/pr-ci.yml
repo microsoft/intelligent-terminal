@@ -13,6 +13,8 @@ on:
       - 'res/**'
       - '.cargo/**'
       - '.github/workflows/pr-ci.yml'
+      - '.github/workflows/native-accessibility.yml'
+      - 'test/accessibility/**'
       - '*.props'
       - '*.targets'
       - '*.sln*'
@@ -42,9 +44,16 @@ env:
 #   -> commit 33d7b85da1a04171e211befe2c739303b9a4c066
 jobs:
   cpp:
-    name: C++ build and unit tests
+    name: C++ build
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
+    outputs:
+      accessibility: ${{ steps.accessibility-scope.outputs.required }}
+      units: ${{ steps.units.outcome == 'success' }}
+      payload-attempt: ${{ github.run_attempt }}
+    permissions:
+      contents: read
+      pull-requests: read
     defaults:
       run:
         shell: pwsh
@@ -66,6 +75,8 @@ jobs:
           sparse-checkout: |
             build/scripts/ci-security-analysis.mjs
             build/config/codeql-accepted-warnings.json
+            build/scripts/ci-accessibility-scope.mjs
+            build/scripts/ci-accessibility-payload.py
           sparse-checkout-cone-mode: false
 
       - name: Verify built commit
@@ -81,6 +92,20 @@ jobs:
             throw 'Analysis helpers do not match the workflow revision.'
           }
           "Built commit: $actual" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Select accessibility payload publication
+        id: accessibility-scope
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.id == github.repository_id && github.event.pull_request.draft == false
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { relevantPath } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/ci-analysis-tools/build/scripts/ci-accessibility-scope.mjs`));
+            const files = await github.paginate(github.rest.pulls.listFiles,
+              { ...context.repo, pull_number: context.payload.pull_request.number, per_page: 100 });
+            core.setOutput('required', String(files.length >= 3000 ||
+              files.some(file => relevantPath(file.filename) || relevantPath(file.previous_filename || ''))));
 
       - name: Initialize C++ security analysis
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
@@ -132,6 +157,82 @@ jobs:
             "/t:Terminal\Window\WindowsTerminal;Terminal\Window\WindowsTerminalShellExt;wtcli;Conhost\Host_EXE;Conhost\Host_UnitTests;Conhost\Interactivity_Win32_UnitTests;Shared\til_unit_tests;Shared\Types_Unit_Tests;Shared\Buffer\TextBuffer_Unit_Tests;Shared\Virtual Terminal\Adapter_UnitTests;Shared\Virtual Terminal\Parser_UnitTests;Terminal\Tests\Control_UnitTests;Terminal\Tests\SettingsModel_UnitTests;Terminal\Tests\UnitTests;Terminal\Tests\TerminalApp_UnitTests;Terminal\Tests\TerminalApp_LocalTests;Terminal\Tests\TestHostApp"
           if errorlevel 1 exit /b 1
 
+      - name: Stage ordinary C++ unit test payload
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+        run: |
+          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage-units `
+            --workspace "$env:GITHUB_WORKSPACE" `
+            --output "Generated Files/cpp-units-${{ github.run_id }}-${{ github.run_attempt }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish C++ unit test payload
+        id: units
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-cpp-units-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Generated Files/cpp-units-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+      - name: Stage complete original-head TestHost layout
+        if: steps.accessibility-scope.outputs.required == 'true'
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage `
+            --workspace "$env:GITHUB_WORKSPACE" `
+            --output "Generated Files/ci-accessibility-payload-${{ github.run_id }}-${{ github.run_attempt }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish accessibility TestHost payload
+        if: steps.accessibility-scope.outputs.required == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-accessibility-testhost-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Generated Files/ci-accessibility-payload-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+  cpp-tests:
+    name: C++ unit tests
+    needs: [cpp]
+    # Native staging must not hide ordinary test results if its own staging fails.
+    if: ${{ !cancelled() && needs.cpp.outputs.units == 'true' }}
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout workflow-revision unit runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            build/scripts/Run-Tests.ps1
+            build/scripts/ci-accessibility-payload.py
+          sparse-checkout-cone-mode: false
+      - name: Download original build unit payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ci-cpp-units-${{ github.run_id }}-${{ needs.cpp.outputs.payload-attempt }}
+          path: bin/x64/Debug
+      - name: Verify unit payload identity and completeness
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ needs.cpp.outputs.payload-attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+        run: |
+          python build/scripts/ci-accessibility-payload.py check-units --output bin/x64/Debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test all C++ units
         run: |
           $ErrorActionPreference = 'Stop'
@@ -150,6 +251,19 @@ jobs:
             -Platform x64 -Configuration Debug -Root bin\x64\Debug `
             -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'
           exit $LASTEXITCODE
+
+  axe:
+    name: Native accessibility
+    needs: [cpp]
+    if: needs.cpp.outputs.accessibility == 'true'
+    uses: ./.github/workflows/native-accessibility.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      head-sha: ${{ github.event.pull_request.head.sha }}
+      trusted-sha: ${{ github.workflow_sha }}
+      payload-attempt: ${{ needs.cpp.outputs.payload-attempt }}
 
   rust:
     name: Rust build and unit tests

@@ -929,11 +929,17 @@ export function publicationDecision(report) {
 
 export const CI_DEFINITION_PATHS = [
   '.github/workflows/pr-ci.yml',
+  '.github/workflows/native-accessibility.yml',
   'build/scripts/Run-Tests.ps1',
   'tools/razzle.cmd',
   'tools/.razzlerc.cmd',
   'build/scripts/ci-security-analysis.mjs',
   'build/config/codeql-accepted-warnings.json',
+  'build/scripts/ci-accessibility-scope.mjs',
+  'build/scripts/ci-accessibility-payload.py',
+  'test/accessibility/Invoke-AxeWindowsTestHost.ps1',
+  'test/accessibility/Invoke-AxeWindowsScan.ps1',
+  'build/scripts/Get-DependenciesFromAppxRecipe.ps1',
 ];
 
 export function validateCiDefinition(sourceTree, comparisonBaseTree) {
@@ -985,15 +991,34 @@ export function validateCiPull(pull, run, identity) {
   }
 }
 
+export function validateCiFreshness(run, runs) {
+  if (!Number.isSafeInteger(run.run_number) || run.run_number < 1 || !Array.isArray(runs)) {
+    fail('CI freshness requires workflow-scoped run numbers');
+  }
+  // run_number is monotonic within a workflow; IDs and list order are not clocks.
+  if (runs.some(other => other.workflow_id === run.workflow_id &&
+      other.path === run.path && other.event === 'pull_request' &&
+      other.repository?.id === run.repository.id &&
+      other.head_repository?.id === run.head_repository.id &&
+      other.head_branch === run.head_branch && other.head_sha === run.head_sha &&
+      Number.isSafeInteger(other.run_number) && other.run_number > run.run_number)) {
+    fail('A newer PR CI run supersedes this review');
+  }
+}
+
+export function validateCiArtifact(artifacts, run, name) {
+  const matches = artifacts.filter(item => item.name === name);
+  if (matches.length !== 1 || matches[0].expired !== false ||
+      !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
+      matches[0].workflow_run?.id !== run.id ||
+      matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
+  return matches[0];
+}
+
 export function validateCiArtifacts(artifacts, run) {
   return ['cpp', 'rust'].map(language => {
     const name = `ci-security-${language}-${run.id}-${run.run_attempt}`;
-    const matches = artifacts.filter(item => item.name === name);
-    if (matches.length !== 1 || matches[0].expired !== false ||
-        !Number.isSafeInteger(matches[0].id) || matches[0].id < 1 ||
-        matches[0].workflow_run?.id !== run.id ||
-        matches[0].workflow_run?.head_sha !== run.head_sha) fail('CI artifact identity is missing, expired or ambiguous');
-    return { language, id: matches[0].id, name };
+    return { language, id: validateCiArtifact(artifacts, run, name).id, name };
   });
 }
 

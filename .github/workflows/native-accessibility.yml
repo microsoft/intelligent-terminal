@@ -3,22 +3,28 @@ name: Native accessibility smoke
 on:
   workflow_call:
     inputs:
-      head-repository:
-        required: true
-        type: string
       head-sha:
         required: true
         type: string
-      trusted-repository:
+      payload-attempt:
+        description: Actual C++ producer attempt, retained when only a consumer is rerun.
         required: true
         type: string
       trusted-sha:
+        description: Immutable CI workflow revision for the native harness, not a caller-selected ref.
         required: true
         type: string
 permissions:
   contents: read
+  actions: read
 env:
   ACCESSIBILITY_RESULTS: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
+  ACCESSIBILITY_PAYLOAD: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost-payload
+  ACCESSIBILITY_ARCHIVE: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost.zip
+  EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+  CI_RUN_ID: ${{ github.run_id }}
+  CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
 jobs:
   native-smoke:
     name: Native Axe.Windows smoke
@@ -26,32 +32,76 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
     steps:
-      - name: Checkout immutable pull request head
+      - name: Checkout immutable trusted consumer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ${{ inputs.head-repository }}
-          ref: ${{ inputs.head-sha }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Verify immutable head
+          sparse-checkout: |
+            build/scripts/ci-accessibility-payload.py
+          sparse-checkout-cone-mode: false
+      - name: Verify immutable consumer
+        shell: pwsh
+        env:
+          EXPECTED_TRUSTED_SHA: ${{ github.workflow_sha }}
+          TRUSTED_HARNESS_SHA: ${{ inputs.trusted-sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_EVENT_NAME -ne 'pull_request' -or
+              $env:PR_REPOSITORY_ID -ne $env:GITHUB_REPOSITORY_ID -or
+              $env:EXPECTED_HEAD_SHA -ne $env:PR_HEAD_SHA -or
+              $env:TRUSTED_HARNESS_SHA -ne $env:EXPECTED_TRUSTED_SHA) {
+            throw 'Native CI requires the same-repository original PR head and immutable workflow harness.'
+          }
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_TRUSTED_SHA) {
+            throw 'Consumer checkout does not match the immutable trusted revision.'
+          }
+      - name: Download authenticated artifact without extracting it
+        id: payload
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PAYLOAD_ATTEMPT: ${{ inputs.payload-attempt }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              { ...context.repo, run_id: context.runId, per_page: 100 });
+            const matches = artifacts.filter(a =>
+              a.name === `ci-accessibility-testhost-${context.runId}-${process.env.PAYLOAD_ATTEMPT}`);
+            if (matches.length !== 1) throw Error('Missing or ambiguous same-build TestHost artifact.');
+            const artifact = matches[0];
+            if (artifact.expired !== false || artifact.workflow_run?.id !== context.runId ||
+                artifact.workflow_run?.head_sha !== process.env.EXPECTED_HEAD_SHA ||
+                artifact.workflow_run?.repository_id !== Number(process.env.GITHUB_REPOSITORY_ID) ||
+                artifact.workflow_run?.head_repository_id !== Number(process.env.GITHUB_REPOSITORY_ID) ||
+                !/^sha256:[0-9a-f]{64}$/.test(artifact.digest || '') ||
+                artifact.size_in_bytes <= 0 || artifact.size_in_bytes > 2 * 1024 ** 3) {
+              throw Error('Same-build TestHost artifact identity differs.');
+            }
+            const response = await github.rest.actions.downloadArtifact({
+              ...context.repo, artifact_id: artifact.id, archive_format: 'zip',
+            });
+            fs.mkdirSync(path.dirname(process.env.ACCESSIBILITY_ARCHIVE), { recursive: true });
+            fs.writeFileSync(process.env.ACCESSIBILITY_ARCHIVE, Buffer.from(response.data), { flag: 'wx' });
+            fs.mkdirSync(process.env.ACCESSIBILITY_RESULTS, { recursive: true });
+            core.setOutput('artifact_digest', artifact.digest);
+      - name: Verify archive integrity and complete portable layout before extraction
         shell: pwsh
         env:
           EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+          CI_RUN_ATTEMPT: ${{ inputs.payload-attempt }}
+          ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD) -ne $env:EXPECTED_HEAD_SHA) {
-            throw 'Checked-out revision does not match the immutable PR head.'
-          }
-      - name: Build accessibility test host
-        shell: cmd
-        run: |
-          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          call tools\razzle.cmd
-          if errorlevel 1 exit /b 1
-          cd src\cascadia\LocalTests_TerminalApp\TestHostApp
-          if errorlevel 1 exit /b 1
-          call bx
+          python build/scripts/ci-accessibility-payload.py extract `
+            --archive "$env:ACCESSIBILITY_ARCHIVE" --digest "$env:ARTIFACT_DIGEST" `
+            --output "$env:ACCESSIBILITY_PAYLOAD"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Acquire pinned Axe.Windows CLI
         shell: pwsh
         run: |
@@ -71,7 +121,6 @@ jobs:
       - name: Checkout trusted native harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ${{ inputs.trusted-repository }}
           ref: ${{ inputs.trusted-sha }}
           path: trusted-accessibility
           fetch-depth: 1
@@ -97,8 +146,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $recipe = 'bin\x64\Debug\TestHostApp\TestHostApp.build.appxrecipe'
-          $dependencies = @(& trusted-accessibility\build\scripts\Get-DependenciesFromAppxRecipe.ps1 -Path $recipe)
+          Set-Location -LiteralPath $env:ACCESSIBILITY_PAYLOAD
+          $recipe = 'TestHostApp.build.appxrecipe'
+          $helper = Join-Path $env:GITHUB_WORKSPACE 'trusted-accessibility\build\scripts\Get-DependenciesFromAppxRecipe.ps1'
+          $dependencies = @(& $helper -Path $recipe)
           if ($dependencies.Count -eq 0) {
             throw 'The test host recipe contains no framework dependencies.'
           }
@@ -137,7 +188,7 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface fre `
-            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
@@ -150,7 +201,7 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface agents `
-            -ManifestPath bin/x64/Debug/TestHostApp/AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
@@ -163,17 +214,36 @@ jobs:
         run: |
           & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
             -Surface fre-settings `
-            -ManifestPath bin\x64\Debug\TestHostApp\AppxManifest.xml `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
+      - name: Scan Sidebar
+        id: sidebar
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ inputs.head-sha }}
+        run: |
+          & trusted-accessibility\test\accessibility\Invoke-AxeWindowsTestHost.ps1 `
+            -Surface sidebar `
+            -ManifestPath "$env:ACCESSIBILITY_PAYLOAD/app/AppxManifest.xml" `
+            -AxePath $env:AXE_WINDOWS_PATH `
+            -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
+            -SourceSha $env:SOURCE_SHA
+      - name: Record native CI results
+        if: always()
+        shell: pwsh
+        run: |
+          python build/scripts/ci-accessibility-payload.py record-native --output "$env:ACCESSIBILITY_RESULTS"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload native accessibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: native-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-accessibility-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.ACCESSIBILITY_RESULTS }}
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
       - name: Enforce native scan results
         if: always()
@@ -182,33 +252,12 @@ jobs:
           FRE_OUTCOME: ${{ steps.fre.outcome }}
           AGENTS_OUTCOME: ${{ steps.agents.outcome }}
           FRE_SETTINGS_OUTCOME: ${{ steps.fre-settings.outcome }}
+          SIDEBAR_OUTCOME: ${{ steps.sidebar.outcome }}
           SOURCE_SHA: ${{ inputs.head-sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success') {
-            throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME"
+          if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success' -or $env:SIDEBAR_OUTCOME -ne 'success') {
+            throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME Sidebar=$env:SIDEBAR_OUTCOME"
           }
-          $markers = @{ fre = 'NextButton'; 'fre-settings' = 'AgentComboBox'; agents = 'AcpAgentComboBox' }
-          foreach ($surface in @('fre', 'fre-settings', 'agents')) {
-            $directory = Join-Path $env:ACCESSIBILITY_RESULTS $surface
-            $result = Get-Content -LiteralPath (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json
-            if ($result.status -ne 'PASS' -or $result.source_sha -ne $env:SOURCE_SHA -or
-                $result.surface -ne $surface -or $result.process_id -le 0) {
-              throw "Native $surface result has missing or inconsistent identity/status evidence."
-            }
-            $scanPath = Join-Path $directory 'axe-results.json'
-            $treePath = Join-Path $directory 'uia-tree.json'
-            if ($result.axe_results -ne $scanPath) { throw "Native $surface scan path is inconsistent." }
-            $scan = Get-Content -LiteralPath $scanPath -Raw | ConvertFrom-Json
-            if ($scan.scan_id -ne $surface -or $scan.process_id -ne $result.process_id -or
-                $scan.window_count -le 0 -or $scan.error_count -ne 0 -or
-                $scan.visible_state_marker -ne $markers[$surface] -or $scan.uia_tree -ne $treePath) {
-              throw "Native $surface scan has missing or inconsistent state evidence."
-            }
-            $tree = @(Get-Content -LiteralPath $treePath -Raw | ConvertFrom-Json)
-            $visibleMarker = @($tree | Where-Object {
-              $_.automation_id -eq $markers[$surface] -and
-              $_.is_offscreen -eq $false -and $_.process_id -eq $result.process_id
-            })
-            if ($visibleMarker.Count -eq 0) { throw "Native $surface hierarchy lacks its visible state marker." }
-          }
+          python build/scripts/ci-accessibility-payload.py check-native --output "$env:ACCESSIBILITY_RESULTS"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
