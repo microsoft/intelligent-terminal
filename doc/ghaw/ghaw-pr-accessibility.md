@@ -89,7 +89,9 @@ Related / None / Uncertain remains the #1197 routing contract. None skips the
 deep model only, not independent path-gated CI scan cost or final reporting.
 
 Admission also checks successful C++/Rust build/test steps, not just a green
-workflow name. GitHub's REST run PR fields are mutable; target history is checked
+workflow name. Relevant PRs also require successful native receipt, upload and
+enforcement steps before every model entry, not only before archive consumption.
+GitHub's REST run PR fields are mutable; target history is checked
 through typed GraphQL timeline events. PRs with changed targets or force-pushed bases fail
 closed for manual review/new PR because immutable original-target provenance
 cannot be inferred from queue timestamps. The controller's `github-actions[bot]`

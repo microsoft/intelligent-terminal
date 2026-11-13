@@ -252,3 +252,22 @@ test('native result consumption authenticates exact original CI independently of
   assert.equal((await admit({ ...f, requireNative: true, publishedSha: BASE })).artifact_id, '6');
   await assert.rejects(admit({ ...f, requireNative: true }));
 });
+
+for (const [name, change] of [
+  ['absent native job', f => f.setJobs([f.producer, f.units, f.rust])],
+  ['skipped native job', f => { f.native.conclusion = 'skipped'; }],
+  ['stale native attempt', f => { f.native.run_attempt--; }],
+  ['skipped native enforcement', f => { f.native.steps.at(-1).conclusion = 'skipped'; }],
+]) test(`all model admission rejects green CI with ${name}`, async () => {
+  for (const dispatch of [false, true]) {
+    const f = fixture(dispatch); change(f);
+    await assert.rejects(admit(f), /Native CI evidence incomplete/);
+  }
+});
+
+test('irrelevant successful CI can omit native work without starting a model', async () => {
+  const f = fixture();
+  f.setFiles([{ filename: 'README.md' }]);
+  f.setJobs([f.producer, f.units, f.rust]);
+  assert.equal((await admit(f)).applicable, 'false');
+});

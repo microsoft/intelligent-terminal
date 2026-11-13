@@ -150,6 +150,9 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   // listFiles is capped at 3000 by GitHub; uncertainty must retain review.
   const applicable = files.length >= 3000 ||
     files.some(file => relevantPath(file.filename) || relevantPath(file.previous_filename ?? ''));
+  // A green workflow with skipped native work is not full relevant-PR CI.
+  // Check this before every model entry, not only the archive consumer.
+  if (applicable) validateNativeJobs(jobs, run);
   if (deduplicate) {
     const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
       { ...context.repo, workflow_id: worker, event: 'workflow_dispatch', per_page: 100 });
