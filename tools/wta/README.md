@@ -206,6 +206,26 @@ nonzero exit with stderr means discovery is unknown/failed, not unavailable.
 `launch-agent` resolves the executable afresh on each launch. The existing
 `probe-host-agents` retains its separate ACP prerequisites and behavior.
 
+### Antigravity temporary-file cleanup workaround
+
+This workaround addresses Antigravity ACP's temporary-file cleanup issue on
+Windows. An invisible, contained console delivers the standard Windows
+Ctrl+Break interrupt so the launcher can perform native cleanup before bounded
+forced teardown.
+Redirected ACP stdio, working directory and inherited `TEMP`/`TMP` are preserved.
+
+The maximum opportunity is defined once by `NATIVE_EXIT_GRACE_PERIOD` in
+`src\agent_lifecycle\providers\antigravity.rs`, currently **5 seconds**.
+Shared-process and history shutdown run concurrently within existing retirement
+deadlines. Cleanup does not add a directory-disappearance check or a new startup
+gate; existing old-process exit and pipe-release safeguards remain.
+
+This is best effort. A shorter outer deadline, including Terminal's current
+3-second final master-shutdown limit, can cut the opportunity short. Crashes,
+forced termination, interrupted startup, unresponsive processes or native
+filesystem errors can still leave temporary extraction directories. WTA neither
+redirects temporary storage nor deletes or sweeps existing runtime files.
+
 ### Sidebar Agent sessions
 
 Master discovers installed, policy-allowed Windows-host agents in the background
