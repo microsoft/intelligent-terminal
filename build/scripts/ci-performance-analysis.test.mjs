@@ -8,6 +8,25 @@ import { validatePerformanceFiles, validatePerformanceResult } from '../../.gith
 
 const script = fileURLToPath(new URL('./Invoke-CiPerformanceAnalysis.ps1', import.meta.url));
 
+function verifyNativeCompilerFixture(source, extraArguments, libraries, evidenceName) {
+    const root = path.dirname(source);
+    const name = path.basename(source, '.cpp');
+    const exe = path.join(root, `${name}.exe`);
+    execFileSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc', ...extraArguments,
+        `/Fe${exe}`, `/Fo${path.join(root, `${name}.obj`)}`, source, '/link', ...libraries],
+    { cwd: root, encoding: 'utf8', timeout: 120000, stdio: 'pipe' });
+    execFileSync(exe, [], { cwd: root, timeout: 15000, stdio: 'pipe' });
+    const clang = path.join(process.env.VCINSTALLDIR, 'Tools', 'Llvm', 'x64', 'bin', 'clang-tidy.exe');
+    const checked = spawnSync(clang, [source, '--checks=-*,performance-move-const-arg', '--extra-arg=-Wno-error',
+        '--', '--driver-mode=cl', '/std:c++20', '/EHsc', ...extraArguments],
+    { cwd: root, encoding: 'utf8', timeout: 120000 });
+    assert.equal(checked.error, undefined);
+    const evidence = path.join(process.cwd(), 'Generated Files', 'ci-performance-validation');
+    fs.mkdirSync(evidence, { recursive: true });
+    fs.writeFileSync(path.join(evidence, evidenceName), checked.stdout + checked.stderr);
+    assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+}
+
 test('dependency property defaults preserve values and compile with both MSVC and Clang',
     { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
         const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
@@ -87,20 +106,7 @@ int main()
 }
 `);
         const sdk = path.join(process.env.WindowsSdkDir, 'Include', '10.0.26100.0', 'cppwinrt');
-        const exe = path.join(root, 'properties.exe');
-        execFileSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc', `/I${sdk}`,
-            `/Fe${exe}`, `/Fo${path.join(root, 'properties.obj')}`, source, '/link', 'WindowsApp.lib'],
-        { cwd: root, encoding: 'utf8', timeout: 120000, stdio: 'pipe' });
-        execFileSync(exe, [], { cwd: root, timeout: 15000, stdio: 'pipe' });
-        const clang = path.join(process.env.VCINSTALLDIR, 'Tools', 'Llvm', 'x64', 'bin', 'clang-tidy.exe');
-        const checked = spawnSync(clang, [source, '--checks=-*,performance-move-const-arg', '--extra-arg=-Wno-error',
-            '--', '--driver-mode=cl', '/std:c++20', '/EHsc', `/I${sdk}`],
-            { cwd: root, encoding: 'utf8', timeout: 120000 });
-        assert.equal(checked.error, undefined);
-        const evidence = path.join(process.cwd(), 'Generated Files', 'ci-performance-validation');
-        fs.mkdirSync(evidence, { recursive: true });
-        fs.writeFileSync(path.join(evidence, 'dependency-property-clang.log'), checked.stdout + checked.stderr);
-        assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+        verifyNativeCompilerFixture(source, [`/I${sdk}`], ['WindowsApp.lib'], 'dependency-property-clang.log');
     });
 
 test('tab-count telemetry compiles with both MSVC and Clang',
@@ -139,20 +145,37 @@ int main()
     assert(counter.reads == 0); // Disabled telemetry must not evaluate the payload.
 }
 `);
-        const exe = path.join(root, 'telemetry.exe');
-        execFileSync('cl.exe', ['/nologo', '/std:c++20', '/EHsc',
-            `/Fe${exe}`, `/Fo${path.join(root, 'telemetry.obj')}`, source, '/link', 'advapi32.lib'],
-        { cwd: root, encoding: 'utf8', timeout: 120000, stdio: 'pipe' });
-        execFileSync(exe, [], { cwd: root, timeout: 15000, stdio: 'pipe' });
-        const clang = path.join(process.env.VCINSTALLDIR, 'Tools', 'Llvm', 'x64', 'bin', 'clang-tidy.exe');
-        const checked = spawnSync(clang, [source, '--checks=-*,performance-move-const-arg', '--extra-arg=-Wno-error',
-            '--', '--driver-mode=cl', '/std:c++20', '/EHsc'],
-        { cwd: root, encoding: 'utf8', timeout: 120000 });
-        assert.equal(checked.error, undefined);
-        const evidence = path.join(process.cwd(), 'Generated Files', 'ci-performance-validation');
-        fs.mkdirSync(evidence, { recursive: true });
-        fs.writeFileSync(path.join(evidence, 'tab-telemetry-clang.log'), checked.stdout + checked.stderr);
-        assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+        verifyNativeCompilerFixture(source, [], ['advapi32.lib'], 'tab-telemetry-clang.log');
+    });
+
+test('property registration declaration remains lazy and initializes once with both compilers',
+    { skip: process.env.PERFORMANCE_NATIVE_PROOF !== '1' }, t => {
+        const parent = process.env.PERFORMANCE_NATIVE_FIXTURE_ROOT ?? path.join(process.cwd(), 'Generated Files');
+        fs.mkdirSync(parent, { recursive: true });
+        const root = fs.mkdtempSync(path.join(parent, 'property-registration-'));
+        t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+        const control = fs.readFileSync(new URL('../../src/cascadia/TerminalApp/HighlightedTextControl.cpp', import.meta.url), 'utf8');
+        const declaration = control.match(/^\s*(?:\[\[maybe_unused\]\]\s*)?static auto(?:\s*\[\[maybe_unused\]\])? registered = \[\] \{/m);
+        assert.ok(declaration, 'Exercise the actual property-registration declaration.');
+        const source = path.join(root, 'registration.cpp');
+        fs.writeFileSync(source, `#include <cassert>
+unsigned registrations{};
+void Initialize()
+{
+${declaration[0]}
+        ++registrations;
+        return true;
+    }();
+}
+int main()
+{
+    assert(registrations == 0);
+    Initialize();
+    Initialize();
+    assert(registrations == 1);
+}
+`);
+        verifyNativeCompilerFixture(source, [], [], 'property-registration-clang.log');
     });
 
 test('real CI profiles preserve performance warnings but reject actual compilation errors',
