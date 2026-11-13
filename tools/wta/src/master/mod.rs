@@ -7875,6 +7875,18 @@ async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Op
         return refresh.last_count;
     }
     let result = sync_host_history(state, agent, &mut refresh).await;
+    let catalog = if uses_custom_acp_catalog(agent) {
+        let catalog = state.custom_agent_commands.lock().await;
+        if catalog
+            .permit(agent, state)
+            .is_none_or(|(epoch, _)| Some(epoch) != refresh.catalog_epoch)
+        {
+            return None;
+        }
+        Some(catalog)
+    } else {
+        None
+    };
     let delay = if result.is_ok() {
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
@@ -7903,6 +7915,7 @@ async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Op
         .history_refresh
         .generation
         .fetch_add(1, Ordering::Release);
+    drop(catalog);
     drop(refresh);
     let status_changed = update_history_sync_status(state).await;
     if status_changed || result.is_ok_and(|(changed, _)| changed) {
@@ -8178,42 +8191,59 @@ where
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
         );
+        let current_catalog_epoch = |catalog: &CustomAcpCatalog| {
+            catalog_epoch.is_none_or(|epoch| {
+                catalog
+                    .bindings
+                    .get(agent_id)
+                    .is_some_and(|binding| binding.epoch == epoch)
+            })
+        };
         let epoch = match state.startup_registry.retry_epoch(&key).await {
             Ok(epoch) => epoch,
             Err(error) => {
+                let catalog = state.custom_agent_commands.lock().await;
+                if !current_catalog_epoch(&catalog) {
+                    return true;
+                }
                 tracing::warn!(target: "master_history", agent_id, %error, "could not read startup retry epoch");
                 state.history_discovery_errors.lock().await.insert(key, HistoryRefreshFailure::Other);
                 return false;
             }
         };
-        if let Some(retry) = state.history_discovery_retries.lock().await.get_mut(&key) {
-            retry.observe_retry_epoch(epoch);
-        }
-        if state
-                .history_discovery_retries
-                .lock()
-                .await
-                .get(&key)
-                .is_some_and(|retry| !retry.retry_due())
         {
-            state
-                .history_discovery_errors
-                .lock()
-                .await
-                .insert(key, HistoryRefreshFailure::Other);
-            return false;
+            let catalog = state.custom_agent_commands.lock().await;
+            if !current_catalog_epoch(&catalog) {
+                return true;
+            }
+            let retry_due = {
+                let mut retries = state.history_discovery_retries.lock().await;
+                if let Some(retry) = retries.get_mut(&key) {
+                    retry.observe_retry_epoch(epoch);
+                    retry.retry_due()
+                } else {
+                    true
+                }
+            };
+            if !retry_due {
+                state
+                    .history_discovery_errors
+                    .lock()
+                    .await
+                    .insert(key, HistoryRefreshFailure::Other);
+                return false;
+            }
         }
         let initialized = initialize(command.clone(), agent_id.to_string()).await;
-        if agent_id.starts_with("custom:")
-            && state.custom_agent_commands.lock().await.bindings.get(agent_id)
-                .is_none_or(|binding| Some(binding.epoch) != catalog_epoch)
-        {
-            return true;
-        }
         let agent = match initialized {
             Ok(agent) => agent,
             Err(error) => {
-                let lease = match state.startup_registry.lock(&key).await {
+                let lease = state.startup_registry.lock(&key).await;
+                let catalog = state.custom_agent_commands.lock().await;
+                if !current_catalog_epoch(&catalog) {
+                    return true;
+                }
+                let lease = match lease {
                     Ok(lease) => lease,
                     Err(epoch_error) => {
                         tracing::warn!(target: "master_history", agent_id, error = %epoch_error, "could not validate startup failure epoch");
@@ -8246,13 +8276,24 @@ where
                 return false;
             }
         };
-        state.history_discovery_retries.lock().await.remove(&key);
-        if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
-            state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
-            tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+        {
+            let catalog = state.custom_agent_commands.lock().await;
+            if !current_catalog_epoch(&catalog) {
+                return true;
+            }
+            state.history_discovery_retries.lock().await.remove(&key);
+            if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
+                state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
+                tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+                return true;
+            }
+        }
+        let refreshed = refresh_agent_history(state, &agent).await;
+        let catalog = state.custom_agent_commands.lock().await;
+        if !current_catalog_epoch(&catalog) {
             return true;
         }
-        if refresh_agent_history(state, &agent).await.is_none() {
+        if refreshed.is_none() {
             let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
             state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
@@ -8416,7 +8457,6 @@ async fn refresh_custom_agent_catalog(state: &MasterStateInner) -> bool {
             }
             let obsolete_epochs: HashSet<_> =
                 changed.iter().map(|(_, epoch)| *epoch).chain([0]).collect();
-            drop(catalog);
             state
                 .history_discovery_retries
                 .lock()
@@ -8427,6 +8467,12 @@ async fn refresh_custom_agent_catalog(state: &MasterStateInner) -> bool {
                 .lock()
                 .await
                 .retain(|key, _| !obsolete_keys.contains(key));
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .remove("custom-agent-catalog");
+            drop(catalog);
             let agents: Vec<_> = state
                 .agents
                 .lock()
@@ -8456,11 +8502,6 @@ async fn refresh_custom_agent_catalog(state: &MasterStateInner) -> bool {
                     }
                 });
             }
-            state
-                .history_discovery_errors
-                .lock()
-                .await
-                .remove("custom-agent-catalog");
             true
         }
         Err(_) => {

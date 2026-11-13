@@ -19520,6 +19520,159 @@ async fn custom_catalog_timer_keeps_refreshing_while_builtin_history_is_pending(
         .await;
 }
 
+async fn assert_obsolete_custom_discovery_listing_cannot_publish_failure(
+    readd: bool,
+    current_failure: bool,
+) {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({"custom:qwen":"qwen --a"}));
+            let state = make_state_with_wt(channel.clone());
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let (mut agent, mut requests) =
+                controlled_history_agent("custom:qwen", crate::agent_source::AgentSource::Host);
+            Arc::get_mut(&mut agent).unwrap().cmd_key = agent_cmd_key(
+                "qwen --a",
+                Some("custom:qwen"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let discovery =
+                refresh_host_history_agents_with(&state, &["custom:qwen"], |command, id| {
+                    assert_eq!(command, "qwen --a");
+                    assert_eq!(id, "custom:qwen");
+                    std::future::ready(Ok(Arc::clone(&agent)))
+                });
+            tokio::pin!(discovery);
+            let reply = tokio::select! {
+                reply = requests.recv() => reply.unwrap(),
+                _ = &mut discovery => panic!("discovery did not reach first session/list"),
+            };
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            if readd {
+                *channel.response.lock().unwrap() = serde_json::json!({"custom:qwen":"qwen --a"});
+                assert!(refresh_custom_agent_catalog(&state).await);
+            }
+            assert!(state.history_discovery_errors.lock().await.is_empty());
+            if current_failure {
+                state
+                    .history_discovery_errors
+                    .lock()
+                    .await
+                    .insert(agent.cmd_key.clone(), HistoryRefreshFailure::Timeout);
+                state.history_discovery_retries.lock().await.insert(
+                    agent.cmd_key.clone(),
+                    HistoryRefreshState {
+                        failures: 2,
+                        ..Default::default()
+                    },
+                );
+            }
+            let _ = reply.send(Ok(vec![history_row("obsolete", "Must not commit")]));
+            let _ = discovery.await;
+            if current_failure {
+                assert_eq!(
+                    state
+                        .history_discovery_errors
+                        .lock()
+                        .await
+                        .get(&agent.cmd_key),
+                    Some(&HistoryRefreshFailure::Timeout),
+                    "old completion must not overwrite current-generation failure"
+                );
+                assert_eq!(
+                    state.history_discovery_retries.lock().await[&agent.cmd_key].failures,
+                    2
+                );
+                assert!(agent.history_refresh.failure.lock().await.is_none());
+            } else {
+                assert!(state.history_discovery_retries.lock().await.is_empty());
+                assert!(
+                    state.history_discovery_errors.lock().await.is_empty(),
+                    "obsolete first-list completion must not recreate discovery errors"
+                );
+            }
+            publish_history_sync_status(&state).await;
+            assert_eq!(
+                state.history_status.borrow().status,
+                if current_failure {
+                    crate::session_registry::HistoryLoadStatus::Error
+                } else {
+                    crate::session_registry::HistoryLoadStatus::Ready
+                }
+            );
+            assert!(state.registry.snapshot().await.is_empty());
+            assert!(!agent
+                .history_refresh
+                .retired
+                .load(std::sync::atomic::Ordering::Acquire));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn custom_catalog_removed_discovery_listing_cannot_recreate_error() {
+    assert_obsolete_custom_discovery_listing_cannot_publish_failure(false, false).await;
+}
+
+#[tokio::test]
+async fn custom_catalog_readded_discovery_listing_rejects_old_epoch_error() {
+    assert_obsolete_custom_discovery_listing_cannot_publish_failure(true, false).await;
+}
+
+#[tokio::test]
+async fn custom_catalog_readded_discovery_preserves_current_epoch_metadata() {
+    assert_obsolete_custom_discovery_listing_cannot_publish_failure(true, true).await;
+}
+
+#[tokio::test]
+async fn custom_catalog_removed_startup_failure_cannot_recreate_retry_or_error() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let channel = mutable_custom_acp_channel(serde_json::json!({"custom:qwen":"qwen --a"}));
+            let state = make_state_with_wt(channel.clone());
+            assert!(refresh_custom_agent_catalog(&state).await);
+            let key = agent_cmd_key(
+                "qwen --a",
+                Some("custom:qwen"),
+                &crate::agent_source::AgentSource::Host,
+            );
+            let (lease_tx, mut lease_rx) = mpsc::unbounded_channel();
+            let discovery = refresh_host_history_agents_with(&state, &["custom:qwen"], |_, _| {
+                let registry = Arc::clone(&state.startup_registry);
+                let key = key.clone();
+                let lease_tx = lease_tx.clone();
+                async move {
+                    let lease = registry.lock(&key).await?;
+                    assert!(lease_tx.send(lease).is_ok());
+                    Err::<Arc<AgentCli>, _>(anyhow!("obsolete startup failure"))
+                }
+            });
+            tokio::pin!(discovery);
+            let lease = tokio::select! {
+                lease = lease_rx.recv() => lease.unwrap(),
+                _ = &mut discovery => panic!("discovery did not await startup failure lease"),
+            };
+            *channel.response.lock().unwrap() = serde_json::json!({});
+            assert!(refresh_custom_agent_catalog(&state).await);
+            assert!(state.history_discovery_errors.lock().await.is_empty());
+            assert!(state.history_discovery_retries.lock().await.is_empty());
+            drop(lease);
+            let _ = discovery.await;
+            assert!(
+                state.history_discovery_retries.lock().await.is_empty(),
+                "startup failure delayed behind a lease must not restore revoked retries"
+            );
+            assert!(state.history_discovery_errors.lock().await.is_empty());
+            publish_history_sync_status(&state).await;
+            assert_eq!(
+                state.history_status.borrow().status,
+                crate::session_registry::HistoryLoadStatus::Ready
+            );
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn custom_catalog_first_failure_preserves_offline_explicit_helper_history() {
     tokio::task::LocalSet::new()
