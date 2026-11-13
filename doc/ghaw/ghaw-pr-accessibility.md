@@ -74,6 +74,9 @@ The receipt binds repository name/ID, original head, CI run/attempt and PR numbe
 Raw per-surface result, Axe and UIA tree JSON remain untrusted evidence, never
 instructions. Only validated files enter the worker's
 `accessibility-native-ci-WORKER_RUN` artifact, then deep review and final summary.
+Model-authored triage downloads into a separate `triage-input` directory, never
+over the verified native directory. Its producer publishes only the Markdown
+handoff and producer receipt, not the whole model working directory.
 Missing, failed, skipped or invalid results mean **review incomplete**, never
 PASS. A confirmed repair tip is never the native result source.
 

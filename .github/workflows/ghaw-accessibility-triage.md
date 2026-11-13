@@ -82,7 +82,9 @@ post-steps:
       # One current artifact per producer/run; the file records its actual attempt.
       name: accessibility-triage-${{ github.run_id }}
       overwrite: true
-      path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/
+      path: |
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/triage.md
+        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/triage-producer.txt
       if-no-files-found: warn
       retention-days: 14
 ---

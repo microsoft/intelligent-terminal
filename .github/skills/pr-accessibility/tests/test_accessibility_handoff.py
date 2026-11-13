@@ -1,7 +1,9 @@
 """Markdown boundary and compiled-graph regression tests, not model evaluation."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
+import zipfile
 
 import yaml
 
@@ -213,6 +215,38 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("including uncertainty", summary)
         self.assertIn("review incomplete", summary)
         self.assertIn("never \"No issues\"", summary)
+
+    def test_model_triage_extraction_cannot_replace_verified_ci_native_evidence(self):
+        steps = self.jobs["agent"]["steps"]
+        native = next(s for s in steps if s.get("name") == "Download verified original-head CI native evidence")
+        triage = next(s for s in steps if s.get("name") == "Download original triage")
+        native_path = native["with"]["path"]
+        triage_path = triage["with"]["path"]
+        self.assertTrue(native_path.endswith("/native"))
+        self.assertEqual(native_path.removesuffix("/native") + "/triage-input", triage_path)
+        route = next(s for s in self.jobs["triage-route"]["steps"] if "download-artifact@" in s.get("uses", ""))
+        self.assertEqual(triage_path, route["with"]["path"])
+        producer = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-triage.lock.yml").read_text(
+            encoding="utf-8"))["jobs"]["agent"]
+        upload = next(s for s in producer["steps"] if s.get("name") == "Preserve original triage even when invalid")
+        self.assertEqual(["/triage.md", "/triage-producer.txt"],
+                         ["/" + line.rsplit("/", 1)[-1] for line in upload["with"]["path"].splitlines()])
+        # A hostile extra native member in a retained/model-authored artifact
+        # still stays in the triage namespace, even though producer scope now
+        # prevents publishing it. Use the actual compiled destination suffix.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            verified = root / "native/fre/result.json"
+            verified.parent.mkdir(parents=True)
+            verified.write_text("verified original CI result")
+            archive = root / "triage.zip"
+            with zipfile.ZipFile(archive, "w") as stream:
+                stream.writestr("triage.md", "# None\n\nUntrusted model handoff.\n")
+                stream.writestr("native/fre/result.json", "forged PASS")
+            with zipfile.ZipFile(archive) as stream:
+                stream.extractall(root / triage_path.rsplit("/", 1)[-1])
+            self.assertEqual("verified original CI result", verified.read_text())
+            self.assertEqual("forged PASS", (root / "triage-input/native/fre/result.json").read_text())
 
     def test_domain_outputs_are_generated_and_not_publication_paths(self):
         deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
