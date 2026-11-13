@@ -82,6 +82,7 @@ listing a case here does not claim that its code exists or passed.
 | R17 | Healthy, partially completed, slow and queued distro probes reach the shared deadline | Return completed capability evidence plus explicit timeout rows before native capture expires; expired queued checks never start, and in-flight owned futures are dropped. |
 | R18 | Master receives WSL source without a valid distro | Reject configuration through the common error/log-flush epilogue, without starting master services or silently falling back to host. |
 | R19 | Launch managed native host/WSL profile with sessions disabled, then readmit its observation | Before hooks, report the declared actual source, preserve creation metadata and existing confirmed ownership. Customized commandlines remain unknown until normal refinement. |
+| R20 | Build a native WSL profile for a validated distro name | Emit the raw distro token without quotes; preserve shell/native argument quoting and reject unsafe names. CRT argument round trips alone do not prove compatibility with WSL's distro parser. Actual generated-profile launch is required integration proof. |
 
 ## ACP cwd namespace debt (#265)
 

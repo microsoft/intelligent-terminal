@@ -183,7 +183,8 @@ namespace Microsoft::Terminal::AgentProfiles
         std::wstring command;
         AgentPaneRestore::AppendQuoted(command, systemDirectory + L"\\wsl.exe");
         command.append(L" --distribution ");
-        AgentPaneRestore::AppendQuoted(command, distro);
+        // WSL preserves quotes around the distro name. IsSafe excludes whitespace and quotes.
+        command.append(distro);
         // Login PATH includes user-installed CLIs. Pass arguments as parameters,
         // never as shell source, and do not involve an ACP adapter.
         command.append(L" --exec bash -lc ");

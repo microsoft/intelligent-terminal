@@ -844,13 +844,16 @@ namespace SettingsModelUnitTests
         })json"));
         // A WSL managed launch must not resolve the Windows executable, even
         // when executable validation is requested and Windows PATH is empty.
-        const auto args = ParseFullCommandLine(Agents::Command(*profile, true, L""));
+        const auto command = Agents::Command(*profile, true, L"");
+        const auto args = ParseFullCommandLine(command);
         const std::vector<std::wstring> expected{
             L"--distribution", L"Ubuntu-24.04", L"--exec", L"bash", L"-lc", L"exec \"$@\"", L"bash", L"claude", L"--model", L"chosen model", L"--permission-mode", L"plan", L"--add-dir", L"/home/me/source tree", L"$(touch forbidden)", L"quoted \"value\""
         };
         std::wstring systemDirectory;
         THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(systemDirectory));
         VERIFY_ARE_EQUAL(systemDirectory + L"\\wsl.exe", args.front());
+        // CRT argument parsing alone hides WSL's rejection of a quoted distro name.
+        VERIFY_IS_TRUE(command.starts_with(L"\"" + systemDirectory + L"\\wsl.exe\" --distribution Ubuntu-24.04 --exec "));
         VERIFY_ARE_EQUAL(expected.size() + 1, args.size());
         for (size_t i = 0; i < expected.size(); ++i)
         {
