@@ -42,7 +42,7 @@ SURFACES = {"fre": "NextButton", "agents": "AcpAgentComboBox", "fre-settings": "
 
 
 def sidebar_state(tree, process):
-    """Require the production TreeView list and a visible row under the sidebar marker."""
+    """Admit legacy Tab or corrected Group around the production Tree and live row."""
     parents = {tuple(n.get("runtime_id", [])): n for n in tree if n.get("runtime_id")}
 
     def visible(node):
@@ -60,8 +60,10 @@ def sidebar_state(tree, process):
         return False
 
     markers = [n for n in tree if visible(n) and n.get("automation_id") == SURFACES["sidebar"] and
-               n.get("control_type") == "ControlType.Tab" and n.get("class_name") == "TabStrip"]
-    lists = [n for n in tree if visible(n) and n.get("automation_id") == "ItemsList"]
+               n.get("control_type") in {"ControlType.Tab", "ControlType.Group"} and
+               n.get("class_name") == "TabStrip"]
+    lists = [n for n in tree if visible(n) and n.get("automation_id") == "ItemsList" and
+             n.get("control_type") == "ControlType.Tree" and n.get("class_name") == "ListView"]
     # HistoryHeaderButton is a TreeItem too. Require the deterministic live tab,
     # not merely any row in the fixture's production TreeView.
     rows = [n for n in tree if visible(n) and n.get("control_type") == "ControlType.TreeItem" and
