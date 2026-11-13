@@ -91,11 +91,13 @@ if ($ScanId -eq 'sidebar')
     do
     {
         $rows = @($sidebarItems.FindAll([Windows.Automation.TreeScope]::Descendants, $tabCondition) |
-            Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $ProcessId })
+            Where-Object { -not $_.Current.IsOffscreen -and $_.Current.ProcessId -eq $ProcessId -and
+                $_.Current.ClassName -eq 'Microsoft.UI.Xaml.Controls.TreeViewItem' -and
+                $_.Current.Name -eq 'PowerShell' -and $_.Current.AutomationId -ne 'HistoryHeaderButton' })
         if ($rows.Count -gt 0) { break }
         Start-Sleep -Milliseconds 250
     } while ([DateTimeOffset]::UtcNow -lt $deadline)
-    if ($rows.Count -eq 0) { throw 'The populated sidebar fixture has no visible production tab rows.' }
+    if ($rows.Count -eq 0) { throw 'The populated sidebar fixture has no visible PowerShell production tab row.' }
 }
 $elements = $root.FindAll(
     [Windows.Automation.TreeScope]::Subtree, [Windows.Automation.Condition]::TrueCondition)

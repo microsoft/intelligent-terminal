@@ -62,7 +62,11 @@ def sidebar_state(tree, process):
     markers = [n for n in tree if visible(n) and n.get("automation_id") == SURFACES["sidebar"] and
                n.get("control_type") == "ControlType.Tab" and n.get("class_name") == "TabStrip"]
     lists = [n for n in tree if visible(n) and n.get("automation_id") == "ItemsList"]
-    rows = [n for n in tree if visible(n) and n.get("control_type") == "ControlType.TreeItem"]
+    # HistoryHeaderButton is a TreeItem too. Require the deterministic live tab,
+    # not merely any row in the fixture's production TreeView.
+    rows = [n for n in tree if visible(n) and n.get("control_type") == "ControlType.TreeItem" and
+            n.get("class_name") == "Microsoft.UI.Xaml.Controls.TreeViewItem" and
+            n.get("name") == "PowerShell" and n.get("automation_id") != "HistoryHeaderButton"]
     return any(beneath(items, marker) and any(beneath(row, items) for row in rows)
                for marker in markers for items in lists)
 

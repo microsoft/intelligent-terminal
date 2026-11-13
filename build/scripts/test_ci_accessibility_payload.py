@@ -315,7 +315,8 @@ class NativeReceiptTests(unittest.TestCase):
                     {"process_id": 45, "automation_id": "ItemsList", "is_offscreen": False,
                      "runtime_id": [2], "parent_runtime_id": [1], "control_type": "ControlType.List"},
                     {"process_id": 45, "automation_id": "", "is_offscreen": False,
-                     "runtime_id": [3], "parent_runtime_id": [2], "control_type": "ControlType.TreeItem"},
+                     "runtime_id": [3], "parent_runtime_id": [2], "control_type": "ControlType.TreeItem",
+                     "class_name": "Microsoft.UI.Xaml.Controls.TreeViewItem", "name": "PowerShell"},
                 ]),
             }.items():
                 (path / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
@@ -363,7 +364,7 @@ class NativeReceiptTests(unittest.TestCase):
         tree = json.loads(path.read_text())
         for mode in ("promo", "absent-marker", "empty-window", "empty-rows", "hidden-marker",
                      "hidden-row", "foreign-row", "unrelated-list", "unrelated-row", "cycle", "wrong-role",
-                     "fake-marker-role", "fake-marker-class"):
+                     "fake-marker-role", "fake-marker-class", "history-header-only"):
             candidate = json.loads(json.dumps(tree))
             if mode == "promo":
                 candidate[0]["automation_id"] = "welcomeSidebarImage"
@@ -391,6 +392,8 @@ class NativeReceiptTests(unittest.TestCase):
                 candidate[0]["control_type"] = "ControlType.Image"
             elif mode == "fake-marker-class":
                 candidate[0]["class_name"] = "Image"
+            elif mode == "history-header-only":
+                candidate[2].update(name="Recent agent sessions", automation_id="HistoryHeaderButton")
             path.write_text(json.dumps(candidate))
             with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, "incomplete or failed"):
                 self.consume()

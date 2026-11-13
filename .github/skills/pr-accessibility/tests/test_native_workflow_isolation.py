@@ -247,6 +247,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
             self.assertIn(source, fixture)
         for assertion in ("'sidebar' { 'FixtureSidebar' }", "$marker.FindFirst(",
                           "'ItemsList'", "ControlType]::TreeItem", "$_.Current.ProcessId -eq $ProcessId",
+                          "$_.Current.Name -eq 'PowerShell'", "$_.Current.AutomationId -ne 'HistoryHeaderButton'",
                           "if ($rows.Count -eq 0) { throw"):
             self.assertIn(assertion, scan)
         self.assertIn("warning_coverage = 'Unknown'", scan)
@@ -261,6 +262,32 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertIn("export function relevantPath", scope)
         self.assertIn("build/scripts/ci-accessibility-scope.mjs", admission)
         self.assertIn("build/scripts/ci-accessibility-scope.mjs", producer)
+
+    def test_actual_sidebar_row_predicate_rejects_history_header_only_without_a_desktop(self):
+        scan = (ROOT / "test/accessibility/Invoke-AxeWindowsScan.ps1").read_text(encoding="utf-8")
+        predicate = scan.split("Where-Object { ", 1)[1].split(" })", 1)[0]
+        current = {"ProcessId": 45, "IsOffscreen": False, "Name": "PowerShell",
+                   "ClassName": "Microsoft.UI.Xaml.Controls.TreeViewItem", "AutomationId": ""}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "row-predicate.ps1"
+            for mode, edits, expected in (
+                ("live-tab", {}, True),
+                ("history-header-only", {"Name": "Recent agent sessions", "AutomationId": "HistoryHeaderButton"}, False),
+                ("spoofed-header-name", {"AutomationId": "HistoryHeaderButton"}, False),
+                ("wrong-row-class", {"ClassName": "Button"}, False),
+                ("hidden-row", {"IsOffscreen": True}, False),
+                ("foreign-row", {"ProcessId": 46}, False),
+            ):
+                row = json.dumps({"Current": {**current, **edits}})
+                path.write_text(
+                    "$ProcessId = 45\n$row = ConvertFrom-Json @'\n" + row + "\n'@\n" +
+                    "$accepted = @($row | Where-Object { " + predicate + " }).Count -gt 0\n" +
+                    f"if ($accepted -ne ${str(expected).lower()}) {{ throw 'Wrong row admission' }}\n",
+                    encoding="utf-8")
+                with self.subTest(mode=mode):
+                    result = subprocess.run(["pwsh", "-NoProfile", "-File", str(path)],
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertEqual(0, result.returncode, result.stderr)
 
 
 if __name__ == "__main__":
