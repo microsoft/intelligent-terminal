@@ -4143,16 +4143,13 @@ impl App {
                             // It is not evidence that a new command ran.
                             let effective_prompt_start = if is_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
-                                    let queue_echo =
-                                        self.tab_mut(t).prompt_queue.echoes.remove(&pane_id);
-                                    let echo = self
-                                        .tab_mut(&t.to_string())
-                                        .autofix
-                                        .trigger_echo_pane
-                                        .clone();
-                                    if queue_echo || echo.as_deref() == Some(pane_id.as_str()) {
-                                        self.tab_mut(&t.to_string()).autofix.trigger_echo_pane =
-                                            None;
+                                    let tab = self.tab_mut(t);
+                                    let queue_echo = tab.prompt_queue.echoes.remove(&pane_id);
+                                    if queue_echo
+                                        || tab.autofix.trigger_echo_pane.as_deref()
+                                            == Some(pane_id.as_str())
+                                    {
+                                        tab.autofix.trigger_echo_pane = None;
                                         false
                                     } else {
                                         true
