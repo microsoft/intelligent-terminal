@@ -59,6 +59,15 @@ test('trusted checkout never activates candidate configuration or adds a repair 
     assert.doesNotMatch(job(source, 'prepare'), /copilot-requests|engine:/);
 });
 
+test('hosted evidence has no Git shell wildcards and imports only fixed trusted readers and scope', () => {
+    assert.match(source, /bash: false/);
+    assert.doesNotMatch(source, /git (diff|grep|show|ls-tree):\*/);
+    assert.match(source, /Allowed enum: diff, source, search, tree/);
+    assert.match(source, /Allowed enum: base, head/);
+    assert.match(compiled, /evidence-reader\.mjs/);
+    assert.match(compiled, /ARCHITECTURE_RUN_DIR.*|scope\.json/);
+});
+
 test('new PR heads preempt the old run independently of size admission or CI events', () => {
     const concurrency = compiled.match(/^concurrency:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
     assert.ok(concurrency);
@@ -68,6 +77,16 @@ test('new PR heads preempt the old run independently of size admission or CI eve
     assert.match(source, /types: \[opened, reopened, synchronize, ready_for_review\]/);
     assert.doesNotMatch(source, /workflow_run:|workflows: \['PR CI'\]/);
     assert.doesNotMatch(source.match(/^if: (.+)$/m)?.[1] ?? '', /admitted|relevantLines|relevantFiles/);
+});
+
+test('compiled inference steps isolate telemetry while native runner configuration remains available', () => {
+    assert.match(compiled, /^ {2}OTEL_EXPORTER_OTLP_HEADERS:.*secrets\.GH_AW_DEFAULT_OTLP_HEADERS/m);
+    for (const id of ['agent', 'detection']) {
+        const inference = job(compiled, id).split(/^      - /m).find(step => step.includes('--env-all'));
+        assert.ok(inference, `${id} has an inference environment`);
+        for (const variable of ['OTEL_EXPORTER_OTLP_HEADERS', 'GH_AW_OTLP_ENDPOINTS', 'GH_AW_OTLP_ALL_HEADERS'])
+            assert.match(inference, new RegExp(`${variable}: \\$\\{\\{ '' \\}\\}`));
+    }
 });
 
 test('actual freshness job rejects stale, closed and draft results before handler execution', async () => {

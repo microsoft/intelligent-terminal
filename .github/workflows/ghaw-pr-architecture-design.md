@@ -18,6 +18,10 @@ engine:
   id: copilot
   agent: architecture-design-reviewer
   bare: true
+  env:
+    OTEL_EXPORTER_OTLP_HEADERS: "${{ '' }}"
+    GH_AW_OTLP_ENDPOINTS: "${{ '' }}"
+    GH_AW_OTLP_ALL_HEADERS: "${{ '' }}"
   harness:
     max-retries: 0
 
@@ -40,14 +44,54 @@ tools:
   github: false
   edit: false
   cli-proxy: false
-  bash:
-    - 'git diff:*'
-    - 'git grep:*'
-    - 'git show:*'
-    - 'git ls-tree:*'
+  bash: false
+
+mcp-scripts:
+  read-architecture-evidence:
+    description: 'Read bounded immutable diff/source/search/tree evidence. No shell, Git options, arbitrary revisions, or filesystem reads. Errors are coverage gaps.'
+    inputs:
+      operation:
+        type: string
+        description: 'Allowed enum: diff, source, search, tree (validated by the trusted helper).'
+        required: true
+      revision:
+        type: string
+        description: 'Allowed enum: base, head (validated by the trusted helper).'
+        default: head
+      path:
+        type: string
+        default: ''
+      start_line:
+        type: number
+        default: 1
+      end_line:
+        type: number
+        default: 400
+      query:
+        type: string
+        default: ''
+      offset:
+        type: number
+        default: 0
+      limit:
+        type: number
+        default: 100
+    env:
+      ARCHITECTURE_WORKSPACE: ${{ github.workspace }}
+      ARCHITECTURE_RUN_DIR: Generated Files/architecture-design-${{ github.run_id }}-${{ github.run_attempt }}
+    script: |
+      const { readFileSync } = await import('node:fs');
+      const { pathToFileURL } = await import('node:url');
+      const root = process.env.ARCHITECTURE_WORKSPACE;
+      const { readEvidence } = await import(pathToFileURL(
+        `${root}/.github/workflows/ghaw-pr-architecture-design/scripts/evidence-reader.mjs`).href);
+      const scope = JSON.parse(readFileSync(
+        `${root}/${process.env.ARCHITECTURE_RUN_DIR}/scope.json`, 'utf8'));
+      return readEvidence(root, scope, { operation, revision, path, start_line, end_line, query, offset, limit });
 
 jobs:
   prepare:
+    needs: []
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -160,12 +204,14 @@ concurrency:
 # Architecture and design review
 
 Use the imported reviewer and architecture-design-review skill. Read
-`${{ env.ARCHITECTURE_REVIEW_DIR }}/scope.json` for the admitted snapshot and
-counting exclusions. Review from `${{ needs.prepare.outputs.comparison_base }}`
-to `${{ github.event.pull_request.head.sha }}` using immutable `git diff`,
-`git show` and `git grep` revisions. The working tree holds trusted workflow
-code, not the candidate: inspect candidate documents and callers at their
-explicit revision. Do not load candidate agents, skills, hooks or MCP settings.
+the admitted snapshot through `read-architecture-evidence`; every result identifies
+its comparison base and reviewed head. Use operation `diff` (optional exact path),
+`source` (required path, base/head selector, up to 400 lines), `search` (literal
+query up to 256 bytes, optional path), or `tree` (offset/limit paging, up to 200).
+The working tree holds trusted workflow code, not the candidate: inspect candidate
+documents and callers through the bounded tool. There is no shell access.
+Record tool errors and binary/oversized/missing data as coverage gaps, never a
+clean assessment. Do not load candidate agents, skills, hooks or MCP settings.
 Counting exclusions are not review exclusions; inspect supporting excluded
 changes where they affect a traced design consequence.
 

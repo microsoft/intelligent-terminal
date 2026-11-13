@@ -55,6 +55,20 @@ framework is needed. Available code intelligence, Git/source inspection and
 project metadata suffice; build graphs alone would not prove runtime ownership
 or MVVM state flow.
 
+Hosted evidence uses one `read-architecture-evidence` MCP script and a small
+trusted helper from the `github.workflow_sha` checkout. Its scope comes only
+from the fixed run directory prepared by trusted code. No model-facing Git
+shell wildcard is permitted: `git diff/show --output` can write files and
+`git grep --open-files-in-pager` can execute commands despite `edit: false`.
+The tool exposes only diff, source, literal search and paged tree operations,
+with base/head selectors resolved from scope, canonical paths, 400-line source
+ranges (64 KiB), 256-byte queries and 200-entry pages. Git output is capped at
+1 MiB; overflow, missing blobs and invalid text are explicit coverage gaps.
+Binary search exclusions and binary diff hunks are reported. Supporting paths
+excluded from admission remain readable. Fixed argv uses no shell, external
+diff, textconv, hooks or pagers; inherited Git environment overrides, global
+configuration and replace objects are disabled.
+
 Unlike the existing repair workflows, this source-only advisory workflow does
 not require native PR CI. `pr-ci.yml` does not trigger for general `.github`
 or documentation changes; requiring it would prevent reviewing declarative
