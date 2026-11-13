@@ -59,6 +59,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "ansi-to-tui",
+          "version": "8.0.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "anstream",
           "version": "0.6.21"
         }
@@ -205,6 +214,15 @@
         "cargo": {
           "name": "base64",
           "version": "0.23.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bincode",
+          "version": "1.3.3"
         }
       }
     },
@@ -1301,6 +1319,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "linked-hash-map",
+          "version": "0.5.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "litemap",
           "version": "0.8.3"
         }
@@ -1436,6 +1463,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "nom",
+          "version": "8.0.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "normpath",
           "version": "1.5.1"
         }
@@ -1501,6 +1537,24 @@
         "cargo": {
           "name": "once_cell_polyfill",
           "version": "1.70.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "onig",
+          "version": "6.5.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "onig_sys",
+          "version": "69.9.3"
         }
       }
     },
@@ -1661,6 +1715,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "plist",
+          "version": "1.10.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "png",
           "version": "0.18.1"
         }
@@ -1735,6 +1798,15 @@
         "cargo": {
           "name": "pxfm",
           "version": "0.1.29"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "quick-xml",
+          "version": "0.41.0"
         }
       }
     },
@@ -2219,6 +2291,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "simdutf8",
+          "version": "0.1.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "siphasher",
           "version": "1.0.2"
         }
@@ -2383,6 +2464,15 @@
         "cargo": {
           "name": "synstructure",
           "version": "0.14.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "syntect",
+          "version": "5.3.0"
         }
       }
     },
@@ -2724,7 +2814,7 @@
         "type": "cargo",
         "cargo": {
           "name": "tui-markdown",
-          "version": "0.3.11"
+          "version": "0.3.12"
         }
       }
     },
@@ -3067,6 +3157,15 @@
         "cargo": {
           "name": "writeable",
           "version": "0.6.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "yaml-rust",
+          "version": "0.4.5"
         }
       }
     },

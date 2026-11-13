@@ -354,7 +354,35 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
     It 'Completed agent replies switch from raw text to Markdown' {
         Start-MarkdownScenario
         $marker = 'QUEUE_HOLD_MD_DONE_' + $script:runId.Substring(0, 6).ToUpperInvariant()
-        $null = Start-MarkdownReply -Marker $marker
+        $reply = @'
+# MD_HEADING
+
+**MD_BOLD**
+
+Rust syntax highlighting:
+
+```rust
+fn main() {
+    let value = 1;
+    println!("Hello, code blocks! {}", value);
+}
+```
+
+Python syntax highlighting:
+
+```python
+def greet(name):
+    # Keep indentation and syntax colors.
+    return f"Hello, {name}!"
+```
+
+Unknown language uses ordinary code styling:
+
+```not-a-language
+    plain code remains readable
+```
+'@
+        $null = Start-MarkdownReply -Marker $marker -Text $reply
         Wait-MarkdownText -Literal '**MD_BOLD**'
         (Get-MarkdownPaneText).Contains('# MD_HEADING') | Should -BeTrue
         @(Get-MarkdownRecords -Kind completion -Marker $marker) | Should -HaveCount 0
@@ -366,9 +394,10 @@ Describe 'Feature: simplified agent Markdown' -Tag 'Feature', 'SimplifiedMarkdow
         $text.Contains('# MD_HEADING') | Should -BeFalse
         $text.Contains('MD_HEADING') | Should -BeTrue
         $text.Contains('**USER_LITERAL**') | Should -BeTrue
-        $text.Contains('```rust') | Should -BeTrue
+        $text.Contains('```') | Should -BeFalse
         $text.Contains('let value = 1;') | Should -BeTrue
-        ([regex]::Matches($text, '```')).Count | Should -Be 2
+        $text.Contains('def greet(name):') | Should -BeTrue
+        $text.Contains('plain code remains readable') | Should -BeTrue
         Save-MarkdownEvidence completed-markdown
     }
 
