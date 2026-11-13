@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/AgentPaneBackend.h"
 
 using namespace WEX::TestExecution;
 
@@ -23,7 +24,62 @@ namespace TerminalAppUnitTests
         TEST_METHOD(SplitCwdKeepsWslNamespacesSeparate);
         TEST_METHOD(SplitCwdRejectsUnsafeWslArguments);
         TEST_METHOD(SplitCwdQuotesWindowsRootsForWsl);
+        TEST_METHOD(AgentBackendSeparatesProviderAndSource);
+        TEST_METHOD(AgentCwdDoesNotCrossWslDistributions);
     };
+
+    void AgentSourceUtilsTests::AgentBackendSeparatesProviderAndSource()
+    {
+        using Microsoft::Terminal::Settings::Model::AgentPaneBackend;
+        for (const auto source : { L"", L"host", L"wsl:Ubuntu", L"wsl:Debian" })
+        {
+            const auto backend = AgentPaneBackend::FromSettings(L"copilot", source);
+            VERIFY_IS_TRUE(backend.has_value());
+            VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, backend->agentId);
+            const auto selection = AgentPaneBackend::FromSelection(backend->SelectionId());
+            VERIFY_IS_TRUE(selection.has_value());
+            VERIFY_ARE_EQUAL(backend->agentId, selection->agentId);
+            VERIFY_ARE_EQUAL(backend->wslDistro, selection->wslDistro);
+            VERIFY_ARE_EQUAL(backend->SettingsSource(), selection->SettingsSource());
+        }
+        for (const auto source : { L"unknown", L"wsl:", L"wsl:Ubuntu bad", L"wsl:Ubuntu;echo", L"wsl:../Ubuntu" })
+        {
+            VERIFY_IS_FALSE(AgentPaneBackend::FromSettings(L"copilot", source).has_value());
+        }
+        VERIFY_IS_FALSE(AgentPaneBackend::FromSettings(L"custom:mine", L"wsl:Ubuntu").has_value());
+        VERIFY_IS_TRUE(AgentPaneBackend::FromSettings(L"custom:mine", L"host").has_value());
+        VERIFY_IS_FALSE(AgentPaneBackend::FromSelection(L"wsl:Ubuntu:").has_value());
+    }
+
+    void AgentSourceUtilsTests::AgentCwdDoesNotCrossWslDistributions()
+    {
+        using Microsoft::Terminal::AgentSource::ResolveAgentAndHelperWorkingDirectories;
+        const auto hostDirectory = [](std::wstring_view path) { return path == L"C:\\Users\\me"; };
+        for (const auto sourceShell : { L"pwsh.exe", L"wsl:Debian", L"WSL:Ubuntu", L"wsl:Ubuntu-other", L"" })
+        {
+            const auto resolved = ResolveAgentAndHelperWorkingDirectories(
+                true, L"/home/me/project", {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", sourceShell);
+            VERIFY_ARE_EQUAL(std::wstring{ L"~" }, resolved.agent);
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\Users\\me" }, resolved.helper);
+        }
+        for (const auto distro : { L"Ubuntu", L"ubuntu", L"uBuNtU" })
+        {
+            const auto sameDistro = ResolveAgentAndHelperWorkingDirectories(
+                true, L"/home/me/project", {}, {}, L"C:\\Users\\me", hostDirectory, distro, L"wsl:Ubuntu");
+            VERIFY_ARE_EQUAL(std::wstring{ L"/home/me/project" }, sameDistro.agent);
+        }
+        for (const auto unc : { L"//wsl$/Ubuntu/home/me/project", L"//wsl.localhost/Ubuntu/home/me/project", L"//wsl$/Debian/home/me/project", L"//server/share/project" })
+        {
+            const auto qualified = ResolveAgentAndHelperWorkingDirectories(
+                true, unc, {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", L"pwsh.exe");
+            // Rust validates the embedded distribution before using a UNC cwd.
+            VERIFY_ARE_EQUAL(std::wstring{ unc }, qualified.agent);
+            VERIFY_ARE_EQUAL(std::wstring{ L"C:\\Users\\me" }, qualified.helper);
+        }
+        const auto windowsPath = ResolveAgentAndHelperWorkingDirectories(
+            true, L"C:\\work", {}, {}, L"C:\\Users\\me", hostDirectory, L"Ubuntu", L"pwsh.exe");
+        VERIFY_ARE_EQUAL(std::wstring{ L"C:\\work" }, windowsPath.agent);
+    }
 
     void AgentSourceUtilsTests::SplitCwdValidatesHostDirectories()
     {

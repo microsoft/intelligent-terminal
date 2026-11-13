@@ -1109,15 +1109,9 @@ impl HistoryQuery {
         }
         self.cycle_in_progress = true;
         if self.process.is_none() {
-            self.process = Some(
-                await_history_startup(
-                    HistoryProcess::spawn(
-                        target.ok_or_else(|| anyhow!("history launch target missing"))?,
-                    ),
-                    cancelled,
-                )
-                .await?,
-            );
+            let target = target.ok_or_else(|| anyhow!("history launch target missing"))?;
+            self.process =
+                Some(await_history_startup(HistoryProcess::spawn(target), cancelled).await?);
         }
         if let Some(process) = self.process.as_mut().filter(|process| !process.initialized) {
             self.recycling = true;

@@ -277,31 +277,37 @@ fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
     format!("{marker}{}", &context[start..])
 }
 
-/// Selects the POSIX cwd to record/use for an explicit WSL delegate launch.
+/// Select the trustworthy cwd candidate for an explicit WSL delegate launch.
 ///
-/// A WSL session's cwd must be a POSIX path (`/…`) — falling back without
-/// validation to a Windows/UNC `--cwd` is misleading (the active pane may be
-/// a Windows pane when `--delegate-source wsl` is forced) and breaks
-/// downstream assumptions about WSL session cwd formatting. Trims whitespace
-/// off each candidate, requires an absolute POSIX path (`/…`), and rejects
-/// `"` (which would break the `wsl --cd "<cwd>"` quoting). Prefers the
-/// active pane's cwd over the explicit CLI `--cwd`; returns `None` if
-/// neither is a valid POSIX path. The same value feeds both the `wsl --cd`
-/// argument and `super::sessions::register_launched`, so the recorded
-/// session cwd always matches the shell's actual working directory — never
-/// the raw Windows cwd fallback.
+/// POSIX paths are meaningful only in their known distribution. Windows drive
+/// and UNC paths can instead be translated by the existing source cwd resolver.
 fn select_wsl_delegate_cwd<'a>(
     active_pane_cwd: Option<&'a str>,
     explicit_cwd: Option<&'a str>,
+    active_distro: Option<&str>,
+    target_distro: &str,
+    split_pane: Option<&str>,
 ) -> Option<&'a str> {
-    fn valid_posix_cwd(candidate: &str) -> Option<&str> {
+    // Split cwd and source came from the same validated target session, not
+    // the active pane. Ordinary delegation still needs active-pane evidence.
+    let (active_pane_cwd, cwd_distro) = if split_pane.is_some() {
+        (None, Some(target_distro))
+    } else {
+        (active_pane_cwd, active_distro)
+    };
+    let valid_cwd = |candidate: &'a str| -> Option<&'a str> {
         let trimmed = candidate.trim();
-        (trimmed.starts_with('/') && !trimmed.contains('"')).then_some(trimmed)
-    }
+        let same_distro =
+            cwd_distro.is_some_and(|distro| distro.eq_ignore_ascii_case(target_distro));
+        let windows = trimmed.starts_with('\\')
+            || trimmed.starts_with("//")
+            || (trimmed.as_bytes().get(1) == Some(&b':'));
+        (windows || (trimmed.starts_with('/') && same_distro)).then_some(trimmed)
+    };
 
     active_pane_cwd
-        .and_then(valid_posix_cwd)
-        .or_else(|| explicit_cwd.and_then(valid_posix_cwd))
+        .and_then(valid_cwd)
+        .or_else(|| explicit_cwd.and_then(valid_cwd))
 }
 
 /// Shared delegation logic: enrich the prompt with the active pane's recent
@@ -478,10 +484,18 @@ async fn delegate_with_context(
             .as_ref()
             .and_then(|pane| pane.get("cwd"))
             .and_then(|v| v.as_str());
-        let wsl_cwd = select_wsl_delegate_cwd(active_pane_cwd, cwd);
-        let wsl_commandline = match wsl_cwd {
+        let candidate = select_wsl_delegate_cwd(
+            active_pane_cwd,
+            cwd,
+            crate::agent_source::active_pane_wsl_distro(active.as_ref()),
+            distro,
+            split_pane,
+        );
+        let wsl_cwd = crate::agent_source::resolve_source_cwd(requested_source, candidate).await;
+        let wsl_commandline = match wsl_cwd.as_deref() {
             Some(cwd) => {
-                format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
+                let cwd_arg = crate::coordinator::quote_windows_commandline_arg(cwd);
+                format!("wsl -d {distro_arg} --cd {cwd_arg} -- {login_invocation}")
             }
             None => format!("wsl -d {distro_arg} -- {login_invocation}"),
         };
@@ -532,7 +546,7 @@ async fn delegate_with_context(
                 sid,
                 pane,
                 &runtime.id,
-                wsl_cwd,
+                wsl_cwd.as_deref(),
                 Some(distro),
             )
             .await;
@@ -1187,7 +1201,13 @@ mod tests {
     #[test]
     fn select_wsl_delegate_cwd_prefers_active_pane_over_explicit_cwd() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("/home/active"), Some("/home/explicit")),
+            super::select_wsl_delegate_cwd(
+                Some("/home/active"),
+                Some("/home/explicit"),
+                Some("Ubuntu"),
+                "Ubuntu",
+                None
+            ),
             Some("/home/active")
         );
     }
@@ -1195,7 +1215,13 @@ mod tests {
     #[test]
     fn select_wsl_delegate_cwd_falls_back_to_explicit_cwd() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(None, Some("/home/explicit")),
+            super::select_wsl_delegate_cwd(
+                None,
+                Some("/home/explicit"),
+                Some("Ubuntu"),
+                "Ubuntu",
+                None
+            ),
             Some("/home/explicit")
         );
     }
@@ -1203,33 +1229,77 @@ mod tests {
     #[test]
     fn select_wsl_delegate_cwd_trims_whitespace() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("  /home/active  "), None),
+            super::select_wsl_delegate_cwd(
+                Some("  /home/active  "),
+                None,
+                Some("Ubuntu"),
+                "Ubuntu",
+                None
+            ),
             Some("/home/active")
         );
     }
 
     #[test]
-    fn select_wsl_delegate_cwd_rejects_non_posix_and_quoted_paths() {
-        // Windows-style path is not a valid WSL cwd.
+    fn select_wsl_delegate_cwd_translates_windows_but_rejects_unknown_posix_namespace() {
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), None),
+            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), None, None, "Ubuntu", None),
+            Some("C:\\Users\\me")
+        );
+        assert_eq!(
+            super::select_wsl_delegate_cwd(Some("/home/me"), None, Some("Debian"), "Ubuntu", None),
             None
         );
-        // A quote would break the `wsl --cd "<cwd>"` quoting.
         assert_eq!(
-            super::select_wsl_delegate_cwd(Some("/home/\"me\""), None),
+            super::select_wsl_delegate_cwd(
+                Some("/home/me"),
+                Some("D:\\work"),
+                None,
+                "Ubuntu",
+                None
+            ),
+            Some("D:\\work")
+        );
+        assert_eq!(
+            super::select_wsl_delegate_cwd(None, Some("/home/unknown"), None, "Ubuntu", None),
             None
         );
-        // Falls through to a valid explicit cwd when the active pane's is
-        // invalid.
-        assert_eq!(
-            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), Some("/home/explicit")),
-            Some("/home/explicit")
-        );
-        // Neither candidate valid -> None (never the raw Windows fallback).
-        assert_eq!(
-            super::select_wsl_delegate_cwd(Some("C:\\Users\\me"), Some("D:\\other")),
-            None
-        );
+    }
+
+    #[test]
+    fn select_wsl_delegate_cwd_split_preserves_validated_target_namespace() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let mut row =
+            crate::session_registry::SessionInfo::new("sid".into(), "/home/me/project".into());
+        row.provider_id = Some("copilot".into());
+        row.pane_session_id = Some("pane".into());
+        row.status = Some(AgentStatus::Idle);
+        row.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let rows = [row];
+        let target = super::resolve_split_session(&rows, "pane", "sid", "copilot").unwrap();
+        let SessionLocation::Wsl { distro } = &target.location else {
+            panic!("expected WSL target");
+        };
+        let cwd = target.cwd.to_string_lossy();
+        for (active_cwd, active_distro) in
+            [(None, None), (Some("/home/other/project"), Some("Debian"))]
+        {
+            assert_eq!(
+                super::select_wsl_delegate_cwd(
+                    active_cwd,
+                    Some(&cwd),
+                    active_distro,
+                    distro,
+                    Some("pane"),
+                ),
+                Some("/home/me/project")
+            );
+            assert_eq!(
+                super::select_wsl_delegate_cwd(active_cwd, Some(&cwd), active_distro, distro, None,),
+                None
+            );
+        }
     }
 }

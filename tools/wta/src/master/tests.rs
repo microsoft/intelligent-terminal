@@ -1419,18 +1419,123 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
             assert!(bind_helper_to_agent(&state, &agent, helper_a).await);
             assert!(bind_helper_to_agent(&state, &agent, helper_b).await);
             agent.bound_helpers.lock().await.remove(&helper_a);
-            retire_unbound_model_agent(&state, &agent).await;
+            retire_unbound_on_demand_agent(&state, &agent).await;
             assert!(
                 state.agents.lock().await.contains_key(&key),
                 "one remaining helper must keep the model generation alive"
             );
 
             agent.bound_helpers.lock().await.remove(&helper_b);
-            retire_unbound_model_agent(&state, &agent).await;
+            retire_unbound_on_demand_agent(&state, &agent).await;
             assert!(
                 !state.agents.lock().await.contains_key(&key),
                 "the final helper disconnect must retire the model generation"
             );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn wsl_agent_retires_chat_and_history_after_final_helper_unbinds_but_host_stays_resident() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for source in [
+                crate::agent_source::AgentSource::Host,
+                crate::agent_source::AgentSource::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+            ] {
+                let state = make_state();
+                let mut agent = unbound_test_agent("on-demand-retirement");
+                let owned = Arc::get_mut(&mut agent).unwrap();
+                owned.source = source.clone();
+                let key = owned.cmd_key.clone();
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                assert!(cell.set(Arc::clone(&agent)).is_ok());
+                state.agents.lock().await.insert(key.clone(), cell);
+                let helper_a = HelperId(610);
+                let helper_b = HelperId(611);
+                assert!(bind_helper_to_agent(&state, &agent, helper_a).await);
+                assert!(bind_helper_to_agent(&state, &agent, helper_b).await);
+                agent.bound_helpers.lock().await.remove(&helper_a);
+                retire_unbound_on_demand_agent(&state, &agent).await;
+                assert!(state.agents.lock().await.contains_key(&key));
+                agent.bound_helpers.lock().await.remove(&helper_b);
+                retire_unbound_on_demand_agent(&state, &agent).await;
+                let is_host = matches!(source, crate::agent_source::AgentSource::Host);
+                assert_eq!(state.agents.lock().await.contains_key(&key), is_host);
+                assert_eq!(
+                    agent
+                        .history_refresh
+                        .retired
+                        .load(std::sync::atomic::Ordering::Acquire),
+                    !is_host,
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn wsl_discovery_running_state_does_not_authorize_unused_history_but_default_or_use_does() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let source = crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".into(),
+            };
+            let agent = listing_agent_from(
+                Some(crate::agent_sessions::CliSource::Copilot),
+                source.clone(),
+                &["history-row"],
+            );
+            agent.bound_helpers.lock().await.clear();
+            // Discovery can start Ubuntu, but never binds a provider helper.
+            assert!(!history_usage_eligible(&source, false));
+            assert_eq!(refresh_agent_history(&state, &agent).await, None);
+            // Authorized default prewarm and explicit use share this helper binding.
+            agent.bound_helpers.lock().await.insert(HelperId(612));
+            assert!(history_usage_eligible(&source, true));
+            assert_eq!(refresh_agent_history(&state, &agent).await, Some(1));
+            assert!(history_usage_eligible(
+                &crate::agent_source::AgentSource::Host,
+                false
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn wsl_history_usage_is_scoped_to_exact_provider_and_distribution() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            for (provider, distro, selected) in [
+                (crate::agent_sessions::CliSource::Copilot, "Ubuntu", true),
+                (crate::agent_sessions::CliSource::Claude, "Ubuntu", false),
+                (crate::agent_sessions::CliSource::OpenCode, "Ubuntu", false),
+                (crate::agent_sessions::CliSource::Copilot, "Debian", false),
+            ] {
+                let agent = listing_agent_from(
+                    Some(provider),
+                    crate::agent_source::AgentSource::Wsl {
+                        distro: distro.into(),
+                    },
+                    &["scoped-history"],
+                );
+                agent.bound_helpers.lock().await.clear();
+                add_test_agent_to_pool(&state, &agent).await;
+                if selected {
+                    assert!(bind_helper_to_agent(&state, &agent, HelperId(613)).await);
+                }
+                assert_eq!(
+                    refresh_agent_history(&state, &agent).await,
+                    selected.then_some(1),
+                    "Ubuntu Copilot usage must not authorize {} in {}",
+                    agent.resolved_agent_id,
+                    distro,
+                );
+            }
         })
         .await;
 }
@@ -3067,6 +3172,7 @@ fn make_state_with_retirement_pending_timeout(
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
+        default_agent_source: crate::agent_source::AgentSource::Host,
         allowed_agent_ids: None,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -4071,6 +4177,233 @@ async fn failed_pending_session_cleanup_retires_close_marked_recovery_state() {
         .await
         .contains(&helper_id));
     assert!(!state.helper_meta.lock().await.contains_key(&helper_id));
+}
+
+fn cwd_test_handler() -> (
+    HelperHandler,
+    mpsc::UnboundedReceiver<(&'static str, PathBuf)>,
+) {
+    let (observed, received) = mpsc::unbounded_channel();
+    let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
+    let (client_read, client_write) = tokio::io::split(client_pipe);
+    let (agent_read, agent_write) = tokio::io::split(agent_pipe);
+    let builder = acp::Agent
+        .builder()
+        .name("cwd-test-agent")
+        .on_receive_request(
+            move |request: acp::schema::v1::ClientRequest,
+                  responder: acp::Responder<serde_json::Value>,
+                  _cx| {
+                let observed = observed.clone();
+                async move {
+                    use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
+                    match request {
+                        Q::NewSessionRequest(request) => {
+                            observed.send(("new", request.cwd.clone())).unwrap();
+                            if request.cwd == PathBuf::from(r"C:\project") {
+                                responder.respond_with_error(acp::Error::new(
+                                    -32602,
+                                    "Directory path must be absolute",
+                                ))
+                            } else {
+                                conn::respond_enum(
+                                    responder,
+                                    Ok(R::NewSessionResponse(
+                                        acp::schema::v1::NewSessionResponse::new(SessionId::new(
+                                            "cwd-created",
+                                        )),
+                                    )),
+                                )
+                            }
+                        }
+                        Q::LoadSessionRequest(request) => {
+                            observed.send(("load", request.cwd)).unwrap();
+                            responder
+                                .respond_with_error(acp::Error::new(-32602, "cwd does not exist"))
+                        }
+                        Q::CloseSessionRequest(_) => conn::respond_enum(
+                            responder,
+                            Ok(R::CloseSessionResponse(
+                                acp::schema::v1::CloseSessionResponse::new(),
+                            )),
+                        ),
+                        _ => responder.respond_with_error(acp::Error::method_not_found()),
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        );
+    let (_, agent_io) = conn::spawn_agent(
+        builder,
+        conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
+    let (connection, client_io) = conn::spawn_client(
+        acp::Client.builder().name("cwd-test-client"),
+        conn::byte_streams(client_write.compat_write(), client_read.compat()),
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    let mut agent = unbound_test_agent("cwd-test");
+    let owned = Arc::get_mut(&mut agent).unwrap();
+    owned.resolved_agent_id = "custom:cwd".into();
+    owned.cli_source = Some(crate::agent_sessions::CliSource::Unknown(
+        "custom:cwd".into(),
+    ));
+    owned.conn = connection;
+    let cell = empty_agent_cell();
+    assert!(cell.set(agent).is_ok());
+    let (notif_tx, _) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    let slot = Arc::new(OnceLock::new());
+    slot.set(agent_link_to_noop_client()).unwrap();
+    (
+        HelperHandler {
+            helper_id: HelperId(1234),
+            agent: cell,
+            state: make_state(),
+            replacement_gate: Arc::new(Mutex::new(())),
+            notif_tx,
+            agent_side_slot: slot,
+        },
+        received,
+    )
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cwd_new_session_persists_successful_candidate_and_uses_only_same_generation_evidence() {
+    LocalSet::new()
+        .run_until(async {
+            for evidence in [None, Some(false), Some(true)] {
+                let (handler, mut received) = cwd_test_handler();
+                let agent = handler.resolved_agent("test").unwrap();
+                if let Some(same_generation) = evidence {
+                    let mut refresh = agent.history_refresh.gate.lock().await;
+                    refresh.owner = Some(if same_generation {
+                        agent.instance_id
+                    } else {
+                        AgentInstanceId::new_v4()
+                    });
+                    refresh.cwd_namespace = Some(CwdNamespace::Posix);
+                }
+                let response = handler
+                    .new_session(acp::schema::v1::NewSessionRequest::new(PathBuf::from(
+                        r"C:\project",
+                    )))
+                    .await
+                    .unwrap();
+                let row = handler
+                    .state
+                    .registry
+                    .lookup(&response.session_id)
+                    .await
+                    .unwrap();
+                assert_eq!(row.cwd, PathBuf::from("/tmp"));
+                if evidence != Some(true) {
+                    assert_eq!(
+                        received.try_recv().unwrap(),
+                        ("new", PathBuf::from(r"C:\project"))
+                    );
+                }
+                assert_eq!(received.try_recv().unwrap(), ("new", PathBuf::from("/tmp")));
+                assert!(
+                    received.try_recv().is_err(),
+                    "namespace selection must not request session/list"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cwd_load_failure_is_never_replayed_with_a_fallback_candidate() {
+    LocalSet::new()
+        .run_until(async {
+            let (handler, mut received) = cwd_test_handler();
+            let sid = SessionId::new("cwd-resume");
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    sid.clone(),
+                    PathBuf::from(r"C:\project"),
+                ))
+                .await
+                .expect_err("the primary load attempt should fail");
+            assert_eq!(
+                received.try_recv().unwrap(),
+                ("load", PathBuf::from(r"C:\project"))
+            );
+            assert!(
+                received.try_recv().is_err(),
+                "a failed load is never repeated"
+            );
+            assert!(!handler
+                .state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&sid));
+            assert!(handler.state.registry.lookup(&sid).await.is_none());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cwd_orphan_rebind_preserves_actual_qualified_cwd_without_an_agent_request() {
+    LocalSet::new()
+        .run_until(async {
+            let (handler, mut received) = cwd_test_handler();
+            let agent = handler.resolved_agent("test").unwrap();
+            let sid = SessionId::new("cwd-orphan");
+            let mut existing = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                PathBuf::from("/actual/project"),
+            );
+            existing.provider_id = Some(agent.resolved_agent_id.clone());
+            existing.cli_source = agent.cli_source.clone();
+            existing.location = agent.source.session_location();
+            existing.title = Some("Existing conversation".into());
+            existing.updated_at = Some("2026-11-12T00:00:00Z".into());
+            handler.state.registry.upsert(existing.clone()).await;
+            let mut foreign = existing.clone();
+            foreign.provider_id = Some("claude".into());
+            foreign.cli_source = Some(crate::agent_sessions::CliSource::Claude);
+            foreign.cwd = PathBuf::from("/foreign/project");
+            foreign.title = Some("Unrelated conversation".into());
+            handler.state.registry.upsert(foreign).await;
+            handler
+                .state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(agent.cmd_key.clone())
+                .or_default()
+                .insert(sid.clone());
+            handler
+                .load_session(acp::schema::v1::LoadSessionRequest::new(
+                    sid,
+                    PathBuf::from(r"C:\incoming"),
+                ))
+                .await
+                .unwrap();
+            let actual = handler
+                .state
+                .registry
+                .lookup_identity(&crate::session_registry::SessionIdentity::from_info(
+                    &existing,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(actual.cwd, existing.cwd);
+            assert_eq!(actual.title, existing.title);
+            assert_eq!(actual.updated_at, existing.updated_at);
+            assert!(
+                received.try_recv().is_err(),
+                "orphan rebind must not perform an ACP request"
+            );
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -14592,6 +14925,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
+        default_agent_source: crate::agent_source::AgentSource::Host,
         allowed_agent_ids: None,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -19068,7 +19402,13 @@ fn listing_agent_from(
         source: source.clone(),
         cmd_key: format!("listing-agent-{cli:?}-{source}"),
         cloud_catalog: Mutex::new(NativeCloudCatalogState::Pending),
-        bound_helpers: Mutex::new(HashSet::new()),
+        bound_helpers: Mutex::new(
+            if matches!(source, crate::agent_source::AgentSource::Wsl { .. }) {
+                HashSet::from([HelperId(0)])
+            } else {
+                HashSet::new()
+            },
+        ),
         history_refresh: AgentHistoryRefresh {
             gate: Arc::new(Mutex::new(HistoryRefreshState {
                 query: history::HistoryQuery::mock(client_connection_to_listing_agent(

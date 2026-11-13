@@ -96,6 +96,9 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestHotDefaultProviderYoloUsesOutgoingBinding);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
         TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
+        TEST_METHOD(TestWslAgentSettingsBindings);
+        TEST_METHOD(TestWslAgentDiscoverySnapshot);
+        TEST_METHOD(TestWslAgentPrewarmEligibility);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1934,6 +1937,10 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             ChangeKind::AgentRebind,
             Page::_ClassifyAgentSettingsChange(native, builtInAgentChange));
+        auto sourceChange = native;
+        sourceChange.acpAgentSource = L"wsl:Ubuntu";
+        VERIFY_ARE_EQUAL(ChangeKind::RecreatePane, Page::_ClassifyAgentSettingsChange(native, sourceChange));
+        VERIFY_ARE_NOT_EQUAL(Page::_AgentSettingsRequestIdentity(native), Page::_AgentSettingsRequestIdentity(sourceChange));
 
         auto gemini = native;
         gemini.acpAgent = L"gemini";
@@ -2547,6 +2554,120 @@ namespace TerminalAppLocalTests
                     payload["custom_model_selection"].asString());
             }
         }
+    }
+
+    void SettingsTests::TestWslAgentSettingsBindings()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        Page::AgentPaneSettingsBindingRequest request{
+            .globalAgentId = L"copilot",
+            .globalModel = L"linux-model",
+            .globalAgentCliPath = L"copilot --acp --stdio",
+            .customModelSelection = L"custom:host-provider:host-model",
+            .globalAgentSource = L"wsl:Ubuntu",
+        };
+        for (const auto shell : { L"pwsh.exe", L"cmd.exe", L"wsl:Debian", L"" })
+        {
+            request.profileActiveShell = shell;
+            const auto binding = Page::_ResolveAgentPaneSettingsBinding(request);
+            VERIFY_IS_TRUE(binding.launchable);
+            VERIFY_IS_TRUE(binding.followsGlobalAgent);
+            VERIFY_IS_TRUE(binding.followsGlobalAcpModel);
+            VERIFY_ARE_EQUAL(std::wstring{ L"wsl" }, binding.agentSource);
+            VERIFY_ARE_EQUAL(std::wstring{ L"Ubuntu" }, binding.agentWslDistro);
+            VERIFY_ARE_EQUAL(std::wstring{ L"linux-model" }, binding.acpModel);
+            VERIFY_IS_FALSE(binding.supportsGlobalHostByok);
+            VERIFY_IS_TRUE(binding.customModelSelection.empty());
+        }
+        request.profileBackend = L"wsl:Debian:claude";
+        const auto profile = Page::_ResolveAgentPaneSettingsBinding(request);
+        VERIFY_IS_TRUE(profile.launchable);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Debian" }, profile.agentWslDistro);
+        VERIFY_IS_FALSE(profile.followsGlobalAgent);
+        request.profileBackend = L"host:copilot";
+        const auto host = Page::_ResolveAgentPaneSettingsBinding(request);
+        VERIFY_ARE_EQUAL(std::wstring{ L"host" }, host.agentSource);
+        request.profileBackend.clear();
+        request.hasAgentOverride = true;
+        request.agentIdOverride = L"copilot";
+        request.agentSourceOverride = L"host";
+        VERIFY_IS_FALSE(Page::_ResolveAgentPaneSettingsBinding(request).followsGlobalAcpModel);
+        request.hasAgentOverride = false;
+        request.globalAgentSource = L"wsl:";
+        VERIFY_IS_FALSE(Page::_ResolveAgentPaneSettingsBinding(request).launchable);
+    }
+
+    void SettingsTests::TestWslAgentDiscoverySnapshot()
+    {
+        using ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources;
+        const auto sources = ParseWslAgentSources(R"({"sources":[
+            {"wsl_distro":"Ubuntu","agents":[{"id":"copilot"},{"id":"unknown"}],"running":true},
+            {"wsl_distro":"Debian","agents":[],"running":false}
+        ]})");
+        VERIFY_IS_TRUE(sources.has_value());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, sources->size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Debian" }, sources->at(0).distro);
+        VERIFY_IS_FALSE(sources->at(0).running);
+        VERIFY_IS_TRUE(sources->at(1).agentIds.contains(L"copilot"));
+        VERIFY_IS_FALSE(sources->at(1).agentIds.contains(L"unknown"));
+        const auto failedSource = ParseWslAgentSources(R"({"sources":[
+            {"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],
+             "interactive_agents":[{"id":"claude"},{"id":"codex"}],"running":true,"error":"probe timed out"}
+        ]})");
+        VERIFY_IS_TRUE(failedSource.has_value());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, failedSource->size());
+        VERIFY_IS_TRUE(failedSource->front().probeFailed);
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"copilot"));
+        VERIFY_IS_FALSE(failedSource->front().AgentIds(true).contains(L"copilot"));
+        VERIFY_IS_FALSE(failedSource->front().agentIds.contains(L"claude"));
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"claude", true));
+        VERIFY_IS_TRUE(failedSource->front().IsAvailable(L"codex", true));
+        auto retained = failedSource->front();
+        retained.RetainKnownAgents(sources->at(1));
+        VERIFY_IS_TRUE(retained.IsAvailable(L"copilot"));
+        VERIFY_IS_TRUE(retained.AgentIds(true).contains(L"copilot"));
+        VERIFY_IS_FALSE(retained.IsAvailable(L"copilot", true));
+        VERIFY_IS_TRUE(retained.IsAvailable(L"claude", true));
+        VERIFY_ARE_EQUAL(std::wstring{ L"Ubuntu" }, failedSource->front().distro);
+        for (const auto payload : {
+                 R"({})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu;echo","agents":[],"running":true}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[]}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{}],"running":true,"error":"failed"}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":null,"running":true}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{}],"running":true}]})",
+                 R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"running":true},{"wsl_distro":"Ubuntu","agents":[],"running":false}]})" })
+        {
+            VERIFY_IS_FALSE(ParseWslAgentSources(payload).has_value());
+        }
+    }
+
+    void SettingsTests::TestWslAgentPrewarmEligibility()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        Page::AgentPaneSettingsBinding binding{
+            .agentId = L"copilot",
+            .agentSource = L"host",
+            .launchable = true,
+        };
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"host"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
+        binding.agentSource = L"wsl";
+        binding.agentWslDistro = L"Ubuntu";
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"host"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Debian"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Ubuntu"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:uBuNtU"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:dEbIaN"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"WSL:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:"));
+        binding.agentId = L"claude";
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"copilot", L"wsl:uBuNtU"));
+        VERIFY_IS_TRUE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
+        binding.launchable = false;
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:Ubuntu"));
+        VERIFY_IS_FALSE(Page::_CanPrewarmAgentBinding(binding, L"claude", L"wsl:uBuNtU"));
     }
 
     void SettingsTests::TestAgentPaneSwitchCapability()

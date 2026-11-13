@@ -57,18 +57,27 @@ pub(crate) async fn probe_models_with_intent(
     agent_id: Option<&str>,
     retry_startup: bool,
 ) -> Result<ProbeResult> {
+    probe_models_for_source_with_intent(
+        agent_cmd,
+        agent_id,
+        &crate::agent_source::AgentSource::Host,
+        retry_startup,
+    )
+    .await
+}
+
+pub(crate) async fn probe_models_for_source_with_intent(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    retry_startup: bool,
+) -> Result<ProbeResult> {
     let agent_id = agent_id.or_else(|| {
         let inferred = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
         crate::agent_registry::is_known_id(inferred).then_some(inferred)
     });
     let registry = crate::agent_lifecycle::StartupRegistry::runtime();
-    let key = crate::agent_lifecycle::agent_key(
-        agent_cmd,
-        agent_id,
-        &crate::agent_source::AgentSource::Host,
-        "native",
-        false,
-    );
+    let key = crate::agent_lifecycle::agent_key(agent_cmd, agent_id, source, "native", false);
     if retry_startup {
         registry.retry(&key).await?;
     }
@@ -79,6 +88,7 @@ pub(crate) async fn probe_models_with_intent(
             let result = probe_models_impl(
                 agent_cmd,
                 agent_id,
+                source,
                 MODEL_PROBE_ENVIRONMENT_POLICY,
                 &mut startup,
             )
@@ -145,19 +155,18 @@ where
 async fn probe_models_impl(
     agent_cmd: &str,
     agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
     environment_policy: ChildEnvironmentPolicy,
     startup: &mut crate::agent_lifecycle::StartupLease,
 ) -> Result<ProbeResult> {
-    let mut probe = super::startup::start_probe(
-        agent_cmd,
-        agent_id,
-        &crate::agent_source::AgentSource::Host,
-        environment_policy,
-        startup,
-    )
-    .await?;
+    let mut probe =
+        super::startup::start_probe(agent_cmd, agent_id, source, environment_policy, startup)
+            .await?;
     let result = async {
-        let cwd = std::env::current_dir().context("read model probe working directory")?;
+        let cwd = model_probe_cwd(source, std::env::current_dir, |distro| async move {
+            crate::agent_source::resolve_wsl_home(&distro).await
+        })
+        .await?;
         let session_started = std::time::Instant::now();
         let session_result = tokio::time::timeout(
             Duration::from_secs(20),
@@ -196,6 +205,27 @@ async fn probe_models_impl(
     .await;
     probe.close().await?;
     result
+}
+
+async fn model_probe_cwd<F, Fut>(
+    source: &crate::agent_source::AgentSource,
+    host_cwd: impl FnOnce() -> std::io::Result<std::path::PathBuf>,
+    wsl_home: F,
+) -> Result<std::path::PathBuf>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Option<String>>,
+{
+    match source {
+        crate::agent_source::AgentSource::Host => {
+            host_cwd().context("read model probe working directory")
+        }
+        crate::agent_source::AgentSource::Wsl { distro } => wsl_home(distro.clone())
+            .await
+            .filter(|home| home.starts_with('/') && !home.starts_with("//"))
+            .map(std::path::PathBuf::from)
+            .context("resolve WSL model probe home"),
+    }
 }
 
 /// One row from an agent CLI's `session/list` (ACP `list_sessions`) response.
@@ -264,6 +294,47 @@ mod tests {
     use anyhow::anyhow;
     use std::cell::Cell;
     use std::rc::Rc;
+
+    #[tokio::test]
+    async fn wsl_model_probe_uses_selected_linux_home_not_host_cwd() {
+        let source = crate::agent_source::AgentSource::Wsl {
+            distro: "Debian".into(),
+        };
+        let cwd = model_probe_cwd(
+            &source,
+            || panic!("WSL must not use the Windows process cwd"),
+            |distro| async move {
+                assert_eq!(distro, "Debian");
+                Some("/home/debian-user".into())
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(cwd, std::path::PathBuf::from("/home/debian-user"));
+        for home in [
+            None,
+            Some(r"C:\work".into()),
+            Some("//wsl$/Ubuntu/home/me".into()),
+        ] {
+            assert!(
+                model_probe_cwd(&source, || panic!("not host"), |_| async move { home })
+                    .await
+                    .is_err()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn host_model_probe_keeps_process_cwd_without_querying_wsl() {
+        let cwd = model_probe_cwd(
+            &crate::agent_source::AgentSource::Host,
+            || Ok(std::path::PathBuf::from(r"C:\work")),
+            |_| async { panic!("host probes must not query WSL") },
+        )
+        .await
+        .unwrap();
+        assert_eq!(cwd, std::path::PathBuf::from(r"C:\work"));
+    }
 
     #[test]
     fn model_catalog_probe_uses_clean_cloud_environment() {

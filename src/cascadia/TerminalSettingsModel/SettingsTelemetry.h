@@ -23,10 +23,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const auto setting = change.substr(std::string_view{ "global." }.size());
             constexpr std::string_view keys[]{
                 "acpAgent",
+                "acpAgentSource",
                 "acpModel",
                 "acpCustomCommand",
                 "acpCustomCommands",
                 "delegateAgent",
+                "delegateAgentSource",
                 "delegateModel",
                 "delegateCustomCommand",
                 "delegateCustomCommands",
@@ -65,7 +67,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const auto setting = change.substr(separator + 1);
             if (context == "profile" || context == "profileDefaults")
             {
-                return setting == "agentPaneBackend" || setting == "commandPaletteAgent";
+                return setting == "agentPaneBackend" || setting == "commandPaletteAgent" ||
+                       setting == "agentProfile.source";
             }
         }
         return false;

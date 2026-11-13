@@ -7,6 +7,7 @@
 #include "../../types/inc/utils.hpp"
 
 #include <shellapi.h>
+#include <til/string.h>
 #include <wil/win32_helpers.h>
 
 #include <filesystem>
@@ -228,7 +229,9 @@ namespace Microsoft::Terminal::AgentSource
         const std::wstring_view windowCwd,
         const std::wstring_view profileCwd,
         const std::wstring_view homeCwd,
-        IsWindowsDirectory&& isWindowsDirectory)
+        IsWindowsDirectory&& isWindowsDirectory,
+        const std::wstring_view agentWslDistro = {},
+        const std::wstring_view paneShell = {})
     {
         std::wstring helperCwd;
         for (const auto candidate : { paneCwd, windowCwd, profileCwd, homeCwd })
@@ -243,6 +246,13 @@ namespace Microsoft::Terminal::AgentSource
         auto agentCwd = agentRunsInWsl ?
                             ResolveCwd(paneCwd, windowCwd, profileCwd, homeCwd) :
                             helperCwd;
+        if (agentRunsInWsl && !agentWslDistro.empty() &&
+            agentCwd.starts_with(L'/') && !agentCwd.starts_with(L"//") &&
+            (!paneShell.starts_with(L"wsl:") ||
+             til::compare_ordinal_insensitive(paneShell.substr(4), agentWslDistro) != 0))
+        {
+            agentCwd = L"~";
+        }
         return { std::move(agentCwd), std::move(helperCwd) };
     }
 }

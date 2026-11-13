@@ -4,6 +4,7 @@
 #pragma once
 
 #include "AgentRegistry.h"
+#include "WslDistroName.h"
 #include "WtaProcess.h"
 
 #include <algorithm>
@@ -19,6 +20,153 @@
 
 namespace Microsoft::Terminal::AgentAvailability
 {
+    struct AgentSourceSnapshot
+    {
+        std::wstring distro;
+        std::unordered_set<std::wstring> agentIds;
+        bool running{ false };
+        bool probeFailed{ false };
+        // Absent only for legacy snapshots, whose single list served both uses.
+        std::optional<std::unordered_set<std::wstring>> interactiveAgentIds;
+        std::unordered_set<std::wstring> cachedAgentIds;
+        std::unordered_set<std::wstring> cachedInteractiveAgentIds;
+
+        const std::unordered_set<std::wstring>& AgentIds(const bool interactive = false) const noexcept
+        {
+            return interactive && interactiveAgentIds ? *interactiveAgentIds : agentIds;
+        }
+
+        bool IsAvailable(const std::wstring& id, const bool interactive = false) const
+        {
+            const auto& cached = interactive ? cachedInteractiveAgentIds : cachedAgentIds;
+            return running && AgentIds(interactive).contains(id) && !cached.contains(id);
+        }
+
+        void RetainKnownAgents(const AgentSourceSnapshot& previous)
+        {
+            if (!interactiveAgentIds)
+            {
+                interactiveAgentIds = agentIds;
+            }
+            for (const auto& id : previous.agentIds)
+            {
+                if (agentIds.emplace(id).second)
+                {
+                    cachedAgentIds.emplace(id);
+                }
+            }
+            for (const auto& id : previous.AgentIds(true))
+            {
+                if (interactiveAgentIds->emplace(id).second)
+                {
+                    cachedInteractiveAgentIds.emplace(id);
+                }
+            }
+        }
+    };
+
+    inline std::optional<std::vector<AgentSourceSnapshot>> ParseWslAgentSources(const std::string_view payload)
+    {
+        Json::Value root;
+        Json::CharReaderBuilder builder;
+        const std::unique_ptr<Json::CharReader> reader{ builder.newCharReader() };
+        std::string errors;
+        if (!reader->parse(payload.data(), payload.data() + payload.size(), &root, &errors) ||
+            !root.isObject() || !root["sources"].isArray())
+        {
+            return std::nullopt;
+        }
+
+        std::vector<AgentSourceSnapshot> sources;
+        std::unordered_set<std::wstring> seen;
+        for (const auto& source : root["sources"])
+        {
+            if (!source.isObject() || !source["wsl_distro"].isString() ||
+                !source["agents"].isArray() || !source["running"].isBool())
+            {
+                return std::nullopt;
+            }
+            AgentSourceSnapshot snapshot;
+            snapshot.distro = winrt::to_hstring(source["wsl_distro"].asString());
+            snapshot.running = source["running"].asBool();
+            if (!WslDistroName::IsSafe(std::wstring_view{ snapshot.distro }) || !seen.emplace(snapshot.distro).second)
+            {
+                return std::nullopt;
+            }
+            if (source.isMember("error") && !source["error"].isNull())
+            {
+                LOG_HR_MSG(E_FAIL, "WSL agent discovery failed for a distribution");
+                snapshot.probeFailed = true;
+            }
+            if (source.isMember("interactive_agents") && !source["interactive_agents"].isArray())
+            {
+                return std::nullopt;
+            }
+            const auto parseAgents = [](const auto& agents, auto& ids) {
+                for (const auto& agent : agents)
+                {
+                    if (!agent.isObject() || !agent["id"].isString())
+                    {
+                        return false;
+                    }
+                    const auto id = winrt::to_hstring(agent["id"].asString());
+                    for (const auto& known : Settings::Model::AgentRegistry::BuiltinAcpAgents)
+                    {
+                        if (Settings::Model::AgentRegistry::AgentIdEquals(known.id, id))
+                        {
+                            ids.emplace(known.id);
+                        }
+                    }
+                }
+                return true;
+            };
+            if (!parseAgents(source["agents"], snapshot.agentIds))
+            {
+                return std::nullopt;
+            }
+            if (source.isMember("interactive_agents"))
+            {
+                snapshot.interactiveAgentIds.emplace();
+                if (!parseAgents(source["interactive_agents"], *snapshot.interactiveAgentIds))
+                {
+                    return std::nullopt;
+                }
+            }
+            sources.emplace_back(std::move(snapshot));
+        }
+        std::ranges::sort(sources, {}, &AgentSourceSnapshot::distro);
+        return sources;
+    }
+
+    inline std::optional<std::vector<AgentSourceSnapshot>> ProbeWslAgentSources(const bool startStoppedWsl = false, std::string* payload = nullptr)
+    {
+        const auto wtaPath = WtaProcess::ResolveWtaExePath();
+        if (wtaPath.empty())
+        {
+            LOG_HR_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), "WSL agent discovery requires WTA");
+            return std::nullopt;
+        }
+        const auto arguments = startStoppedWsl ?
+                                   L"probe-agent-sources --all-wsl --start-stopped-wsl" :
+                                   L"probe-agent-sources --all-wsl";
+        const auto result = WtaProcess::RunWtaCapture(wtaPath, arguments, 90'000);
+        if (!result.completed || result.exitCode != 0)
+        {
+            LOG_HR_MSG(E_FAIL, "WSL agent discovery failed (completed=%d, exit=%lu)", result.completed, result.exitCode);
+            return std::nullopt;
+        }
+        auto sources = ParseWslAgentSources(result.output);
+        if (!sources)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Invalid WSL agent discovery response");
+        }
+        else if (payload)
+        {
+            *payload = result.output;
+        }
+        return sources;
+    }
+
     inline bool IsAgentCliInstalled(const std::wstring_view agentId)
     {
         const std::wstring executable{

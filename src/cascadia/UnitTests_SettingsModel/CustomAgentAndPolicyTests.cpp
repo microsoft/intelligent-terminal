@@ -31,6 +31,7 @@
 #include "../TerminalSettingsModel/SettingsTelemetry.h"
 #include "../TerminalSettingsModel/ActionArgs.h"
 #include "../TerminalApp/AgentProviderTelemetry.h"
+#include "../TerminalApp/ShellIntegrationSweep.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -84,6 +85,16 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileUninstallPreservesOverrides);
         TEST_METHOD(AgentProfileGenerationPolicy);
         TEST_METHOD(AgentProfileBatchCommand);
+        TEST_METHOD(AgentProfileWslCommands);
+        TEST_METHOD(AgentProfileWslGeneration);
+        TEST_METHOD(AgentProfileWslExplicitSnapshot);
+        TEST_METHOD(AgentProfileWslFailedDiscovery);
+        TEST_METHOD(AgentProfileWslDiscoveryParsing);
+        TEST_METHOD(AgentProfileWslSavedMetadataRecovery);
+        TEST_METHOD(AgentProfileWslSavedMetadataCaseInsensitiveRetention);
+        TEST_METHOD(AgentProfileWslGenerationUsesSavedMetadata);
+        TEST_METHOD(AgentProfileWslPersistence);
+        TEST_METHOD(AgentProfileWslSkipsShellIntegration);
         TEST_METHOD(AgentProfileSplitTargets);
         TEST_METHOD(CustomDelegateAgentRoundtrips);
         TEST_METHOD(CustomAgentCollectionsRoundtrip);
@@ -813,9 +824,375 @@ namespace SettingsModelUnitTests
             SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ std::wstring{ profile->AgentProfileId() } }));
             std::vector<winrt::com_ptr<implementation::Profile>> allowed;
             generator.GenerateProfiles(allowed);
-            VERIFY_ARE_EQUAL(size_t{ 1 }, allowed.size());
-            VERIFY_ARE_EQUAL(profile->AgentProfileId(), allowed.front()->AgentProfileId());
+            const auto expected = std::ranges::count_if(offered, [&](const auto& candidate) {
+                return candidate->AgentProfileId() == profile->AgentProfileId();
+            });
+            VERIFY_ARE_EQUAL(static_cast<size_t>(expected), allowed.size());
+            VERIFY_IS_TRUE(std::ranges::all_of(allowed, [&](const auto& candidate) {
+                return candidate->AgentProfileId() == profile->AgentProfileId();
+            }));
         }
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslCommands()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const auto profile = implementation::Profile::FromJson(VerifyParseSucceeded(R"json({
+            "agentProfile.id":"claude","agentProfile.source":"wsl:Ubuntu-24.04",
+            "agentProfile.model":"chosen model","agentProfile.permissionMode":"plan",
+            "agentProfile.arguments":"--add-dir \"/home/me/source tree\" \"$(touch forbidden)\" \"quoted \\\"value\\\"\""
+        })json"));
+        // A WSL managed launch must not resolve the Windows executable, even
+        // when executable validation is requested and Windows PATH is empty.
+        const auto command = Agents::Command(*profile, true, L"");
+        const auto args = ParseFullCommandLine(command);
+        const std::vector<std::wstring> expected{
+            L"--distribution", L"Ubuntu-24.04", L"--exec", L"bash", L"-lc", L"exec \"$@\"", L"bash", L"claude", L"--model", L"chosen model", L"--permission-mode", L"plan", L"--add-dir", L"/home/me/source tree", L"$(touch forbidden)", L"quoted \"value\""
+        };
+        std::wstring systemDirectory;
+        THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(systemDirectory));
+        VERIFY_ARE_EQUAL(systemDirectory + L"\\wsl.exe", args.front());
+        // CRT argument parsing alone hides WSL's rejection of a quoted distro name.
+        VERIFY_IS_TRUE(command.starts_with(L"\"" + systemDirectory + L"\\wsl.exe\" --distribution Ubuntu-24.04 --exec "));
+        VERIFY_ARE_EQUAL(expected.size() + 1, args.size());
+        for (size_t i = 0; i < expected.size(); ++i)
+        {
+            VERIFY_ARE_EQUAL(expected[i], args[i + 1]);
+        }
+        profile->AgentProfileSource(L"wsl:");
+        VERIFY_THROWS(Agents::Command(*profile, true, L""), wil::ResultException);
+        profile->AgentProfileSource(L"unexpected");
+        VERIFY_THROWS(Agents::Command(*profile, true, L""), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildWslCommand(L"Ubuntu;whoami", L"claude", {}, {}, {}), wil::ResultException);
+        VERIFY_THROWS(Agents::BuildWslCommand(L"Ubuntu", L"custom:fixture", {}, {}, {}), wil::ResultException);
+        profile->Commandline(L"my-user-command");
+        VERIFY_IS_FALSE(Agents::IsManaged(*profile));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslGeneration()
+    {
+        SetPolicy(MakePolicy());
+        const AgentProfileGenerator::DiscoveryCache::Snapshot host{ { L"copilot", L"C:\\copilot.exe" } };
+        const AgentProfileGenerator::WslSnapshot sources{
+            { L"Ubuntu", { L"copilot", L"claude" }, true },
+            { L"Debian", { L"copilot" }, true },
+            { L"Stopped", {}, false },
+            { L"docker-desktop", { L"copilot" }, true },
+            { L"rancher-desktop-data", { L"copilot" }, true },
+            { L"unsafe;name", { L"copilot" }, true },
+            { L"Ubuntu", { L"copilot" }, true },
+        };
+        std::vector<winrt::com_ptr<implementation::Profile>> profiles;
+        AgentProfileGenerator::GenerateProfiles(profiles, host, sources);
+        VERIFY_ARE_EQUAL(size_t{ 4 }, profiles.size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"host" }, profiles[0]->AgentProfileSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Debian" }, profiles[1]->AgentProfileSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu" }, profiles[2]->AgentProfileSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot (Ubuntu)" }, profiles[2]->Name());
+        VERIFY_ARE_NOT_EQUAL(profiles[0]->Guid(), profiles[1]->Guid());
+        VERIFY_ARE_NOT_EQUAL(profiles[1]->Guid(), profiles[2]->Guid());
+        VERIFY_ARE_NOT_EQUAL(profiles[2]->Guid(), profiles[3]->Guid());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"~" }, profiles[2]->StartingDirectory());
+        VERIFY_IS_TRUE(std::wstring_view{ profiles[2]->Commandline() }.find(L"Ubuntu") != std::wstring_view::npos);
+        auto reordered = sources;
+        std::ranges::reverse(reordered);
+        std::vector<winrt::com_ptr<implementation::Profile>> regenerated;
+        AgentProfileGenerator::GenerateProfiles(regenerated, host, reordered);
+        VERIFY_ARE_EQUAL(profiles.size(), regenerated.size());
+        for (size_t i = 0; i < profiles.size(); ++i)
+        {
+            VERIFY_ARE_EQUAL(profiles[i]->Guid(), regenerated[i]->Guid());
+        }
+        SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"claude" }));
+        profiles.clear();
+        AgentProfileGenerator::GenerateProfiles(profiles, host, sources);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, profiles.size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, profiles[0]->AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu" }, profiles[0]->AgentProfileSource());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslExplicitSnapshot()
+    {
+        AgentProfileGenerator::WslSourceCache cache;
+        VERIFY_IS_TRUE(cache.Read().empty());
+        cache.Update({ { L"Ubuntu", { L"copilot" }, false } });
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.contains(L"copilot"));
+        // Explicit discovery can find a CLI in a distribution it just started.
+        // Its originally stopped state is not a reason to discard the result.
+        VERIFY_IS_FALSE(cache.Read().front().running);
+        cache.Update({ { L"Ubuntu", { L"claude" }, true } });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, cache.Read().front().agentIds.size());
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.contains(L"claude"));
+        cache.Update({ { L"Ubuntu", {}, true, true }, { L"Fresh", {}, false, true } });
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.contains(L"claude"));
+        VERIFY_IS_TRUE(cache.Read()[1].agentIds.empty());
+        cache.Update({ { L"Ubuntu", {}, false, false } });
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.empty());
+        cache.Update({});
+        VERIFY_IS_TRUE(cache.Read().empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslFailedDiscovery()
+    {
+        using Snapshot = AgentProfileGenerator::WslSnapshot;
+        const Snapshot previous{
+            { L"Ubuntu", { L"copilot" }, true },
+            { L"Debian", { L"codex" }, true },
+        };
+        Snapshot sources{
+            { L"Ubuntu", { L"claude" }, true, true },
+            { L"Fresh", {}, true, true },
+            { L"Stopped", {}, false, true },
+            { L"Debian", {}, true, false },
+        };
+        AgentProfileGenerator::RetainKnownWslAgents(sources, &previous);
+        VERIFY_IS_TRUE(sources[0].agentIds.contains(L"copilot"));
+        VERIFY_IS_TRUE(sources[0].agentIds.contains(L"claude"));
+        VERIFY_IS_TRUE(sources[0].IsAvailable(L"claude"));
+        VERIFY_IS_FALSE(sources[0].IsAvailable(L"copilot"));
+        VERIFY_IS_TRUE(sources[0].IsAvailable(L"claude", true));
+        VERIFY_IS_FALSE(sources[0].IsAvailable(L"copilot", true));
+        VERIFY_IS_TRUE(sources[0].running);
+        VERIFY_IS_TRUE(sources[0].probeFailed);
+        VERIFY_IS_TRUE(sources[1].agentIds.empty());
+        VERIFY_IS_TRUE(sources[2].agentIds.empty());
+        // A successful running-source probe can authoritatively remove an agent.
+        VERIFY_IS_TRUE(sources[3].agentIds.empty());
+        Snapshot firstFailure{ { L"Ubuntu", { L"claude" }, true, true } };
+        AgentProfileGenerator::RetainKnownWslAgents(firstFailure, nullptr);
+        VERIFY_IS_TRUE(firstFailure.front().IsAvailable(L"claude"));
+
+        SetPolicy(MakePolicy());
+        const auto capabilities = ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources(R"({"sources":[
+            {"wsl_distro":"Ubuntu","agents":[{"id":"antigravity"}],
+             "interactive_agents":[{"id":"claude"},{"id":"codex"}],"running":true,"error":"another provider failed"}
+        ]})");
+        VERIFY_IS_TRUE(capabilities.has_value());
+        std::vector<winrt::com_ptr<implementation::Profile>> profiles;
+        AgentProfileGenerator::GenerateProfiles(profiles, {}, *capabilities);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, profiles.size());
+        VERIFY_IS_TRUE(std::ranges::all_of(profiles, [](const auto& profile) {
+            return profile->AgentProfileId() == L"claude" || profile->AgentProfileId() == L"codex";
+        }));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslDiscoveryParsing()
+    {
+        struct TestCase
+        {
+            const char* payload;
+            bool valid;
+            bool failed{ false };
+            bool explicitInteractive{ false };
+            std::unordered_set<std::wstring> acpIds;
+            std::unordered_set<std::wstring> interactiveIds;
+        };
+        const TestCase cases[]{
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"interactive_agents":[{"id":"claude"}],"running":true,"error":"another provider failed"}]})",
+              true,
+              true,
+              true,
+              { L"copilot" },
+              { L"claude" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{"id":"claude"}],"running":true}]})",
+              true,
+              false,
+              true,
+              {},
+              { L"claude" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"antigravity"}],"interactive_agents":[],"running":true}]})",
+              true,
+              false,
+              true,
+              { L"antigravity" },
+              {} },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"running":true}]})",
+              true,
+              false,
+              false,
+              { L"copilot" },
+              { L"copilot" } },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{"id":"copilot"}],"interactive_agents":[],"running":true}]})",
+              true,
+              false,
+              true,
+              { L"copilot" },
+              {} },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":null,"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":{},"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[],"interactive_agents":[{}],"running":true}]})", false },
+            { R"({"sources":[{"wsl_distro":"Ubuntu","agents":[{}],"interactive_agents":[],"running":true,"error":"failed"}]})", false },
+        };
+        for (const auto& test : cases)
+        {
+            const auto sources = ::Microsoft::Terminal::AgentAvailability::ParseWslAgentSources(test.payload);
+            VERIFY_ARE_EQUAL(test.valid, sources.has_value());
+            if (!sources)
+            {
+                continue;
+            }
+            VERIFY_ARE_EQUAL(size_t{ 1 }, sources->size());
+            const auto& source = sources->front();
+            VERIFY_ARE_EQUAL(test.failed, source.probeFailed);
+            VERIFY_ARE_EQUAL(test.explicitInteractive, source.interactiveAgentIds.has_value());
+            VERIFY_IS_TRUE(source.agentIds == test.acpIds);
+            VERIFY_IS_TRUE(source.AgentIds(true) == test.interactiveIds);
+            for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+            {
+                const std::wstring id{ agent.id };
+                VERIFY_ARE_EQUAL(test.acpIds.contains(id), source.IsAvailable(id));
+                VERIFY_ARE_EQUAL(test.interactiveIds.contains(id), source.IsAvailable(id, true));
+            }
+        }
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslSavedMetadataRecovery()
+    {
+        SetPolicy(MakePolicy());
+        std::vector<winrt::com_ptr<implementation::Profile>> saved;
+        AgentProfileGenerator::GenerateProfiles(saved, {}, { { L"Saved-WSL-Test", { L"copilot", L"claude" }, false } });
+        for (auto& profile : saved)
+        {
+            profile->Source(L"IntelligentTerminal.AgentProfiles");
+            profile->ClearCommandline();
+        }
+        saved.front()->Name(L"My saved CLI");
+        saved.front()->AgentProfileModel(L"custom-model");
+        AgentProfileGenerator::WslSourceCache cache;
+        cache.RestoreSavedProfiles(saved);
+        cache.RestoreSavedProfiles(saved);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, cache.Read().size());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, cache.Read().front().agentIds.size());
+        std::vector<winrt::com_ptr<implementation::Profile>> regenerated;
+        AgentProfileGenerator::GenerateProfiles(regenerated, {}, cache.Read());
+        VERIFY_ARE_EQUAL(saved.size(), regenerated.size());
+        VERIFY_ARE_EQUAL(saved.front()->Guid(), regenerated.front()->Guid());
+        // Saved metadata is only initial evidence, never an override of a fresh
+        // successful absence or an unregistered distro.
+        cache.Update({ { L"Saved-WSL-Test", {}, true } });
+        cache.RestoreSavedProfiles(saved);
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.empty());
+        cache.Update({});
+        cache.RestoreSavedProfiles(saved);
+        VERIFY_IS_TRUE(cache.Read().empty());
+        AgentProfileGenerator::WslSourceCache invalid;
+        auto wrongGuid = saved.front()->CopySettings();
+        wrongGuid->Guid(winrt::guid{ L"{00000000-0000-0000-0000-000000000001}" });
+        auto nonGenerated = saved.front()->CopySettings();
+        nonGenerated->ClearSource();
+        auto unsafe = saved.front()->CopySettings();
+        unsafe->AgentProfileSource(L"wsl:bad;name");
+        invalid.RestoreSavedProfiles({ wrongGuid, nonGenerated, unsafe });
+        VERIFY_IS_TRUE(invalid.Read().empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslSavedMetadataCaseInsensitiveRetention()
+    {
+        SetPolicy(MakePolicy());
+        std::vector<winrt::com_ptr<implementation::Profile>> saved;
+        AgentProfileGenerator::GenerateProfiles(saved, {}, { { L"Saved-WSL-Test", { L"copilot" }, false } });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, saved.size());
+        saved.front()->Source(L"IntelligentTerminal.AgentProfiles");
+        AgentProfileGenerator::WslSourceCache cache;
+        cache.RestoreSavedProfiles(saved);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, cache.Read().size());
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.contains(L"copilot"));
+
+        cache.Update({ { L"saved-wsl-test", {}, true, true } });
+        const auto retained = cache.Read();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, retained.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"saved-wsl-test" }, retained.front().distro);
+        VERIFY_IS_TRUE(retained.front().probeFailed);
+        VERIFY_IS_TRUE(retained.front().agentIds.contains(L"copilot"));
+        std::vector<winrt::com_ptr<implementation::Profile>> regenerated;
+        AgentProfileGenerator::GenerateProfiles(regenerated, {}, retained);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, regenerated.size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:saved-wsl-test" }, regenerated.front()->AgentProfileSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, regenerated.front()->AgentProfileId());
+
+        cache.Update({ { L"saved-wsl-test", {}, true, false } });
+        VERIFY_IS_TRUE(cache.Read().front().agentIds.empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslGenerationUsesSavedMetadata()
+    {
+        std::vector<winrt::com_ptr<implementation::Profile>> generated;
+        AgentProfileGenerator::GenerateProfiles(generated, {}, { { L"Saved-Load-Test", { L"claude" }, false } });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, generated.size());
+        Json::Value user{ Json::objectValue };
+        auto metadata = generated.front()->ToJson();
+        metadata["source"] = "IntelligentTerminal.AgentProfiles";
+        metadata["name"] = "Renamed saved CLI";
+        metadata["agentProfile.model"] = "my-model";
+        metadata.removeMember("commandline");
+        user["profiles"]["list"].append(metadata);
+        implementation::SettingsLoader loader{ toString(user), R"({"profiles":[]})" };
+        // The distro does not exist: restoring this profile from metadata must
+        // not require any Linux execution or an availability claim.
+        loader.GenerateProfiles();
+        const auto restored = std::ranges::find_if(loader.inboxSettings.profiles, [&](const auto& candidate) {
+            return candidate->Guid() == generated.front()->Guid();
+        });
+        VERIFY_IS_TRUE(restored != loader.inboxSettings.profiles.end());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Saved-Load-Test" }, (*restored)->AgentProfileSource());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Renamed saved CLI" }, loader.userSettings.profiles.front()->Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"my-model" }, loader.userSettings.profiles.front()->AgentProfileModel());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslPersistence()
+    {
+        static constexpr std::string_view user{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[
+                {"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},
+                {"guid":"{00000000-0000-0000-0000-000000000002}","name":"My Ubuntu Claude",
+                 "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen-model",
+                 "agentProfile.arguments":"--add-dir /home/me/project","startingDirectory":"/home/me/project"}]})" };
+        static constexpr std::string_view generated{ R"json({"profiles":[
+            {"guid":"{00000000-0000-0000-0000-000000000002}","name":"Claude (Ubuntu)",
+             "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
+             "agentProfile.source":"wsl:Ubuntu","commandline":"wsl.exe -d Ubuntu --exec claude"}]})json" };
+        const winrt::guid agentGuid{ L"{00000000-0000-0000-0000-000000000002}" };
+        const auto installed = winrt::make_self<implementation::CascadiaSettings>(user, generated);
+        const auto profile = installed->FindProfile(agentGuid);
+        winrt::get_self<implementation::Profile>(profile.CommandlineOverrideSource())->Origin(OriginTag::Generated);
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(profile));
+        const auto duplicate = installed->DuplicateProfile(profile);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu" }, duplicate.AgentProfileSource());
+        VERIFY_ARE_EQUAL(profile.AgentProfileModel(), duplicate.AgentProfileModel());
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(duplicate));
+        VERIFY_ARE_EQUAL(::Microsoft::Terminal::AgentProfiles::Command(profile, true, L""),
+                         ::Microsoft::Terminal::AgentProfiles::Command(duplicate, true, L""));
+        const auto saved = toString(installed->ToJson());
+        const auto stopped = winrt::make_self<implementation::CascadiaSettings>(saved, std::string_view{ R"({"profiles":[]})" });
+        const auto orphan = stopped->FindProfile(agentGuid);
+        VERIFY_IS_TRUE(orphan.Orphaned());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, orphan.AgentProfileId());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu" }, orphan.AgentProfileSource());
+        const auto restored = winrt::make_self<implementation::CascadiaSettings>(toString(stopped->ToJson()), generated);
+        const auto revived = restored->FindProfile(agentGuid);
+        VERIFY_IS_FALSE(revived.Orphaned());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"My Ubuntu Claude" }, revived.Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"--add-dir /home/me/project" }, revived.AgentProfileArguments());
+        VERIFY_ARE_EQUAL(::Microsoft::Terminal::AgentProfiles::Command(profile, true, L""),
+                         ::Microsoft::Terminal::AgentProfiles::Command(revived, true, L""));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslSkipsShellIntegration()
+    {
+        auto generated = winrt::make_self<implementation::Profile>();
+        generated->Origin(OriginTag::Generated);
+        generated->AgentProfileId(L"copilot");
+        generated->AgentProfileSource(L"wsl:Ubuntu");
+        generated->Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::BuildWslCommand(L"Ubuntu", L"copilot", {}, {}, {}) });
+        auto child = winrt::make_self<implementation::Profile>();
+        child->AddLeastImportantParent(generated);
+        const auto profile = child.as<Profile>();
+        VERIFY_IS_TRUE(::Microsoft::Terminal::AgentProfiles::IsManaged(profile));
+        VERIFY_IS_TRUE(winrt::TerminalApp::implementation::ShellIntegrationSweep::WslProfileCommandline(profile).empty());
+        profile.Commandline(L"wsl.exe --distribution Ubuntu");
+        VERIFY_ARE_EQUAL(std::wstring{ L"wsl.exe --distribution Ubuntu" },
+                         winrt::TerminalApp::implementation::ShellIntegrationSweep::WslProfileCommandline(profile));
     }
 
     void CustomAgentAndPolicyTests::AgentProfileBatchCommand()

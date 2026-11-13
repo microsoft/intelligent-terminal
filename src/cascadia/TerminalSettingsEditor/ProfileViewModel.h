@@ -94,6 +94,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Editor::AgentEntry CurrentCommandPaletteAgent();
         void CurrentCommandPaletteAgent(const Editor::AgentEntry& value);
         void SetAvailableHostAgents(const std::unordered_set<std::wstring>& availableHostAgents);
+        void SetAvailableWslAgents(const std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot>& sources);
         bool IsAgentProfile() const { return !_profile.AgentProfileId().empty(); }
         bool IsManagedAgentProfile() const;
         bool IsAgentProfilePolicyBlocked() const;
@@ -181,13 +182,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _lastBgImagePath;
         winrt::hstring _lastStartingDirectoryPath;
         Editor::AppearanceViewModel _defaultAppearanceViewModel;
-        Windows::UI::Core::CoreDispatcher _dispatcher;
         Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _agentPaneBackendList;
         Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _commandPaletteAgentList;
         std::unordered_set<std::wstring> _availableHostAgents;
-        std::wstring _availableWslDistro;
-        std::vector<std::wstring> _availableWslAgents;
-        uint64_t _agentPaneBackendProbeGeneration{ 0 };
+        std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot> _availableWslAgents;
+        bool _updatingAgentChoices{ false };
 
         winrt::Windows::UI::Xaml::Thickness _parsedPadding;
 
@@ -195,9 +194,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _PrepareModelForBellSoundModification();
         void _MarkDuplicateBellSoundDirectories();
         void _RebuildAgentBackendLists();
-        void _RefreshAgentPaneBackendList();
-        winrt::fire_and_forget _ProbeWslAgentPaneBackendsAsync(std::wstring commandline,
-                                                               uint64_t generation);
         static Windows::Foundation::Collections::IObservableVector<Editor::Font> _MonospaceFontList;
         static Windows::Foundation::Collections::IObservableVector<Editor::Font> _FontList;
 

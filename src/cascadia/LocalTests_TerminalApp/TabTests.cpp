@@ -45,6 +45,7 @@
 #include <icu.h>
 #include <map>
 #include <set>
+#include <til/commandline.h>
 #include <til/io.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
@@ -520,6 +521,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(AgentProfileInvalidArgumentsDisplayStartupFailure);
         TEST_METHOD(ConptyStartupFailureDoesNotLaunchProcess);
         TEST_METHOD(AgentProfileSessionsAreNotPrebound);
+        TEST_METHOD(ManagedWslAgentConnectionPreservesStartingDirectory);
         TEST_METHOD(NativeAgentProfileLaunchCwdIsPaneMetadata);
         TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
         TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
@@ -577,6 +579,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentCreationMetadataSurvivesAdmissionLifecycle);
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
+        TEST_METHOD(ManagedAgentLaunchObservationPreservesSource);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
@@ -1731,7 +1734,9 @@ namespace TerminalAppLocalTests
             {
                 Log::Comment(test.name);
                 tab->ClearAgentOverride();
+                tab->ClearDeferredAgentPaneRestore();
                 globals.AcpAgent(test.globalAgent);
+                globals.AcpAgentSource(L"host");
                 globals.AcpModel(L"new-settings-model");
                 globals.AcpCustomCommand(test.globalAgent == std::wstring_view{ L"custom:restore-test" } ? L"custom-agent --acp" : L"");
                 profile.AgentPaneBackend(test.profileBackend);
@@ -1745,9 +1750,21 @@ namespace TerminalAppLocalTests
                 args.SetContentType(winrt::hstring{ Restore::StashedPaneType });
                 args.Commandline(winrt::hstring{ Restore::BuildPaneCommandline(L"wta.exe", fields) });
 
-                // Stop at the existing prewarm gate after applying the real
-                // restore binding, without launching a helper or agent CLI.
-                VERIFY_IS_FALSE(page->_RestoreAgentPaneFromLayout(tab, args, SplitDirection::Automatic, 0.5f));
+                const auto deferred = std::wstring_view{ test.savedAgent }.starts_with(L"wsl:");
+                VERIFY_ARE_EQUAL(deferred, page->_RestoreAgentPaneFromLayout(tab, args, SplitDirection::Automatic, 0.5f));
+                VERIFY_ARE_EQUAL(deferred, tab->DeferredAgentPaneRestore().has_value());
+                if (deferred)
+                {
+                    VERIFY_IS_NULL(tab->FindAgentPane().get());
+                    const auto persisted = tab->BuildStartupActions(BuildStartupKind::Persist, true);
+                    const auto sessionsOff = tab->BuildStartupActions(BuildStartupKind::Persist, false);
+                    VERIFY_ARE_EQUAL(sessionsOff.size() + 1, persisted.size());
+                    VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, persisted.back().Action());
+                    const auto pendingArgs = _getTerminalArgs(persisted.back());
+                    VERIFY_IS_NOT_NULL(pendingArgs);
+                    VERIFY_ARE_EQUAL(args.Commandline(), pendingArgs.Commandline());
+                    VERIFY_ARE_EQUAL(args.Type(), pendingArgs.Type());
+                }
                 VERIFY_ARE_EQUAL(test.expectedOverride, tab->HasAgentOverride());
                 VERIFY_ARE_EQUAL(test.expectedOverride, tab->HasRestoredAgentOverride());
                 VERIFY_IS_FALSE(tab->HasExplicitAgentOverride());
@@ -9063,6 +9080,37 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"." }, launch.as<Conpty>().StartingDirectory());
             });
         }
+    }
+
+    void TabTests::ManagedWslAgentConnectionPreservesStartingDirectory()
+    {
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto pageCleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            profile.AgentProfileId(L"copilot");
+            profile.AgentProfileSource(L"wsl:Ubuntu");
+            for (const auto virtualCwd : { L"", LR"(C:\host-workspace)" })
+            {
+                page->_WindowProperties.VirtualWorkingDirectory(virtualCwd);
+                for (const auto directory : { L"~", L"~/repo", L"/home/me/repo", L"/home/me/my repo" })
+                {
+                    profile.StartingDirectory(directory);
+                    const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(page->_settings, profile);
+                    VERIFY_IS_TRUE(settings.DefaultSettings()->UsesManagedAgentCommand());
+                    const auto launch = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false).as<Conpty>();
+                    VERIFY_ARE_EQUAL(winrt::hstring{ directory }, launch.StartingDirectory());
+                    const auto [command, hostDirectory] = Utils::MangleStartingDirectoryForWSL(
+                        launch.Commandline(), launch.StartingDirectory());
+                    VERIFY_IS_TRUE(hostDirectory.empty());
+                    std::wstring quotedDirectory;
+                    til::append_quoted_argument(quotedDirectory, directory);
+                    VERIFY_IS_TRUE(command.find(L" --cd " + quotedDirectory + L" ") != std::wstring::npos);
+                    launch.Close();
+                }
+            }
+        });
     }
 
     void TabTests::AgentProfileCommandlineCopies()
@@ -27094,6 +27142,60 @@ namespace TerminalAppLocalTests
             const auto replay = manager->AdmitNativeAgentObservation(control.ContentId(), 1, "tab", {}, {}, true, 2);
             VERIFY_ARE_EQUAL(std::string{ "Host" }, replay.location);
             VERIFY_ARE_EQUAL(initial.paneCreatedAtMs, replay.paneCreatedAtMs);
+        });
+    }
+
+    void TabTests::ManagedAgentLaunchObservationPreservesSource()
+    {
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto pageCleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
+            page->_SyncNativeAgentStatusMode();
+            const auto manager = winrt::get_self<Manager>(page->_manager);
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            profile.AgentProfileId(L"copilot");
+            for (const auto source : { L"host", L"wsl:Ubuntu" })
+            {
+                profile.AgentProfileSource(source);
+                for (const auto customized : { false, true })
+                {
+                    if (customized)
+                    {
+                        profile.Commandline(L"copilot --custom-option");
+                    }
+                    else
+                    {
+                        profile.ClearCommandline();
+                    }
+                    winrt::guid paneId;
+                    VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&paneId)));
+                    const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                    NewTerminalArgs args;
+                    args.Profile(Utils::GuidToString(profile.Guid()));
+                    const auto pane = page->_MakePane(args, nullptr, *connection);
+                    VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                    const auto contentId = pane->GetTerminalControl().ContentId();
+                    const auto initial = manager->NativeAgentObservationForContent(contentId).value();
+                    const auto expected = customized                             ? std::string{} :
+                                          std::wstring_view{ source } == L"host" ? std::string{ "Host" } :
+                                                                                   std::string{ "wsl:Ubuntu" };
+                    VERIFY_ARE_EQUAL(expected, initial.location);
+                    VERIFY_IS_TRUE(initial.agentSessionId.empty());
+                    VERIFY_IS_TRUE(manager->AgentSessionEvent(contentId).empty());
+                    if (!customized)
+                    {
+                        VERIFY_IS_FALSE(manager->RefineNativeAgentLaunchLocation(contentId, L"copilot", "wsl:Debian"));
+                        manager->RemoveNativeAgentObservation(contentId);
+                        const auto replay = manager->AdmitNativeAgentObservation(contentId, 1, "tab", {}, {}, true, 2);
+                        VERIFY_ARE_EQUAL(expected, replay.location);
+                        VERIFY_ARE_EQUAL(initial.paneCreatedAtMs, replay.paneCreatedAtMs);
+                        VERIFY_ARE_EQUAL(initial.paneCreationSequence, replay.paneCreationSequence);
+                    }
+                }
+            }
         });
     }
 
