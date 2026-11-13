@@ -77,6 +77,16 @@ tradeoffs; do not prescribe a blanket refactor. Check nearby patterns and
 counter-evidence before retaining a finding. Collapse multiple principle
 labels for the same root cause.
 
+For mutable-state invariants, trace when validation occurs through the actual
+consumer, including intervening asynchronous work and invalidation events.
+Successful prerequisites do not establish that their checks remain current.
+Distinguish unavoidable residual races from avoidable validation-to-use delays;
+the impossibility of perfect atomicity does not justify every wider window.
+An intervening await alone is not a finding: establish material benefit and an
+actual supported correction surface before prescribing new consumer integration.
+Treat documented tradeoffs as claims to test against requirements, consequences
+and simpler alternatives, not blanket exemptions from findings.
+
 Use HIGH for a demonstrated cross-boundary contract/state ownership failure
 with broad consequences; MEDIUM for a concrete local design burden; LOW for a
 bounded improvement with demonstrated benefit. Severity describes impact, not

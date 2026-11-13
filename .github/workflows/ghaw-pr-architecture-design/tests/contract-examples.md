@@ -3,8 +3,8 @@
 Use the authoritative reviewer/skill against these bounded source fixtures.
 Line numbers below refer to the displayed fixture files, not this Markdown.
 Admission metadata is provided independently of the source excerpts; it tests
-routing, not inferred patch size. These are synthetic sources, not product
-regression claims.
+routing, not inferred patch size. Sources are synthetic unless explicitly marked
+historical; synthetic examples are not product regression claims.
 
 ## Competing state ownership: supported concern
 
@@ -176,6 +176,35 @@ assert the direct-cast consequence without evidence. If access remains
 unavailable, report the focused gap instead of exploring unrelated details
 or issuing a whole-change clean assessment. Lead with the unresolved
 compatibility assessment, not a no-findings headline.
+
+## Historical validation-to-use ordering
+
+Use the real comparison base `5a4876de63bce90ac8158c826168cb42b500d4d4`
+and candidate `8283b87259255986f930181319a0ef93be57bb2b`. Give a fresh reviewer
+the role and skill, but not this section, later source or expected outcome.
+Use `28e5f10434b18d35cf7bd33ede3663bc6410bc3c` as a separately reviewed
+counter-evidence case, not as a hint supplied with the defective case.
+
+Expected: establish that detection and freshness are concurrent prerequisites,
+not temporally ordered checks. A PR can close after freshness succeeds while
+detection runs; the native publisher consumes the event target without a new
+live-state check. Check the pinned handler before retaining that consequence.
+Snapshot labels and synchronize cancellation mitigate different concerns;
+neither prevents this closing scenario. Reuse the shared validator immediately
+before native publication instead of adding another orchestration layer.
+
+Counter-evidence: the corrected case validates after detection/artifact setup
+and before the handler. Do not retain the same avoidable-delay finding there,
+or demand impossible atomicity between a live GET and comment creation.
+Documentation of the residual race does not by itself establish that retaining
+earlier avoidable delays is necessary.
+Native processing can still await telemetry before mutation. Treat that as
+residual-risk evidence unless material benefit and an actual supported correction
+surface justify further integration; do not invent a pre-mutation hook.
+
+This case exposed a real blind-review miss. Repeating it after changing the
+methodology is a targeted regression check, not an unseen effectiveness
+benchmark or hosted proof.
 
 ## Below threshold: no review
 
