@@ -1166,6 +1166,10 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
+    QualifiedResume {
+        identity: SessionIdentity,
+        event: crate::agent_sessions::QualifiedResumeEvent,
+    },
     SessionStarted {
         key: crate::agent_sessions::AgentKey,
         cli_source: SessionHookCliSource,
@@ -1238,6 +1242,10 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
     fn from(value: &crate::agent_sessions::SessionEvent) -> Self {
         use crate::agent_sessions::SessionEvent;
         match value {
+            SessionEvent::QualifiedResume { identity, event } => Self::QualifiedResume {
+                identity: identity.clone(),
+                event: event.clone(),
+            },
             SessionEvent::SessionStarted {
                 key,
                 cli_source,
@@ -1336,6 +1344,9 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
 impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
     fn from(value: SessionHookParams) -> Self {
         match value {
+            SessionHookParams::QualifiedResume { identity, event } => {
+                Self::QualifiedResume { identity, event }
+            }
             SessionHookParams::SessionStarted {
                 key,
                 cli_source,
@@ -4027,6 +4038,13 @@ fn apply_event_qualified_at_ms(
     qualified_activity: Option<&SessionIdentity>,
     now: u64,
 ) -> bool {
+    if let SessionEvent::QualifiedResume { identity, event } = ev {
+        if identity.history_key.is_none() {
+            return false;
+        }
+        let key = identity.session_id.to_string();
+        return apply_event_qualified_at_ms(state, event.into_event(key), Some(&identity), now);
+    }
     let unqualified_activity_key = match &ev {
         SessionEvent::ToolStarting { key, .. }
         | SessionEvent::ToolReturned { key, .. }
@@ -4161,7 +4179,38 @@ fn apply_event_qualified_at_ms(
         } => {
             let sid = acp::schema::v1::SessionId::new(key.clone());
             let pane_known = !pane_session_id.is_empty();
-            let existing_identity = unique_identity_for_raw(state, &sid);
+            let provider_id = cli_source.canonical_provider_id();
+            // A receipt can bind this exact qualified row before its first hook.
+            // Raw-ID ambiguity must not make its own pane look foreign.
+            let existing_identity = state
+                .active_by_pane
+                .get(&pane_session_id)
+                .filter(|identity| {
+                    identity.session_id == sid
+                        && state.sessions.get(*identity).is_some_and(|row| {
+                            provider_id.is_some() && row.provider_id == provider_id
+                        })
+                })
+                .cloned()
+                .or_else(|| {
+                    let identity = SessionIdentity {
+                        session_id: sid.clone(),
+                        history_key: HistoryRowKey::new(
+                            provider_id.as_deref()?,
+                            SessionLocation::Host,
+                            sid.to_string(),
+                            None,
+                        ),
+                    };
+                    state.sessions.contains_key(&identity).then_some(identity)
+                })
+                .or_else(|| {
+                    unique_identity_for_raw(state, &sid).filter(|identity| {
+                        state.sessions.get(identity).is_some_and(|row| {
+                            row.provider_id.is_none() || row.provider_id == provider_id
+                        })
+                    })
+                });
 
             // GUARD: PowerShell shell-integration hooks fire from wherever
             // an agent ran a tool, NOT from the agent's home pane. For
@@ -4689,7 +4738,10 @@ fn apply_event_qualified_at_ms(
         } => apply_connection_failure_locked(state, &pane_session_id, &reason, now),
         SessionEvent::ResumeDispatched { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             mark_resume_dispatched_identity_locked(state, &identity)
@@ -4697,7 +4749,10 @@ fn apply_event_qualified_at_ms(
         }
         SessionEvent::ResumeFailed { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             let Some(entry) = state.sessions.get_mut(&identity) else {
@@ -4716,9 +4771,19 @@ fn apply_event_qualified_at_ms(
             pane_session_id,
         } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
+            if qualified_activity.is_some()
+                && !state.sessions.get(&identity).is_some_and(|row| {
+                    row.status == Some(AgentStatus::Idle) && row.pane_session_id.is_none()
+                })
+            {
+                return false;
+            }
             // The helper callback only binds an already-dispatched attempt.
             // A hook followed by PaneClosed may have ended it while the
             // callback was in flight; only an explicit new resume may revive it.
@@ -4732,6 +4797,7 @@ fn apply_event_qualified_at_ms(
             }
             assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
+        SessionEvent::QualifiedResume { .. } => false,
     }
 }
 

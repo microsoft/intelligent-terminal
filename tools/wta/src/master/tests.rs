@@ -20715,6 +20715,150 @@ async fn real_hook_takes_over_born_bound_session() {
 }
 
 #[tokio::test]
+async fn native_resume_qualified_collision_publication_and_hook_wins() {
+    use crate::agent_sessions::{AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    for receipt_first in [false, true] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("native-collision");
+        let mut a = SessionInfo::new(sid.clone(), PathBuf::from("C:\\repo"));
+        a.location = crate::agent_sessions::SessionLocation::Host;
+        a.provider_id = Some("copilot".into());
+        a.cli_source = Some(CliSource::Copilot);
+        a.status = Some(AgentStatus::Historical);
+        let mut b = a.clone();
+        b.provider_id = Some("claude".into());
+        b.cli_source = Some(CliSource::Claude);
+        let identity_a = SessionIdentity::from_info(&a);
+        let identity_b = SessionIdentity::from_info(&b);
+        state.registry.upsert(a).await;
+        state.registry.upsert(b).await;
+        state.hook_owned.lock().await.insert(sid.clone());
+        assert!(
+            !apply_master_session_event(
+                &state,
+                SessionEvent::ResumeDispatched {
+                    key: sid.to_string()
+                },
+                false,
+                crate::agent_sessions::SessionLocation::Host,
+            )
+            .await
+            .0
+        );
+        assert!(state.hook_owned.lock().await.contains(&sid));
+        for identity in [&identity_a, &identity_b] {
+            assert!(
+                apply_master_session_event(
+                    &state,
+                    SessionEvent::QualifiedResume {
+                        identity: identity.clone(),
+                        event: QualifiedResumeEvent::Dispatched,
+                    },
+                    false,
+                    crate::agent_sessions::SessionLocation::Host,
+                )
+                .await
+                .0
+            );
+        }
+        if receipt_first {
+            assert!(
+                apply_master_session_event(
+                    &state,
+                    SessionEvent::QualifiedResume {
+                        identity: identity_a.clone(),
+                        event: QualifiedResumeEvent::PaneAssigned {
+                            pane_session_id: "hook-pane-a".into()
+                        },
+                    },
+                    false,
+                    crate::agent_sessions::SessionLocation::Host,
+                )
+                .await
+                .0
+            );
+        }
+        let foreign_before_hook = state.registry.lookup_identity(&identity_b).await.unwrap();
+        handle_session_hook(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "hook-pane-a".into(),
+                cwd: PathBuf::from("C:\\repo"),
+                title: "Hook A".into(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            state.registry.lookup_identity(&identity_b).await.unwrap(),
+            foreign_before_hook
+        );
+        let pane_owner = state
+            .registry
+            .lookup_active_by_pane("hook-pane-a")
+            .await
+            .unwrap();
+        assert_eq!(SessionIdentity::from_info(&pane_owner), identity_a);
+        assert!(!pane_owner.born_bound_pane);
+        assert!(
+            !apply_master_session_event(
+                &state,
+                SessionEvent::QualifiedResume {
+                    identity: identity_a.clone(),
+                    event: QualifiedResumeEvent::Failed {
+                        reason: "late A".into()
+                    },
+                },
+                false,
+                crate::agent_sessions::SessionLocation::Host,
+            )
+            .await
+            .0
+        );
+        assert!(
+            apply_master_session_event(
+                &state,
+                SessionEvent::QualifiedResume {
+                    identity: identity_b.clone(),
+                    event: QualifiedResumeEvent::PaneAssigned {
+                        pane_session_id: "receipt-pane-b".into()
+                    },
+                },
+                false,
+                crate::agent_sessions::SessionLocation::Host,
+            )
+            .await
+            .0
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup_identity(&identity_a)
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("hook-pane-a")
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup_identity(&identity_b)
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("receipt-pane-b")
+        );
+        assert!(state.hook_owned.lock().await.contains(&sid));
+    }
+}
+
+#[tokio::test]
 async fn resume_binding_events_are_born_bound_not_hook_owned() {
     // `/sessions` resume publishes ResumeDispatched / ResumePaneAssigned over
     // the generic session_hook method. These are the hook-free resume binding,

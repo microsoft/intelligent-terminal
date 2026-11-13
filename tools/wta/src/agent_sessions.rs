@@ -25,6 +25,7 @@
 // (e.g. Copilot CLI doesn't fire any hooks). Such a row cannot be
 // resumed — it's only valid while the pane is live.
 
+use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -354,6 +355,22 @@ pub struct AgentSession {
 }
 
 impl AgentSession {
+    pub(crate) fn identity(&self) -> crate::session_registry::SessionIdentity {
+        crate::session_registry::SessionIdentity {
+            session_id: acp::schema::v1::SessionId::new(self.key.clone()),
+            history_key: self
+                .cli_source
+                .canonical_provider_id()
+                .and_then(|provider| {
+                    crate::session_registry::HistoryRowKey::new(
+                        provider,
+                        self.location.clone(),
+                        &self.key,
+                        None,
+                    )
+                }),
+        }
+    }
     /// Derive the [`ActivityState`] dimension from the legacy
     /// one-dimensional `status` field.
     ///
@@ -387,8 +404,32 @@ impl AgentSession {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum QualifiedResumeEvent {
+    Dispatched,
+    Failed { reason: String },
+    PaneAssigned { pane_session_id: String },
+}
+
+impl QualifiedResumeEvent {
+    pub(crate) fn into_event(self, key: AgentKey) -> SessionEvent {
+        match self {
+            Self::Dispatched => SessionEvent::ResumeDispatched { key },
+            Self::Failed { reason } => SessionEvent::ResumeFailed { key, reason },
+            Self::PaneAssigned { pane_session_id } => SessionEvent::ResumePaneAssigned {
+                key,
+                pane_session_id,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionEvent {
+    QualifiedResume {
+        identity: crate::session_registry::SessionIdentity,
+        event: QualifiedResumeEvent,
+    },
     SessionStarted {
         key: AgentKey,
         cli_source: CliSource,
@@ -527,6 +568,8 @@ pub fn is_user_input_tool(name: &str) -> bool {
 
 #[derive(Default)]
 pub struct AgentSessionRegistry {
+    // Native resume candidates use private qualified storage keys. AgentSession::key
+    // and every outward-facing key remain the provider's unchanged raw ID.
     sessions: HashMap<AgentKey, AgentSession>,
     active_by_pane: HashMap<String, AgentKey>, // pane Guid (text) -> AgentKey
     /// Union of pane GUIDs ever seen in any alive-mirror snapshot
@@ -551,6 +594,107 @@ impl AgentSessionRegistry {
     }
 
     pub(crate) fn apply_at(&mut self, ev: SessionEvent, now: SystemTime) {
+        let qualified_resume = matches!(&ev, SessionEvent::QualifiedResume { .. });
+        let mut ev = match ev {
+            SessionEvent::QualifiedResume { identity, event } => {
+                let Some(key) = self.identity_storage_key(&identity) else {
+                    return;
+                };
+                event.into_event(key)
+            }
+            SessionEvent::SessionStarted {
+                key,
+                cli_source,
+                pane_session_id,
+                cwd,
+                title,
+            } => {
+                let bound_key = self.active_by_pane.get(&pane_key(&pane_session_id));
+                if let Some(owner) = bound_key.and_then(|key| self.sessions.get(key)) {
+                    if owner.key == key && owner.cli_source != cli_source {
+                        return;
+                    }
+                }
+                let storage_key = bound_key
+                    .filter(|stored| {
+                        self.sessions
+                            .get(*stored)
+                            .is_some_and(|row| row.key == key && row.cli_source == cli_source)
+                    })
+                    .cloned()
+                    .or_else(|| {
+                        self.sessions.iter().find_map(|(stored, row)| {
+                            (row.key == key
+                                && row.cli_source == cli_source
+                                && row.location == SessionLocation::Host)
+                                .then(|| stored.clone())
+                        })
+                    })
+                    .unwrap_or(key);
+                SessionEvent::SessionStarted {
+                    key: storage_key,
+                    cli_source,
+                    pane_session_id,
+                    cwd,
+                    title,
+                }
+            }
+            other => other,
+        };
+        let pane = match &ev {
+            SessionEvent::WorkingDirectoryChanged {
+                pane_session_id, ..
+            }
+            | SessionEvent::SessionRenamed {
+                pane_session_id, ..
+            }
+            | SessionEvent::SessionUnbound {
+                pane_session_id, ..
+            } => Some(pane_key(pane_session_id)),
+            SessionEvent::SessionStoppedIfOwner {
+                pane_session_id: Some(pane),
+                ..
+            } => Some(pane_key(pane)),
+            _ => None,
+        };
+        let raw_key = match &mut ev {
+            SessionEvent::ToolStarting { key, .. }
+            | SessionEvent::ToolReturned { key, .. }
+            | SessionEvent::ToolCompleted { key }
+            | SessionEvent::Notification { key, .. }
+            | SessionEvent::SessionStopped { key, .. }
+            | SessionEvent::SessionStoppedIfOwner { key, .. }
+            | SessionEvent::SessionUnbound { key, .. }
+            | SessionEvent::WorkingDirectoryChanged { key, .. }
+            | SessionEvent::SessionRenamed { key, .. }
+            | SessionEvent::ResumeDispatched { key }
+            | SessionEvent::ResumeFailed { key, .. }
+            | SessionEvent::ResumePaneAssigned { key, .. } => Some(key),
+            _ => None,
+        };
+        if let Some(key) = raw_key {
+            if !qualified_resume {
+                let bound = pane
+                    .as_ref()
+                    .and_then(|pane| self.active_by_pane.get(pane))
+                    .filter(|stored| {
+                        self.sessions
+                            .get(*stored)
+                            .is_some_and(|row| row.key == *key)
+                    });
+                if let Some(bound) = bound {
+                    *key = bound.clone();
+                } else {
+                    let mut matching = self.sessions.iter().filter(|(_, row)| row.key == *key);
+                    if let Some((stored, _)) = matching.next() {
+                        if matching.next().is_some() {
+                            return;
+                        }
+                        *key = stored.clone();
+                    }
+                }
+            }
+        }
         let received_at_ms = system_time_ms(now);
         // Native events and hooks differ in GUID braces and case. Use the
         // same canonical identity for stored rows and every pane-keyed lookup.
@@ -629,6 +773,7 @@ impl AgentSessionRegistry {
             other => other,
         };
         match ev {
+            SessionEvent::QualifiedResume { .. } => return,
             SessionEvent::SessionStarted {
                 key,
                 cli_source,
@@ -1189,13 +1334,15 @@ impl AgentSessionRegistry {
         }
         let pane_lc = pane_key(pane_session_id);
         if let Some(existing) = self.active_by_pane.get(&pane_lc) {
-            return existing.clone();
+            if let Some(row) = self.sessions.get(existing) {
+                return row.key.clone();
+            }
         }
         format!("pane:{}", pane_lc)
     }
 
     pub fn has_session(&self, key: &AgentKey) -> bool {
-        self.sessions.contains_key(key)
+        self.get(key).is_some()
     }
 
     /// Returns the [`AgentKey`] of the most-recently-active *live* session
@@ -1228,7 +1375,7 @@ impl AgentSessionRegistry {
             .iter()
             .filter(|(_, s)| &s.cli_source == cli && s.liveness() == LivenessState::Live)
             .max_by_key(|(_, s)| s.last_activity_at)
-            .map(|(k, _)| k.clone())
+            .map(|(_, row)| row.key.clone())
     }
 
     /// Read-only borrow of the [`AgentSession`] for `key`, or `None` if
@@ -1237,16 +1384,40 @@ impl AgentSessionRegistry {
     /// to decide whether to prune (e.g. dropping a "phantom" row whose
     /// on-disk artefact has no resumable content).
     pub fn get(&self, key: &AgentKey) -> Option<&AgentSession> {
-        self.sessions.get(key)
+        self.raw_storage_key(key)
+            .and_then(|key| self.sessions.get(key))
+    }
+
+    fn raw_storage_key(&self, raw: &str) -> Option<&str> {
+        let mut rows = self.sessions.iter().filter(|(_, row)| row.key == raw);
+        let (key, _) = rows.next()?;
+        rows.next().is_none().then_some(key.as_str())
+    }
+
+    fn identity_storage_key(
+        &self,
+        identity: &crate::session_registry::SessionIdentity,
+    ) -> Option<String> {
+        self.sessions
+            .iter()
+            .find_map(|(key, row)| (row.identity() == *identity).then(|| key.clone()))
+    }
+
+    pub(crate) fn get_identity(
+        &self,
+        identity: &crate::session_registry::SessionIdentity,
+    ) -> Option<&AgentSession> {
+        self.identity_storage_key(identity)
+            .and_then(|key| self.sessions.get(&key))
     }
 
     /// Master snapshot rows are not otherwise mirrored into the helper registry.
     /// Retain the selected candidate before applying its local pending transition.
     pub(crate) fn retain_resume_candidate(&mut self, candidate: &AgentSession) {
-        if let std::collections::hash_map::Entry::Vacant(entry) =
-            self.sessions.entry(candidate.key.clone())
-        {
-            entry.insert(candidate.clone());
+        let identity = candidate.identity();
+        if self.get_identity(&identity).is_none() {
+            let key = format!("native-resume:{identity:?}");
+            self.sessions.insert(key, candidate.clone());
             self.dirty = true;
         }
     }
@@ -1260,7 +1431,8 @@ impl AgentSessionRegistry {
     /// flag through every test fixture and demo path that constructs
     /// SessionStarted events.
     pub fn set_origin(&mut self, key: &str, origin: SessionOrigin) {
-        if let Some(entry) = self.sessions.get_mut(key) {
+        let stored = self.raw_storage_key(key).map(str::to_owned);
+        if let Some(entry) = stored.and_then(|key| self.sessions.get_mut(&key)) {
             if entry.origin != origin {
                 entry.origin = origin;
                 self.dirty = true;
@@ -1270,7 +1442,8 @@ impl AgentSessionRegistry {
 
     /// Update the execution location on an existing session entry.
     pub fn set_location(&mut self, key: &str, location: SessionLocation) {
-        if let Some(entry) = self.sessions.get_mut(key) {
+        let stored = self.raw_storage_key(key).map(str::to_owned);
+        if let Some(entry) = stored.and_then(|key| self.sessions.get_mut(&key)) {
             if entry.location != location {
                 entry.location = location;
                 self.dirty = true;
@@ -1294,7 +1467,8 @@ impl AgentSessionRegistry {
     /// Callers that want to act on a key *just before* `PaneClosed`
     /// unbinds it must take this lookup before applying the event.
     pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
-        self.active_by_pane.get(&pane_key(pane_session_id)).cloned()
+        let key = self.active_by_pane.get(&pane_key(pane_session_id))?;
+        self.sessions.get(key).map(|row| row.key.clone())
     }
 
     /// Look up the [`SessionOrigin`] of whatever session is currently
@@ -1313,7 +1487,8 @@ impl AgentSessionRegistry {
     }
 
     pub fn remove(&mut self, key: &AgentKey) {
-        if let Some(s) = self.sessions.remove(key) {
+        let stored = self.raw_storage_key(key).map(str::to_owned);
+        if let Some(s) = stored.and_then(|key| self.sessions.remove(&key)) {
             if let Some(pane) = s.pane_session_id {
                 self.active_by_pane.remove(&pane);
             }

@@ -162,6 +162,10 @@ Model::CascadiaSettings CascadiaSettings::Copy() const
         }
 
         settings->_globals = _globals->Copy();
+        for (const auto& profile : allProfiles)
+        {
+            winrt::get_self<Profile>(profile)->SettingsOwner = winrt::make_weak<Model::GlobalAppSettings>(*settings->_globals);
+        }
         settings->_allProfiles = winrt::single_threaded_observable_vector(std::move(allProfiles));
         settings->_activeProfiles = winrt::single_threaded_observable_vector(std::move(activeProfiles));
 
@@ -813,8 +817,7 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
             std::wstring_view{ savedProvider });
         const auto managedRestore = !newTerminalArgs.Profile().empty() && newTerminalArgs.Commandline().empty() &&
                                     (!newTerminalArgs.NativeAgentSessionId().empty() ||
-                                     std::ranges::any_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
-                                                         [&](const auto& agent) { return agent.id == std::wstring_view{ provider }; }));
+                                     ::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsNativeProfile(provider));
         if (const auto name = newTerminalArgs.Profile(); !name.empty())
         {
             if (auto profile = GetProfileByName(name))

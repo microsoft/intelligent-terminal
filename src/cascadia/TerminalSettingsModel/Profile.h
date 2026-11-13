@@ -135,6 +135,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         INHERITABLE_SETTING(Model::Profile, hstring, Padding, DEFAULT_PADDING);
 
         winrt::hstring SourceBasePath;
+        winrt::weak_ref<Model::GlobalAppSettings> SettingsOwner;
 
     public:
 #define PROFILE_SETTINGS_INITIALIZE(type, name, jsonKey, ...) \

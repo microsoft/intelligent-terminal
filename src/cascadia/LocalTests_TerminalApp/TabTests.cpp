@@ -619,6 +619,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentResumeSeedsProviderBeforeContent);
         TEST_METHOD(NativeAgentResumeProviderOverridesProfileBeforeFirstFrame);
         TEST_METHOD(NativeAgentResumeRejectsUncorrelatedLaunch);
+        TEST_METHOD(NativeAgentDirectResumeReturnsOwnedReceipt);
         TEST_METHOD(NativeAgentPreHookPersistenceRestoresTabAndSplit);
         TEST_METHOD(HorizontalNativeIconSelectionAppliesTemplateAgainWithReusableMasks);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
@@ -15260,7 +15261,23 @@ namespace TerminalAppLocalTests
                 const auto copyConnection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
                 const auto copyPane = page->_MakePane(copyArgs, nullptr, *copyConnection);
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE756" }, page->_AgentIconForControl(copyPane->GetTerminalControl(), {}, copy));
-                copyPane->Shutdown();
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(copyPane));
+                page->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+                auto& binding = page->_paneAgentSessions[copyConnection->SessionId()];
+                binding.sessionId = L"shared-conversation";
+                binding.agent = provider;
+                for (const auto backend : { L"wsl:Ubuntu:", L"remote:" })
+                {
+                    binding.backend = winrt::hstring{ std::wstring{ backend } + provider };
+                    VERIFY_ARE_EQUAL(profile.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId).Guid());
+                    VERIFY_ARE_EQUAL(copy.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId, copy.Guid()).Guid());
+                }
+                for (const auto backend : { L"", L"host:" })
+                {
+                    binding.backend = *backend ? winrt::hstring{ std::wstring{ backend } + provider } : winrt::hstring{};
+                    VERIFY_ARE_EQUAL(copy.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId).Guid());
+                }
+                page->_paneAgentSessions.clear();
                 VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
                 const auto tab = page->_GetFocusedTabImpl();
                 tab->SuppressAgentPrewarm();
@@ -27372,6 +27389,87 @@ namespace TerminalAppLocalTests
                     VERIFY_ARE_EQUAL(tabCount, page->_tabs.Size());
                     VERIFY_ARE_EQUAL(tabCount, page->_tabItems().Size());
                 }
+            });
+        }
+    }
+
+    void TabTests::NativeAgentDirectResumeReturnsOwnedReceipt()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+        auto page = _commonSetup(*connection);
+        winrt::TerminalApp::TerminalPage projectedPage{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                projectedPage = nullptr;
+                page = nullptr;
+            });
+        });
+        Json::Value request;
+        uint32_t originalTabCount{};
+        winrt::guid profileGuid{};
+        TestOnUIThread([&]() {
+            projectedPage = *page;
+            originalTabCount = page->_tabs.Size();
+            const auto profile = AddNativeAgentIconProfile(page->_settings, L"custom:fixture", L"\xE713");
+            profile.Commandline(L"cmd.exe /d /c exit 0");
+            profile.CloseOnExit(CloseOnExitMode::Never);
+            profileGuid = profile.Guid();
+            request["params"]["request_id"] = "direct-native-resume";
+            request["params"]["resume_target"] = "native";
+            request["params"]["agent_source"] = "host";
+            request["params"]["agent_id"] = "custom:fixture";
+            request["params"]["session_id"] = "11111111-2222-3333-4444-555555555555";
+            request["params"]["window_id"] = std::to_string(page->_WindowProperties.WindowId());
+            request["params"]["profile_id"] = winrt::to_string(Utils::GuidToString(profileGuid));
+        });
+
+        const auto invoke = [&]() {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> operation{ nullptr };
+            TestOnUIThread([&]() {
+                operation = projectedPage.CreateNativeProfileResumeTab(
+                    winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, request)));
+            });
+            Json::Value receipt;
+            Json::CharReaderBuilder reader;
+            std::istringstream input{ winrt::to_string(operation.get()) };
+            std::string errors;
+            VERIFY_IS_TRUE(Json::parseFromStream(reader, input, &receipt, &errors));
+            VERIFY_ARE_EQUAL(std::string{ "direct-native-resume" }, receipt["request_id"].asString());
+            return receipt;
+        };
+
+        // No ProtocolVtSequenceReceived subscriber: the public operation owns its result.
+        const auto receipt = invoke();
+        VERIFY_IS_TRUE(receipt["success"].asBool());
+        const winrt::guid resumedPaneId{ Utils::GuidFromPlainString(
+            winrt::to_hstring(receipt["result"]["session_id"].asString()).c_str()) };
+        VERIFY_ARE_NOT_EQUAL(winrt::guid{}, resumedPaneId);
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(originalTabCount + 1, page->_tabs.Size());
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(winrt::to_string(tab->StableId()), receipt["result"]["tab_id"].asString());
+            VERIFY_ARE_EQUAL(_formatPaneId(tab->GetActiveTerminalControl().Connection().SessionId()),
+                             receipt["result"]["session_id"].asString());
+            VERIFY_ARE_EQUAL(profileGuid, tab->GetActivePane()->GetProfile().Guid());
+        });
+
+        for (const auto profileId : { "not-a-guid", "{11111111-2222-3333-4444-555555555555}" })
+        {
+            request["params"]["profile_id"] = profileId;
+            const auto rejected = invoke();
+            VERIFY_IS_FALSE(rejected["success"].asBool());
+            VERIFY_ARE_EQUAL(
+                std::string{ std::string_view{ profileId } == "not-a-guid" ?
+                                 "The requested native agent profile_id is not a valid GUID." :
+                                 "No corresponding native agent profile was found. Check the selected profile and its agentProfile.id." },
+                rejected["error"].asString());
+            VERIFY_IS_FALSE(rejected.isMember("result"));
+            TestOnUIThread([&]() {
+                VERIFY_ARE_EQUAL(originalTabCount + 1, page->_tabs.Size());
+                VERIFY_ARE_EQUAL(profileGuid, page->_GetFocusedTabImpl()->GetActivePane()->GetProfile().Guid());
+                VERIFY_ARE_EQUAL(resumedPaneId, page->_GetFocusedTabImpl()->GetActiveTerminalControl().Connection().SessionId());
             });
         }
     }

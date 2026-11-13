@@ -2690,6 +2690,27 @@ impl App {
                 }
             }
             AppEvent::AgentSessionEvent(ev) => {
+                if let crate::agent_sessions::SessionEvent::QualifiedResume { identity, event } =
+                    &ev
+                {
+                    let row = self.agent_sessions.get_identity(identity);
+                    let valid = match event {
+                        crate::agent_sessions::QualifiedResumeEvent::Failed { .. } => row
+                            .is_some_and(|row| {
+                                row.status == crate::agent_sessions::AgentStatus::Idle
+                                    && row.pane_session_id.is_none()
+                            }),
+                        crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { .. } => row
+                            .is_some_and(|row| {
+                                row.status == crate::agent_sessions::AgentStatus::Idle
+                                    && row.pane_session_id.is_none()
+                            }),
+                        crate::agent_sessions::QualifiedResumeEvent::Dispatched => true,
+                    };
+                    if !valid {
+                        return;
+                    }
+                }
                 if let crate::agent_sessions::SessionEvent::ResumeFailed { key, .. } = &ev {
                     if !self.agent_sessions.get(key).is_some_and(|row| {
                         row.status == crate::agent_sessions::AgentStatus::Idle

@@ -77,6 +77,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileNativeCommands);
         TEST_METHOD(AgentProfileResumeArguments);
         TEST_METHOD(CustomAgentNativeProfileGeneration);
+        TEST_METHOD(CustomAgentOriginalProtectionSurvivesPolicy);
         TEST_METHOD(GeneratedAgentProfileGuidCompatibility);
         TEST_METHOD(AgentProfileStartingDirectoryMigration);
         TEST_METHOD(AgentProfileStartingDirectoryMigrationPreservesDefaults);
@@ -554,6 +555,41 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(expectedGuid, Agents::GeneratedGuid(provider));
             VERIFY_ARE_EQUAL(expectedGuid, CreateDynamicProfile(Agents::GeneratedIdentity(provider))->Guid());
         }
+    }
+
+    void CustomAgentAndPolicyTests::CustomAgentOriginalProtectionSurvivesPolicy()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        const auto guid = Agents::GeneratedGuid(L"custom:native");
+        const auto user = std::string{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "acpCustomCommands":["native.exe --acp"],
+            "profiles":[
+                {"guid":"{00000000-0000-0000-0000-000000000001}","name":"Shell","commandline":"cmd.exe"},
+                {"guid":")" } +
+                          winrt::to_string(Utils::GuidToString(guid)) + R"(","name":"Native",
+                 "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"custom:native"}]})";
+        const auto blocked = winrt::make_self<implementation::CascadiaSettings>(user, std::string_view{ R"({"profiles":[]})" });
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::Blocked));
+        const auto original = blocked->FindProfile(guid);
+        VERIFY_IS_TRUE(original.Orphaned());
+        VERIFY_IS_FALSE(original.IsDeletable());
+        VERIFY_IS_FALSE(AgentPolicy::IsCustomAgentAllowed());
+        const auto copy = blocked->DuplicateProfile(original);
+        VERIFY_IS_TRUE(copy.IsDeletable());
+
+        SetPolicy(MakePolicy());
+        VERIFY_IS_FALSE(original.IsDeletable());
+        const auto clone = blocked->Copy();
+        clone.GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>());
+        VERIFY_IS_TRUE(clone.FindProfile(guid).IsDeletable());
+        VERIFY_IS_FALSE(original.IsDeletable());
+        blocked->GlobalSettings().AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>());
+        VERIFY_IS_TRUE(original.IsDeletable());
+        blocked->GlobalSettings().DelegateCustomCommand(L"native.exe --delegate");
+        VERIFY_IS_FALSE(original.IsDeletable());
+        blocked->GlobalSettings().DelegateCustomCommand(L"");
+        VERIFY_IS_TRUE(original.IsDeletable());
     }
 
     void CustomAgentAndPolicyTests::CustomAgentNativeProfileGeneration()

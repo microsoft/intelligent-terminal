@@ -9076,6 +9076,39 @@ async fn apply_master_session_event(
     is_born_bound: bool,
     birth_location: crate::agent_sessions::SessionLocation,
 ) -> (bool, Option<String>) {
+    if let crate::agent_sessions::SessionEvent::QualifiedResume {
+        identity,
+        event: resume,
+    } = &event
+    {
+        let identity = identity.clone();
+        let failed = matches!(
+            resume,
+            crate::agent_sessions::QualifiedResumeEvent::Failed { .. }
+        );
+        let gate = session_lifecycle_gate(state, &identity.session_id).await;
+        let _guard = gate.lock().await;
+        let applied = state.registry.apply_event(event).await;
+        // Legacy watcher ownership is raw-keyed. Never change it on behalf of
+        // an ambiguous row or a different provider/backend with the same ID.
+        if applied
+            && state
+                .registry
+                .lookup(&identity.session_id)
+                .await
+                .is_some_and(|row| {
+                    crate::session_registry::SessionIdentity::from_info(&row) == identity
+                })
+        {
+            state.hook_owned.lock().await.remove(&identity.session_id);
+            if failed {
+                state.born_bound.lock().await.remove(&identity.session_id);
+            } else {
+                state.born_bound.lock().await.insert(identity.session_id);
+            }
+        }
+        return (applied, None);
+    }
     if matches!(
         &event,
         crate::agent_sessions::SessionEvent::SessionRenamed { .. }
@@ -9089,6 +9122,26 @@ async fn apply_master_session_event(
     // Error, where the title is whatever it already was, so skipping
     // the refresh is fine.
     let refresh_key = session_event_key(&event).map(str::to_owned);
+    if matches!(
+        &event,
+        crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
+            | crate::agent_sessions::SessionEvent::ResumePaneAssigned { .. }
+            | crate::agent_sessions::SessionEvent::ResumeFailed { .. }
+    ) && if let Some(key) = &refresh_key {
+        state
+            .registry
+            .snapshot()
+            .await
+            .iter()
+            .filter(|row| row.session_id.to_string() == *key)
+            .take(2)
+            .count()
+            > 1
+    } else {
+        true
+    } {
+        return (false, None);
+    }
 
     if matches!(
         &event,
@@ -11861,6 +11914,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
 fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str> {
     use crate::agent_sessions::SessionEvent;
     match event {
+        SessionEvent::QualifiedResume { identity, .. } => Some(identity.session_id.0.as_ref()),
         SessionEvent::SessionStarted { key, .. }
         | SessionEvent::SessionRenamed { key, .. }
         | SessionEvent::WorkingDirectoryChanged { key, .. }

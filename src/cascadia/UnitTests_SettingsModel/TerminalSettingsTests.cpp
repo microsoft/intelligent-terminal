@@ -339,6 +339,22 @@ namespace SettingsModelUnitTests
         saved.NativeAgentProviderId(L"claude");
         saved.Profile(L"{00000000-0000-0000-0000-000000000003}");
         VERIFY_THROWS(winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved), wil::ResultException);
+        saved.NativeAgentProviderId(L"custom:fixture");
+        VERIFY_IS_TRUE(saved.NativeAgentSessionId().empty());
+        try
+        {
+            winrt::get_self<implementation::CascadiaSettings>(settings)->GetProfileForArgs(saved);
+            VERIFY_FAIL(L"Missing managed custom profile must not select the default shell");
+        }
+        catch (const wil::ResultException& error)
+        {
+            VERIFY_ARE_EQUAL(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), error.GetErrorCode());
+        }
+        saved.Commandline(L"cmd.exe /d /c echo explicit");
+        VERIFY_ARE_EQUAL(saved.Commandline(), TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
+        saved.Commandline(L"");
+        saved.NativeAgentProviderId(L"custom:");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe" }, TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
         saved.NativeAgentProviderId(L"");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"cmd.exe" }, TerminalSettings::CreateWithNewTerminalArgs(settings, saved).DefaultSettings()->Commandline());
     }

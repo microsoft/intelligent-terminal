@@ -10,6 +10,7 @@
 #include "AppearanceConfig.h"
 #include "FontConfig.h"
 #include "../inc/AgentProfileUtils.h"
+#include "../inc/CustomAgentId.h"
 
 #include "Profile.g.cpp"
 
@@ -31,6 +32,27 @@ static constexpr std::string_view HiddenKey{ "hidden" };
 
 bool Profile::IsDeletable() const
 {
+    // Policy can orphan a generated custom original without removing its configuration.
+    if (Source() == ::Microsoft::Terminal::AgentProfiles::Source)
+    {
+        if (const auto settings = SettingsOwner.get())
+        {
+            const auto matches = [&](const winrt::hstring& command) {
+                if (command.empty())
+                {
+                    return false;
+                }
+                const auto id = L"custom:" + std::wstring{ ::Microsoft::Terminal::Settings::Model::DeriveCustomAgentId(command) };
+                return id != L"custom:" && Guid() == ::Microsoft::Terminal::AgentProfiles::GeneratedGuid(id);
+            };
+            if (matches(settings.AcpCustomCommand()) || matches(settings.DelegateCustomCommand()) ||
+                std::ranges::any_of(settings.AcpCustomCommands(), matches) ||
+                std::ranges::any_of(settings.DelegateCustomCommands(), matches))
+            {
+                return false;
+            }
+        }
+    }
     return !::Microsoft::Terminal::AgentProfiles::IsProtected(*this);
 }
 
@@ -110,6 +132,7 @@ winrt::com_ptr<Profile> Profile::CopySettings() const
 
     profile->_Deleted = _Deleted;
     profile->_Orphaned = _Orphaned;
+    profile->SettingsOwner = SettingsOwner;
     profile->_Updates = _Updates;
     profile->_Guid = _Guid;
     profile->_Name = _Name;

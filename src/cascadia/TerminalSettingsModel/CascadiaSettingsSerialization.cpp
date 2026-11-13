@@ -1521,6 +1521,7 @@ CascadiaSettings::CascadiaSettings(SettingsLoader&& loader) :
 
     for (const auto& profile : loader.userSettings.profiles)
     {
+        profile->SettingsOwner = winrt::make_weak<Model::GlobalAppSettings>(*loader.userSettings.globals);
         // If a generator stops producing a certain profile (e.g. WSL or PowerShell were removed) or
         // a profile from a fragment doesn't exist anymore, we should also stop including the
         // matching user's profile in _allProfiles (since they aren't functional anyways).

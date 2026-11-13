@@ -288,6 +288,8 @@ namespace winrt::TerminalApp::implementation
         void OnDefaultPasteRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        Windows::Foundation::IAsyncOperation<hstring> CreateNativeProfileResumeTab(hstring eventJson);
+        void _OnResumeInNewAgentTabRequested(hstring eventJson, Json::Value* creationReceipt);
         void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);

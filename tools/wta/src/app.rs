@@ -3460,15 +3460,22 @@ impl App {
                 return;
             }
             // The selected view can still hold the pre-dispatch snapshot.
-            if self.agent_sessions.get(&s.key).is_some_and(|row| {
-                row.status == crate::agent_sessions::AgentStatus::Idle
-                    && row.pane_session_id.is_none()
-            }) {
+            let identity = s.identity();
+            if self
+                .agent_sessions
+                .get_identity(&identity)
+                .is_some_and(|row| {
+                    row.status == crate::agent_sessions::AgentStatus::Idle
+                        && row.pane_session_id.is_none()
+                })
+            {
                 return;
             }
             self.agent_sessions.retain_resume_candidate(s);
-            let resume_event =
-                crate::agent_sessions::SessionEvent::ResumeDispatched { key: s.key.clone() };
+            let resume_event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                identity: identity.clone(),
+                event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            };
             self.agent_sessions.apply(resume_event.clone());
             self.publish_session_hook(resume_event);
             let request = serde_json::json!({
@@ -3491,7 +3498,6 @@ impl App {
             }
             if let Some(tx) = self.agent_event_tx.clone() {
                 let manager = Arc::clone(&self.shell_mgr);
-                let key = s.key.clone();
                 tokio::spawn(async move {
                     // This is the same correlated request/timeout used by History.
                     // Never wait for it on the helper's input/render loop.
@@ -3510,9 +3516,11 @@ impl App {
                         });
                     match result {
                         Ok(pane_session_id) => {
-                            let event = crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                                key,
-                                pane_session_id: pane_session_id.clone(),
+                            let event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                                identity,
+                                event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned {
+                                    pane_session_id: pane_session_id.clone(),
+                                },
                             };
                             if tx.send(AppEvent::AgentSessionEvent(event)).is_err() {
                                 tracing::warn!(target: "agents_view", "native resume completion receiver closed");
@@ -3523,9 +3531,11 @@ impl App {
                             }
                         }
                         Err(error) => {
-                            let event = crate::agent_sessions::SessionEvent::ResumeFailed {
-                                key,
-                                reason: error.to_string(),
+                            let event = crate::agent_sessions::SessionEvent::QualifiedResume {
+                                identity,
+                                event: crate::agent_sessions::QualifiedResumeEvent::Failed {
+                                    reason: error.to_string(),
+                                },
                             };
                             if tx.send(AppEvent::AgentSessionEvent(event)).is_err() {
                                 tracing::warn!(target: "agents_view", "native resume failure receiver closed");

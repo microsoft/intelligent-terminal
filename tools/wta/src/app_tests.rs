@@ -9039,11 +9039,17 @@ async fn helper_native_resume_snapshot_only_rejection_is_published_and_retryable
         .unwrap()
         .contains("No corresponding agent profile"));
     let pending = published.try_recv().unwrap();
-    assert!(matches!(&pending, SessionEvent::ResumeDispatched { .. }));
+    assert!(matches!(
+        &pending,
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
+    ));
     assert!(master.apply_event(pending).await);
     let failure = published.try_recv().unwrap();
     assert!(
-        matches!(&failure, SessionEvent::ResumeFailed { key: failed_key, .. } if failed_key == &key)
+        matches!(&failure, SessionEvent::QualifiedResume { identity, event: crate::agent_sessions::QualifiedResumeEvent::Failed { .. } } if identity.session_id.to_string() == key)
     );
     assert!(master.apply_event(failure).await);
     let master_row = master
@@ -9072,12 +9078,169 @@ async fn helper_native_resume_snapshot_only_rejection_is_published_and_retryable
     );
     assert!(matches!(
         published.try_recv().unwrap(),
-        SessionEvent::ResumeDispatched { .. }
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
     ));
     assert!(matches!(
         published.try_recv().unwrap(),
-        SessionEvent::ResumePaneAssigned { .. }
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { .. },
+            ..
+        }
     ));
+}
+
+#[tokio::test]
+async fn helper_native_resume_equal_raw_ids_keep_qualified_pending_and_results() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    let (mut app, mut requests, mut events, mut published, row_a) = helper_native_resume_fixture();
+    let mut row_b = row_a.clone();
+    row_b.cli_source = CliSource::Claude;
+    let mut row_wsl = row_a.clone();
+    row_wsl.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.agent_sessions.retain_resume_candidate(&row_wsl);
+    let master = InMemoryRegistry::new();
+    let info_a = app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone();
+    let mut info_b = info_a.clone();
+    info_b.cli_source = Some(CliSource::Claude);
+    info_b.provider_id = Some("claude".into());
+    master.upsert(info_a).await;
+    master.upsert(info_b).await;
+    app.dispatch_resume(&row_a);
+    let (_, reply_a) = requests.recv().await.unwrap();
+    app.handle_event(agent_rebind_event_for_window(
+        "42",
+        "origin-tab",
+        1,
+        "claude",
+        &crate::agent_source::AgentSource::Host,
+    ));
+    assert_eq!(app.current_agent_id, "claude");
+    app.dispatch_resume(&row_b);
+    let (request_b, reply_b) = requests.recv().await.unwrap();
+    assert_eq!(request_b["native_profile_resume"]["session_id"], row_a.key);
+    assert_eq!(request_b["native_profile_resume"]["agent_id"], "claude");
+    app.dispatch_resume(&row_b);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    reply_b.send(Ok(json!({"session_id":"pane-b"}))).unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    reply_a
+        .send(Err(anyhow::anyhow!("provider A failed")))
+        .unwrap();
+    app.handle_event(events.recv().await.unwrap());
+    while let Ok(event) = published.try_recv() {
+        assert!(master.apply_event(event).await);
+    }
+    let a = app.agent_sessions.get_identity(&row_a.identity()).unwrap();
+    let b = app.agent_sessions.get_identity(&row_b.identity()).unwrap();
+    assert_eq!(a.status, AgentStatus::Historical);
+    assert_eq!(b.pane_session_id.as_deref(), Some("pane-b"));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&row_wsl.identity())
+            .unwrap()
+            .status,
+        AgentStatus::Historical
+    );
+    assert_eq!(
+        master
+            .lookup_identity(&row_a.identity())
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Historical)
+    );
+    assert_eq!(
+        master
+            .lookup_identity(&row_b.identity())
+            .await
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("pane-b")
+    );
+}
+
+#[tokio::test]
+async fn helper_native_resume_qualified_hook_binding_preserves_colliding_rows() {
+    use crate::agent_sessions::{AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent};
+    use std::path::PathBuf;
+    let (mut app, _requests, _events, mut published, a) = helper_native_resume_fixture();
+    let mut b = a.clone();
+    b.cli_source = CliSource::Claude;
+    for row in [&a, &b] {
+        app.agent_sessions.retain_resume_candidate(row);
+        app.agent_sessions.apply(SessionEvent::QualifiedResume {
+            identity: row.identity(),
+            event: QualifiedResumeEvent::Dispatched,
+        });
+    }
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+        key: b.key.clone(),
+        cli_source: b.cli_source.clone(),
+        pane_session_id: "hook-b".into(),
+        cwd: b.cwd.clone(),
+        title: "Hook B".into(),
+    }));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&a.identity())
+            .unwrap()
+            .status,
+        AgentStatus::Idle
+    );
+    assert!(app
+        .agent_sessions
+        .get_identity(&a.identity())
+        .unwrap()
+        .pane_session_id
+        .is_none());
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&b.identity())
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("hook-b")
+    );
+    assert_eq!(
+        app.agent_sessions.key_for_pane("hook-b").as_deref(),
+        Some(b.key.as_str())
+    );
+    published.try_recv().unwrap();
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::QualifiedResume {
+        identity: b.identity(),
+        event: QualifiedResumeEvent::Failed {
+            reason: "late".into(),
+        },
+    }));
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::QualifiedResume {
+        identity: b.identity(),
+        event: QualifiedResumeEvent::PaneAssigned {
+            pane_session_id: "stale-b".into(),
+        },
+    }));
+    assert!(published.try_recv().is_err());
+    app.agent_sessions
+        .apply(SessionEvent::WorkingDirectoryChanged {
+            key: b.key.clone(),
+            pane_session_id: "hook-b".into(),
+            cwd: PathBuf::from("C:\\updated-b"),
+        });
+    assert_eq!(
+        app.agent_sessions.get_identity(&b.identity()).unwrap().cwd,
+        PathBuf::from("C:\\updated-b")
+    );
+    assert_ne!(
+        app.agent_sessions.get_identity(&a.identity()).unwrap().cwd,
+        PathBuf::from("C:\\updated-b")
+    );
 }
 
 #[tokio::test]
@@ -9108,11 +9271,17 @@ async fn helper_native_resume_snapshot_only_timeout_applies_and_publishes_failur
     assert!(failed.last_error.as_deref().unwrap().contains("timed out"));
     assert!(matches!(
         published.try_recv().unwrap(),
-        SessionEvent::ResumeDispatched { .. }
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
     ));
     assert!(matches!(
         published.try_recv().unwrap(),
-        SessionEvent::ResumeFailed { .. }
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Failed { .. },
+            ..
+        }
     ));
     assert!(reply.send(Ok(json!({"session_id":"late-pane"}))).is_err());
 }
@@ -9132,7 +9301,10 @@ async fn helper_native_resume_snapshot_only_late_failure_cannot_demote_or_publis
     ));
     assert!(matches!(
         published.try_recv().unwrap(),
-        SessionEvent::ResumeDispatched { .. }
+        SessionEvent::QualifiedResume {
+            event: crate::agent_sessions::QualifiedResumeEvent::Dispatched,
+            ..
+        }
     ));
     assert!(matches!(
         published.try_recv().unwrap(),
@@ -9232,7 +9404,9 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
 
 #[tokio::test]
 async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry() {
-    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionOrigin};
+    use crate::agent_sessions::{
+        AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent, SessionOrigin,
+    };
     use crate::protocol::acp::client::MasterExtRequest;
     use crate::session_registry::{InMemoryRegistry, SessionInfo, SessionRegistry};
 
@@ -9267,6 +9441,8 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
             let mut history = SessionInfo::new(sid.clone(), std::path::PathBuf::new());
             history.status = Some(AgentStatus::Historical);
             history.cli_source = Some(CliSource::Copilot);
+            history.provider_id = Some("copilot".into());
+            history.location = SessionLocation::Host;
             registry.upsert(history).await;
 
             app.activate_agent_session_routed(&row);
@@ -9274,7 +9450,17 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
             let wire = crate::session_registry::build_session_hook_request(&dispatch);
             let dispatch =
                 crate::session_registry::parse_session_hook_params(&wire.params).unwrap();
-            assert!(matches!(dispatch, SessionEvent::ResumeDispatched { .. }));
+            if origin == SessionOrigin::AgentPane {
+                assert!(
+                    matches!(&dispatch, SessionEvent::ResumeDispatched { key } if key == &row.key)
+                );
+            } else {
+                assert!(matches!(
+                    &dispatch,
+                    SessionEvent::QualifiedResume { identity, event: QualifiedResumeEvent::Dispatched }
+                        if identity == &row.identity()
+                ));
+            }
             assert!(registry.apply_event(dispatch).await);
             let assignment = SessionEvent::ResumePaneAssigned {
                 key: "resume-once".into(),
@@ -9316,7 +9502,22 @@ async fn resume_dispatch_has_one_master_route_after_startup_failure_and_on_retry
                 .unwrap()
                 .clone();
             app.activate_agent_session_routed(&retry);
-            assert!(registry.apply_event(hook_rx.try_recv().unwrap()).await);
+            let retry_dispatch = hook_rx.try_recv().unwrap();
+            let retry_wire = crate::session_registry::build_session_hook_request(&retry_dispatch);
+            let retry_dispatch =
+                crate::session_registry::parse_session_hook_params(&retry_wire.params).unwrap();
+            if origin == SessionOrigin::AgentPane {
+                assert!(
+                    matches!(&retry_dispatch, SessionEvent::ResumeDispatched { key } if key == &row.key)
+                );
+            } else {
+                assert!(matches!(
+                    &retry_dispatch,
+                    SessionEvent::QualifiedResume { identity, event: QualifiedResumeEvent::Dispatched }
+                        if identity == &row.identity()
+                ));
+            }
+            assert!(registry.apply_event(retry_dispatch).await);
             assert!(master_rx.try_recv().is_err());
             assert!(!registry.apply_event(assignment).await);
             assert!(

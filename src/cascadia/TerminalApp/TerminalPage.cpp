@@ -8019,7 +8019,8 @@ namespace winrt::TerminalApp::implementation
         {
             for (const auto& [paneId, binding] : _paneAgentSessions)
             {
-                if (binding.sessionId != sessionId || !Registry::AgentIdEquals(binding.agent, providerId))
+                if (binding.sessionId != sessionId || !Registry::AgentIdEquals(binding.agent, providerId) ||
+                    (!binding.backend.empty() && !std::wstring_view{ binding.backend }.starts_with(L"host:")))
                 {
                     continue;
                 }
@@ -11715,6 +11716,27 @@ namespace winrt::TerminalApp::implementation
     //
     void TerminalPage::OnResumeInNewAgentTabRequested(hstring eventJson)
     {
+        _OnResumeInNewAgentTabRequested(eventJson, nullptr);
+    }
+
+    Windows::Foundation::IAsyncOperation<hstring> TerminalPage::CreateNativeProfileResumeTab(hstring eventJson)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Json::Value receipt;
+        receipt["success"] = false;
+        receipt["error"] = "Invalid native profile resume request.";
+        // The receipt belongs to this operation and survives absent, dropped,
+        // or exhausted background event subscriptions.
+        _OnResumeInNewAgentTabRequested(eventJson, &receipt);
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        co_return winrt::to_hstring(Json::writeString(writer, receipt));
+    }
+
+    void TerminalPage::_OnResumeInNewAgentTabRequested(hstring eventJson, Json::Value* creationReceipt)
+    {
         _agentPaneLog("OnResumeInNewAgentTabRequested: received from wta");
 
         Json::Value evt;
@@ -11738,6 +11760,16 @@ namespace winrt::TerminalApp::implementation
             if (params.isMember(key) && !params[key].isString())
             {
                 _agentPaneLog("OnResumeInNewAgentTabRequested: non-string field " + std::string{ key });
+                return;
+            }
+        }
+        if (creationReceipt)
+        {
+            (*creationReceipt)["request_id"] = params.get("request_id", "");
+            if (params.get("request_id", "").asString().empty() ||
+                params.get("resume_target", "").asString() != "native" ||
+                params.get("agent_source", "").asString() != "host")
+            {
                 return;
             }
         }
@@ -11784,7 +11816,11 @@ namespace winrt::TerminalApp::implementation
             const auto reply = wil::scope_exit([&]() noexcept {
                 try
                 {
-                    if (!receipt["request_id"].asString().empty())
+                    if (creationReceipt)
+                    {
+                        *creationReceipt = std::move(receipt);
+                    }
+                    else if (!receipt["request_id"].asString().empty())
                     {
                         _RaiseProtocolEvent("native_profile_resume_result", receipt);
                     }
