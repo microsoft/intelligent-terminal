@@ -163,7 +163,7 @@ class PayloadTests(unittest.TestCase):
             self.stage()
         self.assertFalse(self.output.exists())
 
-    def test_missing_afterbuild_asset_or_framework_rejected(self):
+    def test_missing_after_build_asset_or_framework_rejected(self):
         (self.host / "taef.png").unlink()
         with self.assertRaisesRegex(ValueError, "Incomplete"):
             self.stage()
@@ -200,7 +200,7 @@ class PayloadTests(unittest.TestCase):
             self.stage()
         self.assertFalse(self.output.exists())
 
-    def test_complete_portable_roundtrip_preserves_recipe_resources_dlls_winmd_and_afterbuild_assets(self):
+    def test_complete_portable_roundtrip_preserves_recipe_resources_dlls_winmd_and_after_build_assets(self):
         (self.host / "ignored.pdb").write_bytes(b"not runtime")
         self.stage()
         self.assertNotIn(str(self.workspace), (self.output / "TestHostApp.build.appxrecipe").read_text())
@@ -286,13 +286,13 @@ class NativeReceiptTests(unittest.TestCase):
         for surface, marker in PAYLOAD.SURFACES.items():
             path = self.output / surface
             path.mkdir(parents=True)
-            scanpath = f"C:\\a\\Generated Files\\accessibility-91-2\\native\\{surface}\\axe-results.json"
+            scan_path = f"C:\\a\\Generated Files\\accessibility-91-2\\native\\{surface}\\axe-results.json"
             for name, data in {
                 "result": {"version": 1, "source_sha": IDENTITY["EXPECTED_HEAD_SHA"], "surface": surface, "process_id": 45,
-                           "status": "PASS", "axe_results": scanpath},
+                           "status": "PASS", "axe_results": scan_path},
                 "axe-results": {"version": 1, "scan_id": surface, "process_id": 45, "window_count": 1, "error_count": 0,
                                 "errors": [], "visible_state_marker": marker,
-                                "uia_tree": scanpath.replace("axe-results", "uia-tree")},
+                                "uia_tree": scan_path.replace("axe-results", "uia-tree")},
                 "uia-tree": [{"process_id": 45, "automation_id": marker, "is_offscreen": False}],
             }.items():
                 (path / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")

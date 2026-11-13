@@ -71,6 +71,12 @@ class CiNativeGraphTests(unittest.TestCase):
         self.assertIn("ci-accessibility-native-", upload["with"]["name"])
         self.assertEqual("${{ github.event.pull_request.base.sha }}", self.jobs["axe"]["with"]["trusted-sha"])
 
+    def test_native_and_ordinary_ci_execution_actions_are_immutable(self):
+        for job in [*self.jobs.values(), *self.native["jobs"].values()]:
+            for step in job.get("steps", []):
+                if "uses" in step:
+                    self.assertRegex(step["uses"], r"@[0-9a-f]{40}$")
+
 
 if __name__ == "__main__":
     unittest.main()

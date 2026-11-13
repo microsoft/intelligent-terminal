@@ -87,7 +87,7 @@ deep model only, not independent path-gated CI scan cost or final reporting.
 
 Admission also checks successful C++/Rust build/test steps, not just a green
 workflow name. GitHub's REST run PR fields are mutable; target history is checked
-through typed GraphQL timeline events. Retargeted/base-force-pushed PRs fail
+through typed GraphQL timeline events. PRs with changed targets or force-pushed bases fail
 closed for manual review/new PR because immutable original-target provenance
 cannot be inferred from queue timestamps. The controller's `github-actions[bot]`
 is explicitly allowlisted in reusable triage/summary authorization; CI admission
@@ -188,7 +188,7 @@ credentials or inherited secrets. It scans FRE, FRE settings after Next, and
 the real Agents page reached through production Frame navigation. Native errors,
 blocked startup and missing state evidence remain failures. Upload occurs before
 enforcement, retaining failure evidence without admitting unsuccessful CI to
-models. The gh-aw Linux consumer never launches Windows or rescans.
+models. The gh-aw Linux consumer never launches Windows or repeats a scan.
 
 Deep review waits for verified CI evidence; final summary runs after worker
 skips/failures and reports consumption failures as incomplete. Summary cites the
