@@ -52,7 +52,7 @@ better vulnerability detection.
    PR head, not the `workflow_run` default-branch SHA. Final updates address
    only that check ID, so an older controller cannot replace a newer outcome.
    Canonically completed reviews with unresolved HIGH findings report
-   "Changes required"; interrupted or invalid reviews report execution failure.
+   "Changes required"; unavailable reviews are neutral and link run diagnostics.
    Build success alone is not a successful review.
 2. The primary reads every immutable changed hunk, traces relevant base/head
    source and invariants, and submits a structured report. It may apply a
