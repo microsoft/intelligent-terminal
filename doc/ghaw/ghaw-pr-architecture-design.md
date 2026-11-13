@@ -84,10 +84,12 @@ comment creation has no atomic head-SHA precondition: an update after the final
 freshness check can still leave a clearly snapshot-labeled historical report.
 No source approval or absolute regression guarantee is implied.
 
-PR #1399's latest CI-controller fix separates requested/completed event
-concurrency and rechecks the live PR immediately before cancelling an older
-security worker. This advisory workflow has no detached worker or CI-event
-controller: its PR-number concurrency cancels an older run directly on
+At commit `789552eb4574c0922ab234605935c28e3ed983c1`, PR #1399 shares
+the per-PR `PR CI-<number>` concurrency group between native CI and the
+security worker, with `cancel-in-progress: false` and `queue: max`.
+Its controller starts the worker after successful CI completion. This advisory
+workflow has no detached worker or CI-event controller: its own PR-number
+concurrency cancels an older run directly on
 `synchronize`, even when the new head is below threshold. Freshness checks
 prevent stale publication. It therefore does not depend on #1399 or on a
 native CI trigger to review declarative changes.
