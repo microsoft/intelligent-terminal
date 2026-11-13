@@ -1,7 +1,7 @@
 # Native accessibility PR review
 
-The accessibility gh-aw reviews WinUI/XAML/C++ changes and runs the Windows
-Axe smoke job on the original PR revision to discover problems. It also
+The accessibility gh-aw reviews WinUI/XAML/C++ changes using original-head
+Windows Axe evidence from PR CI. It also
 proposes narrowly scoped HIGH fixes without requiring a post-fix build/test
 before committing or pushing. Those are separate responsibilities.
 
@@ -31,26 +31,28 @@ identity, immutable CI implementation trees, commit-associated PR and live
 head/base. It does not trust the webhook's PR list or download candidate artifacts.
 Path eligibility remains additive: no relevant paths means no model work.
 Relevant paths still receive Related / None / Uncertain delta triage; CI
-success alone never selects deep review or native discovery.
+success alone never selects deep review.
 
 The worker is dispatched on the default branch with exact CI run/attempt,
 minimal PR identity and trusted workflow SHA. Admission rechecks before triage,
-deep review, native discovery and final summary, including reusable entrypoints.
+deep review, CI evidence consumption and final summary, including reusable entrypoints.
 Calls from another workflow, candidate workflow revisions, rerunning the same
 worker, and duplicate dispatches for an already admitted CI attempt fail closed.
 A fresh successful CI attempt has a distinct identity. If the default branch or
 PR moves across admission/dispatch, admission fails rather than reviewing a
 substituted revision. As with publication, these live checks are not atomic.
-Native discovery admission and the final summary may accept this trusted worker's
+The final summary may accept this trusted worker's
 confirmed repair tip while retaining the original CI identity; that is not CI
 validation of the repairs. Unrelated live head changes still fail admission.
 
-PR CI's existing C++ job already builds TestHost and LocalTests in parallel with
-Rust. For relevant same-repository, non-draft PRs, it now publishes that existing
-output as `ci-accessibility-testhost-RUN-ATTEMPT`; no second product/TestHost
-build is added. Producer and admission use the same path classifier. Docs-only
-changes do not start CI or payload publication; native harness/workflow changes
-are narrowly included in PR CI's existing source/build filters.
+PR CI builds production Terminal, TestHost and C++ tests once in **C++ build**,
+in parallel with Rust. Ordinary **C++ unit tests** consume the staged unit-test
+payload; path-gated **Native accessibility / Native Axe.Windows smoke** consumes
+`ci-accessibility-testhost-RUN-ATTEMPT`. Both are sibling consumers after the
+build, not serial dependencies. Producer and admission use the same conservative
+path classifier. Docs-only changes do not start native CI. Every accessibility
+model, including triage and summary, waits for authoritative entire PR CI success.
+There is no Windows job or rebuild fallback in gh-aw.
 
 The payload combines every recipe mapping with loose AfterBuild runtime content:
 the host/App/LocalTests and component DLLs/WinMDs, aggregate resources, XBFs,
@@ -60,20 +62,28 @@ build-machine paths; a versioned inventory hashes every file and binds repositor
 ID/name, exact head, CI run and attempt, Debug configuration and x64 platform.
 Stale loose copies that disagree with recipe inputs fail staging.
 
-Selected native discovery revalidates the successful C++ producer and upload
-step for the exact attempt, then authenticates artifact ID/name/run/head/repository,
-expiry and GitHub's SHA-256 digest using the shared security artifact contract.
-It downloads the raw archive with read-only credentials. Trusted consumer code
-checks the archive digest, provenance, completeness and per-file hashes before
-extracting, rejecting traversal, drive/ADS/device paths, symlinks, collisions and
-oversized archives. Missing/skipped producers or invalid/missing artifacts fail
-closed: **no rebuild fallback and no PASS**. A confirmed repair tip is never
-the payload's source or native scan revision.
+CI's native job records original-head scans, uploads its result archive as
+`ci-accessibility-native-RUN-ATTEMPT`, then enforces scan success. A Linux
+`native-evidence` job repeats admission and authenticates the exact successful
+native job and its record/upload/enforcement steps, plus artifact ID, name,
+run/head/repository, expiry, bounded size and GitHub SHA-256 digest. It downloads
+that exact ZIP with a read-only token. Trusted `extract-native` checks the digest,
+bounded paths/links/collisions, root `native-ci.json` provenance, complete inventory
+and hashes, individual surface identities and PASS receipt before extraction.
+The receipt binds repository name/ID, original head, CI run/attempt and PR number.
+Raw per-surface result, Axe and UIA tree JSON remain untrusted evidence, never
+instructions. Only validated files enter the worker's
+`accessibility-native-ci-WORKER_RUN` artifact, then deep review and final summary.
+Missing, failed, skipped or invalid results mean **review incomplete**, never
+PASS. A confirmed repair tip is never the native result source.
 
 CI's security finding artifacts are not accessibility analysis or Axe results.
 No applicable existing static analyzer is being newly published or invented.
-Axe remains a selected interactive Windows runtime consumer of the original
-CI-built payload, not certification from CI success or proposed-fix validation.
+Axe runs on an interactive Windows CI desktop using the original CI-built
+payload, not as proposed-fix validation. Deep review can select whether those
+existing scans inform its changed-UI scope; it cannot start or skip them.
+Related / None / Uncertain remains the #1197 routing contract. None skips the
+deep model only, not independent path-gated CI scan cost or final reporting.
 
 Admission also checks successful C++/Rust build/test steps, not just a green
 workflow name. GitHub's REST run PR fields are mutable; target history is checked
@@ -91,8 +101,9 @@ still gates all model jobs.
 | `pr-accessibility` skill | Evidence-backed domain review across names, keyboard/focus, announcements, busy state, visual behavior, localization and affected UI operations |
 | Existing Python validator | Source/report identity, patch scope, eligible recipe and one-finding commit attribution |
 | Agent | Review judgment, each proposed repair commit, JSON evidence and the Markdown summary |
-| PR CI C++ job | Reuse its existing TestHost build; publish a complete original-head runtime payload only for relevant PRs |
-| Windows native job | Authenticate/consume the CI payload and scan the original immutable PR head; retain results and enforce failures |
+| PR CI C++ job | Build once; publish ordinary unit-test and relevant original-head TestHost payloads |
+| PR CI sibling consumers | Run ordinary C++ units and path-gated native scans independently after the build |
+| Linux gh-aw evidence consumer | Re-admit entire successful CI; authenticate and extract exact original-head native results before model access |
 | Original PR reviewer | Validate proposed fix commits through builds/tests; accept or revert |
 
 There is no separate summary-rendering script. The agent follows the template
@@ -127,9 +138,11 @@ The `workflow_run` controller and dispatched worker use default-branch
 definitions, never a PR merge commit's operating code. Fork PRs are skipped.
 Preparation reads immutable Git blobs from `github.workflow_sha`, records that
 code revision as `trusted_base_sha` separately from feature `comparison_base_sha`,
-and stages its skill/analyzer in gh-aw's read-only runtime mount. The Windows
-harness uses the same workflow revision. A PR event's older base commit can
-predate installation of this workflow and must not select its trusted code.
+and stages its skill/analyzer in gh-aw's read-only runtime mount. CI's Windows
+harness is pinned separately to the PR base SHA; candidate binaries run without
+secrets. This is not a privileged attestation from an untrusted PR build.
+Admission rejects changed CI implementation through the security foundation's
+strict immutable definition comparison.
 Preparation receives the PR base separately for feature comparison. The trusted
 workflow revision is control code, not the feature's comparison ancestor.
 PR instructions and artifacts are review data, never operating instructions.
@@ -170,20 +183,18 @@ The PR head can still move afterward; do not claim stronger atomicity.
 
 ## Windows problem discovery
 
-The restored `native-runtime` job calls `native-accessibility.yml` with exact
-head and trusted-source identities, without inheriting source-agent secrets.
-It consumes CI's built TestHost and scans FRE, FRE settings after Next, and the real Agents
-page reached through production Frame navigation. Native errors, blocked startup and missing state evidence
-remain failures. Its artifacts and job outcome are separate from the source
-agent's Markdown and source-only runtime records.
+PR CI calls `native-accessibility.yml` after the C++ build, without model
+credentials or inherited secrets. It scans FRE, FRE settings after Next, and
+the real Agents page reached through production Frame navigation. Native errors,
+blocked startup and missing state evidence remain failures. Upload occurs before
+enforcement, retaining failure evidence without admitting unsuccessful CI to
+models. The gh-aw Linux consumer never launches Windows or rescans.
 
-Native discovery follows the source agent and waits for safe-output publication
-to finish, avoiding a live-head admission race with this worker's own repairs.
-Only the publisher's confirmed `push_commit_sha` reaches native admission.
-Failed or skipped publication does not suppress selected discovery; cancellation
-does. The publication job does not depend on native discovery, and the native
-job still scans the event's original head, not a proposed repair commit.
-It is not post-fix validation.
+Deep review waits for verified CI evidence; final summary runs after worker
+skips/failures and reports consumption failures as incomplete. Summary cites the
+receipt's original CI identity, not its own run, and reports native evidence even
+when triage is None or deep review selects Native checks: None. Proposed repair
+publication has no post-fix build/test/native gate.
 
 This smoke is not complete keyboard, Narrator, high-contrast or 200% scaling
 coverage. Axe output uses its supported no-screenshot format; JSON is not an
@@ -213,7 +224,7 @@ mocked GitHub APIs (identity, status, freshness, attempts, duplicates and manual
 guards); the Python tests inspect the compiled graph and existing repair policy.
 They do not establish hosted Actions pickup or end-to-end dispatch behavior.
 
-The payload fixture tests cover archive traversal/collisions, wrong identity,
+The payload/native fixture tests cover archive traversal/collisions, wrong identity,
 missing/changed runtime files, framework versions and portable recipe mappings.
 These commands validate the workflow implementation; they do not run product
 builds/tests on a PR repair.

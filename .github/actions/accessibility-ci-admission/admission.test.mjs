@@ -25,9 +25,15 @@ function fixture(dispatch = false) {
   const workflow = { id: 7, path: run.path, state: 'active' };
   const caller = { id: 100, path: '.github/workflows/ghaw-pr-accessibility.lock.yml',
     event: 'workflow_dispatch', head_sha: TRUSTED, repository: repo };
-  const producer = { name: 'C++ build and unit tests', run_id: 91, run_attempt: 2, head_sha: HEAD,
+  const producer = { name: 'C++ build', run_id: 91, run_attempt: 2, head_sha: HEAD,
     status: 'completed', conclusion: 'success',
-    steps: ['Publish accessibility TestHost payload', 'Build production Terminal and C++ tests', 'Test all C++ units']
+    steps: ['Publish accessibility TestHost payload', 'Stage complete original-head TestHost layout',
+      'Build production Terminal and C++ tests', 'Stage ordinary C++ unit test payload', 'Publish C++ unit test payload']
+      .map(name => ({ name, status: 'completed', conclusion: 'success' })) };
+  const units = { ...producer, name: 'C++ unit tests',
+    steps: [{ name: 'Test all C++ units', status: 'completed', conclusion: 'success' }] };
+  const native = { ...producer, name: 'Native accessibility / Native Axe.Windows smoke',
+    steps: ['Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']
       .map(name => ({ name, status: 'completed', conclusion: 'success' })) };
   const rust = { ...producer, name: 'Rust build and unit tests',
     steps: ['Build x64 Rust binaries', 'Test all x64 Rust units']
@@ -36,7 +42,8 @@ function fixture(dispatch = false) {
     digest: `sha256:${'d'.repeat(64)}`, size_in_bytes: 4096,
     workflow_run: { id: 91, head_sha: HEAD, repository_id: 42, head_repository_id: 42 } };
   let associated = [pr], previous = [], files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
-  let jobs = [producer, rust], artifacts = [artifact], timeline = [];
+  const nativeArtifact = { ...artifact, id: 6, name: 'ci-accessibility-native-91-2' };
+  let jobs = [producer, units, rust, native], artifacts = [artifact, nativeArtifact], timeline = [];
   const github = { graphql: async () => ({ repository: { pullRequest: {
     timelineItems: { totalCount: 6, nodes: timeline, pageInfo: { hasNextPage: false } } } } }), rest: { repos: {
     get: async () => ({ data: repo }),
@@ -54,7 +61,8 @@ function fixture(dispatch = false) {
     return ({ associated, runs: previous, files, jobs, artifacts, timeline })[method];
   } };
   return { github, context, trustedSha: TRUSTED, repo, run, pr, trees, workflow, caller,
-    producer, rust, artifact, setJobs: value => { jobs = value; }, setArtifacts: value => { artifacts = value; },
+    producer, units, rust, native, artifact, nativeArtifact,
+    setJobs: value => { jobs = value; }, setArtifacts: value => { artifacts = value; },
     setTimeline: value => { timeline = value; },
     setAssociated: value => { associated = value; }, setPrevious: value => { previous = value; },
     setFiles: value => { files = value; } };
@@ -80,12 +88,17 @@ for (const [name, change] of [
   ['nondefault target', f => { f.pr.base.ref = 'release'; }],
   ['ambiguous PR fanout', f => { f.setAssociated([f.pr, f.pr]); }],
   ['modified CI implementation', f => { f.trees[0].tree[0].sha = HEAD; }],
+  ['modified CI native transport', f => {
+    f.trees[0].tree.find(file => file.path === '.github/workflows/native-accessibility.yml').sha = HEAD;
+  }],
   ['truncated provenance', f => { f.trees[0].truncated = true; }],
   ['inactive workflow', f => { f.workflow.state = 'disabled_manually'; }],
   ['same-head retarget after CI start', f => { f.setTimeline([
     { event: 'base_ref_changed', created_at: '2026-11-12T10:01:00Z' }]); }],
   ['missing target provenance', f => { f.setTimeline(null); }],
   ['green no-op build', f => { f.producer.steps = []; }],
+  ['skipped ordinary unit tests', f => { f.units.conclusion = 'skipped'; }],
+  ['missing ordinary unit execution', f => { f.units.steps = []; }],
   ['skipped Rust build in successful run', f => { f.rust.steps[0].conclusion = 'skipped'; }],
 ]) test(`reject ${name}`, async () => {
   const f = fixture(); change(f);
@@ -200,4 +213,42 @@ test('native admission returns only successful same-head exact-attempt artifact 
   assert.equal(JSON.parse(result.pull_request).head.sha, HEAD);
   f.pr.head.sha = BASE; // Confirmed own repair is never the artifact source.
   assert.equal((await admit({ ...f, requirePayload: true, publishedSha: BASE })).artifact_id, '5');
+});
+
+for (const [name, change] of [
+  ['missing native job', f => f.setJobs([f.producer, f.units, f.rust])],
+  ['duplicate native job', f => f.setJobs([f.producer, f.units, f.rust, f.native, f.native])],
+  ['wrong native run', f => { f.native.run_id++; }],
+  ['old native attempt', f => { f.native.run_attempt--; }],
+  ['wrong native head', f => { f.native.head_sha = BASE; }],
+  ['pending native job', f => { f.native.status = 'in_progress'; }],
+  ['failed native job', f => { f.native.conclusion = 'failure'; }],
+  ['skipped native job', f => { f.native.conclusion = 'skipped'; }],
+  ['missing receipt step', f => { f.native.steps.shift(); }],
+  ['skipped receipt', f => { f.native.steps[0].conclusion = 'skipped'; }],
+  ['failed upload', f => { f.native.steps[1].conclusion = 'failure'; }],
+  ['skipped enforcement', f => { f.native.steps[2].conclusion = 'skipped'; }],
+  ['duplicate enforcement', f => { f.native.steps.push(f.native.steps[2]); }],
+  ['missing native archive', f => f.setArtifacts([f.artifact])],
+  ['duplicate native archive', f => f.setArtifacts([f.nativeArtifact, f.nativeArtifact])],
+  ['expired native archive', f => { f.nativeArtifact.expired = true; }],
+  ['old native archive attempt', f => { f.nativeArtifact.name = 'ci-accessibility-native-91-1'; }],
+  ['foreign native archive', f => { f.nativeArtifact.workflow_run = { ...f.nativeArtifact.workflow_run, repository_id: 43 }; }],
+  ['fork native archive', f => { f.nativeArtifact.workflow_run = { ...f.nativeArtifact.workflow_run, head_repository_id: 43 }; }],
+  ['wrong native archive head', f => { f.nativeArtifact.workflow_run = { ...f.nativeArtifact.workflow_run, head_sha: BASE }; }],
+  ['wrong native archive run', f => { f.nativeArtifact.workflow_run = { ...f.nativeArtifact.workflow_run, id: 90 }; }],
+  ['missing native digest', f => { delete f.nativeArtifact.digest; }],
+  ['invalid native digest', f => { f.nativeArtifact.digest = 'sha256:wrong'; }],
+  ['oversized native archive', f => { f.nativeArtifact.size_in_bytes = 256 * 1024 ** 2 + 1; }],
+  ['empty native archive', f => { f.nativeArtifact.size_in_bytes = 0; }],
+]) test(`native results reject ${name} without fallback`, async () => {
+  const f = fixture(true); change(f);
+  await assert.rejects(admit({ ...f, requireNative: true }));
+});
+test('native result consumption authenticates exact original CI independently of model selection', async () => {
+  const f = fixture(true);
+  assert.equal((await admit({ ...f, requireNative: true })).artifact_id, '6');
+  f.pr.head.sha = BASE;
+  assert.equal((await admit({ ...f, requireNative: true, publishedSha: BASE })).artifact_id, '6');
+  await assert.rejects(admit({ ...f, requireNative: true }));
 });

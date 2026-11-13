@@ -3,127 +3,93 @@ name: Native accessibility smoke
 on:
   workflow_call:
     inputs:
-      head-repository:
-        required: true
-        type: string
       head-sha:
         required: true
         type: string
-      published-sha:
-        description: Confirmed repair tip from the trusted worker; admission only, never the scan revision.
-        required: false
-        default: ''
-        type: string
-      trusted-repository:
-        required: true
-        type: string
       trusted-sha:
+        description: Immutable PR base revision for the native harness, not candidate source.
         required: true
         type: string
 permissions:
   contents: read
   actions: read
-  pull-requests: read
 env:
   ACCESSIBILITY_RESULTS: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
   ACCESSIBILITY_PAYLOAD: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost-payload
   ACCESSIBILITY_ARCHIVE: ${{ github.workspace }}/Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/testhost.zip
+  EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
+  CI_RUN_ID: ${{ github.run_id }}
+  CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
 jobs:
-  admission:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          persist-credentials: false
-      - uses: ./.github/actions/accessibility-ci-admission
-        with:
-          published-sha: ${{ inputs.published-sha }}
-      - name: Bind native inputs to the admitted original revision
-        env:
-          HEAD_SHA: ${{ inputs.head-sha }}
-          HEAD_REPOSITORY: ${{ inputs.head-repository }}
-          TRUSTED_SHA: ${{ inputs.trusted-sha }}
-          TRUSTED_REPOSITORY: ${{ inputs.trusted-repository }}
-          PULL_REQUEST: ${{ github.event.inputs.pull_request }}
-          WORKFLOW_SHA: ${{ github.workflow_sha }}
-        run: |
-          node --input-type=module <<'NODE'
-          const pr = JSON.parse(process.env.PULL_REQUEST);
-          if (process.env.HEAD_SHA !== pr.head.sha ||
-              process.env.HEAD_REPOSITORY !== process.env.GITHUB_REPOSITORY ||
-              process.env.TRUSTED_REPOSITORY !== process.env.GITHUB_REPOSITORY ||
-              process.env.TRUSTED_SHA !== process.env.WORKFLOW_SHA) throw Error('Native input identity differs from admission.');
-          NODE
   native-smoke:
-    needs: [admission]
     name: Native Axe.Windows smoke
     runs-on: windows-2025-vs2026
     timeout-minutes: 45
     permissions:
       contents: read
       actions: read
-      pull-requests: read
     steps:
       - name: Checkout immutable trusted consumer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ${{ inputs.trusted-repository }}
-          ref: ${{ inputs.trusted-sha }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 1
           persist-credentials: false
           sparse-checkout: |
-            .github/actions/accessibility-ci-admission
-            .github/skills/ghaw-pr-security/scripts/security-review.mjs
-            build/scripts/ci-accessibility-scope.mjs
             build/scripts/ci-accessibility-payload.py
           sparse-checkout-cone-mode: false
       - name: Verify immutable consumer
         shell: pwsh
         env:
-          EXPECTED_TRUSTED_SHA: ${{ inputs.trusted-sha }}
+          EXPECTED_TRUSTED_SHA: ${{ github.workflow_sha }}
+          TRUSTED_HARNESS_SHA: ${{ inputs.trusted-sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_EVENT_NAME -ne 'pull_request' -or
+              $env:PR_REPOSITORY_ID -ne $env:GITHUB_REPOSITORY_ID -or
+              $env:EXPECTED_HEAD_SHA -ne $env:PR_HEAD_SHA -or
+              $env:TRUSTED_HARNESS_SHA -ne $env:PR_BASE_SHA) {
+            throw 'Native CI requires the same-repository original PR head and immutable base harness.'
+          }
           if ((git rev-parse HEAD) -ne $env:EXPECTED_TRUSTED_SHA) {
             throw 'Consumer checkout does not match the immutable trusted revision.'
           }
-      - name: Authenticate exact CI TestHost producer and artifact
-        id: payload
-        uses: ./.github/actions/accessibility-ci-admission
-        with:
-          published-sha: ${{ inputs.published-sha }}
-          require-payload: 'true'
       - name: Download authenticated artifact without extracting it
+        id: payload
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        env:
-          ARTIFACT_ID: ${{ steps.payload.outputs.artifact_id }}
-          ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
-          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
-          SOURCE_SHA: ${{ inputs.head-sha }}
-          CI_RUN_ID: ${{ steps.payload.outputs.ci_run_id }}
-          CI_RUN_ATTEMPT: ${{ steps.payload.outputs.ci_run_attempt }}
         with:
           script: |
             const fs = require('node:fs');
             const path = require('node:path');
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              { ...context.repo, run_id: context.runId, per_page: 100 });
+            const matches = artifacts.filter(a =>
+              a.name === `ci-accessibility-testhost-${context.runId}-${process.env.CI_RUN_ATTEMPT}`);
+            if (matches.length !== 1) throw Error('Missing or ambiguous same-build TestHost artifact.');
+            const artifact = matches[0];
+            if (artifact.expired !== false || artifact.workflow_run?.id !== context.runId ||
+                artifact.workflow_run?.head_sha !== process.env.EXPECTED_HEAD_SHA ||
+                artifact.workflow_run?.repository_id !== Number(process.env.GITHUB_REPOSITORY_ID) ||
+                artifact.workflow_run?.head_repository_id !== Number(process.env.GITHUB_REPOSITORY_ID) ||
+                !/^sha256:[0-9a-f]{64}$/.test(artifact.digest || '') ||
+                artifact.size_in_bytes <= 0 || artifact.size_in_bytes > 2 * 1024 ** 3) {
+              throw Error('Same-build TestHost artifact identity differs.');
+            }
             const response = await github.rest.actions.downloadArtifact({
-              ...context.repo, artifact_id: Number(process.env.ARTIFACT_ID), archive_format: 'zip',
+              ...context.repo, artifact_id: artifact.id, archive_format: 'zip',
             });
             fs.mkdirSync(path.dirname(process.env.ACCESSIBILITY_ARCHIVE), { recursive: true });
             fs.writeFileSync(process.env.ACCESSIBILITY_ARCHIVE, Buffer.from(response.data), { flag: 'wx' });
             fs.mkdirSync(process.env.ACCESSIBILITY_RESULTS, { recursive: true });
-            fs.writeFileSync(path.join(process.env.ACCESSIBILITY_RESULTS, 'ci-payload-provenance.json'),
-              JSON.stringify({ repository: `${context.repo.owner}/${context.repo.repo}`,
-                pr_number: process.env.PR_NUMBER, source_sha: process.env.SOURCE_SHA, run_id: process.env.CI_RUN_ID,
-                run_attempt: process.env.CI_RUN_ATTEMPT, artifact_id: process.env.ARTIFACT_ID,
-                digest: process.env.ARTIFACT_DIGEST }));
+            core.setOutput('artifact_digest', artifact.digest);
       - name: Verify archive integrity and complete portable layout before extraction
         shell: pwsh
         env:
           EXPECTED_HEAD_SHA: ${{ inputs.head-sha }}
-          PR_NUMBER: ${{ fromJSON(github.event.inputs.pull_request).number }}
-          CI_RUN_ID: ${{ steps.payload.outputs.ci_run_id }}
-          CI_RUN_ATTEMPT: ${{ steps.payload.outputs.ci_run_attempt }}
           ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact_digest }}
         run: |
           python build/scripts/ci-accessibility-payload.py extract `
@@ -149,7 +115,6 @@ jobs:
       - name: Checkout trusted native harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ${{ inputs.trusted-repository }}
           ref: ${{ inputs.trusted-sha }}
           path: trusted-accessibility
           fetch-depth: 1
@@ -247,13 +212,19 @@ jobs:
             -AxePath $env:AXE_WINDOWS_PATH `
             -OutputDirectory "$env:ACCESSIBILITY_RESULTS" `
             -SourceSha $env:SOURCE_SHA
+      - name: Record native CI results
+        if: always()
+        shell: pwsh
+        run: |
+          python build/scripts/ci-accessibility-payload.py record-native --output "$env:ACCESSIBILITY_RESULTS"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload native accessibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: native-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-accessibility-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.ACCESSIBILITY_RESULTS }}
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
       - name: Enforce native scan results
         if: always()
@@ -268,27 +239,5 @@ jobs:
           if ($env:FRE_OUTCOME -ne 'success' -or $env:AGENTS_OUTCOME -ne 'success' -or $env:FRE_SETTINGS_OUTCOME -ne 'success') {
             throw "Native accessibility scan failed or was blocked: FRE=$env:FRE_OUTCOME Agents=$env:AGENTS_OUTCOME FRE-settings=$env:FRE_SETTINGS_OUTCOME"
           }
-          $markers = @{ fre = 'NextButton'; 'fre-settings' = 'AgentComboBox'; agents = 'AcpAgentComboBox' }
-          foreach ($surface in @('fre', 'fre-settings', 'agents')) {
-            $directory = Join-Path $env:ACCESSIBILITY_RESULTS $surface
-            $result = Get-Content -LiteralPath (Join-Path $directory 'result.json') -Raw | ConvertFrom-Json
-            if ($result.status -ne 'PASS' -or $result.source_sha -ne $env:SOURCE_SHA -or
-                $result.surface -ne $surface -or $result.process_id -le 0) {
-              throw "Native $surface result has missing or inconsistent identity/status evidence."
-            }
-            $scanPath = Join-Path $directory 'axe-results.json'
-            $treePath = Join-Path $directory 'uia-tree.json'
-            if ($result.axe_results -ne $scanPath) { throw "Native $surface scan path is inconsistent." }
-            $scan = Get-Content -LiteralPath $scanPath -Raw | ConvertFrom-Json
-            if ($scan.scan_id -ne $surface -or $scan.process_id -ne $result.process_id -or
-                $scan.window_count -le 0 -or $scan.error_count -ne 0 -or
-                $scan.visible_state_marker -ne $markers[$surface] -or $scan.uia_tree -ne $treePath) {
-              throw "Native $surface scan has missing or inconsistent state evidence."
-            }
-            $tree = @(Get-Content -LiteralPath $treePath -Raw | ConvertFrom-Json)
-            $visibleMarker = @($tree | Where-Object {
-              $_.automation_id -eq $markers[$surface] -and
-              $_.is_offscreen -eq $false -and $_.process_id -eq $result.process_id
-            })
-            if ($visibleMarker.Count -eq 0) { throw "Native $surface hierarchy lacks its visible state marker." }
-          }
+          python build/scripts/ci-accessibility-payload.py check-native --output "$env:ACCESSIBILITY_RESULTS"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

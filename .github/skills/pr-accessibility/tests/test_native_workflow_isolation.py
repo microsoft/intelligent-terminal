@@ -1,12 +1,14 @@
 """Guard the reusable native workflow's credential and identity boundary."""
 from pathlib import Path
 import json
+import os
 import re
 import subprocess
 import tempfile
 import textwrap
 import unittest
 import zipfile
+import yaml
 
 
 ROOT = Path(__file__).parents[4]
@@ -46,6 +48,28 @@ class TrustedHarnessIdentityTests(unittest.TestCase):
         result = self.verify("0" * 40)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("does not match", result.stderr)
+
+
+class NativeCiIdentityTests(unittest.TestCase):
+    def test_actual_windows_step_binds_event_source_base_and_repository(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8"))
+        step = next(s for s in workflow["jobs"]["native-smoke"]["steps"]
+                    if s.get("name") == "Verify immutable consumer")
+        environment = {**os.environ, "GITHUB_EVENT_NAME": "pull_request",
+                       "GITHUB_REPOSITORY_ID": "42", "PR_REPOSITORY_ID": "42",
+                       "EXPECTED_TRUSTED_SHA": "c" * 40, "TRUSTED_HARNESS_SHA": "b" * 40,
+                       "PR_BASE_SHA": "b" * 40, "EXPECTED_HEAD_SHA": "a" * 40, "PR_HEAD_SHA": "a" * 40}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "verify.ps1"
+            path.write_text("function git { '" + "c" * 40 + "' }\n" + step["run"], encoding="utf-8")
+            for key, value in ((None, None), ("GITHUB_EVENT_NAME", "workflow_dispatch"),
+                               ("PR_REPOSITORY_ID", "43"), ("EXPECTED_HEAD_SHA", "d" * 40),
+                               ("TRUSTED_HARNESS_SHA", "d" * 40), ("EXPECTED_TRUSTED_SHA", "d" * 40)):
+                with self.subTest(key=key):
+                    result = subprocess.run(["pwsh", "-NoProfile", "-File", str(path)],
+                                            env={**environment, **({key: value} if key else {})},
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertEqual(key is None, result.returncode == 0, result.stderr)
 
 
 class FrameworkDependencyInstallationTests(unittest.TestCase):
@@ -140,22 +164,23 @@ if ($failure) { exit 1 }
 
 
 class NativeWorkflowIsolationTests(unittest.TestCase):
-    def test_windows_discovery_is_wired_without_building_in_the_source_agent(self):
+    def test_worker_consumes_ci_evidence_without_windows_or_builds(self):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
-        self.assertIn("\n  native-runtime:\n", compiled)
-        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertIn("\n  native-evidence:\n", compiled)
+        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertNotIn("windows-", compiled)
         self.assertNotIn("call tools\\razzle.cmd", compiled)
 
     def test_problem_discovery_does_not_gate_or_retest_repair_publication(self):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("native-runtime", publication)
-        discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-runtime:\n", 1)[1], maxsplit=1)[0]
-        self.assertIn("- native-selection", discovery)
-        self.assertIn("- safe_outputs", discovery)
-        self.assertIn("head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
-        self.assertIn("published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}", discovery)
-        self.assertIn("!cancelled()", discovery)
+        discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-evidence:\n", 1)[1], maxsplit=1)[0]
+        self.assertNotIn("- native-selection", discovery)
+        self.assertNotIn("- safe_outputs", discovery)
+        self.assertIn("EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
+        self.assertIn("require-native: \"true\"", discovery)
+        self.assertNotIn("push_commit_sha", discovery)
 
     def test_reusable_native_definition_has_no_telemetry_or_secret_references(self):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
@@ -167,14 +192,19 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn("environment:", native)
         self.assertNotIn(": write", native)
 
-    def test_native_discovery_receives_four_immutable_identities(self):
-        caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
+    def test_native_ci_discovery_receives_immutable_identities(self):
+        caller = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
-        for key in ("head-repository", "head-sha", "trusted-repository", "trusted-sha"):
+        for key in ("head-sha", "trusted-sha"):
             self.assertIn(f"      {key}:", caller)
-            self.assertRegex(native, rf"{key}:\n\s+required: true\n\s+type: string")
+            self.assertRegex(native, rf"{key}:\n(?:\s+description:.*\n)?\s+required: true\n\s+type: string")
             self.assertIn(f"${{{{ inputs.{key} }}}}", native)
-        self.assertNotIn("github.event.pull_request", native)
+        self.assertIn("trusted-sha: ${{ github.event.pull_request.base.sha }}", caller)
+        self.assertIn("head-sha: ${{ github.event.pull_request.head.sha }}", caller)
+        self.assertIn("$env:TRUSTED_HARNESS_SHA -ne $env:PR_BASE_SHA", native)
+        self.assertIn("$env:EXPECTED_HEAD_SHA -ne $env:PR_HEAD_SHA", native)
+        self.assertIn("$env:PR_REPOSITORY_ID -ne $env:GITHUB_REPOSITORY_ID", native)
+        self.assertNotIn("github.event.inputs.pull_request", native)
 
     def test_agents_host_uses_production_settings_navigation(self):
         host = (ROOT / "src/cascadia/LocalTests_TerminalApp/TestHostApp/UnitTestApp.xaml.cpp").read_text(encoding="utf-8")
@@ -198,7 +228,6 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertNotIn("call tools\\razzle.cmd", native)
         self.assertNotIn("call bx", native)
-        self.assertIn("require-payload: 'true'", native)
         self.assertIn("ci-accessibility-payload.py extract", native)
         for surface in ("fre", "fre-settings", "agents"):
             self.assertIn(f"-Surface {surface}", native)

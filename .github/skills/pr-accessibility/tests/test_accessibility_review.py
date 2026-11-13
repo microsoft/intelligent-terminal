@@ -1668,11 +1668,11 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", workflow)
-        self.assertIn("\n  native-runtime:", workflow)
+        self.assertIn("\n  native-evidence:", workflow)
         self.assertNotIn("checks: write", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", compiled)
-        self.assertIn("\n  native-runtime:", compiled)
+        self.assertIn("\n  native-evidence:", compiled)
         summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
         self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
 
@@ -1740,7 +1740,6 @@ class WorkflowContractTests(unittest.TestCase):
         for name in ("ghaw-pr-accessibility.md", "ghaw-pr-accessibility.lock.yml"):
             workflow = (root / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertIn("ref: ${{ github.workflow_sha }}", workflow)
-            self.assertIn("trusted-sha: ${{ github.workflow_sha }}", workflow)
             self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
             self.assertIn('--base "$BASE_SHA"', workflow.replace('\\"', '"'))
             self.assertIn('--trusted-sha "$WORKFLOW_SHA"', workflow.replace('\\"', '"'))
@@ -1754,16 +1753,16 @@ class WorkflowContractTests(unittest.TestCase):
                         workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'))
         self.assertIn("one separate commit per eligible HIGH finding", workflow)
 
-    def test_source_review_and_publication_are_independent_of_native_discovery(self):
+    def test_source_review_uses_ci_evidence_without_proposed_fix_runtime_gate(self):
         root = Path(__file__).parents[4]
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         agent = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
         dependencies = agent.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
         self.assertIn("- activation", dependencies)
         self.assertIn("- triage-route", dependencies)
-        self.assertNotIn("native", dependencies)
-        self.assertIn("\n  native-runtime:\n", compiled)
-        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
+        self.assertIn("- native-evidence", dependencies)
+        self.assertIn("\n  native-evidence:\n", compiled)
+        self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         publisher = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         dependencies = publisher.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
         self.assertNotIn("native", dependencies)
@@ -1782,7 +1781,9 @@ class WorkflowContractTests(unittest.TestCase):
     def test_native_discovery_keeps_its_isolated_windows_lane(self):
         root = Path(__file__).parents[4]
         caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("\n  native-runtime:\n", caller)
+        self.assertNotIn("\n  native-runtime:\n", caller)
+        ci = (root / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        self.assertIn("uses: ./.github/workflows/native-accessibility.yml", ci)
         workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)
         self.assertIn("persist-credentials: false", workflow)
@@ -1795,7 +1796,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("FRE_SETTINGS_OUTCOME", workflow)
         self.assertIn("name: Checkout trusted native harness", workflow)
         self.assertIn("trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1", workflow)
-        self.assertIn("hierarchy lacks its visible state marker", workflow)
+        self.assertIn("ci-accessibility-payload.py check-native", workflow)
+        transport = (root / "build/scripts/ci-accessibility-payload.py").read_text(encoding="utf-8")
+        self.assertIn('n.get("is_offscreen") is False', transport)
+        self.assertIn('scan["visible_state_marker"] != marker', transport)
         self.assertIn("Native accessibility scan failed or was blocked", workflow)
 
     def test_native_runtime_harness_targets_only_test_host_package(self):

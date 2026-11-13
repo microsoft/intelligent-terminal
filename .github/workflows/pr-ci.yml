@@ -44,9 +44,12 @@ env:
 #   -> commit 33d7b85da1a04171e211befe2c739303b9a4c066
 jobs:
   cpp:
-    name: C++ build and unit tests
+    name: C++ build
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
+    outputs:
+      accessibility: ${{ steps.accessibility-scope.outputs.required }}
+      units: ${{ steps.units.outcome == 'success' }}
     permissions:
       contents: read
       pull-requests: read
@@ -153,6 +156,82 @@ jobs:
             "/t:Terminal\Window\WindowsTerminal;Terminal\Window\WindowsTerminalShellExt;wtcli;Conhost\Host_EXE;Conhost\Host_UnitTests;Conhost\Interactivity_Win32_UnitTests;Shared\til_unit_tests;Shared\Types_Unit_Tests;Shared\Buffer\TextBuffer_Unit_Tests;Shared\Virtual Terminal\Adapter_UnitTests;Shared\Virtual Terminal\Parser_UnitTests;Terminal\Tests\Control_UnitTests;Terminal\Tests\SettingsModel_UnitTests;Terminal\Tests\UnitTests;Terminal\Tests\TerminalApp_UnitTests;Terminal\Tests\TerminalApp_LocalTests;Terminal\Tests\TestHostApp"
           if errorlevel 1 exit /b 1
 
+      - name: Stage ordinary C++ unit test payload
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+        run: |
+          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage-units `
+            --workspace "$env:GITHUB_WORKSPACE" `
+            --output "Generated Files/cpp-units-${{ github.run_id }}-${{ github.run_attempt }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish C++ unit test payload
+        id: units
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-cpp-units-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Generated Files/cpp-units-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+      - name: Stage complete original-head TestHost layout
+        if: steps.accessibility-scope.outputs.required == 'true'
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage `
+            --workspace "$env:GITHUB_WORKSPACE" `
+            --output "Generated Files/ci-accessibility-payload-${{ github.run_id }}-${{ github.run_attempt }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish accessibility TestHost payload
+        if: steps.accessibility-scope.outputs.required == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-accessibility-testhost-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Generated Files/ci-accessibility-payload-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+  cpp-tests:
+    name: C++ unit tests
+    needs: [cpp]
+    # Native staging must not hide ordinary test results if its own staging fails.
+    if: ${{ !cancelled() && needs.cpp.outputs.units == 'true' }}
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout workflow-revision unit runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            build/scripts/Run-Tests.ps1
+            build/scripts/ci-accessibility-payload.py
+          sparse-checkout-cone-mode: false
+      - name: Download original build unit payload
+        uses: actions/download-artifact@v8
+        with:
+          name: ci-cpp-units-${{ github.run_id }}-${{ github.run_attempt }}
+          path: bin/x64/Debug
+      - name: Verify unit payload identity and completeness
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+        run: |
+          python build/scripts/ci-accessibility-payload.py check-units --output bin/x64/Debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test all C++ units
         run: |
           $ErrorActionPreference = 'Stop'
@@ -172,27 +251,17 @@ jobs:
             -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'
           exit $LASTEXITCODE
 
-      - name: Stage complete original-head TestHost layout
-        if: steps.accessibility-scope.outputs.required == 'true'
-        env:
-          CI_RUN_ID: ${{ github.run_id }}
-          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          python ci-analysis-tools/build/scripts/ci-accessibility-payload.py stage `
-            --workspace "$env:GITHUB_WORKSPACE" `
-            --output "Generated Files/ci-accessibility-payload"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Publish accessibility TestHost payload
-        if: steps.accessibility-scope.outputs.required == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: ci-accessibility-testhost-${{ github.run_id }}-${{ github.run_attempt }}
-          path: Generated Files/ci-accessibility-payload/
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 1
+  axe:
+    name: Native accessibility
+    needs: [cpp]
+    if: needs.cpp.outputs.accessibility == 'true'
+    uses: ./.github/workflows/native-accessibility.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      head-sha: ${{ github.event.pull_request.head.sha }}
+      trusted-sha: ${{ github.event.pull_request.base.sha }}
 
   rust:
     name: Rust build and unit tests

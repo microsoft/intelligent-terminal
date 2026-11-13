@@ -6,10 +6,13 @@ inputs:
     description: Reject a previously admitted CI attempt at the worker boundary.
   published-sha:
     default: ''
-    description: Confirmed repair tip, wired only by the trusted worker for native discovery and final summary.
+    description: Confirmed repair tip, wired only by the trusted worker for final summary.
   require-payload:
     default: 'false'
     description: Require successful exact-attempt TestHost producer and protected artifact identity.
+  require-native:
+    default: 'false'
+    description: Require successful exact-attempt CI native scans, enforcement and original-head result archive.
 outputs:
   pull_request:
     value: ${{ steps.admit.outputs.pull_request }}
@@ -25,7 +28,7 @@ outputs:
     description: Existing accessibility path eligibility.
   artifact_id:
     value: ${{ steps.admit.outputs.artifact_id }}
-    description: Exact CI TestHost artifact ID.
+    description: Exact CI artifact ID (native results when require-native is true).
   artifact_digest:
     value: ${{ steps.admit.outputs.artifact_digest }}
     description: GitHub-authenticated SHA-256 of the artifact archive.
@@ -39,6 +42,7 @@ runs:
         DEDUPLICATE: ${{ inputs.deduplicate }}
         PUBLISHED_SHA: ${{ inputs.published-sha }}
         REQUIRE_PAYLOAD: ${{ inputs.require-payload }}
+        REQUIRE_NATIVE: ${{ inputs.require-native }}
       with:
         script: |
           if (process.env.GITHUB_RUN_ATTEMPT !== '1') throw Error('A CI attempt may start accessibility only once.');
@@ -47,5 +51,6 @@ runs:
             `${process.env.GITHUB_WORKSPACE}/.github/actions/accessibility-ci-admission/admission.mjs`));
           const outputs = await admit({ github, context, trustedSha: process.env.TRUSTED_CI_SHA,
             deduplicate: process.env.DEDUPLICATE === 'true', publishedSha: process.env.PUBLISHED_SHA,
-            requirePayload: process.env.REQUIRE_PAYLOAD === 'true' });
+            requirePayload: process.env.REQUIRE_PAYLOAD === 'true',
+            requireNative: process.env.REQUIRE_NATIVE === 'true' });
           for (const [key, value] of Object.entries(outputs)) core.setOutput(key, value);

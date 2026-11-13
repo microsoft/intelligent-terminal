@@ -11,7 +11,9 @@ const worker = 'ghaw-pr-accessibility.lock.yml';
 
 export function validateBuildJobs(jobs, run) {
   for (const [name, steps] of [
-    ['C++ build and unit tests', ['Build production Terminal and C++ tests', 'Test all C++ units']],
+    ['C++ build', ['Build production Terminal and C++ tests', 'Stage ordinary C++ unit test payload',
+      'Publish C++ unit test payload']],
+    ['C++ unit tests', ['Test all C++ units']],
     ['Rust build and unit tests', ['Build x64 Rust binaries', 'Test all x64 Rust units']],
   ]) {
     const matches = jobs.filter(job => job.name === name);
@@ -28,19 +30,34 @@ export function validateBuildJobs(jobs, run) {
 }
 
 export function validateTestHostProducer(jobs, run) {
-  const producers = jobs.filter(job => job.name === 'C++ build and unit tests');
+  const producers = jobs.filter(job => job.name === 'C++ build');
   if (producers.length !== 1 || producers[0].run_id !== run.id ||
       producers[0].run_attempt !== run.run_attempt || producers[0].head_sha !== run.head_sha ||
       producers[0].status !== 'completed' || producers[0].conclusion !== 'success') {
     throw Error('Missing successful exact-attempt TestHost producer.');
   }
-  const uploads = (producers[0].steps ?? []).filter(step => step.name === 'Publish accessibility TestHost payload');
-  if (uploads.length !== 1 || uploads[0].status !== 'completed' || uploads[0].conclusion !== 'success') {
-    throw Error('TestHost publication did not complete successfully.');
+  for (const name of ['Stage complete original-head TestHost layout', 'Publish accessibility TestHost payload']) {
+    const uploads = (producers[0].steps ?? []).filter(step => step.name === name);
+    if (uploads.length !== 1 || uploads[0].status !== 'completed' || uploads[0].conclusion !== 'success') {
+      throw Error('TestHost publication did not complete successfully.');
+    }
   }
 }
 
-export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '', requirePayload = false }) {
+export function validateNativeJobs(jobs, run) {
+  const matches = jobs.filter(job => job.name === 'Native accessibility / Native Axe.Windows smoke');
+  if (matches.length !== 1 || matches[0].run_id !== run.id || matches[0].run_attempt !== run.run_attempt ||
+      matches[0].head_sha !== run.head_sha || matches[0].status !== 'completed' ||
+      matches[0].conclusion !== 'success') throw Error('Native CI evidence incomplete: exact-attempt scan job did not succeed.');
+  for (const name of ['Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']) {
+    const steps = (matches[0].steps ?? []).filter(step => step.name === name);
+    if (steps.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') {
+      throw Error('Native CI evidence incomplete: required scan receipt/upload/enforcement did not succeed.');
+    }
+  }
+}
+
+export async function admit({ github, context, trustedSha, deduplicate = false, publishedSha = '', requirePayload = false, requireNative = false }) {
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   const metadata = (await github.rest.repos.get(context.repo)).data;
   const inputs = context.payload.inputs;
@@ -146,16 +163,20 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
     base: { sha: pr.base.sha, ref: pr.base.ref, repo: { id: metadata.id, full_name: repository } } };
   const outputs = { pull_request: JSON.stringify(pull), ci_run_id: String(run.id),
     ci_run_attempt: String(run.run_attempt), applicable: String(applicable) };
-  if (requirePayload) {
+  if (requirePayload || requireNative) {
     validateTestHostProducer(jobs, run);
+    if (requireNative) validateNativeJobs(jobs, run);
     const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
       { ...context.repo, run_id: run.id, per_page: 100 });
-    const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-testhost-${run.id}-${run.run_attempt}`);
+    const kind = requireNative ? 'native' : 'testhost';
+    const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-${kind}-${run.id}-${run.run_attempt}`);
     if (!/^sha256:[0-9a-f]{64}$/.test(artifact.digest ?? '') ||
         artifact.workflow_run.repository_id !== run.repository.id ||
         artifact.workflow_run.head_repository_id !== run.head_repository.id ||
         !Number.isSafeInteger(artifact.size_in_bytes) || artifact.size_in_bytes < 1 ||
-        artifact.size_in_bytes > 2 * 1024 ** 3) throw Error('Missing TestHost artifact integrity identity.');
+        artifact.size_in_bytes > (requireNative ? 256 * 1024 ** 2 : 2 * 1024 ** 3)) {
+      throw Error(`Missing ${kind} artifact integrity identity; evidence incomplete.`);
+    }
     outputs.artifact_id = String(artifact.id);
     outputs.artifact_digest = artifact.digest;
   }

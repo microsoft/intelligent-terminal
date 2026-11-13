@@ -70,17 +70,16 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertEqual("triage", route["needs"])
         self.assertIn("steps.route.outputs.route", route["outputs"]["route"])
 
-    def test_native_requires_deep_selection_not_triage_uncertainty(self):
+    def test_native_ci_consumption_is_independent_of_deep_selection(self):
         selector = self.jobs["native-selection"]
         self.assertEqual("agent", selector["needs"])
         self.assertIn("steps.selection.outputs.native", selector["outputs"]["native"])
-        native = self.jobs["native-runtime"]
-        self.assertEqual({"agent", "native-selection", "safe_outputs"}, set(native["needs"]))
-        self.assertIn("needs.native-selection.result == 'success'", native["if"])
-        self.assertIn("needs.native-selection.outputs.native == 'true'", native["if"])
+        native = self.jobs["native-evidence"]
+        self.assertEqual("admission", native["needs"])
+        self.assertIn("needs.admission.outputs.applicable == 'true'", native["if"])
         self.assertNotIn("triage", native["if"])
-        self.assertIn("head-sha: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
-                      (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8"))
+        self.assertIn("native-evidence", self.jobs["agent"]["needs"])
+        self.assertNotIn("native-runtime", self.jobs)
 
     def test_native_selection_survives_failed_deep_validation_but_not_skip_or_cancel(self):
         selector = self.jobs["native-selection"]
@@ -106,7 +105,7 @@ class CompiledGraphTests(unittest.TestCase):
         summary = self.jobs["final-summary"]
         self.assertIn("always()", summary["if"])
         self.assertEqual(
-            {"admission", "agent", "native-runtime", "native-selection", "safe_outputs", "triage", "triage-route"},
+            {"admission", "agent", "native-evidence", "native-selection", "safe_outputs", "triage", "triage-route"},
             set(summary["needs"]),
         )
         for key in ("deep-result", "native-result", "publication-result", "triage-result",
@@ -120,8 +119,7 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("needs.admission.outputs.applicable == 'true'", self.jobs["triage"]["if"])
         self.assertIn("deep-admission", self.jobs["agent"]["needs"])
         self.assertIn("triage-route", self.jobs["deep-admission"]["needs"])
-        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml",
-                     "native-accessibility.yml"):
+        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
             jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
             costly = jobs.get("agent", jobs.get("native-smoke"))
             self.assertIn("admission", costly["needs"])
@@ -140,33 +138,25 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertNotIn("native-selection", dependencies)
         self.assertNotIn("final-summary", dependencies)
 
-    def test_native_admits_confirmed_publication_but_scans_original_head(self):
-        native = self.jobs["native-runtime"]
-        # A status function retains discovery after failed/skipped publication.
-        self.assertEqual(
-            "${{ !cancelled() && needs.native-selection.result == 'success' && needs.native-selection.outputs.native == 'true' }}",
-            native["if"],
-        )
-        self.assertEqual("${{ needs.safe_outputs.outputs.push_commit_sha }}",
-                         native["with"]["published-sha"])
-        self.assertEqual("${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
-                         native["with"]["head-sha"])
-        workflow = yaml.safe_load((ROOT / ".github/workflows/native-accessibility.yml").read_text(
-            encoding="utf-8"))
-        declared = workflow[True]["workflow_call"]["inputs"]["published-sha"]
-        self.assertFalse(declared["required"])
-        self.assertEqual("", declared["default"])
-        admission = next(step for step in workflow["jobs"]["admission"]["steps"]
+    def test_native_consumer_verifies_archive_before_models_and_never_uses_repairs(self):
+        consumer = self.jobs["native-evidence"]
+        admission = next(step for step in consumer["steps"]
                          if step.get("uses") == "./.github/actions/accessibility-ci-admission")
-        self.assertEqual("${{ inputs.published-sha }}", admission["with"]["published-sha"])
-        checkout = workflow["jobs"]["native-smoke"]["steps"][0]
-        self.assertEqual("${{ inputs.trusted-sha }}", checkout["with"]["ref"])
-        consumer = workflow["jobs"]["native-smoke"]
-        payload = next(step for step in consumer["steps"] if step.get("id") == "payload")
-        self.assertEqual("true", payload["with"]["require-payload"])
-        extraction = next(step for step in consumer["steps"] if step.get("name", "").startswith("Verify archive integrity"))
-        self.assertEqual("${{ inputs.head-sha }}", extraction["env"]["EXPECTED_HEAD_SHA"])
-        self.assertNotIn("razzle", str(consumer))
+        self.assertEqual("true", admission["with"]["require-native"])
+        extraction = next(step for step in consumer["steps"]
+                          if step.get("name") == "Verify and extract untrusted CI native evidence")
+        self.assertEqual("${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
+                         extraction["env"]["EXPECTED_HEAD_SHA"])
+        self.assertIn("ci-accessibility-payload.py extract-native", extraction["run"])
+        self.assertIn('--digest "$ARTIFACT_DIGEST"', extraction["run"])
+        self.assertNotIn("published-sha", str(consumer))
+        self.assertEqual("ubuntu-latest", consumer["runs-on"])
+        self.assertEqual("read", consumer["permissions"]["actions"])
+        upload = next(step for step in consumer["steps"]
+                      if step.get("name") == "Preserve verified original-head CI native evidence")
+        self.assertLess(consumer["steps"].index(extraction), consumer["steps"].index(upload))
+        self.assertNotIn("always()", upload.get("if", ""))
+        self.assertIn("native-evidence", self.jobs["deep-admission"]["needs"])
 
     def test_existing_parallel_ci_build_publishes_payload_without_a_second_build(self):
         ci = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
@@ -176,7 +166,14 @@ class CompiledGraphTests(unittest.TestCase):
         names = [step["name"] for step in steps]
         self.assertLess(names.index("Build production Terminal and C++ tests"),
                         names.index("Stage complete original-head TestHost layout"))
-        self.assertLess(names.index("Test all C++ units"), names.index("Publish accessibility TestHost payload"))
+        units_id, units = next((key, job) for key, job in ci["jobs"].items()
+                               if job.get("name") == "C++ unit tests")
+        self.assertIn("cpp", units["needs"])
+        self.assertNotIn("Build production Terminal and C++ tests", str(units))
+        self.assertIn("Test all C++ units", str(units))
+        native = next(job for job in ci["jobs"].values() if job.get("name") == "Native accessibility")
+        self.assertIn("cpp", native["needs"])
+        self.assertNotIn(units_id, native["needs"])
         for name in ("Stage complete original-head TestHost layout", "Publish accessibility TestHost payload"):
             self.assertIn("steps.accessibility-scope.outputs.required == 'true'",
                           next(step for step in steps if step["name"] == name)["if"])

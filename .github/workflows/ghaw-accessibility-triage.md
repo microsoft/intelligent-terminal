@@ -117,7 +117,9 @@ Short explanation of the diff's accessibility relevance or uncertainty.
 The first line must be exactly `# Related`, `# None`, or `# Uncertain`.
 List candidate changed file paths as backtick bullets; Related needs at least
 one. None may omit candidates. Uncertain retains the doubt and any candidate
-paths without more triage investigation. None skips deep and native review;
+paths without more triage investigation. None skips the deep model review only;
 Related and Uncertain are forwarded unchanged to the deep reviewer, who decides
-which native checks apply. The final summarizer also receives this original
+which existing CI native evidence applies. Path-gated CI scans already ran
+independently before triage; None does not skip CI or its cost.
+The final summarizer also receives this original
 handoff, including uncertainty. Request noop after writing it.
