@@ -3078,4 +3078,31 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
     <value>Terminal fügt Ihre installierten Agenten-CLIs automatisch als Profile hinzu. Öffnen Sie zum Einstieg eines davon über das Menü für neue Registerkarten.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>Die Wahl des Agenten und des Modells liegt ganz bei Ihnen. Sie sind dafür verantwortlich, zu überprüfen, ob Ihre Wahl für die Verwendung in Ihrer Region geeignet ist.</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>Weitere Informationen.</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>Auswahl von Agenten und Modellen</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>Welche KI-Agenten und Modelle Sie hosten und mit welchen Sie sich verbinden, entscheiden Sie selbst. Wenn Sie einen Agenten oder ein Modell eines Drittanbieters wählen, werden diese möglicherweise nicht von Microsoft bereitgestellt, gehostet, betrieben oder überwacht. Wenn Sie {0} verwenden, um mit einem von Ihnen gehosteten Agenten oder Modell zu interagieren, geschieht dies auf eigenes Risiko.</value>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>Wenn Sie ein Modell eines Drittanbieters wählen, filtert, moderiert oder überprüft Microsoft die Modellantworten nicht. Sie sind dafür verantwortlich, eigene Lösungen zur Nachverfolgung der Herkunft von Inhalten und Maßnahmen für verantwortungsvolle KI zu implementieren, etwa Systemprompts, Inhaltsfilter oder andere Sicherheitssysteme, und die Ausgabe vor der Verwendung zu prüfen; oder festzustellen, dass das gewählte Modell diese Lösungen für Sie implementiert.</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>Sie sind außerdem dafür verantwortlich, sicherzustellen, dass Ihre Nutzung alle geltenden KI-Vorschriften, Anforderungen an die Datenverarbeitung und/oder Verpflichtungen zur Datenresidenz erfüllt.</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
 </root>

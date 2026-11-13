@@ -3071,4 +3071,31 @@ Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value
     <value>Terminal‮ åüŧöḿåŧïçåŀŀÿ åđđš ÿöüŕ ïñšŧåŀŀëđ åģëñŧ ÇĿÏš åš ƥŕöƒïŀëš. Öƥëñ öñë ƒŕöḿ ŧħë ñëŵ ŧåƀ ḿëñü ŧö ģëŧ šŧåŕŧëđ.‬ !!! !!! !!! !!! !!!</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>‮Ŧħë çħöïçë öƒ åģëñŧ åñđ ḿöđëŀ ïš ëñŧïŕëŀÿ ÿöüŕš. Ÿöü åŕë ŕëšƥöñšïƀŀë ƒöŕ ṽåŀïđåŧïñģ ŧħåŧ ÿöüŕ çħöïçë ïš åƥƥŕöƥŕïåŧë ƒöŕ üšë ïñ ÿöüŕ ŕëģïöñ.‬ !!! !!! !!! !!! !!!</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>‮Ŀëåŕñ ḿöŕë.‬ !!! !!! !!! !!! !!!</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>‮Åģëñŧ åñđ ḿöđëŀ çħöïçëš‬ !!! !!! !!! !!! !!!</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>‮Çŀöšë‬ !!! !!! !!! !!! !!!</value>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>‮ÅÏ åģëñŧš åñđ ḿöđëŀš ŧħåŧ ÿöü ħöšŧ åñđ çħööšë ŧö çöññëçŧ ŧö ïš ÿöüŕ çħöïçë. Ïƒ ÿöü çħööšë å ŧħïŕđ ƥåŕŧÿ åģëñŧ öŕ ḿöđëŀ, Microsoft ḿåÿ ñöŧ ƥŕöṽïđë, ħöšŧ, öƥëŕåŧë, öŕ ḿöñïŧöŕ ŧħëḿ. Ïƒ ÿöü üšë {0} ŧö ïñŧëŕåçŧ ŵïŧħ åñ åģëñŧ öŕ ḿöđëŀ ÿöü ħöšŧ, ÿöü đö šö åŧ ÿöüŕ öŵñ ŕïšķ.‬ !!! !!! !!! !!! !!!</value>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>‮Ïƒ ÿöü çħööšë å ŧħïŕđ-ƥåŕŧÿ ḿöđëŀ, Microsoft đöëš ñöŧ ƒïŀŧëŕ, ḿöđëŕåŧë, öŕ ṽåŀïđåŧë ḿöđëŀ ŕëšƥöñšëš. Ÿöü åŕë ŕëšƥöñšïƀŀë ƒöŕ ïḿƥŀëḿëñŧïñģ ÿöüŕ öŵñ çöñŧëñŧ ƥŕöṽëñåñçë šöŀüŧïöñš, ŕëšƥöñšïƀŀë ÅÏ ḿïŧïģåŧïöñš, šüçħ åš šÿšŧëḿ ƥŕöḿƥŧš, çöñŧëñŧ ƒïŀŧëŕš öŕ öŧħëŕ šåƒëŧÿ šÿšŧëḿš, åñđ ƒöŕ ŕëṽïëŵïñģ öüŧƥüŧ ƀëƒöŕë ÿöü üšë ïŧ; öŕ đëŧëŕḿïñïñģ ŧħåŧ ÿöüŕ šëŀëçŧëđ ḿöđëŀ ïḿƥŀëḿëñŧš ŧħëšë šöŀüŧïöñš öñ ÿöüŕ ƀëħåŀƒ.‬ !!! !!! !!! !!! !!!</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>‮Ÿöü åŕë åŀšö ŕëšƥöñšïƀŀë ƒöŕ ëñšüŕïñģ ŧħåŧ ÿöüŕ üšë çöḿƥŀïëš ŵïŧħ åñÿ åƥƥŀïçåƀŀë ÅÏ ŕëģüŀåŧïöñš, đåŧå ħåñđŀïñģ ŕëɋüïŕëḿëñŧš åñđ/öŕ đåŧå ŕëšïđëñçÿ çöḿḿïŧḿëñŧš.‬ !!! !!! !!! !!! !!!</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
 </root>

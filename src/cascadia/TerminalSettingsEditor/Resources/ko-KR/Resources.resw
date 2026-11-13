@@ -3114,4 +3114,31 @@ Alt+Shift+/ 프롬프트 입력; Alt+Shift+B 초기 프롬프트 없이 실행</
     <value>Terminal은 설치된 에이전트 CLI를 프로필로 자동 추가합니다. 새 탭 메뉴에서 프로필을 열어 시작하세요.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>에이전트와 모델의 선택은 전적으로 사용자에게 달려 있습니다. 선택한 에이전트와 모델이 해당 지역에서 사용하기에 적절한지 확인할 책임은 사용자에게 있습니다.</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>자세히 알아보기.</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>에이전트 및 모델 선택</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>사용자가 호스팅하고 연결하기로 선택한 AI 에이전트와 모델은 사용자의 선택입니다. 타사 에이전트 또는 모델을 선택하는 경우 Microsoft는 이를 제공, 호스팅, 운영 또는 모니터링하지 않을 수 있습니다. 호스팅하는 에이전트 또는 모델과 상호 작용하기 위해 {0}을(를) 사용하는 경우 그 위험은 사용자가 감수합니다.</value>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>타사 모델을 선택하는 경우 Microsoft는 모델 응답을 필터링, 중재 또는 검증하지 않습니다. 자체 콘텐츠 출처 추적 솔루션과 시스템 프롬프트, 콘텐츠 필터 또는 기타 안전 시스템과 같은 책임 있는 AI 위험 완화 조치를 구현하고, 출력을 사용하기 전에 검토할 책임은 사용자에게 있습니다. 또는 선택한 모델이 사용자를 대신하여 이러한 솔루션을 구현하는지 확인해야 합니다.</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>또한 사용자는 자신의 사용 방식이 적용 가능한 모든 AI 규정, 데이터 처리 요구 사항 및/또는 데이터 상주 약정을 준수하는지 확인할 책임이 있습니다.</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
 </root>

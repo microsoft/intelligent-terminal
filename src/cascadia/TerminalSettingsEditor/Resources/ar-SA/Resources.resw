@@ -3121,4 +3121,31 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <value>يضيف Terminal تلقائيًا أدوات سطر أوامر الوكلاء المثبتة لديك كملفات تعريف. افتح أحدها من قائمة علامة التبويب الجديدة للبدء.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
   </data>
+  <data name="AIAgents_ComplianceInfo.Message" xml:space="preserve">
+    <value>اختيار الوكيل والنموذج متروك لك بالكامل. أنت مسؤول عن التحقق من أن اختيارك مناسب للاستخدام في منطقتك.</value>
+    <comment>Persistent informational notice above the Agent pane settings, followed by a Learn more link. Agent means an AI software agent; model means the AI model it uses.</comment>
+  </data>
+  <data name="AIAgents_ComplianceLearnMore.Text" xml:space="preserve">
+    <value>معرفة المزيد.</value>
+    <comment>Inline link that opens a modal explaining responsibility for agent and model choices.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.Title" xml:space="preserve">
+    <value>اختيارات الوكلاء والنماذج</value>
+    <comment>Title of the informational dialog about responsibility for choosing AI agents and models.</comment>
+  </data>
+  <data name="AIAgents_ComplianceDialog.CloseButtonText" xml:space="preserve">
+    <value>إغلاق</value>
+  </data>
+  <data name="AIAgents_ComplianceHosting" xml:space="preserve">
+    <value>الوكلاء والنماذج التي تستضيفها وتختار الاتصال بها هي من اختيارك. إذا اخترت وكيلاً أو نموذجًا تابعًا لجهة خارجية، فقد لا تكون Microsoft هي التي توفره أو تستضيفه أو تشغله أو تراقبه. إذا استخدمت {0} للتفاعل مع وكيل أو نموذج تستضيفه، فإنك تفعل ذلك على مسؤوليتك الخاصة.</value>
+    <comment>First dialog paragraph. {0} is the application product display name from its existing resource, such as Intelligent Terminal, not an agent or model name. Agent means AI software. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceModels.Text" xml:space="preserve">
+    <value>إذا اخترت نموذجًا تابعًا لجهة خارجية، فإن Microsoft لا تقوم بتصفية استجابات النموذج أو الإشراف عليها أو التحقق منها. أنت مسؤول عن تنفيذ حلولك الخاصة لتتبع مصدر المحتوى وتدابير الحد من مخاطر الذكاء الاصطناعي المسؤول، مثل مطالبات النظام أو عوامل تصفية المحتوى أو أنظمة السلامة الأخرى، وعن مراجعة المخرجات قبل استخدامها؛ أو التأكد من أن النموذج الذي اخترته يطبق هذه الحلول نيابةً عنك.</value>
+    <comment>Second dialog paragraph. Content provenance means tracking the origin of generated content; responsible AI mitigations are safety measures. {Locked=&quot;Microsoft&quot;}</comment>
+  </data>
+  <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
+    <value>أنت مسؤول أيضًا عن ضمان امتثال استخدامك لأي لوائح سارية تتعلق بالذكاء الاصطناعي، ومتطلبات معالجة البيانات و/أو التزامات إقامة البيانات.</value>
+    <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
 </root>
