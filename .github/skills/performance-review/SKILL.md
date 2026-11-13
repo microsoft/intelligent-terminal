@@ -23,6 +23,11 @@ Review every relevant language independently of edit permissions. A Rust-only
 repair allowlist does not exclude C++, XAML, rendering or UI-thread paths from
 source review. State uninspected paths as coverage gaps.
 
+Start with the patch and affected callers, then use diagnostics to investigate
+those paths. Do not turn the repository's warning inventory into the PR's
+review queue. An unchanged warning belongs in a finding only when the change
+demonstrably worsens its cost through a caller or shared dependency.
+
 Review produces Markdown using the results template below. The caller owns
 execution permissions, additional output formats, validation and delivery.
 Review-only is the default; authorized corrections follow the repair criteria.
@@ -73,6 +78,10 @@ drop; collections may preserve iterator or clone side effects; boxing a large
 future trades stack size for allocation. Group membership and machine-fix
 availability do not establish impact or behavioral safety.
 
+Mixed analyzer output is not a performance-only backlog. Keep unrelated lint
+cleanup out of performance findings and repair counts. Do not batch-apply
+suggestions merely to reduce warning counts.
+
 Inspect existing evidence where relevant: `src/ConsolePerf.wprp`,
 `src/tools/ConsoleBench`, `test/e2e/Measure-PaneContext.ps1`,
 `build/scripts/Measure-AgentHookOverhead.ps1`, focused tests and duration
@@ -94,16 +103,20 @@ cross-platform timings remain evidence for the platform actually measured.
 
 ## Triage and repair
 
-Classify each finding as HIGH, MEDIUM or LOW before choosing its disposition.
+Classify each candidate as HIGH, MEDIUM or LOW before choosing its disposition.
 Rank severity by demonstrated scenario impact, frequency or growth, not by
 how easy a fix is. Do not promote a finding to HIGH to make it autofix-eligible.
-Collapse duplicate warnings for the same underlying defect.
+The analyzer's warning level is not review severity or permission to repair.
+For each finding, explain the base-to-head cost change, affected caller and
+relevant execution frequency or input growth. Collapse warnings for the same
+underlying defect.
 
 | Result | Disposition |
 | --- | --- |
-| HIGH, high confidence, measured regression or proven complexity/blocking/lifetime defect on a relevant path | Propose the smallest behavior-preserving correction. |
+| HIGH, high confidence, evidenced serious scenario impact from complexity, blocking or retention on a relevant path | Propose the smallest behavior-preserving correction. |
 | Important defect with redesign, ordering/lifetime uncertainty or unsupported validation | Manual handoff with evidence and missing proof. |
-| Plausible cost with uncertain impact or frequency | MEDIUM/LOW advice with uncertainty and tradeoffs. |
+| MEDIUM, demonstrated avoidable work on a relevant recurring path with limited scenario impact | Explain the cost and remedy as advice; do not automatically repair. |
+| LOW, bounded or rare work, or impact not established | Record concise advice in checks rather than inflating the important findings. |
 | Unrelated baseline debt, negligible bounded cost, intentional behavior or false positive | Explain the exclusion in check evidence. |
 
 Every finding needs an introduced, unintended cost and its affected scenario.

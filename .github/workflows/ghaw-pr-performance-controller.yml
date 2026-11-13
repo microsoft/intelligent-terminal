@@ -1,9 +1,10 @@
 name: Performance Review
-run-name: 'Performance Review for PR #${{ github.event.pull_request.number }}'
+run-name: 'Performance Review after CI ${{ github.event.workflow_run.id }}'
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: ['PR CI']
+    types: [completed]
 
 permissions:
   actions: write
@@ -13,13 +14,17 @@ permissions:
 
 jobs:
   performance-review:
-    if: ${{ !cancelled() && github.event.pull_request.draft == false && github.event.pull_request.head.repo.id == github.repository_id }}
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 175
     concurrency:
-      group: ghaw-pr-performance-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: ghaw-pr-performance-review-${{ github.repository }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
       cancel-in-progress: true
     outputs:
+      pr_number: ${{ steps.admission.outputs.pr_number }}
+      head_sha: ${{ steps.admission.outputs.head_sha }}
+      ci_run_id: ${{ steps.admission.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.admission.outputs.ci_run_attempt }}
       applicable: ${{ steps.gate.outputs.applicable }}
       worker_run_id: ${{ steps.worker.outputs.run_id }}
       worker_run_url: ${{ steps.worker.outputs.run_url }}
@@ -33,14 +38,34 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Admit successful current PR CI
+        id: admission
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          TRUSTED_CI_SHA: ${{ github.workflow_sha }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { admitPerformanceCi } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/.github/workflows/ghaw-pr-performance/scripts/performance-ci.mjs`));
+            const admitted = await admitPerformanceCi(github, context, process.env.TRUSTED_CI_SHA);
+            if (!admitted) { core.info('Draft PR; performance inference skipped.'); return; }
+            const { pr, run } = admitted;
+            for (const [key, value] of Object.entries({
+              pr_number: pr.number, head_sha: pr.head.sha, base_sha: pr.base.sha,
+              head_ref: pr.head.ref, head_repo: pr.head.repo.full_name, base_ref: pr.base.ref,
+              ci_run_id: run.id, ci_run_attempt: run.run_attempt,
+            })) core.setOutput(key, String(value));
+
       - name: Classify and resolve immutable scope
         id: gate
+        if: steps.admission.outputs.pr_number != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+          BASE_SHA: ${{ steps.admission.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
         run: |
           set -euo pipefail
           remote_ref="refs/remotes/origin/performance-pr-${PR_NUMBER}"
@@ -70,15 +95,27 @@ jobs:
         if: steps.gate.outputs.applicable == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ steps.admission.outputs.pr_number }}
+          CI_RUN_ID: ${{ steps.admission.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.admission.outputs.ci_run_attempt }}
+          EXPECTED_HEAD_SHA: ${{ steps.admission.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ steps.admission.outputs.base_sha }}
           COMPARISON_BASE_SHA: ${{ steps.gate.outputs.comparison_base_sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ steps.admission.outputs.head_ref }}
+          BASE_REF: ${{ steps.admission.outputs.base_ref }}
+          HEAD_REPO: ${{ steps.admission.outputs.head_repo }}
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR_NUMBER) });
+            if (pr.state !== 'open' || pr.draft || pr.head.sha !== process.env.EXPECTED_HEAD_SHA ||
+                pr.base.sha !== process.env.EXPECTED_BASE_SHA || pr.head.ref !== process.env.HEAD_REF ||
+                pr.base.ref !== process.env.BASE_REF || pr.head.repo.full_name !== process.env.HEAD_REPO)
+              throw Error('Stale PR before performance dispatch.');
+            const workerRef = context.payload.repository.default_branch;
+            const trustedRef = (await github.rest.git.getRef({ ...context.repo, ref: `heads/${workerRef}` })).data;
+            const expectedWorkflowSha = trustedRef.object?.sha;
+            if (trustedRef.ref !== `refs/heads/${workerRef}` || trustedRef.object?.type !== 'commit' ||
+                !/^[0-9a-f]{40}$/.test(expectedWorkflowSha ?? '')) throw Error('Invalid trusted worker revision.');
             const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
             if (!/^[1-9][0-9]*$/.test(runAttempt ?? "")) throw new Error("Missing valid controller run attempt.");
             const worker = "ghaw-pr-performance.lock.yml";
@@ -90,6 +127,9 @@ jobs:
               repo: `${context.repo.owner}/${context.repo.repo}`,
               expected_head_sha: process.env.EXPECTED_HEAD_SHA,
               expected_base_sha: process.env.EXPECTED_BASE_SHA,
+              expected_workflow_sha: expectedWorkflowSha,
+              ci_run_id: process.env.CI_RUN_ID,
+              ci_run_attempt: process.env.CI_RUN_ATTEMPT,
               comparison_base_sha: process.env.COMPARISON_BASE_SHA,
               head_ref: process.env.HEAD_REF,
               base_ref: process.env.BASE_REF,
@@ -123,7 +163,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: worker,
-              ref: process.env.BASE_REF,
+              ref: workerRef,
               inputs
             });
             let run;
@@ -134,11 +174,13 @@ jobs:
                 repo: context.repo.repo,
                 workflow_id: worker,
                 event: "workflow_dispatch",
-                branch: process.env.BASE_REF,
+                branch: workerRef,
                 per_page: 50
               }));
               run = runs.data.workflow_runs.find(candidate =>
                 Date.parse(candidate.created_at) >= startedAt &&
+                candidate.head_sha === expectedWorkflowSha &&
+                candidate.path === `.github/workflows/${worker}` &&
                 candidate.display_title.includes(dispatchId));
             }
             if (!run) throw new Error(`Could not correlate ${worker} for ${dispatchId}.`);
@@ -227,7 +269,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: ghaw-pr-performance-publish-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: ghaw-pr-performance-publish-${{ github.repository }}-${{ needs.performance-review.outputs.pr_number }}
       cancel-in-progress: false
       queue: max
     steps:
@@ -241,12 +283,14 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_OUTCOME: ${{ needs.performance-review.result }}
-          REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REVIEWED_HEAD_SHA: ${{ needs.performance-review.outputs.head_sha }}
           CONTROLLER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_RUN_URL: ${{ needs.performance-review.outputs.worker_run_url }}
           WORKER_CONCLUSION: ${{ needs.performance-review.outputs.worker_conclusion }}
           WORKER_RUN_ID: ${{ needs.performance-review.outputs.worker_run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.performance-review.outputs.pr_number }}
+          CI_RUN_ID: ${{ needs.performance-review.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ needs.performance-review.outputs.ci_run_attempt }}
           GH_TOKEN: ${{ github.token }}
         with:
           script: |
@@ -288,6 +332,9 @@ jobs:
               `Run outcome: **${process.env.RUN_OUTCOME}** (workflow execution, not build/test validation)`,
               `Summary delivery: **${summaryDelivered ? "completed" : "missing or unreadable; action required"}**`,
               `Reviewed head: \`${process.env.REVIEWED_HEAD_SHA}\``,
+              process.env.CI_RUN_ID
+                ? `[Original PR CI](${context.serverUrl || "https://github.com"}/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.CI_RUN_ID}/attempts/${process.env.CI_RUN_ATTEMPT}) — passed`
+                : "",
               `[Controller run report](${process.env.CONTROLLER_RUN_URL})`,
               process.env.WORKER_RUN_URL
                 ? `[Agentic worker report](${process.env.WORKER_RUN_URL}) — ${process.env.WORKER_CONCLUSION}`

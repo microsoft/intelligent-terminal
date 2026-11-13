@@ -840,6 +840,7 @@ Ith
 IUI
 IWIC
 IXP
+ixx
 jconcpp
 JOBOBJECT
 JOBOBJECTINFOCLASS
@@ -1840,6 +1841,7 @@ uwu
 uxtheme
 Vanara
 vararg
+VCINSTALLDIR
 vclib
 vcxitems
 VERCTRL
@@ -1965,6 +1967,7 @@ WNDCLASSEX
 WNDCLASSEXW
 WNDCLASSW
 Wndproc
+Wno
 wordiswrapped
 workarea
 worktree
