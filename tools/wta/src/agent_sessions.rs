@@ -1185,13 +1185,26 @@ impl AgentSessionRegistry {
             }
 
             SessionEvent::ResumeDispatched { key } => {
+                let snapshot_in_use = qualified_resume
+                    && !self.active_by_pane.values().any(|owner| owner == &key)
+                    && self.sessions.get(&key).is_some_and(|entry| {
+                        entry.status == AgentStatus::InUse
+                            && entry.origin == SessionOrigin::Unknown
+                            && entry.location == SessionLocation::Host
+                    });
                 if let Some(entry) = self.sessions.get_mut(&key) {
                     // Only flip when the row genuinely had no live pane to
                     // begin with. If a SessionStarted event won the race and
                     // already populated pane_session_id with the new pane's
                     // Guid, leave the row alone — the hook layer is the
                     // source of truth for live state.
-                    if matches!(entry.status, AgentStatus::Historical | AgentStatus::Ended) {
+                    if snapshot_in_use {
+                        // Snapshot pane hints are not verified live ownership.
+                        entry.pane_session_id = None;
+                    }
+                    if snapshot_in_use
+                        || matches!(entry.status, AgentStatus::Historical | AgentStatus::Ended)
+                    {
                         entry.status = AgentStatus::Idle;
                         entry.last_activity_at = now;
                         self.dirty = true;

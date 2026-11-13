@@ -8953,7 +8953,13 @@ impl crate::shell::wt_channel::WtChannel for HelperNativeResumeChannel {
         match tokio::time::timeout(std::time::Duration::from_secs(30), response).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(anyhow::anyhow!("Native receipt channel closed")),
-            Err(_) => Err(anyhow::anyhow!("Native profile resume timed out")),
+            Err(_) => Err(crate::shell::wt_channel::WtcliOneShotError::TimedOut {
+                timeout: std::time::Duration::from_secs(30),
+                kill_error: None,
+                reap_error: None,
+                reap_timeout: None,
+            }
+            .into()),
         }
     }
 
@@ -8969,7 +8975,20 @@ fn helper_native_resume_fixture() -> (
     mpsc::UnboundedReceiver<QueuedSessionHook>,
     crate::agent_sessions::AgentSession,
 ) {
-    use crate::agent_sessions::{AgentStatus, CliSource};
+    helper_native_resume_fixture_with_status(crate::agent_sessions::AgentStatus::Historical, None)
+}
+
+fn helper_native_resume_fixture_with_status(
+    status: crate::agent_sessions::AgentStatus,
+    pane_hint: Option<&str>,
+) -> (
+    App,
+    mpsc::UnboundedReceiver<HelperNativeResumeRequest>,
+    mpsc::UnboundedReceiver<AppEvent>,
+    mpsc::UnboundedReceiver<QueuedSessionHook>,
+    crate::agent_sessions::AgentSession,
+) {
+    use crate::agent_sessions::CliSource;
     let mut app = test_app();
     let (requests, requests_rx) = mpsc::unbounded_channel();
     app.shell_mgr = Arc::new(
@@ -8979,7 +8998,8 @@ fn helper_native_resume_fixture() -> (
     app.window_id = Some("42".into());
     app.owner_tab_id = Some("origin-tab".into());
     let mut snapshot = session_info_for_test("helper-resume");
-    snapshot.status = Some(AgentStatus::Historical);
+    snapshot.status = Some(status);
+    snapshot.pane_session_id = pane_hint.map(str::to_owned);
     snapshot.cli_source = Some(CliSource::Copilot);
     snapshot.provider_id = Some("copilot".into());
     snapshot.cwd = std::env::temp_dir();
@@ -9257,18 +9277,19 @@ async fn helper_native_resume_snapshot_only_pending_double_enter_uses_one_reques
 }
 
 #[tokio::test(start_paused = true)]
-async fn helper_native_resume_snapshot_only_timeout_applies_and_publishes_failure() {
+async fn helper_native_resume_snapshot_only_timeout_stays_pending_until_hook() {
     use crate::agent_sessions::{AgentStatus, SessionEvent};
     let (mut app, mut requests, mut events, mut published, row) = helper_native_resume_fixture();
     let key = "helper-resume".to_string();
     app.activate_agent_session_routed(&row);
     let (_, reply) = requests.recv().await.unwrap();
     tokio::time::advance(std::time::Duration::from_secs(30)).await;
-    app.handle_event(events.recv().await.unwrap());
-    let failed = app.agent_sessions.get(&key).unwrap();
-    assert_eq!(failed.status, AgentStatus::Historical);
-    assert!(failed.pane_session_id.is_none());
-    assert!(failed.last_error.as_deref().unwrap().contains("timed out"));
+    tokio::task::yield_now().await;
+    assert!(events.try_recv().is_err());
+    let pending = app.agent_sessions.get(&key).unwrap();
+    assert_eq!(pending.status, AgentStatus::Idle);
+    assert!(pending.pane_session_id.is_none());
+    assert!(pending.last_error.is_none());
     assert!(matches!(
         published.try_recv().unwrap(),
         SessionEvent::QualifiedResume {
@@ -9276,14 +9297,142 @@ async fn helper_native_resume_snapshot_only_timeout_applies_and_publishes_failur
             ..
         }
     ));
-    assert!(matches!(
-        published.try_recv().unwrap(),
-        SessionEvent::QualifiedResume {
-            event: crate::agent_sessions::QualifiedResumeEvent::Failed { .. },
-            ..
-        }
-    ));
+    assert!(published.try_recv().is_err());
     assert!(reply.send(Ok(json!({"session_id":"late-pane"}))).is_err());
+    app.activate_agent_session_routed(&row);
+    tokio::task::yield_now().await;
+    assert!(requests.try_recv().is_err());
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+        key: row.key.clone(),
+        cli_source: row.cli_source.clone(),
+        pane_session_id: "late-hook-pane".into(),
+        cwd: row.cwd.clone(),
+        title: "Late hook".into(),
+    }));
+    assert_eq!(
+        app.agent_sessions
+            .get_identity(&row.identity())
+            .unwrap()
+            .pane_session_id
+            .as_deref(),
+        Some("late-hook-pane")
+    );
+}
+
+#[tokio::test]
+async fn helper_native_resume_in_use_snapshot_receipt_and_duplicate_enter() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{InMemoryRegistry, SessionRegistry};
+    for hint in [None, Some("stale-pane")] {
+        let (mut app, mut requests, mut events, mut published, row) =
+            helper_native_resume_fixture_with_status(AgentStatus::InUse, hint);
+        assert_eq!(row.status, AgentStatus::InUse);
+        let mut foreign_provider = row.clone();
+        foreign_provider.cli_source = CliSource::Claude;
+        let mut foreign_location = row.clone();
+        foreign_location.location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        for foreign in [&foreign_provider, &foreign_location] {
+            app.agent_sessions.retain_resume_candidate(foreign);
+        }
+        let master = InMemoryRegistry::new();
+        master
+            .upsert(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].clone())
+            .await;
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+        assert_eq!(pending.status, AgentStatus::Idle);
+        assert!(pending.pane_session_id.is_none());
+        let dispatched = published.try_recv().unwrap();
+        assert!(master.apply_event(dispatched).await);
+        let pending = master.lookup_identity(&row.identity()).await.unwrap();
+        assert_eq!(pending.status, Some(AgentStatus::Idle));
+        assert!(pending.pane_session_id.is_none());
+        app.activate_agent_session_routed(&row);
+        tokio::task::yield_now().await;
+        assert!(requests.try_recv().is_err());
+        reply
+            .send(Ok(json!({"session_id":"exact-receipt-pane"})))
+            .unwrap();
+        app.handle_event(events.recv().await.unwrap());
+        let receipt = published.try_recv().unwrap();
+        assert!(
+            matches!(&receipt, SessionEvent::QualifiedResume { identity, event: crate::agent_sessions::QualifiedResumeEvent::PaneAssigned { pane_session_id } } if identity == &row.identity() && pane_session_id == "exact-receipt-pane")
+        );
+        assert!(master.apply_event(receipt).await);
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("exact-receipt-pane")
+        );
+        assert_eq!(
+            master
+                .lookup_identity(&row.identity())
+                .await
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("exact-receipt-pane")
+        );
+        for foreign in [&foreign_provider, &foreign_location] {
+            let unchanged = app
+                .agent_sessions
+                .get_identity(&foreign.identity())
+                .unwrap();
+            assert_eq!(unchanged.status, AgentStatus::InUse);
+            assert_eq!(unchanged.pane_session_id.as_deref(), hint);
+        }
+    }
+}
+
+#[tokio::test]
+async fn helper_native_resume_invalid_or_missing_receipt_stays_pending_until_hook() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    use crate::shell::wt_channel::{request_outcome_unknown, InvalidNativeResumeReceipt};
+    let malformed: anyhow::Error = serde_json::from_str::<serde_json::Value>("{")
+        .unwrap_err()
+        .into();
+    let invalid: anyhow::Error = InvalidNativeResumeReceipt("Missing matching tab receipt").into();
+    assert!(request_outcome_unknown(&malformed));
+    assert!(request_outcome_unknown(&invalid));
+    for result in [Err(malformed), Err(invalid), Ok(json!({}))] {
+        let (mut app, mut requests, mut events, mut published, row) =
+            helper_native_resume_fixture();
+        app.activate_agent_session_routed(&row);
+        let (_, reply) = requests.recv().await.unwrap();
+        published.try_recv().unwrap();
+        reply.send(result).unwrap();
+        tokio::task::yield_now().await;
+        assert!(events.try_recv().is_err());
+        assert!(published.try_recv().is_err());
+        let pending = app.agent_sessions.get_identity(&row.identity()).unwrap();
+        assert_eq!(pending.status, AgentStatus::Idle);
+        assert!(pending.pane_session_id.is_none());
+        assert!(pending.last_error.is_none());
+        app.activate_agent_session_routed(&row);
+        tokio::task::yield_now().await;
+        assert!(requests.try_recv().is_err());
+        app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+            key: row.key.clone(),
+            cli_source: row.cli_source.clone(),
+            pane_session_id: "late-hook".into(),
+            cwd: row.cwd.clone(),
+            title: "Late hook".into(),
+        }));
+        assert_eq!(
+            app.agent_sessions
+                .get_identity(&row.identity())
+                .unwrap()
+                .pane_session_id
+                .as_deref(),
+            Some("late-hook")
+        );
+    }
 }
 
 #[tokio::test]

@@ -18,7 +18,7 @@ const WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES: u32 = 8;
 const WTCLI_LISTENER_STABLE_UPTIME: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
-enum WtcliOneShotError {
+pub(crate) enum WtcliOneShotError {
     Spawn(std::io::Error),
     Wait(std::io::Error),
     ReadStdout(std::io::Error),
@@ -73,7 +73,7 @@ impl std::error::Error for WtcliOneShotError {
 }
 
 #[derive(Debug)]
-struct InvalidNativeResumeReceipt(&'static str);
+pub(crate) struct InvalidNativeResumeReceipt(pub(crate) &'static str);
 
 impl std::fmt::Display for InvalidNativeResumeReceipt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

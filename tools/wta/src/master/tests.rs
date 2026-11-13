@@ -20715,6 +20715,124 @@ async fn real_hook_takes_over_born_bound_session() {
 }
 
 #[tokio::test]
+async fn native_resume_in_use_authoritative_owner_is_not_normalized() {
+    use crate::agent_sessions::{AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+    for authority in ["hook", "birth", "pid"] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("in-use-owned");
+        let mut row = SessionInfo::new(sid.clone(), PathBuf::from("C:\\repo"));
+        row.location = crate::agent_sessions::SessionLocation::Host;
+        row.provider_id = Some("copilot".into());
+        row.cli_source = Some(CliSource::Copilot);
+        row.status = Some(AgentStatus::InUse);
+        row.pane_session_id = Some("verified-pane".into());
+        row.born_bound_pane = authority == "birth";
+        row.bound_pid = (authority == "pid").then_some(123);
+        let identity = SessionIdentity::from_info(&row);
+        state.registry.upsert(row.clone()).await;
+        let mut foreign = row.clone();
+        foreign.provider_id = Some("claude".into());
+        foreign.cli_source = Some(CliSource::Claude);
+        foreign.pane_session_id = Some("foreign-stale-pane".into());
+        foreign.born_bound_pane = false;
+        foreign.bound_pid = None;
+        let foreign_identity = SessionIdentity::from_info(&foreign);
+        if authority == "hook" {
+            handle_session_hook(
+                &state,
+                SessionEvent::SessionStarted {
+                    key: sid.to_string(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: "verified-pane".into(),
+                    cwd: row.cwd.clone(),
+                    title: "Verified hook".into(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+            row = state.registry.lookup_identity(&identity).await.unwrap();
+        }
+        state.registry.upsert(foreign.clone()).await;
+        // InUse is excluded by lookup_active_by_pane; this projection reads
+        // the owner index without filtering out that liveness state.
+        let panes_before = state.registry.pane_status_snapshot().await.0;
+        assert_eq!(panes_before.len(), 2);
+        let owned_before = panes_before
+            .iter()
+            .find(|pane| pane.pane_id == "verified-pane")
+            .unwrap();
+        assert_eq!(owned_before.provider_id, "copilot");
+        assert_eq!(
+            owned_before.agent_session_id.as_deref(),
+            Some("in-use-owned")
+        );
+        assert_eq!(owned_before.location, Some(row.location.clone()));
+        assert_eq!(owned_before.status, AgentStatus::InUse);
+        assert!(
+            !apply_master_session_event(
+                &state,
+                SessionEvent::QualifiedResume {
+                    identity: identity.clone(),
+                    event: QualifiedResumeEvent::Dispatched,
+                },
+                false,
+                crate::agent_sessions::SessionLocation::Host,
+            )
+            .await
+            .0
+        );
+        assert_eq!(
+            state.registry.lookup_identity(&identity).await.unwrap(),
+            row
+        );
+        assert_eq!(state.registry.pane_status_snapshot().await.0, panes_before);
+        assert_eq!(
+            state
+                .registry
+                .lookup_identity(&foreign_identity)
+                .await
+                .unwrap(),
+            foreign
+        );
+        if authority == "hook" {
+            assert!(state.hook_owned.lock().await.contains(&sid));
+            // The foreign snapshot must not borrow the other provider's raw hook claim.
+            assert!(
+                apply_master_session_event(
+                    &state,
+                    SessionEvent::QualifiedResume {
+                        identity: foreign_identity.clone(),
+                        event: QualifiedResumeEvent::Dispatched,
+                    },
+                    false,
+                    crate::agent_sessions::SessionLocation::Host,
+                )
+                .await
+                .0
+            );
+            assert_eq!(
+                state.registry.lookup_identity(&identity).await.unwrap(),
+                row
+            );
+            let foreign_pending = state
+                .registry
+                .lookup_identity(&foreign_identity)
+                .await
+                .unwrap();
+            assert_eq!(foreign_pending.status, Some(AgentStatus::Idle));
+            assert!(foreign_pending.pane_session_id.is_none());
+            assert_eq!(
+                state.registry.pane_status_snapshot().await.0,
+                vec![owned_before.clone()]
+            );
+            assert!(state.hook_owned.lock().await.contains(&sid));
+        }
+    }
+}
+
+#[tokio::test]
 async fn native_resume_qualified_collision_publication_and_hook_wins() {
     use crate::agent_sessions::{AgentStatus, CliSource, QualifiedResumeEvent, SessionEvent};
     use crate::session_registry::{SessionIdentity, SessionInfo};

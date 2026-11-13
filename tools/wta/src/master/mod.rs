@@ -9088,6 +9088,14 @@ async fn apply_master_session_event(
         );
         let gate = session_lifecycle_gate(state, &identity.session_id).await;
         let _guard = gate.lock().await;
+        if matches!(
+            resume,
+            crate::agent_sessions::QualifiedResumeEvent::Dispatched
+        ) && state.hook_owned.lock().await.contains(&identity.session_id)
+            && state.registry.has_in_use_hook_pane_owner(&identity).await
+        {
+            return (false, None);
+        }
         let applied = state.registry.apply_event(event).await;
         // Legacy watcher ownership is raw-keyed. Never change it on behalf of
         // an ambiguous row or a different provider/backend with the same ID.

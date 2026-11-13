@@ -1898,6 +1898,9 @@ pub trait SessionRegistry: Send + Sync {
 
     async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo>;
 
+    /// Correlate an InUse row's hook evidence with its exact indexed pane owner.
+    async fn has_in_use_hook_pane_owner(&self, identity: &SessionIdentity) -> bool;
+
     /// Snapshot the full set. Order is unspecified — callers that need a
     /// stable order should sort by `session_id` themselves. The clone is
     /// cheap because `SessionInfo` is small (`Arc<str>` for the id).
@@ -2628,6 +2631,18 @@ impl SessionRegistry for InMemoryRegistry {
     async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo> {
         let guard = self.inner.lock().await;
         guard.sessions.get(identity).cloned()
+    }
+
+    async fn has_in_use_hook_pane_owner(&self, identity: &SessionIdentity) -> bool {
+        let guard = self.inner.lock().await;
+        guard.sessions.get(identity).is_some_and(|row| {
+            row.status == Some(AgentStatus::InUse)
+                && row.cwd_evidence.hook.is_some()
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| guard.active_by_pane.get(&pane_key(pane)) == Some(identity))
+        })
     }
 
     async fn lookup_active_by_pane(&self, pane_session_id: &str) -> Option<SessionInfo> {
@@ -4744,6 +4759,25 @@ fn apply_event_qualified_at_ms(
             else {
                 return false;
             };
+            let snapshot_in_use = qualified_activity.is_some()
+                && !state
+                    .native_panes
+                    .values()
+                    .any(|pane| pane.bound_identity.as_ref() == Some(&identity))
+                && state.sessions.get(&identity).is_some_and(|row| {
+                    row.status == Some(AgentStatus::InUse)
+                        && row.location == SessionLocation::Host
+                        && row.origin != Some(SessionOrigin::AgentPane)
+                        && row.session_universe.is_none()
+                        && !row.born_bound_pane
+                        && row.bound_pid.is_none()
+                });
+            if snapshot_in_use {
+                if let Some(row) = state.sessions.get_mut(&identity) {
+                    // The existing transition clears this snapshot-only hint and its index.
+                    row.status = Some(AgentStatus::Historical);
+                }
+            }
             mark_resume_dispatched_identity_locked(state, &identity)
                 .is_some_and(|(flipped, _)| flipped)
         }

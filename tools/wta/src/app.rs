@@ -3439,7 +3439,8 @@ impl App {
     /// Resume in a new tab without blocking helper input/rendering. Host
     /// sessions use the correlated profile-resume request; WSL retains its
     /// distro-aware command route. Publish the pending transition immediately,
-    /// then bind the receipt's pane or roll back a still-unbound failed attempt.
+    /// then bind the receipt's pane or roll back a confirmed failed attempt.
+    /// Unknown creation outcomes stay pending to prevent duplicate tabs.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
         if matches!(s.location, crate::agent_sessions::SessionLocation::Host) {
             let Some(window_id) = self
@@ -3512,7 +3513,12 @@ impl App {
                                 .and_then(serde_json::Value::as_str)
                                 .filter(|id| !id.trim().is_empty())
                                 .map(str::to_owned)
-                                .ok_or_else(|| anyhow::anyhow!("Native resume returned no pane ID"))
+                                .ok_or_else(|| {
+                                    crate::shell::wt_channel::InvalidNativeResumeReceipt(
+                                        "Native resume returned no pane ID",
+                                    )
+                                    .into()
+                                })
                         });
                     match result {
                         Ok(pane_session_id) => {
@@ -3531,6 +3537,16 @@ impl App {
                             }
                         }
                         Err(error) => {
+                            if crate::shell::wt_channel::request_outcome_unknown(&error) {
+                                tracing::warn!(
+                                    target: "agents_view",
+                                    session_id = %identity.session_id,
+                                    outcome_unknown = true,
+                                    %error,
+                                    "native resume outcome uncertain; keeping pending state",
+                                );
+                                return;
+                            }
                             let event = crate::agent_sessions::SessionEvent::QualifiedResume {
                                 identity,
                                 event: crate::agent_sessions::QualifiedResumeEvent::Failed {
