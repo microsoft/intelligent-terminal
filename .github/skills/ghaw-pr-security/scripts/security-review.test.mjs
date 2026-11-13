@@ -96,12 +96,11 @@ test('controller concurrency isolates rejected CI completions and stale attempts
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
   const template = controller.match(/^  group: (.+)$/m)?.[1];
   assert(template);
-  const groupFor = (source, action = 'completed') => {
+  const groupFor = (source, pull = {}) => {
     const group = template.replace(/\$\{\{\s*github\.event\.workflow_run\.(\w+)\s*\}\}/g,
       (_, field) => {
-        assert(Object.hasOwn(source, field));
-        return String(source[field]);
-      }).replace(/\$\{\{\s*github\.event\.action\s*\}\}/g, action);
+        return String(source[field] ?? '');
+      }).replace(/\$\{\{\s*github\.event\.(number|before)\s*\}\}/g, (_, field) => String(pull[field] ?? ''));
     assert(!group.includes('${{'));
     return group;
   };
@@ -115,7 +114,10 @@ test('controller concurrency isolates rejected CI completions and stale attempts
     { ...valid, run_attempt: 1 },
   ]) assert.notEqual(groupFor(valid), groupFor(rejected));
   assert.equal(groupFor(valid), groupFor(structuredClone(valid)));
-  assert.notEqual(groupFor(valid, 'requested'), groupFor(valid, 'completed'));
+  const cancel = groupFor({}, { number: 17, before: BASE });
+  assert.notEqual(groupFor(valid), cancel);
+  assert.notEqual(cancel, groupFor({}, { number: 18, before: BASE }));
+  assert.notEqual(cancel, groupFor({}, { number: 17, before: HEAD }));
 });
 
 test('controller reports execution status on the admitted PR commit, not the workflow_run default branch', async () => {
@@ -1052,109 +1054,25 @@ test('publication native API adapter reaches CI validation through the canonical
   }
 });
 
-async function cancelOutdatedReview(options = {}) {
+test('native cancellation targets the previous head without sharing the current worker or CI slot', () => {
   const controller = readFileSync(new URL('../../../workflows/ghaw-pr-security-controller.yml', import.meta.url), 'utf8');
-  const script = controller.split('      - name: Cancel running review of an older PR head')[1]
-    .split('          script: |')[1].split('\n  security-review:')[0];
-  const execute = new (Object.getPrototypeOf(async function () {}).constructor)('github', 'context', 'core', script);
-  const { pull } = ciFixture();
-  let livePull = options.livePull ?? pull;
-  const worker = (id, pr, head, extra = {}) => ({ id, repository: { id: 42 },
-    path: '.github/workflows/ghaw-pr-security.lock.yml',
-    display_title: `Security Repair ghaw-pr-security-${pr}-${head}-123-1`, ...extra });
-  const canceled = [], messages = [];
-  const github = {
-    rest: {
-      repos: { listPullRequestsAssociatedWithCommit: 'pulls' },
-      pulls: { get: async () => ({ data: structuredClone(livePull) }) },
-      actions: {
-        listWorkflowRuns: 'workers',
-        cancelWorkflowRun: async ({ run_id }) => {
-          if (options.cancelError) throw Object.assign(new Error('Cancellation failed'), { status: options.cancelError });
-          canceled.push(run_id);
-        },
-        getWorkflowRun: async () => ({ data: { status: options.finishedStatus ?? 'completed' } }),
-      },
-    },
-    paginate: async (endpoint, parameters) => {
-      if (options.apiError) throw Error('API unavailable');
-      if (endpoint === 'pulls') {
-        assert.equal(parameters.commit_sha, HEAD);
-        return options.pulls ?? [pull];
-      }
-      assert.equal(parameters.workflow_id, 'ghaw-pr-security.lock.yml');
-      assert.equal(parameters.status, 'in_progress');
-      assert.equal(parameters.event, 'workflow_dispatch');
-      if (options.advanceDuringListing) {
-        livePull = { ...pull, head: { ...pull.head, sha: options.advanceDuringListing } };
-      }
-      return options.workers ?? [
-        worker(91, 17, BASE), worker(92, 17, HEAD), worker(93, 18, BASE),
-        worker(94, 17, BASE, { path: '.github/workflows/pr-ci.yml' }),
-        worker(95, 17, BASE, { display_title: 'Unrelated workflow' }),
-        worker(96, 17, BASE, { repository: { id: 99 } }),
-      ];
-    },
-  };
-  await execute(github, { repo: { owner: 'owner', repo: 'repo' }, payload: {
-    repository: { id: 42 }, workflow_run: { head_sha: HEAD, head_branch: 'topic' },
-  } }, { info: message => messages.push(message) });
-  return { canceled, messages };
-}
-
-test('requested CI cancels only a running security worker bound to an older head of the same PR', async () => {
-  const result = await cancelOutdatedReview();
-  assert.deepEqual(result.canceled, [91]);
-  assert.equal(result.messages.length, 1);
-  const sameHeadOnly = await cancelOutdatedReview({ workers: [{
-    id: 92, repository: { id: 42 }, path: '.github/workflows/ghaw-pr-security.lock.yml',
-    display_title: `Security Repair ghaw-pr-security-17-${HEAD}-123-1`,
-  }] });
-  assert.deepEqual(sameHeadOnly.canceled, []);
-});
-
-test('current PR identity protects the latest worker even when the CI notification is older', async () => {
-  const { pull } = ciFixture();
-  const latest = 'c'.repeat(40);
-  const result = await cancelOutdatedReview({
-    livePull: { ...pull, head: { ...pull.head, sha: latest } },
-    workers: [HEAD, latest].map((head, index) => ({ id: 91 + index, repository: { id: 42 },
-      path: '.github/workflows/ghaw-pr-security.lock.yml',
-      display_title: `Security Repair ghaw-pr-security-17-${head}-123-1` })),
-  });
-  assert.deepEqual(result.canceled, [91]);
-});
-
-test('head advancement while workers are listed never cancels the new current-head review', async () => {
-  const latest = 'c'.repeat(40);
-  const result = await cancelOutdatedReview({
-    advanceDuringListing: latest,
-    workers: [{
-      id: 91, repository: { id: 42 }, path: '.github/workflows/ghaw-pr-security.lock.yml',
-      display_title: `Security Repair ghaw-pr-security-17-${latest}-123-1`,
-    }],
-  });
-  assert.deepEqual(result.canceled, []);
-});
-
-test('foreign PRs and ambiguous associations never cancel unrelated work', async () => {
-  const { pull } = ciFixture();
-  for (const options of [
-    { pulls: [] },
-    { pulls: [{ ...pull, head: { ...pull.head, repo: { id: 99 } } }] },
-    { livePull: { ...pull, state: 'closed' } },
-  ]) assert.deepEqual((await cancelOutdatedReview(options)).canceled, []);
-  await assert.rejects(cancelOutdatedReview({ pulls: [pull, { ...pull, number: 18 }] }), /Ambiguous PR/);
-});
-
-test('already-completed cancellation races are harmless; real API errors remain visible', async () => {
-  const completed = await cancelOutdatedReview({ cancelError: 409 });
-  assert.deepEqual(completed.canceled, []);
-  assert.deepEqual(completed.messages, []);
-  for (const options of [{ apiError: true }, { cancelError: 403 }, { cancelError: 503 },
-    { cancelError: 409, finishedStatus: 'in_progress' }]) {
-    await assert.rejects(cancelOutdatedReview(options));
-  }
+  const cancellation = controller.split('  cancel-outdated-review:')[1].split('\n  security-review:')[0];
+  const worker = readFileSync(new URL('../../../workflows/ghaw-pr-security.lock.yml', import.meta.url), 'utf8');
+  const cancelTemplate = cancellation.match(/^      group: (.+)$/m)?.[1];
+  const workerTemplate = worker.match(/^  group: (.+)$/m)?.[1];
+  assert(cancelTemplate && workerTemplate);
+  const group = (template, number, head) => template.replace(/^['"]|['"]$/g, '')
+    .replace(/\$\{\{\s*github\.event\.(?:inputs\.)?(\w+)\s*\}\}/g, (_, field) => {
+      if (['number', 'pr_number'].includes(field)) return String(number);
+      if (['before', 'expected_head_sha'].includes(field)) return head;
+      assert.fail(`Unexpected concurrency binding: ${field}`);
+    });
+  assert.equal(group(cancelTemplate, 17, BASE), group(workerTemplate, 17, BASE));
+  assert.notEqual(group(cancelTemplate, 17, BASE), group(workerTemplate, 17, HEAD));
+  assert.notEqual(group(cancelTemplate, 17, BASE), group(workerTemplate, 18, BASE));
+  assert(cancellation.includes('cancel-in-progress: true'));
+  assert(!cancellation.includes('uses:'));
+  assert(!cancellation.includes('actions: write'));
 });
 
 test('actual controller admission uses trusted commit association when workflow_run pull_requests is empty', async () => {

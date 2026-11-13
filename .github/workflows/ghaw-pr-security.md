@@ -659,7 +659,7 @@ max-ai-credits: 800
 max-daily-ai-credits: 5000
 
 concurrency:
-  group: 'ghaw-pr-security-repair-${{ github.event.inputs.pr_number }}'
+  group: 'ghaw-pr-security-repair-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.expected_head_sha }}'
   job-discriminator: ${{ github.run_id }}
   cancel-in-progress: true
 
