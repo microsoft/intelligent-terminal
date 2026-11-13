@@ -1728,4 +1728,7 @@ Für alle verfügbaren Optionen führen Sie 'wt new-tab --help' aus.</value>
     <value>Wechseln Sie zu vertikalen Registerkarten, um die Aktivität Ihrer Agents auf einen Blick zu sehen. Klicken Sie mit der rechten Maustaste auf eine Registerkarte und wählen Sie {0} aus.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Bereich {0} von {1}</value>
+  </data>
 </root>

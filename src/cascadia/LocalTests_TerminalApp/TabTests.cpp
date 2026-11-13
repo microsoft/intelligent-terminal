@@ -534,6 +534,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabKeyboardFocusPreservesSelection);
+        TEST_METHOD(VerticalTabAutomationSelectionOwner);
+        TEST_METHOD(VerticalTabPaneAutomationNames);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(PaneContextMenuOmitsDirectClose);
         TEST_METHOD(VerticalTabPaneSelectionTracksSelectedTab);
@@ -20316,6 +20318,139 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, paneBackground.Visibility());
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_ARE_EQUAL(1u, selectionChanges);
+        });
+    }
+
+    void TabTests::VerticalTabAutomationSelectionOwner()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            namespace Peers = Automation::Peers;
+            namespace Providers = Automation::Provider;
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem first, second;
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.SelectedItem(second);
+            strip.UpdateLayout();
+
+            const auto wrapper = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(strip);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Group, wrapper.GetAutomationControlType());
+            VERIFY_ARE_EQUAL(impl->VerticalTabsHeader().Text(), wrapper.GetName());
+            VERIFY_IS_NULL(wrapper.GetPattern(Peers::PatternInterface::Selection));
+            const auto tree = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(impl->ItemsList());
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Tree, tree.GetAutomationControlType());
+            const auto selection = tree.GetPattern(Peers::PatternInterface::Selection).as<Providers::ISelectionProvider>();
+            VERIFY_IS_FALSE(selection.CanSelectMultiple());
+            // WinUI 2.8 TreeViewListAutomationPeer::GetSelection deliberately
+            // returns an empty array (virtualized/collapsed nodes). The native
+            // row providers and TreeView model are the selected-state contract.
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+
+            const auto firstRow = strip.ContainerFromIndex(0).as<Control>();
+            const auto secondRow = strip.ContainerFromIndex(1).as<Control>();
+            const auto firstPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(firstRow);
+            const auto secondPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(secondRow);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::TreeItem, firstPeer.GetAutomationControlType());
+            const auto firstSelection = firstPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            const auto secondSelection = secondPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            VERIFY_IS_NOT_NULL(firstSelection.SelectionContainer());
+            VERIFY_IS_TRUE(firstSelection.SelectionContainer() == secondSelection.SelectionContainer());
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+
+            uint32_t changes = 0;
+            const auto changed = strip.SelectionChanged(winrt::auto_revoke, [&](auto&&, auto&&) { ++changes; });
+            VERIFY_IS_TRUE(firstRow.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(0u, changes);
+            firstSelection.Select();
+            VERIFY_IS_TRUE(strip.SelectedItem() == first);
+            VERIFY_IS_TRUE(firstSelection.IsSelected());
+            VERIFY_IS_FALSE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(1u, changes);
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(first));
+            strip.SelectedItem(second);
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_ARE_EQUAL(2u, changes);
+
+            // A caller-supplied label still wins over the localized heading.
+            Automation::AutomationProperties::SetName(strip, L"Caller sidebar label");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Caller sidebar label" }, wrapper.GetName());
+            strip.TabItems().RemoveAt(0);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+        });
+    }
+
+    void TabTests::VerticalTabPaneAutomationNames()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Agent group"));
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            const auto first = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"GitHub Copilot", true);
+            const auto second = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"GitHub Copilot", false);
+            const auto panes = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first, second });
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            const auto row = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+            const auto paneList = row.Children().GetAt(1).as<ItemsControl>();
+            const auto buttonAt = [&](const uint32_t index) {
+                return Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(index), 0).as<FrameworkElement>().FindName(L"PaneActivateButton").as<Button>();
+            };
+            const auto nameAt = [&](const uint32_t index) {
+                return Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(buttonAt(index)).GetName();
+            };
+            const auto position = [&](const uint32_t index, const uint32_t count) {
+                return winrt::hstring{ RS_fmt(L"SidebarPanePosition", index, count) };
+            };
+            VERIFY_IS_FALSE(position(1, 2).empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(2, 2), nameAt(1));
+            VERIFY_IS_FALSE(nameAt(0) == nameAt(1));
+
+            // Different session context and status survive in the actual peers.
+            first.AutomationName(L"GitHub Copilot, repository alpha, needs attention");
+            second.AutomationName(L"GitHub Copilot, repository beta, complete");
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(second.AutomationName() + L", " + position(2, 2), nameAt(1));
+            const auto retained = impl->DisplayItemForTab(tab).PaneItems().GetAt(0);
+
+            // The same bound row gets the new position after reconciliation.
+            const auto reordered = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ second, first });
+            impl->SetPaneItems(tab, reordered, true);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->DisplayItemForTab(tab).PaneItems().GetAt(1) == retained);
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(2, 2), nameAt(1));
+            VERIFY_IS_TRUE(buttonAt(1).Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+
+            uint32_t activatedId = 0;
+            const auto activation = strip.PaneActivationRequested(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                activatedId = args.ContentId();
+            });
+            impl->OnPaneActivateClick(buttonAt(1), RoutedEventArgs{});
+            VERIFY_ARE_EQUAL(11u, activatedId);
+
+            first.AutomationName(L"");
+            impl->SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first }), false);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(position(1, 1), nameAt(0));
+            VERIFY_IS_TRUE(first.AutomationName().empty());
         });
     }
 

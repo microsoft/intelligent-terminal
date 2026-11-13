@@ -460,8 +460,8 @@
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
-                    Template="{StaticResource CompactNewTabButtonTemplate}"
-                    Click="OnCompactNewTabClick">
+                    Click="OnCompactNewTabClick"
+                    Template="{StaticResource CompactNewTabButtonTemplate}">
                 <Viewbox Width="16"
                          Height="16">
                     <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -477,8 +477,8 @@
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
-                    Template="{StaticResource CompactNewTabButtonTemplate}"
-                    Click="OnCompactNewTabMenuClick">
+                    Click="OnCompactNewTabMenuClick"
+                    Template="{StaticResource CompactNewTabButtonTemplate}">
                 <Viewbox Width="16"
                          Height="16">
                     <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -835,8 +835,8 @@
                                       DragOver="OnListDragOver"
                                       Drop="OnListDrop"
                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                      GotFocus="OnSidebarListFocusChanged"
                                       GettingFocus="OnSidebarListGettingFocus"
+                                      GotFocus="OnSidebarListFocusChanged"
                                       IsItemClickEnabled="False"
                                       LostFocus="OnSidebarListFocusChanged"
                                       ReorderMode="Disabled"
@@ -1090,7 +1090,7 @@
                                                             HorizontalAlignment="Stretch"
                                                             HorizontalContentAlignment="Stretch"
                                                             VerticalContentAlignment="Stretch"
-                                                            AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                                                            AutomationProperties.Name="{x:Bind ActivationAutomationName, Mode=OneWay}"
                                                             Background="Transparent"
                                                             BorderThickness="0"
                                                             Click="OnPaneActivateClick"

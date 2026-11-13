@@ -708,4 +708,7 @@
     <value>Sayasqa pestañakunaman tikray agenteykikunaq ruwayninta huk qhawariyllapi rikunapaq. Pestañapi paña clicta ruway hinaspa {0} nisqata akllay.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{1} k'itikunamanta {0} k'iti</value>
+  </data>
 </root>

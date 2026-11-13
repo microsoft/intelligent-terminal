@@ -94,6 +94,7 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility ActiveIndicatorVisibility;
         String MetadataText;
         String AutomationName;
+        String ActivationAutomationName { get; };
         Windows.UI.Xaml.Visibility MetadataVisibility;
         Windows.UI.Xaml.Controls.IconElement Icon;
         String HighlightQuery;

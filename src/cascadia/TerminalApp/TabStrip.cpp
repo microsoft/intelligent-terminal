@@ -1000,7 +1000,9 @@ namespace winrt::TerminalApp::implementation
         {
             const auto previousSync = std::exchange(_syncingViewportSelection, true);
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = previousSync; });
-            ItemsList().SelectedItem(value ? _displayItems.GetAt(index) : nullptr);
+            // Use TreeView's selection model, not just its template ListView.
+            // TreeItem peers read the node state owned by this model.
+            SidebarTree().SelectedItem(value ? _displayItems.GetAt(index) : nullptr);
         }
         _setSelectedTabItem(value.try_as<MUX::Controls::TabViewItem>());
     }
@@ -1175,9 +1177,18 @@ namespace winrt::TerminalApp::implementation
         {
             current.RemoveAtEnd();
         }
-        for (const auto& pane : current)
+        for (uint32_t index = 0; index < current.Size(); ++index)
         {
+            const auto pane = current.GetAt(index);
             pane.HighlightQuery(display.SearchText());
+            // Keep the original status/progress name intact. Pane activation
+            // additionally identifies the row's position in this tab, including
+            // when multiple panes have the same provider/title and metadata.
+            const auto position = RS_fmt(L"SidebarPanePosition", index + 1, current.Size());
+            const auto name = pane.AutomationName();
+            winrt::get_self<TabStripPaneItem>(pane)->ActivationAutomationName(
+                name.empty() ? winrt::hstring{ position } :
+                               winrt::hstring{ fmt::format(FMT_COMPILE(L"{}, {}"), name, position) });
         }
         _updatePaneSelection(display, SelectedItem() == display.Tab(), _isRailCollapsed);
         display.IsGroup(isGroup);
@@ -4640,7 +4651,7 @@ namespace winrt::TerminalApp::implementation
             // History projection and hidden/recycled rows can clear native selection.
             _syncingViewportSelection = true;
             const auto endSync = wil::scope_exit([&]() noexcept { _syncingViewportSelection = false; });
-            ItemsList().SelectedItem(DisplayItemForTab(SelectedItem()));
+            SidebarTree().SelectedItem(DisplayItemForTab(SelectedItem()));
             return;
         }
         _setSelectedTabItem(added);
