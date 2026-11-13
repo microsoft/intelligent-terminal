@@ -6297,24 +6297,23 @@ impl App {
             .unwrap_or_default()
     }
 
-    fn agent_slash_command_candidates(&self) -> Vec<&AcpSessionCommand> {
+    fn agent_slash_command_candidates(&self) -> impl Iterator<Item = &AcpSessionCommand> {
         let input = self.current_tab().input.trim_start();
-        if !commands::is_command_prefix(input) {
-            return Vec::new();
-        }
-        let query = input
-            .strip_prefix('/')
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        let (prefix, contains): (Vec<_>, Vec<_>) = self
-            .current_session_commands()
-            .iter()
-            .filter(|command| {
-                commands::lookup(&command.name).is_none()
-                    && command.name.to_ascii_lowercase().contains(&query)
-            })
-            .partition(|command| command.name.to_ascii_lowercase().starts_with(&query));
-        prefix.into_iter().chain(contains).collect()
+        let (session_commands, query) = if commands::is_command_prefix(input) {
+            (
+                self.current_session_commands(),
+                input
+                    .strip_prefix('/')
+                    .unwrap_or_default()
+                    .to_ascii_lowercase(),
+            )
+        } else {
+            (&[][..], String::new())
+        };
+        session_commands.iter().filter(move |command| {
+            commands::lookup(&command.name).is_none()
+                && command.name.to_ascii_lowercase().contains(&query)
+        })
     }
 
     fn slash_command_candidates(&self) -> Vec<crate::ui::CommandCandidate<'_>> {
@@ -6325,7 +6324,7 @@ impl App {
             .strip_prefix('/')
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let candidates = self
+        let (prefix, contains): (Vec<_>, Vec<_>) = self
             .current_tab()
             .command_popup_candidates
             .iter()
@@ -6333,12 +6332,8 @@ impl App {
             .map(crate::ui::CommandCandidate::Client)
             .chain(
                 self.agent_slash_command_candidates()
-                    .into_iter()
                     .map(crate::ui::CommandCandidate::Agent),
             )
-            .collect::<Vec<_>>();
-        let (prefix, contains): (Vec<_>, Vec<_>) = candidates
-            .into_iter()
             .partition(|candidate| candidate.name().to_ascii_lowercase().starts_with(&query));
         prefix.into_iter().chain(contains).collect()
     }
@@ -6418,7 +6413,7 @@ impl App {
     pub(super) fn command_popup_visible(&self) -> bool {
         self.current_tab().command_popup_visible()
             || self.available_agent_command_candidates().next().is_some()
-            || !self.agent_slash_command_candidates().is_empty()
+            || self.agent_slash_command_candidates().next().is_some()
     }
 
     fn available_agent_command_candidates(&self) -> impl Iterator<Item = &AvailableAgent> {
