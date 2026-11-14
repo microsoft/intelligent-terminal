@@ -978,8 +978,9 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // functions, whose non-terminating Set-Location errors leave $? true.
     // v14: limit shell integration to Intelligent Terminal using its host marker.
     // v15: keep per-wrapper prompt delegates stable across renderer restoration.
+    // v16: safely leave older sessions untouched when strict mode is enabled.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 15;
+    inline constexpr int kVersion = 16;
 
     inline std::wstring ScriptFileName()
     {
@@ -1337,6 +1338,7 @@ if (-not $Global:__ShellInteg_Installed) {
 function Global:__ShellInteg_Rearm {
     # No registry in restricted language or when an older integration already
     # owns the session. Leave its prompt untouched until the next shell.
+    if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }
     if ($null -eq $Global:__ShellInteg_Wrappers) { return }
     $current = $function:prompt
     if ($null -eq $current) { return }

@@ -126,7 +126,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
     TEST_METHOD(PowerShell_ScriptContent_RestoresStatusSignalBeforeDelegating);
     TEST_METHOD(PowerShell_PromptLifecycle_RestoresSavedWrappers);
-    TEST_METHOD(PowerShell_PromptLifecycle_RestrictedLanguage);
+    TEST_METHOD(PowerShell_PromptLifecycle_RestrictedAndExistingSessions);
     TEST_METHOD(PowerShell_ScriptContent_RendersFailSafe);
 
     // Install scenarios.
@@ -1333,23 +1333,29 @@ Assert-RearmPreservesPrompt
     }
 }
 
-void ShellIntegrationTests::PowerShell_PromptLifecycle_RestrictedLanguage()
+void ShellIntegrationTests::PowerShell_PromptLifecycle_RestrictedAndExistingSessions()
 {
     const auto integration = _scratchDir / ShellIntegrationScriptFileName();
     _WriteFile(integration, std::string{ "\xef\xbb\xbf" } + ShellIntegrationScriptContent());
     const auto runner = _scratchDir / L"restricted-prompt-test.ps1";
-    _WriteFile(runner, R"PS(param([string]$IntegrationPath, [switch]$Existing)
+    _WriteFile(runner, R"PS(param([string]$IntegrationPath, [switch]$Existing, [switch]$Strict)
 $ErrorActionPreference = 'Stop'
 $env:INTELLIGENT_TERMINAL = '1'
 function Global:prompt { 'BASE> ' }
 function Global:PSConsoleHostReadLine { 'input' }
 $original = $function:prompt
-$readLine = $function:PSConsoleHostReadLine
 if ($Existing) {
     $Global:__ShellInteg_Installed = $true
     $Global:__ShellInteg_Wrapper = $original
+    function Global:__ShellInteg_Rearm {}
+    function Global:PSConsoleHostReadLine { __ShellInteg_Rearm; 'input' }
 }
-$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'
+$readLine = $function:PSConsoleHostReadLine
+if ($Strict) {
+    Set-StrictMode -Version Latest
+} else {
+    $ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'
+}
 . $IntegrationPath
 $rendered = prompt
 if ($Existing) {
@@ -1358,13 +1364,15 @@ if ($Existing) {
     if ($rendered -notmatch '\x1b]133;A\x07' -or
         $rendered -notmatch 'BASE> \x1b]133;B\x07') { throw 'Lost restricted-language prompt marks' }
 }
-if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Wrapped restricted-language ReadLine' }
+if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Changed existing ReadLine' }
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after sourcing' }
 function Global:prompt { 'REPLACED> ' }
 $replacement = $function:prompt
 . $IntegrationPath
 __ShellInteg_Rearm
-if ($function:prompt -ne $replacement) { throw 'Rearmed in restricted language' }
-if ($Error.Count -ne 0) { throw 'Restricted-language loading introduced errors' }
+if ($function:prompt -ne $replacement) { throw 'Rearmed a restricted or older session' }
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after repeated sourcing' }
+if ($Error.Count -ne 0) { throw 'Loading introduced errors' }
 'passed'
 )PS");
 
@@ -1377,10 +1385,10 @@ if ($Error.Count -ne 0) { throw 'Restricted-language loading introduced errors' 
     }
     for (const auto& host : hosts)
     {
-        for (const auto existing : { false, true })
+        for (const auto arguments : { L"", L" -Existing", L" -Existing -Strict" })
         {
             const auto result = Powershell::details::RunPowerShellCommand(
-                host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\" -IntegrationPath \"" + integration.wstring() + L"\"" + (existing ? L" -Existing" : L""));
+                host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\" -IntegrationPath \"" + integration.wstring() + L"\"" + arguments);
             VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
             VERIFY_IS_TRUE(result.launched);
             VERIFY_IS_FALSE(result.timedOut);
