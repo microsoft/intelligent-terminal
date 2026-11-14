@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
 #include "../RichTabProvider/ProviderBroker.h"
@@ -70,6 +71,7 @@ namespace winrt::TerminalApp::implementation
         void PreparePaneFocus(const uint32_t id);
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
+        bool ApplyRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance);
         void UpdateTitle();
         void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
         void SetUnreadAgentActivity(bool unread, bool needsAttention = false);
@@ -406,6 +408,7 @@ namespace winrt::TerminalApp::implementation
         bool _agentPrewarmSuppressed{ false };
 
         winrt::hstring _stableId{};
+        winrt::Microsoft::Terminal::Settings::RuntimeAppearance _runtimeAppearance;
         bool _keepRunning{ false };
         winrt::hstring _keepRunningTelemetryId{};
         bool _isPinned{ false };

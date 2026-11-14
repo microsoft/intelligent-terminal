@@ -489,6 +489,14 @@ pub(crate) enum Command {
         #[arg(long)]
         retry_startup: bool,
     },
+    /// Produce a bounded Terminal operation plan; never execute the operation.
+    #[command(hide = true)]
+    OmniPlan {
+        #[arg(long, required_unless_present = "serve", conflicts_with = "serve")]
+        request: Option<String>,
+        #[arg(long)]
+        serve: bool,
+    },
     /// List built-in ACP agents installed inside one WSL distro.
     /// Used by the per-profile Settings picker.
     #[command(hide = true)]

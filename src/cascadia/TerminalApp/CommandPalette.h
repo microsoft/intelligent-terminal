@@ -9,6 +9,7 @@
 #include "CommandPaletteTelemetry.h"
 
 #include <til/hash.h>
+#include <atomic>
 
 // fwdecl unittest classes
 namespace TerminalAppLocalTests
@@ -26,6 +27,7 @@ namespace winrt::TerminalApp::implementation
         CommandlineMode,
         AgentForegroundMode,
         AgentBackgroundMode,
+        OmniMode,
     };
 
     struct CommandPalette : CommandPaletteT<CommandPalette>
@@ -50,6 +52,9 @@ namespace winrt::TerminalApp::implementation
         void EnableTabSwitcherMode(const uint32_t startIdx, Microsoft::Terminal::Settings::Model::TabSwitcherMode tabSwitcherMode);
         void EnableTabSearchMode();
         bool DismissedByFocusLoss() const noexcept { return _dismissedByFocusLoss; }
+        bool IsOmniMode() const noexcept { return _currentMode == CommandPaletteMode::OmniMode; }
+        std::shared_ptr<std::atomic<bool>> OmniCancellation() const { return _omniCancellation; }
+        void CompleteOmniRequest(const std::shared_ptr<std::atomic<bool>>& cancellation, const winrt::hstring& result, bool clearPrompt = true);
 
         til::property_changed_event PropertyChanged;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::TerminalApp::Tab> SwitchToTabRequested;
@@ -58,6 +63,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<Windows::Foundation::IInspectable, Microsoft::Terminal::Settings::Model::Command> PreviewAction;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentForegroundPromptRequested;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentBackgroundTaskRequested;
+        til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> OmniPromptRequested;
 
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, NoMatchesText, PropertyChanged.raise);
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, SearchBoxPlaceholderText, PropertyChanged.raise);
@@ -88,6 +94,9 @@ namespace winrt::TerminalApp::implementation
 
         bool _lastFilterTextWasEmpty{ true };
         bool _dismissedByFocusLoss{ false };
+        bool _omniBusy{ false };
+        std::shared_ptr<std::atomic<bool>> _omniCancellation;
+        void _cancelOmniRequest();
 
         void _populateCommands();
 

@@ -70,6 +70,27 @@ namespace winrt::Microsoft::Terminal::Settings
         return settings;
     }
 
+    winrt::com_ptr<TerminalSettings> TerminalSettings::WithRuntimeAppearance(const winrt::com_ptr<TerminalSettings>& parent,
+                                                                             const RuntimeAppearance& appearance)
+    {
+        if (!parent || appearance.Empty())
+        {
+            return parent;
+        }
+        THROW_HR_IF(E_INVALIDARG, appearance.opacity && (!std::isfinite(*appearance.opacity) || *appearance.opacity < 0.f || *appearance.opacity > 1.f));
+        THROW_HR_IF(E_INVALIDARG, appearance.fontSize && (!std::isfinite(*appearance.fontSize) || *appearance.fontSize < 1.f || *appearance.fontSize > 128.f));
+        auto child = winrt::make_self<TerminalSettings>();
+        child->_parent = parent;
+        child->_Opacity = appearance.opacity;
+        child->_UseAcrylic = appearance.acrylic;
+        child->_FontSize = appearance.fontSize;
+        if (appearance.scheme)
+        {
+            child->ApplyColorScheme(appearance.scheme);
+        }
+        return child;
+    }
+
     // Method Description:
     // - Create a TerminalSettingsCreateResult for the provided profile guid. We'll
     //   use the guid to look up the profile that should be used to
@@ -77,7 +98,7 @@ namespace winrt::Microsoft::Terminal::Settings
     //   global and profile settings to the instance.
     // Arguments:
     // - appSettings: the set of settings being used to construct the new terminal
-    // - profileGuid: the unique identifier (guid) of the profile
+    // - profileGuid: The unique identifier (guid) of the profile
     // Return Value:
     // - A TerminalSettingsCreateResult, which contains a pair of TerminalSettings objects,
     //   one for when the terminal is focused and the other for when the terminal is unfocused

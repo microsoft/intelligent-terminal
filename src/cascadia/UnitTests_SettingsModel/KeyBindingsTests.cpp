@@ -43,6 +43,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestSetTabColorArgs);
         TEST_METHOD(TestScrollArgs);
         TEST_METHOD(TestToggleCommandPaletteArgs);
+        TEST_METHOD(OmniShortcutRoundTripAndOverrides);
         TEST_METHOD(TestMoveTabArgs);
         TEST_METHOD(TestGetKeyBindingForAction);
         TEST_METHOD(RebindKeysRefreshesCaches);
@@ -911,6 +912,32 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(0u, invalidActionMap->_KeyMap.size());
             VERIFY_THROWS(invalidActionMap->LayerJson(bindingsInvalidJson, OriginTag::None);, std::exception);
         }
+    }
+
+    void KeyBindingsTests::OmniShortcutRoundTripAndOverrides()
+    {
+        const auto settings = CascadiaSettings::LoadDefaults();
+        const auto map = winrt::get_self<implementation::ActionMap>(settings.ActionMap());
+        const auto chord = KeyChordSerialization::FromString(L"ctrl+shift+u");
+        const auto command = map->GetActionByKeyChord(chord);
+        VERIFY_IS_NOT_NULL(command);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"Terminal.OpenOmni" }, command.ID());
+        const auto action = command.ActionAndArgs();
+        VERIFY_ARE_EQUAL(ShortcutAction::ToggleCommandPalette, action.Action());
+        VERIFY_ARE_EQUAL(CommandPaletteLaunchMode::Omni, action.Args().as<ToggleCommandPaletteArgs>().LaunchMode());
+        const auto json = implementation::ActionAndArgs::ToJson(action);
+        VERIFY_ARE_EQUAL(std::string{ "omni" }, json["launchMode"].asString());
+        std::vector<SettingsLoadWarnings> warnings;
+        const auto roundTrip = implementation::ActionAndArgs::FromJson(json, warnings);
+        VERIFY_IS_TRUE(warnings.empty());
+        VERIFY_ARE_EQUAL(CommandPaletteLaunchMode::Omni, roundTrip->Args().as<ToggleCommandPaletteArgs>().LaunchMode());
+        const auto palette = map->GetActionByKeyChord(KeyChordSerialization::FromString(L"ctrl+shift+p")).ActionAndArgs();
+        VERIFY_ARE_EQUAL(CommandPaletteLaunchMode::Action, palette.Args().as<ToggleCommandPaletteArgs>().LaunchMode());
+
+        map->LayerJson(VerifyParseSucceeded(R"([{ "command": "copy", "keys": "ctrl+shift+u" }])"), OriginTag::User);
+        VERIFY_ARE_EQUAL(ShortcutAction::CopyText, map->GetActionByKeyChord(chord).ActionAndArgs().Action());
+        map->LayerJson(VerifyParseSucceeded(R"([{ "command": "unbound", "keys": "ctrl+shift+u" }])"), OriginTag::User);
+        VERIFY_IS_NULL(map->GetActionByKeyChord(chord));
     }
 
     void KeyBindingsTests::TestGetKeyBindingForAction()

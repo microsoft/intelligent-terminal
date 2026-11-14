@@ -273,6 +273,7 @@
       <DependentUpon>TerminalPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>
+    <ClCompile Include="TerminalPage.Omni.cpp" />
     <ClCompile Include="TerminalTabStatus.cpp">
       <DependentUpon>TerminalTabStatus.idl</DependentUpon>
       <SubType>Code</SubType>

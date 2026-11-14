@@ -8,6 +8,7 @@
 #include "App.h"
 
 #include "TerminalPage.h"
+#include "CommandPalette.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneLog.h"
 #include "ScratchpadContent.h"
@@ -786,11 +787,21 @@ namespace winrt::TerminalApp::implementation
         if (const auto& realArgs = args.ActionArgs().try_as<ToggleCommandPaletteArgs>())
         {
             const auto p = LoadCommandPalette();
-            const auto v = p.Visibility() == Visibility::Visible ? Visibility::Collapsed : Visibility::Visible;
+            const auto switchingToOmni = realArgs.LaunchMode() == CommandPaletteLaunchMode::Omni &&
+                                         !winrt::get_self<CommandPalette>(p)->IsOmniMode();
+            const auto v = p.Visibility() == Visibility::Visible && !switchingToOmni ? Visibility::Collapsed : Visibility::Visible;
             // Prepare the next mode while hidden, including when this action closes the palette.
             p.Visibility(Visibility::Collapsed);
             p.EnableCommandPaletteMode(realArgs.LaunchMode());
             p.Visibility(v);
+            if (realArgs.LaunchMode() == CommandPaletteLaunchMode::Omni)
+            {
+                _agentPaneLog(v == Visibility::Visible ? "omni_palette_opened" : "omni_palette_closed");
+                if (v == Visibility::Visible)
+                {
+                    _WarmOmniPlanner();
+                }
+            }
             args.Handled(true);
         }
     }

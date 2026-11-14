@@ -193,6 +193,24 @@ fn child_command(executable: &Path, args: &[String]) -> Result<tokio::process::C
     Ok(command)
 }
 
+pub(super) fn omni_command() -> Result<tokio::process::Command> {
+    check_omni_policy()?;
+    let path = effective_path();
+    let executable = find_in_path(profile("copilot")?, &path, is_file)?
+        .context("Copilot executable is unavailable")?;
+    static JOB: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    JOB.get_or_init(|| install_descendant_job().map_err(|error| error.to_string()))
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let mut command = child_command(&executable, &[])?;
+    command.env("PATH", path);
+    Ok(command)
+}
+
+pub(super) fn check_omni_policy() -> Result<()> {
+    policy::read()?.check("copilot")
+}
+
 pub(super) async fn launch(
     id: &str,
     model: Option<&str>,

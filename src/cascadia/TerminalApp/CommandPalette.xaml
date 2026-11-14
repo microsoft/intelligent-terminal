@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     Copyright (c) Microsoft Corporation. All rights reserved. Licensed under
     the MIT License. See LICENSE in the project root for license information.
 -->
@@ -215,14 +215,14 @@
                                           Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate), Mode=OneWay}"
                                           Value="{x:Bind Item.(local:TabPaletteItem.TabStatus).ProgressValue, Mode=OneWay}" />
                         <local:IndeterminateProgressRing x:Name="TabIndeterminateProgressRing"
-                                      Style="{StaticResource DeclarativeSpinner}"
-                                      Width="15"
-                                      Height="15"
-                                      MinWidth="0"
-                                      MinHeight="0"
-                                      Foreground="{Binding Foreground, ElementName=TabProgressRing, Mode=OneWay}"
-                                      IsActive="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}"
-                                      Visibility="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate, Mode=OneWay}" />
+                                                         Width="15"
+                                                         Height="15"
+                                                         MinWidth="0"
+                                                         MinHeight="0"
+                                                         Foreground="{Binding Foreground, ElementName=TabProgressRing, Mode=OneWay}"
+                                                         IsActive="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingActive, Mode=OneWay}"
+                                                         Style="{StaticResource DeclarativeSpinner}"
+                                                         Visibility="{x:Bind Item.(local:TabPaletteItem.TabStatus).IsProgressRingIndeterminate, Mode=OneWay}" />
                     </Grid>
 
                     <ContentPresenter Grid.Column="0"
@@ -319,28 +319,29 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBox x:Name="_searchBox"
-                     Grid.Row="0"
-                     Margin="8,0,8,8"
-                     Padding="18,8,8,8"
-                     IsSpellCheckEnabled="False"
-                     PlaceholderText="{x:Bind SearchBoxPlaceholderText, Mode=OneWay}"
-                     Text=""
-                     TextChanged="_filterTextChanged">
-                <TextBox.ContextFlyout>
-                    <mtu:TextMenuFlyout />
-                </TextBox.ContextFlyout>
-            </TextBox>
+            <Grid Grid.Row="0">
+                <TextBox x:Name="_searchBox"
+                         Margin="8,0,8,8"
+                         Padding="18,8,8,8"
+                         IsSpellCheckEnabled="False"
+                         PlaceholderText="{x:Bind SearchBoxPlaceholderText, Mode=OneWay}"
+                         Text=""
+                         TextChanged="_filterTextChanged">
+                    <TextBox.ContextFlyout>
+                        <mtu:TextMenuFlyout />
+                    </TextBox.ContextFlyout>
+                </TextBox>
 
-            <TextBlock x:Name="_prefixCharacter"
-                       Grid.Row="0"
-                       Margin="8,0,8,8"
-                       Padding="8,0,0,0"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       FontSize="14"
-                       Text="{x:Bind PrefixCharacter, Mode=OneWay}"
-                       Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(PrefixCharacter), Mode=OneWay}" />
+                <TextBlock x:Name="_prefixCharacter"
+                           Grid.Row="0"
+                           Margin="8,0,8,8"
+                           Padding="8,0,0,0"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Text="{x:Bind PrefixCharacter, Mode=OneWay}"
+                           Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(PrefixCharacter), Mode=OneWay}" />
+            </Grid>
 
             <StackPanel Grid.Row="1"
                         Margin="8,0,8,8"

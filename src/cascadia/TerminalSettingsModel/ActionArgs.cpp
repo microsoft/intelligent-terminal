@@ -700,6 +700,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
     winrt::hstring ToggleCommandPaletteArgs::GenerateName(const winrt::WARC::ResourceContext& context) const
     {
+        if (LaunchMode() == CommandPaletteLaunchMode::Omni)
+        {
+            return L"Omni";
+        }
         if (LaunchMode() == CommandPaletteLaunchMode::CommandLine)
         {
             return RS_switchable_(L"ToggleCommandPaletteCommandLineModeCommandKey");

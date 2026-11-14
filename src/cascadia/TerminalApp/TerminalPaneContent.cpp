@@ -337,10 +337,80 @@ namespace winrt::TerminalApp::implementation
         const auto profile{ settings.FindProfile(_profile.Guid()) };
         _profile = profile ? profile : settings.ProfileDefaults();
 
+        for (auto* appearance : { &_paneRuntimeAppearance, &_tabRuntimeAppearance })
+        {
+            if (appearance->scheme)
+            {
+                appearance->scheme = settings.GlobalSettings().ColorSchemes().TryLookup(appearance->scheme.Name());
+            }
+        }
+        _ApplyRuntimeAppearance();
+    }
+
+    void TerminalPaneContent::_ApplyRuntimeAppearance()
+    {
         if (const auto settings{ _cache->TryLookup(_profile) })
         {
-            _control.UpdateControlSettings(settings->DefaultSettings(), settings->UnfocusedSettings());
+            auto appearance = _tabRuntimeAppearance;
+            appearance.Merge(_paneRuntimeAppearance);
+            using winrt::Microsoft::Terminal::Settings::TerminalSettings;
+            const auto layer = [&](const IControlSettings& base) {
+                // Cache entries are projections of our immutable adapter settings.
+                return base ? TerminalSettings::WithRuntimeAppearance(winrt::get_self<TerminalSettings>(base)->get_strong(), appearance) :
+                              winrt::com_ptr<TerminalSettings>{ nullptr };
+            };
+            const auto focused = layer(settings->DefaultSettings());
+            _control.UpdateControlSettings(focused.as<IControlSettings>(),
+                                           layer(settings->UnfocusedSettings()).try_as<IControlAppearance>());
+            if (appearance.scheme || _runtimeSchemeApplied)
+            {
+                _control.SetOverrideColorScheme(appearance.scheme ? focused.as<winrt::Microsoft::Terminal::Core::ICoreScheme>() : nullptr);
+                _runtimeSchemeApplied = static_cast<bool>(appearance.scheme);
+            }
         }
+    }
+
+    void TerminalPaneContent::SetPaneRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
+    {
+        const auto opacity = _control.BackgroundOpacity();
+        _paneRuntimeAppearance.Merge(appearance);
+        if (appearance.fontSize)
+        {
+            _control.ResetFontSize();
+        }
+        _ApplyRuntimeAppearance();
+        if (!appearance.opacity)
+        {
+            _control.AdjustOpacity(opacity, false);
+        }
+    }
+
+    void TerminalPaneContent::SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
+    {
+        if (_tabRuntimeAppearance == appearance)
+        {
+            return;
+        }
+        if (_tabRuntimeAppearance.fontSize != appearance.fontSize && !_paneRuntimeAppearance.fontSize)
+        {
+            _control.ResetFontSize();
+        }
+        const auto preserveOpacity = _tabRuntimeAppearance.opacity == appearance.opacity || _paneRuntimeAppearance.opacity.has_value();
+        const auto opacity = _control.BackgroundOpacity();
+        _tabRuntimeAppearance = appearance;
+        _ApplyRuntimeAppearance();
+        if (preserveOpacity)
+        {
+            _control.AdjustOpacity(opacity, false);
+        }
+    }
+
+    bool TerminalPaneContent::ConflictsWithTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance) const
+    {
+        return (appearance.opacity && _paneRuntimeAppearance.opacity && appearance.opacity != _paneRuntimeAppearance.opacity) ||
+               (appearance.acrylic && _paneRuntimeAppearance.acrylic && appearance.acrylic != _paneRuntimeAppearance.acrylic) ||
+               (appearance.fontSize && _paneRuntimeAppearance.fontSize && appearance.fontSize != _paneRuntimeAppearance.fontSize) ||
+               (appearance.scheme && _paneRuntimeAppearance.scheme && appearance.scheme.Name() != _paneRuntimeAppearance.scheme.Name());
     }
 
     // Method Description:

@@ -356,7 +356,8 @@ namespace winrt::TerminalApp::implementation
         else if (key == VirtualKey::Back && _searchBox().Text().empty() && _lastFilterTextWasEmpty &&
                  (_currentMode == CommandPaletteMode::ActionMode ||
                   _currentMode == CommandPaletteMode::AgentForegroundMode ||
-                  _currentMode == CommandPaletteMode::AgentBackgroundMode))
+                  _currentMode == CommandPaletteMode::AgentBackgroundMode ||
+                  _currentMode == CommandPaletteMode::OmniMode))
         {
             // If the last filter text was empty, and we're backspacing from
             // that state, then the user "backspaced" the virtual prefix we're
@@ -747,6 +748,7 @@ namespace winrt::TerminalApp::implementation
             return _loadRecentCommands();
         case CommandPaletteMode::AgentForegroundMode:
         case CommandPaletteMode::AgentBackgroundMode:
+        case CommandPaletteMode::OmniMode:
             // Agent modes are free-text input; no list to filter
             return winrt::single_threaded_vector<winrt::TerminalApp::FilteredCommand>();
         default:
@@ -768,6 +770,18 @@ namespace winrt::TerminalApp::implementation
         if (_currentMode == CommandPaletteMode::CommandlineMode)
         {
             _dispatchCommandline(filteredCommand);
+        }
+        else if (_currentMode == CommandPaletteMode::OmniMode)
+        {
+            const auto prompt = winrt::hstring{ _getTrimmedInput() };
+            if (!_omniBusy && !prompt.empty())
+            {
+                _cancelOmniRequest();
+                _omniCancellation = std::make_shared<std::atomic<bool>>(false);
+                _omniBusy = true;
+                ParsedCommandLineText(RS_(L"VerticalTabsHistoryStatusWorking"));
+                OmniPromptRequested.raise(*this, prompt);
+            }
         }
         else if (_currentMode == CommandPaletteMode::AgentForegroundMode || _currentMode == CommandPaletteMode::AgentBackgroundMode)
         {
@@ -808,10 +822,12 @@ namespace winrt::TerminalApp::implementation
                     // palette like the Tab Switcher will be able to have the last laugh.
                     _close();
 
-                    // But make an exception for the Toggle Command Palette action: we don't want the dispatch
-                    // to make the command palette - that was just closed - visible again.
-                    // All other actions can just be dispatched.
-                    if (command.ActionAndArgs().Action() != ShortcutAction::ToggleCommandPalette)
+                    // Keep the ordinary palette toggle closed, but allow the Omni action
+                    // to reopen the palette in its distinct input mode.
+                    const auto action = command.ActionAndArgs();
+                    const auto paletteArgs = action.Args().try_as<ToggleCommandPaletteArgs>();
+                    const auto opensOmni = paletteArgs && paletteArgs.LaunchMode() == CommandPaletteLaunchMode::Omni;
+                    if (action.Action() != ShortcutAction::ToggleCommandPalette || opensOmni)
                     {
                         DispatchCommandRequested.raise(*this, command);
                     }
@@ -983,6 +999,11 @@ namespace winrt::TerminalApp::implementation
     void CommandPalette::_filterTextChanged(const IInspectable& /*sender*/,
                                             const Windows::UI::Xaml::RoutedEventArgs& /*args*/)
     {
+        if (_currentMode == CommandPaletteMode::OmniMode && _omniBusy)
+        {
+            _cancelOmniRequest();
+            ParsedCommandLineText(L"");
+        }
         // GH#18737: Only respond to this change if we are visible:
         // _close calls _searchBox().Text(L"") to reset the search text, which lands us
         // in here after the command palette is dismissed. Since we have a code path here that
@@ -1021,7 +1042,10 @@ namespace winrt::TerminalApp::implementation
         _filteredActionsView().SelectedIndex(
             (_currentMode == CommandPaletteMode::CommandlineMode ||
              _currentMode == CommandPaletteMode::AgentForegroundMode ||
-             _currentMode == CommandPaletteMode::AgentBackgroundMode) ? -1 : 0);
+             _currentMode == CommandPaletteMode::OmniMode ||
+             _currentMode == CommandPaletteMode::AgentBackgroundMode) ?
+                -1 :
+                0);
 
         if (_currentMode == CommandPaletteMode::TabSearchMode || _currentMode == CommandPaletteMode::ActionMode)
         {
@@ -1094,6 +1118,10 @@ namespace winrt::TerminalApp::implementation
             else if (inputText[0] == L'&')
             {
                 newMode = CommandPaletteMode::AgentBackgroundMode;
+            }
+            else if (inputText[0] == L'!')
+            {
+                newMode = CommandPaletteMode::OmniMode;
             }
         }
 
@@ -1177,6 +1205,9 @@ namespace winrt::TerminalApp::implementation
         case CommandPaletteLaunchMode::AgentDelegation:
             mode = CommandPaletteMode::AgentForegroundMode;
             break;
+        case CommandPaletteLaunchMode::Omni:
+            mode = CommandPaletteMode::OmniMode;
+            break;
         default:
             mode = CommandPaletteMode::ActionMode;
             break;
@@ -1187,6 +1218,7 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::_switchToMode(CommandPaletteMode mode)
     {
+        _cancelOmniRequest();
         _currentMode = mode;
 
         const auto currentlyVisible{ Visibility() == Visibility::Visible };
@@ -1204,6 +1236,13 @@ namespace winrt::TerminalApp::implementation
         // whenever _switchToMode is called.
         switch (_currentMode)
         {
+        case CommandPaletteMode::OmniMode:
+            SearchBoxPlaceholderText(RS_(L"CmdPalAgentForegroundPrompt"));
+            NoMatchesText(L"");
+            ControlName(L"Omni");
+            PrefixCharacter(L"!");
+            modeAnnouncementResourceKey = USES_RESOURCE(L"CommandPaletteModeAnnouncement_AgentForegroundMode");
+            break;
         case CommandPaletteMode::TabSearchMode:
         case CommandPaletteMode::TabSwitchMode:
         {
@@ -1402,6 +1441,7 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::_close()
     {
+        _cancelOmniRequest();
         Visibility(Visibility::Collapsed);
 
         // Reset visibility in case anchor mode tab switcher just finished.
@@ -1418,6 +1458,38 @@ namespace winrt::TerminalApp::implementation
         // revert any preview
         _filteredActionsView().SelectedIndex(-1);
         PreviewAction.raise(*this, nullptr);
+    }
+
+    void CommandPalette::_cancelOmniRequest()
+    {
+        if (_omniCancellation)
+        {
+            _omniCancellation->store(true);
+            _omniCancellation.reset();
+        }
+        _omniBusy = false;
+    }
+
+    void CommandPalette::CompleteOmniRequest(const std::shared_ptr<std::atomic<bool>>& cancellation, const winrt::hstring& result, const bool clearPrompt)
+    {
+        if (_omniCancellation != cancellation || cancellation->load() || _currentMode != CommandPaletteMode::OmniMode)
+        {
+            return;
+        }
+        _omniBusy = false;
+        if (clearPrompt)
+        {
+            _searchBox().Text(L"");
+        }
+        ParsedCommandLineText(result);
+        _omniCancellation.reset();
+        if (const auto peer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(_searchBox()))
+        {
+            peer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
+                                        Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                        result,
+                                        L"OmniResult");
+        }
     }
 
     void CommandPalette::EnableTabSwitcherMode(const uint32_t startIdx, TabSwitcherMode tabSwitcherMode)

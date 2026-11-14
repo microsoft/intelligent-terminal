@@ -942,6 +942,9 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
+        TEST_METHOD(OmniRuntimeTargetSurvivesFocusAndSplit);
+        TEST_METHOD(OmniTabAppearanceSurvivesSplitAndReload);
+        TEST_METHOD(OmniPaletteCancelsStaleRequests);
 
         TEST_METHOD(TestWindowRenameSuccessful);
         TEST_METHOD(TestWindowRenameFailure);
@@ -35663,6 +35666,125 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&page]() {
             auto focusedIndex = page->_GetFocusedTabIndex().value_or(-1);
             VERIFY_ARE_EQUAL(3u, focusedIndex, L"Verify Tab[3] is focused");
+        });
+    }
+
+    void TabTests::OmniRuntimeTargetSurvivesFocusAndSplit()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto target = page->_CaptureOmniTarget();
+            const auto control = target.panes.front().first;
+            NewTerminalArgs otherArgs{ 1 };
+            page->_OpenNewTab(otherArgs);
+            const auto other = page->_GetActiveControl();
+            const auto otherOpacity = other.BackgroundOpacity();
+            Json::Value appearance;
+            appearance["kind"] = "appearance";
+            appearance["scope"] = "pane";
+            appearance["opacity"] = 73;
+            appearance["acrylic"] = true;
+            page->_ExecuteOmniOperation(appearance, target);
+            VERIFY_IS_TRUE(std::abs(control.BackgroundOpacity() - 0.73f) < 0.001f);
+            VERIFY_ARE_EQUAL(otherOpacity, other.BackgroundOpacity());
+            Json::Value split;
+            split["kind"] = "split";
+            split["direction"] = "right";
+            split["profile_id"] = winrt::to_string(Utils::GuidToString(page->_settings.ActiveProfiles().GetAt(0).Guid()));
+            page->_ExecuteOmniOperation(split, target);
+            appearance["opacity"] = 65;
+            page->_ExecuteOmniOperation(appearance, target);
+            VERIFY_IS_TRUE(std::abs(control.BackgroundOpacity() - 0.65f) < 0.001f);
+            appearance["scope"] = "profile";
+            VERIFY_THROWS_SPECIFIC(page->_ExecuteOmniOperation(appearance, target), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_INVALIDARG; });
+            VERIFY_IS_TRUE(std::abs(control.BackgroundOpacity() - 0.65f) < 0.001f);
+            auto stale = target;
+            stale.tabId = L"closed-tab";
+            VERIFY_THROWS_SPECIFIC(page->_ExecuteOmniOperation(split, stale), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_CHANGED_STATE; });
+            const auto tabCount = page->_tabs.Size();
+            Json::Value newTab;
+            newTab["kind"] = "new_tab";
+            newTab["profile_id"] = split["profile_id"];
+            const auto created = page->_ExecuteOmniOperation(newTab, target);
+            VERIFY_ARE_EQUAL(tabCount + 1, page->_tabs.Size());
+            VERIFY_IS_NOT_NULL(page->_GetTabImpl(page->_tabs.GetAt(tabCount))->GetRootPane()->FindPaneByContentId(created["content_id"].asUInt()));
+            VERIFY_IS_TRUE(page->_GetActiveControl() == other);
+        });
+    }
+
+    void TabTests::OmniTabAppearanceSurvivesSplitAndReload()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto target = page->_CaptureOmniTarget();
+            const auto tab = page->_GetFocusedTabImpl();
+            Json::Value appearance;
+            appearance["kind"] = "appearance";
+            appearance["scope"] = "tab";
+            appearance["opacity"] = 70;
+            appearance["acrylic"] = true;
+            appearance["font_size"] = 17;
+            page->_ExecuteOmniOperation(appearance, target);
+            Json::Value split;
+            split["kind"] = "split";
+            split["direction"] = "down";
+            split["profile_id"] = winrt::to_string(Utils::GuidToString(page->_settings.ActiveProfiles().GetAt(0).Guid()));
+            page->_ExecuteOmniOperation(split, target);
+            tab->UpdateSettings(page->_settings);
+            size_t count = 0;
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (const auto content = pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
+                {
+                    const auto control = winrt::get_self<winrt::TerminalApp::implementation::TerminalPaneContent>(content)->GetTermControl();
+                    VERIFY_IS_TRUE(std::abs(control.BackgroundOpacity() - 0.7f) < 0.001f);
+                    VERIFY_IS_TRUE(control.Settings().UseAcrylic());
+                    VERIFY_ARE_EQUAL(17.f, control.Settings().FontSize());
+                    ++count;
+                }
+            });
+            VERIFY_ARE_EQUAL(size_t{ 2 }, count);
+            VERIFY_THROWS_SPECIFIC(page->_ExecuteOmniOperation(appearance, target), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_CHANGED_STATE; });
+            const auto fresh = page->_CaptureOmniTarget();
+            appearance["scope"] = "pane";
+            appearance["opacity"] = 60;
+            page->_ExecuteOmniOperation(appearance, fresh);
+            appearance["scope"] = "tab";
+            appearance["opacity"] = 50;
+            VERIFY_THROWS_SPECIFIC(page->_ExecuteOmniOperation(appearance, fresh), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_CHANGED_STATE; });
+            for (const auto& entry : fresh.panes)
+            {
+                const auto expected = entry.first.ContentId() == fresh.sourceContentId ? 0.6f : 0.7f;
+                VERIFY_IS_TRUE(std::abs(entry.first.BackgroundOpacity() - expected) < 0.001f);
+            }
+        });
+    }
+
+    void TabTests::OmniPaletteCancelsStaleRequests()
+    {
+        TestOnUIThread([&]() {
+            const auto palette = winrt::make_self<winrt::TerminalApp::implementation::CommandPalette>();
+            palette->_switchToMode(winrt::TerminalApp::implementation::CommandPaletteMode::OmniMode);
+            palette->Visibility(Visibility::Visible);
+            size_t submitted = 0;
+            palette->OmniPromptRequested([&](auto&&, auto&&) { ++submitted; });
+            palette->_searchBox().Text(L"opacity 80");
+            palette->_dispatchCommand(nullptr);
+            const auto first = palette->OmniCancellation();
+            VERIFY_IS_NOT_NULL(first);
+            palette->_dispatchCommand(nullptr);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, submitted);
+            palette->_searchBox().Text(L"opacity 70");
+            VERIFY_IS_TRUE(first->load());
+            palette->_dispatchCommand(nullptr);
+            const auto second = palette->OmniCancellation();
+            palette->CompleteOmniRequest(first, L"stale");
+            VERIFY_IS_TRUE(palette->ParsedCommandLineText() != L"stale");
+            palette->CompleteOmniRequest(second, L"clarify", false);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"opacity 70" }, palette->_searchBox().Text());
+            palette->_dispatchCommand(nullptr);
+            const auto third = palette->OmniCancellation();
+            palette->_close();
+            VERIFY_IS_TRUE(third->load());
         });
     }
 

@@ -410,7 +410,7 @@ namespace winrt::TerminalApp::implementation
             // Create this only on the first time we load the settings.
             _terminalSettingsCache = std::make_shared<TerminalSettingsCache>(settings);
         }
-        const auto requestedTabLayout = settings.GlobalSettings().TabLayout();
+        const auto requestedTabLayout = _runtimeTabLayout.value_or(settings.GlobalSettings().TabLayout());
         _settings = settings;
         _SyncNativeAgentStatusMode();
         if (!firstLoad)
@@ -1501,7 +1501,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Apply the FRE choice before deferred startup creates the first tab.
-        const auto layoutApplied = _ApplyTabLayout(_settings.GlobalSettings().TabLayout());
+        const auto layoutApplied = _ApplyTabLayout(_runtimeTabLayout.value_or(_settings.GlobalSettings().TabLayout()));
         if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
         {
             infoBar.IsOpen(!layoutApplied);
@@ -6392,6 +6392,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        _runtimeTabLayout.reset();
         if (!_ApplyTabLayout(targetLayout))
         {
             if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
@@ -15238,6 +15239,7 @@ namespace winrt::TerminalApp::implementation
         p.PreviewAction({ this, &TerminalPage::_PreviewActionHandler });
         p.AgentForegroundPromptRequested({ this, &TerminalPage::_OnAgentForegroundPromptRequested });
         p.AgentBackgroundTaskRequested({ this, &TerminalPage::_OnAgentBackgroundTaskRequested });
+        p.OmniPromptRequested({ this, &TerminalPage::_OnOmniPromptRequested });
 
         return p;
     }
@@ -16890,7 +16892,14 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
-        _UnZoomIfNeeded();
+        if (activeTab == _GetFocusedTabImpl())
+        {
+            _UnZoomIfNeeded();
+        }
+        else if (activeTab->IsZoomed())
+        {
+            activeTab->ExitZoom();
+        }
         if (_receivingContentTransfer)
         {
             const auto control = newPane->GetTerminalControl();

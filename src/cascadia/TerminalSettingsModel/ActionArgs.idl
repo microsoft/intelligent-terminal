@@ -117,7 +117,8 @@ namespace Microsoft.Terminal.Settings.Model
     {
         Action = 0,
         CommandLine,
-        AgentDelegation
+        AgentDelegation,
+        Omni
     };
 
     enum TabSwitcherMode

@@ -521,10 +521,11 @@ JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::MoveTabDirection
 
 JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::CommandPaletteLaunchMode)
 {
-    JSON_MAPPINGS(3) = {
+    JSON_MAPPINGS(4) = {
         pair_type{ "action", ValueType::Action },
         pair_type{ "commandLine", ValueType::CommandLine },
         pair_type{ "agentDelegation", ValueType::AgentDelegation },
+        pair_type{ "omni", ValueType::Omni },
     };
 };
 

@@ -53,6 +53,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(GetProfileForArgsWithCommandline);
         TEST_METHOD(MakeSettingsForProfile);
         TEST_METHOD(AcrylicSettingsReachTerminal);
+        TEST_METHOD(RuntimeAppearancePreservesInheritanceAndSource);
         TEST_METHOD(MakeSettingsForDefaultProfileThatDoesntExist);
         TEST_METHOD(TestLayerProfileOnColorScheme);
         TEST_METHOD(TestCommandlineToTitlePromotion);
@@ -81,6 +82,41 @@ namespace SettingsModelUnitTests
 
         settings->GlobalSettings().EnableUnfocusedAcrylic(false);
         VERIFY_IS_FALSE(TerminalSettings::CreateWithProfile(*settings, settings->GetProfileByName(L"Inherited")).DefaultSettings()->EnableUnfocusedAcrylic());
+    }
+
+    void TerminalSettingsTests::RuntimeAppearancePreservesInheritanceAndSource()
+    {
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(std::string_view{ R"({
+            "profiles": [{
+                "name": "Runtime",
+                "useAcrylic": false,
+                "opacity": 100,
+                "font": {"size": 18},
+                "unfocusedAppearance": {"opacity": 40}
+            }]
+        })" });
+        const auto profile = settings->GetProfileByName(L"Runtime");
+        const auto base = TerminalSettings::CreateWithProfile(*settings, profile);
+        RuntimeAppearance appearance;
+        appearance.opacity = 0.75f;
+        appearance.acrylic = true;
+        const auto focused = TerminalSettings::WithRuntimeAppearance(base.DefaultSettings(), appearance);
+        const auto unfocused = TerminalSettings::WithRuntimeAppearance(base.UnfocusedSettings(), appearance);
+        VERIFY_ARE_EQUAL(0.75f, focused->Opacity());
+        VERIFY_ARE_EQUAL(0.75f, unfocused->Opacity());
+        VERIFY_ARE_EQUAL(18.f, unfocused->FontSize());
+        VERIFY_IS_TRUE(unfocused->UseAcrylic());
+        VERIFY_ARE_EQUAL(1.f, base.DefaultSettings()->Opacity());
+        VERIFY_ARE_EQUAL(0.4f, base.UnfocusedSettings()->Opacity());
+        VERIFY_IS_FALSE(base.DefaultSettings()->UseAcrylic());
+        RuntimeAppearance pane;
+        pane.fontSize = 22.f;
+        const auto layered = TerminalSettings::WithRuntimeAppearance(unfocused, pane);
+        VERIFY_ARE_EQUAL(22.f, layered->FontSize());
+        VERIFY_ARE_EQUAL(0.75f, layered->Opacity());
+        VERIFY_IS_TRUE(layered->UseAcrylic());
+        appearance.opacity = 2.f;
+        VERIFY_THROWS_SPECIFIC(TerminalSettings::WithRuntimeAppearance(base.DefaultSettings(), appearance), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_INVALIDARG; });
     }
 
     void TerminalSettingsTests::AgentProfileDirectCommandPrecedence()

@@ -6,6 +6,7 @@
 #include "BellEventArgs.g.h"
 #include "NotificationEventArgs.g.h"
 #include "BasicPaneEvents.h"
+#include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -47,6 +48,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::Terminal::Settings::Model::INewContentArgs GetNewTerminalArgs(BuildStartupKind kind) const;
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
+        void SetPaneRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance);
+        void SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance);
+        bool ConflictsWithTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance) const;
 
         void MarkAsDefterm();
 
@@ -79,6 +83,10 @@ namespace winrt::TerminalApp::implementation
         bool _isDefTermSession{ false };
         bool _usesManagedAgentCommand{ false };
         winrt::hstring _managedAgentProviderId;
+        winrt::Microsoft::Terminal::Settings::RuntimeAppearance _paneRuntimeAppearance;
+        winrt::Microsoft::Terminal::Settings::RuntimeAppearance _tabRuntimeAppearance;
+        bool _runtimeSchemeApplied{ false };
+        void _ApplyRuntimeAppearance();
 
         struct ControlEventTokens
         {

@@ -45,6 +45,7 @@ namespace Microsoft::Terminal::Core
 namespace Microsoft::Terminal::WtaProcess
 {
     struct CaptureResult;
+    class OmniPlannerProcess;
 }
 
 namespace Json
@@ -357,6 +358,7 @@ namespace winrt::TerminalApp::implementation
         bool _verticalTitlebarKeyHandlerInstalled{ false };
         uint64_t _tabLayoutGeneration{ 0 };
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayout;
+        std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _runtimeTabLayout;
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _tabLayoutTransitionTarget;
         Windows::Foundation::IInspectable _tabLayoutTransitionSelectedItem{ nullptr };
         bool _tabLayoutTransitionPreviousVertical{ false };
@@ -1515,6 +1517,21 @@ namespace winrt::TerminalApp::implementation
         void _OnSwitchToTabRequested(const IInspectable& sender, const winrt::TerminalApp::Tab& tab);
         void _OnAgentForegroundPromptRequested(const IInspectable& sender, const winrt::hstring& prompt);
         void _OnAgentBackgroundTaskRequested(const IInspectable& sender, const winrt::hstring& prompt);
+        safe_void_coroutine _OnOmniPromptRequested(IInspectable sender, winrt::hstring prompt);
+        safe_void_coroutine _WarmOmniPlanner();
+        std::shared_ptr<::Microsoft::Terminal::WtaProcess::OmniPlannerProcess> _omniPlanner;
+        struct OmniTarget
+        {
+            winrt::hstring tabId;
+            winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings settings{ nullptr };
+            uint32_t sourceContentId{};
+            std::vector<winrt::hstring> tabIds;
+            std::vector<std::pair<winrt::Microsoft::Terminal::Control::TermControl,
+                                  winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection>>
+                panes;
+        };
+        OmniTarget _CaptureOmniTarget() const;
+        Json::Value _ExecuteOmniOperation(const Json::Value& plan, const OmniTarget& target);
 
         // Agent pane helpers
         winrt::hstring _DetectAgentCli() const;

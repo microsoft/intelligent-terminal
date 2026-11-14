@@ -8,6 +8,7 @@
 #include "AgentPaneContent.h"
 #include "AgentIconUtils.h"
 #include "SettingsPaneContent.h"
+#include "TerminalPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
 #include "AppLogic.h"
@@ -493,12 +494,48 @@ namespace winrt::TerminalApp::implementation
 
         // The tabWidthMode may have changed, update the header control accordingly
         _UpdateHeaderControlMaxWidth();
+        if (_runtimeAppearance.scheme)
+        {
+            _runtimeAppearance.scheme = settings.GlobalSettings().ColorSchemes().TryLookup(_runtimeAppearance.scheme.Name());
+        }
 
         // Update the settings on all our panes.
         _rootPane->WalkTree([&](const auto& pane) {
             pane->UpdateSettings(settings);
             return false;
         });
+    }
+
+    bool Tab::ApplyRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
+    {
+        std::vector<winrt::com_ptr<TerminalPaneContent>> contents;
+        bool conflict = false;
+        _rootPane->WalkTree([&](const auto& pane) {
+            if (const auto content = pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
+            {
+                auto impl = winrt::get_self<TerminalPaneContent>(content)->get_strong();
+                conflict = conflict || impl->ConflictsWithTabRuntimeAppearance(appearance);
+                contents.emplace_back(std::move(impl));
+            }
+        });
+        if (conflict || contents.empty())
+        {
+            return false;
+        }
+        _runtimeAppearance.Merge(appearance);
+        for (const auto& content : contents)
+        {
+            content->SetTabRuntimeAppearance(_runtimeAppearance);
+            if (appearance.opacity)
+            {
+                content->GetTermControl().AdjustOpacity(*appearance.opacity, false);
+            }
+            if (appearance.fontSize)
+            {
+                content->GetTermControl().ResetFontSize();
+            }
+        }
+        return true;
     }
 
     // Method Description:
@@ -1920,6 +1957,10 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_AttachEventHandlersToPane(std::shared_ptr<Pane> pane)
     {
+        if (const auto content = pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+        {
+            winrt::get_self<TerminalPaneContent>(content)->SetTabRuntimeAppearance(_runtimeAppearance);
+        }
         auto weakThis{ get_weak() };
         std::weak_ptr<Pane> weakPane{ pane };
 

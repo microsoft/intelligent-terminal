@@ -3,6 +3,7 @@ pub(crate) mod args;
 pub(crate) mod delegate;
 pub(crate) mod hooks;
 pub(crate) mod native_agent;
+mod omni;
 pub(crate) mod probes;
 pub(crate) mod sessions;
 pub(crate) mod wt;
@@ -197,6 +198,13 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             agent_id,
             retry_startup,
         } => probes::run_models(&agent, agent_id.as_deref(), retry_startup).await,
+        Command::OmniPlan { request, serve } => {
+            if serve {
+                omni::serve().await
+            } else {
+                omni::run(request.as_deref().unwrap_or_default()).await
+            }
+        }
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
         Command::ProbeHostAgents => probes::run_host_agents(),
         Command::ProbeProfileAgents => native_agent::probe(),

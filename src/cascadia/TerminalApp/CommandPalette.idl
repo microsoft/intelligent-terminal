@@ -36,5 +36,6 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<Object, Microsoft.Terminal.Settings.Model.Command> PreviewAction;
         event Windows.Foundation.TypedEventHandler<CommandPalette, String> AgentForegroundPromptRequested;
         event Windows.Foundation.TypedEventHandler<CommandPalette, String> AgentBackgroundTaskRequested;
+        event Windows.Foundation.TypedEventHandler<CommandPalette, String> OmniPromptRequested;
     }
 }

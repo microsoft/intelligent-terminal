@@ -30,9 +30,9 @@ public:                                               \
         {                                             \
             return *_##name;                          \
         }                                             \
-        if (_parent && _parent->_##name.has_value())  \
+        if (_parent)                                  \
         {                                             \
-            return *_parent->_##name;                 \
+            return _parent->name();                   \
         }                                             \
         return type{ __VA_ARGS__ };                   \
     }
@@ -52,6 +52,33 @@ namespace winrt::Microsoft::Terminal::Settings
 
     struct TerminalSettingsCreateResult;
 
+    struct RuntimeAppearance
+    {
+        std::optional<float> opacity;
+        std::optional<bool> acrylic;
+        std::optional<float> fontSize;
+        Model::ColorScheme scheme{ nullptr };
+
+        bool Empty() const noexcept
+        {
+            return !opacity && !acrylic && !fontSize && !scheme;
+        }
+
+        void Merge(const RuntimeAppearance& other)
+        {
+            if (other.opacity)
+                opacity = other.opacity;
+            if (other.acrylic)
+                acrylic = other.acrylic;
+            if (other.fontSize)
+                fontSize = other.fontSize;
+            if (other.scheme)
+                scheme = other.scheme;
+        }
+
+        bool operator==(const RuntimeAppearance&) const = default;
+    };
+
     struct TerminalSettings :
         winrt::implements<TerminalSettings, winrt::Microsoft::Terminal::Core::ICoreSettings, winrt::Microsoft::Terminal::Control::IControlSettings, winrt::Microsoft::Terminal::Core::ICoreAppearance, winrt::Microsoft::Terminal::Core::ICoreScheme, winrt::Microsoft::Terminal::Control::IControlAppearance>
     {
@@ -64,6 +91,9 @@ namespace winrt::Microsoft::Terminal::Settings
 
         static TerminalSettingsCreateResult CreateWithNewTerminalArgs(const Model::CascadiaSettings& appSettings,
                                                                       const Model::NewTerminalArgs& newTerminalArgs);
+
+        static winrt::com_ptr<TerminalSettings> WithRuntimeAppearance(const winrt::com_ptr<TerminalSettings>& parent,
+                                                                      const RuntimeAppearance& appearance);
 
         void ApplyColorScheme(const Model::ColorScheme& scheme);
 
