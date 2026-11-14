@@ -103,6 +103,23 @@ void Terminal::ProgramStatusProcessExited()
     }
 }
 
+void Terminal::ProgramStatusPromptStarted()
+{
+    const auto leaseWasActive = _programStatus.NativeLeaseActive();
+    if (_programStatus.PromptStarted())
+    {
+        if (leaseWasActive)
+        {
+            _taskbarState = 0;
+            _taskbarProgress = 0;
+        }
+        if (_pfnProgramStatusChanged)
+        {
+            _pfnProgramStatusChanged();
+        }
+    }
+}
+
 void Terminal::AcknowledgeProgramStatus(const uint64_t observedRevision)
 {
     const auto lock = LockForWriting();

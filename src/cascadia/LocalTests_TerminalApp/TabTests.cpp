@@ -14498,6 +14498,11 @@ namespace TerminalAppLocalTests
                 connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ sequence.data(), sequence.data() + sequence.size() });
             });
         };
+        emit(u"\x1b]9;4;1;17\x7");
+        _waitForContentTransferReviewUI([&]() {
+            const auto state = tab->GetCombinedTaskbarState();
+            return state.State() == 1 && state.Progress() == 17;
+        });
         emit(u"\x1b]7501;state=working:progress=37\x1b\\");
         _waitForContentTransferReviewUI([&]() {
             const auto state = tab->GetCombinedTaskbarState();
@@ -14520,6 +14525,22 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(page->_MakePane(args, nullptr, *otherConnection)));
             page->UpdateLayout();
             VERIFY_IS_FALSE(page->_GetFocusedTabImpl() == tab);
+        });
+        emit(u"\x1b]133;A\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            const auto state = tab->GetCombinedTaskbarState();
+            return state.State() == 0 && state.Progress() == 0;
+        });
+        TestOnUIThread([&]() {
+            const auto state = tab->GetCombinedTaskbarStateWithContentId();
+            VERIFY_ARE_EQUAL(tab->GetRootPane()->ContentId().value(), state.ContentId.value());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, state.CombinedState.State());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, state.CombinedState.Progress());
+        });
+        emit(u"\x1b]9;4;1;73\x7");
+        _waitForContentTransferReviewUI([&]() {
+            const auto state = tab->GetCombinedTaskbarState();
+            return state.State() == 1 && state.Progress() == 73;
         });
         emit(u"\x1b]7501;state=done\x1b\\");
         const auto unseenDone = [&]() {

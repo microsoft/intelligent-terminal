@@ -131,16 +131,34 @@ Describe 'Feature: OSC 7501 program status' -Tag @('Feature', 'ProgramStatus') {
         $rows[0].native_agent_provider_id | Should -BeNullOrEmpty
     }
 
-    It 'OSC 7501 prompt markers preserve unrelated live tasks and unread results' {
+    It 'OSC 7501 prompt start drops transient tasks and retains unread results' {
         $wire = New-ProgramWire @(
             'id=result:state=done',
             'id=running:state=working',
             'id=approval:state=blocked:kind=permission'
         )
         Write-ProgramWire ($wire + [char]27 + ']133;A' + [char]27 + '\')
-        $snapshot = Wait-ProgramSnapshot { param($value) $value.working -eq 1 -and $value.blocked -eq 1 -and $value.unseen_done -eq 1 }
+        $snapshot = Wait-ProgramSnapshot {
+            param($value)
+            $value.working -eq 0 -and $value.blocked -eq 0 -and
+            $value.unseen_done -eq 1 -and -not $value.native_lease_active
+        }
         $snapshot.done | Should -Be 1
-        $snapshot.native_lease_active | Should -BeTrue
         Assert-ProgramMetadata 'Completed'
+    }
+
+    It 'OSC 7501 prompt lifecycle is provider neutral' {
+        foreach ($provider in @('copilot', 'claude', 'codex', 'gemini', 'opencode', 'antigravity', 'custom-agent')) {
+            Write-ProgramWire (New-ProgramWire @("state=working:app=$provider"))
+            Wait-ProgramSnapshot {
+                param($value)
+                $value.state -eq 'working' -and $value.native_lease_active
+            } | Out-Null
+            Write-ProgramWire ([char]27 + ']133;A' + [char]27 + '\')
+            Wait-ProgramSnapshot {
+                param($value)
+                $value.working -eq 0 -and -not $value.native_lease_active
+            } | Out-Null
+        }
     }
 }

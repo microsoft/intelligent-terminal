@@ -3711,11 +3711,6 @@ void AdaptDispatch::DoITerm2Action(const std::wstring_view string)
 // - string: contains the parameters that define which action we do
 void AdaptDispatch::DoFinalTermAction(const std::wstring_view string)
 {
-    if constexpr (!Feature_ScrollbarMarks::IsEnabled())
-    {
-        return;
-    }
-
     const auto parts = Utils::SplitString(string, L';');
 
     if (parts.size() < 1)
@@ -3724,6 +3719,16 @@ void AdaptDispatch::DoFinalTermAction(const std::wstring_view string)
     }
 
     const auto action = til::at(parts, 0);
+    if (action == L"A")
+    {
+        _api.ProgramStatusPromptStarted();
+    }
+
+    if constexpr (!Feature_ScrollbarMarks::IsEnabled())
+    {
+        return;
+    }
+
     if (action.size() == 1)
     {
         switch (til::at(action, 0))

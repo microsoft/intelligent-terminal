@@ -139,20 +139,31 @@ persisted history state.
 
 ## Lifecycle and limits
 
-Reports have no heartbeat or timeout. Prompt markers such as OSC 133 A and
-iTerm2 SetMark do not identify the producer of a status record, so they do not
-clear program status. Actual process exit removes live Working/Blocked/Idle
-records while retaining results. RIS clears protocol state; DECSTR and
-alternate-screen transitions preserve it.
+Reports have no heartbeat or timeout. A valid OSC 133 A marks the start of a
+new shell prompt and removes live Working, Blocked and Idle records while
+retaining Done/Error records and their results. Removing Idle is the terminal's
+permitted policy choice: it prevents a shell-launched program that has returned
+to the prompt from retaining native taskbar ownership indefinitely. An
+interactive program that still owns the foreground does not produce a new
+shell prompt; a shell that reports its own Idle state can reacquire ownership
+by emitting it after OSC 133 A.
+
+Prompt lifecycle dispatch is independent of scrollbar-mark presentation and
+the reporting application. OSC 133 B/C/D, iTerm2 SetMark, DECSTR and
+alternate-screen transitions do not clear program status. Actual connection
+exit applies the same transient cleanup as prompt start. RIS clears all
+protocol state.
 
 The first live report acquires a native-status lease and suppresses any legacy
 OSC 9;4 progress that preceded it. Legacy OSC 9;4 progress and WTA's BEL/progress
 status arbitration do not take ownership while that lease is active; audible
-and visual bell behavior is unchanged. A root Clear or actual process exit
-releases the lease without resurrecting discarded legacy progress; new legacy
-reports received after release are accepted. Subtree Clear never acquires an
-inactive lease and does not release an active one. Idle retains the lease so
-long-lived agents do not hand taskbar ownership back between turns.
+and visual bell behavior is unchanged. A root Clear, OSC 133 A, or actual
+connection exit releases the lease without resurrecting discarded legacy
+progress; the visible legacy state becomes Clear/0 and only a new legacy report
+received after release is accepted. Subtree Clear never acquires an inactive
+lease and does not release an active one. Idle retains the lease between turns
+while an interactive program remains in the foreground, but not after the
+shell starts a new prompt.
 
 The parser uses a conservative 4087-byte body budget and counts extra OSC prefix
 bytes against the 4096-byte sequence limit, reserving two bytes for termination.
@@ -186,6 +197,13 @@ emits Idle, Working, Blocked and Clear when stdout is a terminal. That version
 does not emit `msg`. Its detailed iTerm2 notifications use a different protocol,
 not OSC 7501. It cannot demonstrate Done, Error, blocking-kind or message
 adoption; those contracts require other producers and dedicated terminal tests.
+
+`test\e2e\tests\Feature.ProgramStatusPromptLifecycle.Tests.ps1` keeps OSC 133
+out of the test command and verifies that the installed PowerShell integration
+generates the command-finished and prompt-start marks before the released
+program-status snapshot. Provider-neutral coverage sends the same wire contract
+for every built-in provider label and a custom sentinel. These compatibility
+tests do not claim that every provider has adopted OSC 7501.
 
 ## Agent adoption evidence
 

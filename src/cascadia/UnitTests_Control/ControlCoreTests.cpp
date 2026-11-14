@@ -193,7 +193,17 @@ namespace ControlUnitTests
         VERIFY_ARE_EQUAL(L"permission", json.GetNamedString(L"kind"));
         VERIFY_ARE_EQUAL(4u, core->TaskbarState());
 
-        conn->Emit(L"\x1b]7501;state=clear\x7\x1b]9;4;1;99\x7");
+        conn->Emit(L"\x1b]133;A\x7");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_IS_FALSE(json.GetNamedBoolean(L"native_lease_active"));
+        VERIFY_ARE_EQUAL(1u, json.GetNamedArray(L"records").Size());
+        VERIFY_ARE_EQUAL(1.0, json.GetNamedNumber(L"done"));
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"working"));
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"blocked"));
+        VERIFY_ARE_EQUAL(0u, core->TaskbarState());
+        VERIFY_ARE_EQUAL(0u, core->TaskbarProgress());
+
+        conn->Emit(L"\x1b]9;4;1;99\x7");
         VERIFY_ARE_EQUAL(1u, core->TaskbarState());
         VERIFY_ARE_EQUAL(99u, core->TaskbarProgress());
         json = Json::JsonObject::Parse(core->ProgramStatusJson());

@@ -20,6 +20,16 @@ class ProgramStatusModelTests
         store.Apply(command.value());
     }
 
+    template<typename T>
+    static bool promptStarted(T& store)
+    {
+        if constexpr (requires(T& value) { value.PromptStarted(); })
+        {
+            return store.PromptStarted();
+        }
+        return false;
+    }
+
     TEST_METHOD(MalformedIdsAndDuplicateAtomicity)
     {
         PS::Store store;
@@ -282,5 +292,35 @@ class ProgramStatusModelTests
         VERIFY_ARE_EQUAL(size_t{ 256 }, snapshot.results.size());
         apply(store, L"state=clear");
         VERIFY_IS_TRUE(store.GetSnapshot().results.empty());
+    }
+
+    TEST_METHOD(PromptStartedDropsTransientRecordsAndReleasesLease)
+    {
+        PS::Store store;
+        apply(store, L"state=done:id=done:msg=ZmluaXNoZWQ=");
+        apply(store, L"state=error:id=error:msg=ZmFpbGVk");
+        apply(store, L"state=working:id=working");
+        apply(store, L"state=blocked:id=blocked:kind=permission");
+        apply(store, L"state=idle:id=idle");
+        const auto revision = store.GetSnapshot().revision;
+
+        VERIFY_IS_TRUE(promptStarted(store));
+        auto snapshot = store.GetSnapshot();
+        VERIFY_ARE_EQUAL(revision + 1, snapshot.revision);
+        VERIFY_IS_FALSE(snapshot.nativeLeaseActive);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, snapshot.records.size());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, snapshot.results.size());
+        VERIFY_IS_TRUE(std::all_of(snapshot.records.begin(), snapshot.records.end(), [](const auto& record) {
+            return record.state == PS::State::Done || record.state == PS::State::Error;
+        }));
+
+        VERIFY_IS_FALSE(promptStarted(store));
+        VERIFY_ARE_EQUAL(snapshot.revision, store.GetSnapshot().revision);
+
+        apply(store, L"state=idle:app=pwsh");
+        snapshot = store.GetSnapshot();
+        VERIFY_IS_TRUE(snapshot.nativeLeaseActive);
+        VERIFY_IS_TRUE(promptStarted(store));
+        VERIFY_IS_FALSE(store.GetSnapshot().nativeLeaseActive);
     }
 };

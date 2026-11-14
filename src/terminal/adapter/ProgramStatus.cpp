@@ -118,7 +118,7 @@ bool Store::Apply(const Command& command)
     return true;
 }
 
-bool Store::ProcessExited()
+bool Store::_ClearTransientRecords()
 {
     auto changed = std::erase_if(_records, [](const auto& entry) { return !isResult(entry.record.state); }) != 0;
     changed |= std::exchange(_nativeLeaseActive, false);
@@ -128,6 +128,16 @@ bool Store::ProcessExited()
         return true;
     }
     return false;
+}
+
+bool Store::PromptStarted()
+{
+    return _ClearTransientRecords();
+}
+
+bool Store::ProcessExited()
+{
+    return _ClearTransientRecords();
 }
 
 bool Store::Acknowledge(const uint64_t observedRevision)

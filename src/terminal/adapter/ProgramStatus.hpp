@@ -92,6 +92,7 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         [[nodiscard]] bool Observed() const noexcept { return _observed; }
         [[nodiscard]] bool NativeLeaseActive() const noexcept { return _nativeLeaseActive; }
         bool Apply(const Command& command);
+        bool PromptStarted();
         bool ProcessExited();
         bool Acknowledge(uint64_t observedRevision);
         bool Reset();
@@ -104,6 +105,7 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         };
 
         std::optional<std::string> _EffectiveApp(std::string_view id) const;
+        bool _ClearTransientRecords();
         std::vector<Entry> _records;
         std::vector<Result> _results;
         uint64_t _revision = 0;
