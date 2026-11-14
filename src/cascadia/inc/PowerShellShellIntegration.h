@@ -977,8 +977,10 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // v12: compensate for missing-drive errors from the default drive-switch
     // functions, whose non-terminating Set-Location errors leave $? true.
     // v14: limit shell integration to Intelligent Terminal using its host marker.
+    // v15: keep per-wrapper prompt delegates stable across renderer restoration.
+    // v16: safely leave older sessions untouched when strict mode is enabled.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 14;
+    inline constexpr int kVersion = 16;
 
     inline std::wstring ScriptFileName()
     {
@@ -1039,7 +1041,7 @@ if (-not $Global:__ShellInteg_Installed) {
     $Global:__ShellInteg_LastHistoryId  = -1
     $Global:__ShellInteg_LastErrorRecord = $Error[0]
     $Global:__ShellInteg_LastSubmittedLine = $null
-    $Global:__ShellInteg_PrevPrompt = $null
+    $Global:__ShellInteg_Wrappers = $null
     $Global:__ShellInteg_Rendering = $false
     $Global:__ShellInteg_CanInspectErrors =
         $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
@@ -1189,24 +1191,18 @@ if (-not $Global:__ShellInteg_Installed) {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
         $gle           = $(__ShellInteg_GetLastExitCode)
 
-        # A prompt module may CHAIN rather than replace: it captures the
-        # current prompt (ours) and calls it from inside its own. Once we
-        # adopt it, delegating calls us back. Serve the prompt it displaced
-        # so its text survives, instead of recursing.
+        # A chaining renderer can call an older wrapper. Each wrapper keeps
+        # its own delegate; only the outermost wrapper emits command marks.
         if ($Global:__ShellInteg_Rendering) {
-            if ($Global:__ShellInteg_PrevPrompt) {
-                return (& $Global:__ShellInteg_PrevPrompt)
-            }
-            # Nothing displaced left to serve. Return an empty string rather
-            # than inventing prompt text: this wrapper never contributes
-            # visible output of its own, and the chaining module renders its
-            # own text around whatever we return.
-            return ''
+            if ($gle -eq 0) { $null = $true }
+            else { Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction Ignore }
+            return (& $__ShellInteg_OriginalPrompt)
         }
 
         try {
             $submittedLine = $Global:__ShellInteg_LastSubmittedLine
-            $errorRecord   = $Error[0]
+            # GetNewClosure creates a module with its own error list.
+            $errorRecord   = $Global:Error[0]
             $entry         = Get-History -Count 1
             $loc           = $executionContext.SessionState.Path.CurrentLocation
             $E             = $Global:__ShellInteg_ESC
@@ -1287,13 +1283,13 @@ if (-not $Global:__ShellInteg_Installed) {
             # is invoked exactly once per render. Letting it escape to the outer
             # catch would run it a second time and duplicate its side effects.
             # An empty result is correct: the host then supplies its own prompt.
-            try     { $originalOutput = & $Global:__ShellInteg_OriginalPrompt }
+            try     { $originalOutput = & $__ShellInteg_OriginalPrompt }
             catch   { $originalOutput = '' }
             }
             finally { $Global:__ShellInteg_Rendering = $false }
 
             $Global:__ShellInteg_LastHistoryId = if ($entry) { $entry.Id } else { -1 }
-            $Global:__ShellInteg_LastErrorRecord = $Error[0]
+            $Global:__ShellInteg_LastErrorRecord = $Global:Error[0]
             $Global:__ShellInteg_LastSubmittedLine = $null
 
             return "${prefix}${originalOutput}${suffix}"
@@ -1305,13 +1301,9 @@ if (-not $Global:__ShellInteg_Installed) {
             # been invoked for this render - delegating now keeps it at exactly
             # one invocation.
             #
-            # The reentrancy flag must be held here too. The normal path clears
-            # it in its finally before this catch runs, so an adopted CHAINING
-            # prompt would call back into us with the flag false and recurse
-            # until the engine's call-depth limit - the very cycle the guard
-            # above exists to prevent.
+            # Nested wrappers must not emit marks during fallback rendering.
             $Global:__ShellInteg_Rendering = $true
-            try { return (& $Global:__ShellInteg_OriginalPrompt) }
+            try { return (& $__ShellInteg_OriginalPrompt) }
             catch {
                 # The wrapped prompt itself threw. Return an empty string and
                 # let the HOST fall back to its own built-in prompt. Do not
@@ -1324,44 +1316,32 @@ if (-not $Global:__ShellInteg_Installed) {
         }
     }
 
-    # Remember our own prompt scriptblock so re-arming can recognise it by
-    # reference. Created once per session: re-creating it would make the
-    # previous copy look like a third-party takeover.
+    # Restricted language keeps the initial wrapper and does not re-arm.
+    # FullLanguage wrappers capture a private delegate instead of changing
+    # the global fallback when an external renderer takes over prompt.
     $Global:__ShellInteg_Wrapper = $function:prompt
+    if ($Global:__ShellInteg_CanInspectErrors) {
+        $Global:__ShellInteg_PromptTemplate = $function:prompt
+        $Global:__ShellInteg_Wrappers = New-Object 'System.Runtime.CompilerServices.ConditionalWeakTable[System.Management.Automation.ScriptBlock,System.Object]'
+        function Global:__ShellInteg_NewWrapper {
+            param([scriptblock]$__ShellInteg_OriginalPrompt)
+            return $Global:__ShellInteg_PromptTemplate.GetNewClosure()
+        }
+        $Global:__ShellInteg_Wrapper = __ShellInteg_NewWrapper $Global:__ShellInteg_OriginalPrompt
+        $Global:__ShellInteg_Wrappers.Add($Global:__ShellInteg_Wrapper, $true)
+        Set-Item Function:\global:prompt $Global:__ShellInteg_Wrapper
+    }
 }
 
-# Any prompt renderer loaded AFTER us (Oh My Posh, starship, a module) replaces
-# our wrapper and silently removes shell integration. Detect that by object
-# identity, adopt the newcomer as the prompt we wrap, and reinstall ourselves.
-# Runs on every source and once per command from the PSReadLine boundary.
+# Recognize restored wrappers as well as the most recent one. Weak keys avoid
+# retaining every transient renderer for the lifetime of an interactive shell.
 function Global:__ShellInteg_Rearm {
-    # No wrapper of our own to install. This happens when an OLDER version of
-    # this script is already installed in the session: it set
-    # __ShellInteg_Installed, so the block above was skipped and never created
-    # our wrapper. Do nothing. Installing a null would clobber `prompt`, and
-    # adopting the older version's wrapper as the prompt we wrap would make it
-    # delegate to itself and overflow the call stack. The upgrade completes in
-    # the next shell, which sources only this version.
-    if ($null -eq $Global:__ShellInteg_Wrapper) { return }
-
-    # Identity is compared with -eq rather than a static reference-equality
-    # method. This function is called at script load and, when the readline
-    # wrapper is installed, once per command. Under Constrained Language Mode a
-    # static method call raises "Method invocation is supported only on core
-    # types", which aborts the enclosing script even from inside try/catch -
-    # breaking profile sourcing or the input path. ScriptBlock does not override
-    # Equals, so -eq is reference identity here (verified: two script blocks with
-    # identical text compare False), and the operator is permitted under
-    # Constrained Language Mode.
-    #
-    # Scope of that: -eq makes this function SAFE to invoke under Constrained
-    # Language Mode. It does not by itself make re-arming active there - the
-    # readline wrapper above is gated on $Global:__ShellInteg_CanInspectErrors,
-    # which is false in that mode, so the per-command driver is not installed and
-    # integration degrades to "marks work, no self-healing after a takeover".
+    # No registry in restricted language or when an older integration already
+    # owns the session. Leave its prompt untouched until the next shell.
+    if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }
+    if ($null -eq $Global:__ShellInteg_Wrappers) { return }
     $current = $function:prompt
     if ($null -eq $current) { return }
-    if ($current -eq $Global:__ShellInteg_Wrapper) { return }
 
     # Best-effort. This runs from PSConsoleHostReadLine, so a throw here would
     # break the input path, and at script load, where it would break profile
@@ -1369,13 +1349,15 @@ function Global:__ShellInteg_Rearm {
     # profile, which makes Set-Item raise SessionStateUnauthorizedAccessException.
     # Shell integration is a convenience; never let it take the shell down.
     try {
-        if ($current -ne $Global:__ShellInteg_OriginalPrompt) {
-            # Retain the renderer being displaced, in case the newcomer chains
-            # back into us.
-            $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
-            $Global:__ShellInteg_OriginalPrompt = $current
+        $known = $null
+        if ($Global:__ShellInteg_Wrappers.TryGetValue($current, [ref]$known)) {
+            $Global:__ShellInteg_Wrapper = $current
+            return
         }
-        Set-Item Function:\global:prompt $Global:__ShellInteg_Wrapper -ErrorAction Stop
+        $wrapper = __ShellInteg_NewWrapper $current
+        $Global:__ShellInteg_Wrappers.Add($wrapper, $true)
+        Set-Item Function:\global:prompt $wrapper -ErrorAction Stop
+        $Global:__ShellInteg_Wrapper = $wrapper
     }
     catch {
         # Leave whatever prompt is installed alone; try again next command.
