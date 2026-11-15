@@ -819,10 +819,9 @@ namespace winrt::TerminalApp::implementation
                                                                   _settings.FindProfile(Utils::GuidFromString(terminalArgs.Profile().c_str()));
             const auto provider = profile ? profile.AgentProfileId() :
                                             (terminalArgs.Commandline().empty() ? terminalArgs.NativeAgentProviderId() : winrt::hstring{});
-            const auto profileResume = !provider.empty() &&
-                                       ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(provider, binding->second.agent) &&
-                                       (!profile || profile.AgentProfileSource().empty() || profile.AgentProfileSource() == L"host") &&
-                                       (binding->second.backend.empty() || std::wstring_view{ binding->second.backend }.starts_with(L"host:"));
+            const auto profileResume = ::Microsoft::Terminal::AgentProfiles::MatchesResumeBinding(
+                provider, profile ? profile.AgentProfileSource() : winrt::hstring{},
+                binding->second.agent, binding->second.backend);
             if (profileResume)
             {
                 // Keep the existing profile GUID and conversation ID, not a frozen

@@ -548,6 +548,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
         TEST_METHOD(ManagedProfileLaunchMetadataReceiptSurvivesWindowTransfer);
         TEST_METHOD(DeletedManagedProfileCopyRetainsSavedResumeIdentity);
+        TEST_METHOD(NativeWslProfileResumePersistsOptionsAndDistro);
         TEST_METHOD(ManagedProfileRestartRetiresOldPaneAfterFailure);
         TEST_METHOD(ManagedProfileFreshRestartDoesNotReuseIdentity);
         TEST_METHOD(VerticalTabStripBindsBackground);
@@ -8819,6 +8820,102 @@ namespace TerminalAppLocalTests
                 restoreError = error.code();
             }
             VERIFY_ARE_EQUAL(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), restoreError);
+        });
+    }
+
+    void TabTests::NativeWslProfileResumePersistsOptionsAndDistro()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+            profile.AgentProfileId(L"claude");
+            profile.AgentProfileModel(L"saved-model");
+            profile.AgentProfilePermissionMode(L"plan");
+            profile.AgentProfileArguments(L"--add-dir \"/home/me/source tree\"");
+            profile.AgentProfileResumeArguments(L"--custom-resume");
+            const winrt::guid paneId{ Utils::CreateGuid() };
+            const auto save = [&](const wchar_t* source, const wchar_t* agent, const wchar_t* backend, const bool missingProfile) {
+                profile.AgentProfileSource(source);
+                page->_paneAgentSessions[paneId] = { L"known-session", agent, L"", backend, L"/home/me" };
+                NewTerminalArgs args;
+                args.Profile(Utils::GuidToString(missingProfile ? winrt::guid{ Utils::CreateGuid() } : profile.Guid()));
+                args.SessionId(paneId);
+                args.NativeAgentProviderId(L"claude");
+                std::vector<ActionAndArgs> actions;
+                actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ args });
+                page->_StampAgentResumeCommandlines(actions);
+                WindowLayout layout;
+                layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+                return _getTerminalArgs(WindowLayout::FromJson(WindowLayout::ToJson(layout)).TabLayout().GetAt(0));
+            };
+            // Cross-source/provider sessions must not borrow this profile's
+            // command. Deleted host profiles retain main's explicit-failure receipt.
+            for (const auto& [source, agent, backend, missing, profileResume] : {
+                     std::tuple{ L"wsl:Ubuntu", L"claude", L"wsl:Debian:claude", false, false },
+                     std::tuple{ L"wsl:Ubuntu", L"claude", L"host:claude", false, false },
+                     std::tuple{ L"wsl:Ubuntu", L"copilot", L"wsl:Ubuntu:copilot", false, false },
+                     std::tuple{ L"host", L"claude", L"wsl:Ubuntu:claude", false, false },
+                     std::tuple{ L"host", L"claude", L"host:claude", false, true },
+                     std::tuple{ L"host", L"claude", L"host:claude", true, true },
+                     std::tuple{ L"wsl:Ubuntu", L"claude", L"wsl:Ubuntu:claude", true, false } })
+            {
+                const auto args = save(source, agent, backend, missing);
+                VERIFY_ARE_EQUAL(profileResume, !args.NativeAgentSessionId().empty());
+                VERIFY_ARE_EQUAL(profileResume, args.Commandline().empty());
+            }
+            const auto saved = save(L"wsl:Ubuntu", L"claude", L"wsl:Ubuntu:claude", false);
+            VERIFY_ARE_EQUAL(Utils::GuidToString(profile.Guid()), saved.Profile());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"known-session" }, saved.NativeAgentSessionId());
+            VERIFY_IS_TRUE(saved.Commandline().empty());
+
+            // Exercise the real adapter and connection-command resolver after
+            // serialization. Initializing a connection does not start a CLI.
+            profile.AgentProfileModel(L"current-model");
+            profile.AgentProfileResumeArguments(L"--resume --custom-option");
+            page->_terminalSettingsCache->Reset(page->_settings);
+            const auto settings = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, saved);
+            VERIFY_IS_TRUE(settings.DefaultSettings()->UsesManagedAgentCommand());
+            const auto resolved = page->_CreateConnectionFromSettings(profile, *settings.DefaultSettings(), false)
+                                      .as<winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection>();
+            const std::wstring command{ resolved.Commandline() };
+            for (const auto option : { L"current-model", L"--permission-mode", L"plan", L"--add-dir", L"/home/me/source tree", L"--resume", L"--custom-option", L"known-session" })
+            {
+                VERIFY_IS_TRUE(command.find(option) != std::wstring::npos);
+            }
+            VERIFY_IS_TRUE(command.find(L"saved-model") == std::wstring::npos);
+            VERIFY_IS_TRUE(command.find(L"--custom-resume") == std::wstring::npos);
+
+            const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+            const auto pane = page->_MakeTerminalPane(saved, nullptr, *connection);
+            VERIFY_IS_NOT_NULL(pane);
+            const auto tab = page->_GetTabImpl(page->_CreateNewTabFromPane(pane));
+            VERIFY_IS_NOT_NULL(tab);
+            tab->SuppressAgentPrewarm();
+            const auto restoredId = pane->GetSessionId();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, page->_paneAgentSessions.at(restoredId).backend);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, page->_pendingRestoredSessionBindings.at(restoredId).backend);
+
+            std::vector<Json::Value> births;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(payload) };
+                VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+                if (event["method"] == "session_born_bound")
+                {
+                    births.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            page->_agentSnapshotRefreshInFlight = true;
+            page->_ReplayRestoredSessionBindings(tab);
+            VERIFY_ARE_EQUAL(size_t{ 1 }, births.size());
+            VERIFY_ARE_EQUAL(std::string{ "Ubuntu" }, births.front()["wsl_distro"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "known-session" }, births.front()["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "claude" }, births.front()["agent"].asString());
         });
     }
 

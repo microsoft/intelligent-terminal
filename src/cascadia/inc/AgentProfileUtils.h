@@ -18,6 +18,33 @@ namespace Microsoft::Terminal::AgentProfiles
 {
     inline constexpr std::wstring_view Source{ L"IntelligentTerminal.AgentProfiles" };
 
+    // Only the profile that owns this provider and execution source may
+    // regenerate the resume command from its current options.
+    inline bool MatchesResumeBinding(const std::wstring_view providerId,
+                                     const std::wstring_view executionSource,
+                                     const std::wstring_view boundProviderId,
+                                     const std::wstring_view boundBackend)
+    {
+        const auto profileBackend = Settings::Model::AgentPaneBackend::FromSettings(providerId, executionSource);
+        const auto sessionBackend = boundBackend.empty() ?
+                                        Settings::Model::AgentPaneBackend::FromSettings(boundProviderId, L"host") :
+                                        Settings::Model::AgentPaneBackend::Parse(boundBackend);
+        return profileBackend && sessionBackend &&
+               Settings::Model::AgentRegistry::AgentIdEquals(providerId, boundProviderId) &&
+               Settings::Model::AgentRegistry::AgentIdEquals(providerId, sessionBackend->agentId) &&
+               Settings::Model::AgentPaneBackend::SourceEquals(profileBackend->SettingsSource(), sessionBackend->SettingsSource());
+    }
+
+    template<typename Profile>
+    AgentPaneRestore::ResumeTarget RestoreTarget(const Profile& profile, const std::wstring_view sessionId)
+    {
+        const auto backend = Settings::Model::AgentPaneBackend::FromSettings(profile.AgentProfileId(), profile.AgentProfileSource());
+        THROW_HR_IF(E_INVALIDARG, !backend);
+        // Legacy host bindings have no backend. WSL bindings must retain the
+        // distro on every restore so the next save cannot mistake them for host.
+        return { std::wstring{ profile.AgentProfileId() }, std::wstring{ sessionId }, backend->source == Settings::Model::AgentPaneBackendSource::Wsl ? backend->SelectionId() : std::wstring{} };
+    }
+
     inline std::wstring GeneratedIdentity(const std::wstring_view providerId)
     {
         return std::wstring{ Source } + L":" + std::wstring{ providerId };

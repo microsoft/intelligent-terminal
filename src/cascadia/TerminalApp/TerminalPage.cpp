@@ -18281,7 +18281,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto restoredAgent = !controlSettings.DefaultSettings()->NativeAgentSessionId().empty() ?
-                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{ std::wstring{ profile.AgentProfileId() }, std::wstring{ controlSettings.DefaultSettings()->NativeAgentSessionId() } } :
+                                       ::Microsoft::Terminal::AgentProfiles::RestoreTarget(profile, controlSettings.DefaultSettings()->NativeAgentSessionId()) :
                                    newTerminalArgs ?
                                        ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
                                        ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};

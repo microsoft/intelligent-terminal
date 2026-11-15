@@ -95,6 +95,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileGenerationPolicy);
         TEST_METHOD(AgentProfileBatchCommand);
         TEST_METHOD(AgentProfileWslCommands);
+        TEST_METHOD(AgentProfileResumeBindingSource);
+        TEST_METHOD(AgentProfileWslResumeRestoration);
         TEST_METHOD(AgentProfileWslGeneration);
         TEST_METHOD(AgentProfileWslExplicitSnapshot);
         TEST_METHOD(AgentProfileWslFailedDiscovery);
@@ -1135,6 +1137,68 @@ namespace SettingsModelUnitTests
         VERIFY_THROWS(Agents::BuildWslCommand(L"Ubuntu", L"custom:fixture", {}, {}, {}), wil::ResultException);
         profile->Commandline(L"my-user-command");
         VERIFY_IS_FALSE(Agents::IsManaged(*profile));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileResumeBindingSource()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        // The same provider in another execution source is not this profile.
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"claude", L"wsl:Ubuntu:claude"));
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"CLAUDE", L"wsl:Ubuntu", L"claude", L"wsl:ubuntu:claude"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"claude", L"wsl:Debian:claude"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"claude", L"host:claude"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"host", L"claude", L"wsl:Ubuntu:claude"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"copilot", L"wsl:Ubuntu:copilot"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"claude", L"wsl:Ubuntu:copilot"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:Ubuntu", L"claude", L""));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"wsl:", L"claude", L"wsl:Ubuntu:claude"));
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"claude", L"", L"claude", L""));
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"claude", L"host", L"CLAUDE", L"host:claude"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"claude", L"host", L"claude", L"host:copilot"));
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"custom:fixture", L"host", L"custom:fixture", L"host:custom:fixture"));
+        VERIFY_IS_FALSE(Agents::MatchesResumeBinding(L"custom:fixture", L"wsl:Ubuntu", L"custom:fixture", L"wsl:Ubuntu:custom:fixture"));
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslResumeRestoration()
+    {
+        namespace Agents = ::Microsoft::Terminal::AgentProfiles;
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
+        const auto profile = implementation::Profile::FromJson(VerifyParseSucceeded(R"json({
+            "agentProfile.id":"claude","agentProfile.source":"wsl:Ubuntu",
+            "agentProfile.model":"saved-model","agentProfile.permissionMode":"plan",
+            "agentProfile.arguments":"--add-dir \"/home/me/source tree\"",
+            "agentProfile.resumeArguments":"--custom-resume"
+        })json"));
+        const auto target = Agents::RestoreTarget(*profile, L"session-123");
+        VERIFY_ARE_EQUAL(std::wstring{ L"wsl:Ubuntu:claude" }, target.backend);
+        VERIFY_ARE_EQUAL(std::wstring{ L"claude" }, target.agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"session-123" }, target.sessionId);
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(profile->AgentProfileId(), profile->AgentProfileSource(), target.agent, target.backend));
+
+        // The next launch uses effective profile options, not a frozen generic
+        // command from the previous lifetime.
+        profile->AgentProfileModel(L"current-model");
+        profile->AgentProfilePermissionMode(L"default");
+        profile->AgentProfileResumeArguments(L"--resume --custom-option");
+        const auto command = Agents::ResumeCommand(*profile, target.sessionId, true);
+        const auto args = ParseFullCommandLine(command);
+        for (const auto option : { L"current-model", L"--permission-mode", L"default", L"--add-dir", L"/home/me/source tree", L"--resume", L"--custom-option" })
+        {
+            VERIFY_IS_TRUE(std::ranges::find(args, option) != args.end());
+        }
+        VERIFY_ARE_EQUAL(target.sessionId, args.back());
+        VERIFY_IS_TRUE(command.find(L"saved-model") == std::wstring::npos);
+        const auto generic = Restore::BuildResumeCommandline(target.backend, target.sessionId);
+        VERIFY_IS_FALSE(generic.empty());
+        VERIFY_IS_TRUE(generic.find(L"current-model") == std::wstring::npos);
+        VERIFY_IS_TRUE(generic.find(L"--custom-option") == std::wstring::npos);
+
+        // Host restoration remains source-compatible with legacy bindings.
+        profile->AgentProfileSource(L"host");
+        const auto host = Agents::RestoreTarget(*profile, target.sessionId);
+        VERIFY_IS_TRUE(Agents::MatchesResumeBinding(L"claude", L"host", host.agent, host.backend));
+        profile->AgentProfileSource(L"wsl:");
+        VERIFY_THROWS(Agents::RestoreTarget(*profile, target.sessionId), wil::ResultException);
     }
 
     void CustomAgentAndPolicyTests::AgentProfileWslGeneration()
