@@ -92,6 +92,7 @@ namespace ControlUnitTests
         TEST_METHOD(ProgramStatusConnectionLifecycle);
         TEST_METHOD(ProgramStatusCoalescesInvalidations);
         TEST_METHOD(ProgramStatusCallbackDoesNotWaitForDispatcherSetup);
+        TEST_METHOD(ProgramStatusInheritedAppLifecycle);
 
         TEST_CLASS_SETUP(ModuleSetup)
         {
@@ -341,6 +342,46 @@ namespace ControlUnitTests
             core->_terminal->ApplyProgramStatus(*::Microsoft::Console::VirtualTerminal::ProgramStatus::Parse(L"state=done"));
         }
         VERIFY_ARE_EQUAL(1u, core->_terminal->GetProgramStatusSnapshot().results.size());
+    }
+
+    void ControlCoreTests::ProgramStatusInheritedAppLifecycle()
+    {
+        const auto findApp = [](const Json::JsonArray& values, const hstring& id) {
+            for (const auto& value : values)
+            {
+                const auto item = value.GetObject();
+                if (item.GetNamedString(L"id") == id)
+                {
+                    const auto app = item.GetNamedValue(L"app");
+                    return app.ValueType() == Json::JsonValueType::String ? app.GetString() : hstring{};
+                }
+            }
+            return hstring{};
+        };
+
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto promptConnection = winrt::make_self<ProgramStatusConnection>();
+        const auto promptCore = createCore(*settings, *promptConnection);
+        _standardInit(promptCore);
+        promptCore->_terminal->SetProgramStatusEnabled(true);
+        promptConnection->Emit(L"\x1b]7501;state=working:app=copilot\x7"
+                               L"\x1b]7501;state=done:id=task\x7"
+                               L"\x1b]7501;state=working:app=builder\x7"
+                               L"\x1b]133;A\x7");
+        auto json = Json::JsonObject::Parse(promptCore->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(hstring{ L"builder" }, findApp(json.GetNamedArray(L"records"), L"task"));
+        VERIFY_ARE_EQUAL(hstring{ L"copilot" }, findApp(json.GetNamedArray(L"results"), L"task"));
+
+        const auto exitConnection = winrt::make_self<ProgramStatusConnection>();
+        const auto exitCore = createCore(*settings, *exitConnection);
+        _standardInit(exitCore);
+        exitCore->_terminal->SetProgramStatusEnabled(true);
+        exitConnection->Emit(L"\x1b]7501;state=working:app=claude\x7"
+                             L"\x1b]7501;state=error:id=task\x7");
+        exitConnection->Exit();
+        json = Json::JsonObject::Parse(exitCore->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(hstring{ L"claude" }, findApp(json.GetNamedArray(L"records"), L"task"));
+        VERIFY_ARE_EQUAL(hstring{ L"claude" }, findApp(json.GetNamedArray(L"results"), L"task"));
     }
 
     void ControlCoreTests::ComPtrSettings()

@@ -396,5 +396,49 @@ namespace TerminalCoreUnitTests
             VERIFY_IS_GREATER_THAN(snapshot.revision, oldRevision);
             VERIFY_IS_GREATER_THAN(changes, size_t{ 0 });
         }
+
+        TEST_METHOD(InheritedAppSurvivesLifecycleCleanup)
+        {
+            const auto findRecord = [](const PS::Snapshot& snapshot, const std::string_view id) -> const PS::Record& {
+                return *std::find_if(snapshot.records.begin(), snapshot.records.end(), [&](const auto& record) {
+                    return record.id == id;
+                });
+            };
+            const auto findResult = [](const PS::Snapshot& snapshot, const std::string_view id) -> const PS::Result& {
+                return *std::find_if(snapshot.results.begin(), snapshot.results.end(), [&](const auto& result) {
+                    return result.record.id == id;
+                });
+            };
+
+            Fixture prompt;
+            size_t changes = 0;
+            prompt.terminal.ProgramStatusChangedCallback([&]() { ++changes; });
+            prompt.Report(L"state=working:app=copilot");
+            prompt.Report(L"state=done:id=task");
+            prompt.Report(L"state=working:app=builder");
+            auto snapshot = prompt.terminal.GetProgramStatusSnapshot();
+            VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+            VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+            const auto beforePrompt = changes;
+            prompt.terminal.GetStateMachine().ProcessString(L"\x1b]133;A\a");
+            snapshot = prompt.terminal.GetProgramStatusSnapshot();
+            VERIFY_ARE_EQUAL(beforePrompt + 1, changes);
+            VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+            VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+            prompt.Report(L"state=working:app=later");
+            snapshot = prompt.terminal.GetProgramStatusSnapshot();
+            VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+            VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+            Fixture exited;
+            exited.Report(L"state=working:app=claude");
+            exited.Report(L"state=error:id=task");
+            exited.terminal.ProgramStatusProcessExited();
+            snapshot = exited.terminal.GetProgramStatusSnapshot();
+            VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "claude");
+            VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "claude");
+        }
     };
 }

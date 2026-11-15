@@ -323,4 +323,64 @@ class ProgramStatusModelTests
         VERIFY_IS_TRUE(promptStarted(store));
         VERIFY_IS_FALSE(store.GetSnapshot().nativeLeaseActive);
     }
+
+    TEST_METHOD(InheritedAppSurvivesLifecycleCleanup)
+    {
+        const auto findRecord = [](const PS::Snapshot& snapshot, const std::string_view id) -> const PS::Record& {
+            return *std::find_if(snapshot.records.begin(), snapshot.records.end(), [&](const auto& record) {
+                return record.id == id;
+            });
+        };
+        const auto findResult = [](const PS::Snapshot& snapshot, const std::string_view id) -> const PS::Result& {
+            return *std::find_if(snapshot.results.begin(), snapshot.results.end(), [&](const auto& result) {
+                return result.record.id == id;
+            });
+        };
+
+        PS::Store store;
+        apply(store, L"state=working:app=copilot");
+        apply(store, L"state=done:id=task");
+        auto snapshot = store.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "copilot");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+        apply(store, L"state=working:app=builder");
+        snapshot = store.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+        VERIFY_IS_TRUE(promptStarted(store));
+        snapshot = store.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+        apply(store, L"state=working:app=later");
+        snapshot = store.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "builder");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "copilot");
+
+        PS::Store exited;
+        apply(exited, L"state=working:app=claude");
+        apply(exited, L"state=error:id=task");
+        VERIFY_IS_TRUE(exited.ProcessExited());
+        snapshot = exited.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "claude");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "claude");
+
+        PS::Store explicitApp;
+        apply(explicitApp, L"state=working:app=root");
+        apply(explicitApp, L"state=done:id=task:app=child");
+        VERIFY_IS_TRUE(promptStarted(explicitApp));
+        snapshot = explicitApp.GetSnapshot();
+        VERIFY_IS_TRUE(findRecord(snapshot, "task").effectiveApp == "child");
+        VERIFY_IS_TRUE(findResult(snapshot, "task").record.effectiveApp == "child");
+
+        PS::Store noApp;
+        apply(noApp, L"state=done:id=task");
+        VERIFY_IS_TRUE(promptStarted(noApp));
+        apply(noApp, L"state=working:app=later");
+        snapshot = noApp.GetSnapshot();
+        VERIFY_IS_FALSE(findRecord(snapshot, "task").effectiveApp.has_value());
+        VERIFY_IS_FALSE(findResult(snapshot, "task").record.effectiveApp.has_value());
+    }
 };

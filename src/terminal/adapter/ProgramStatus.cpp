@@ -38,7 +38,7 @@ bool Store::Apply(const Command& command)
     if (command.operation == Command::Operation::Clear)
     {
         changed |= std::erase_if(_records, [&](const auto& entry) { return inSubtree(entry.record.id, command.record.id); }) != 0;
-        changed |= std::erase_if(_results, [&](const auto& result) { return inSubtree(result.record.id, command.record.id); }) != 0;
+        changed |= std::erase_if(_results, [&](const auto& result) { return inSubtree(result.result.record.id, command.record.id); }) != 0;
         if (command.record.id.empty() && _nativeLeaseActive)
         {
             _nativeLeaseActive = false;
@@ -77,7 +77,7 @@ bool Store::Apply(const Command& command)
             entry = std::min_element(_records.begin(), _records.end(), [](const auto& a, const auto& b) {
                 return a.updated == b.updated ? a.record.id < b.record.id : a.updated < b.updated;
             });
-            std::erase_if(_results, [&](const auto& result) { return result.record.id == entry->record.id; });
+            std::erase_if(_results, [&](const auto& result) { return result.result.record.id == entry->record.id; });
         }
         else
         {
@@ -89,9 +89,12 @@ bool Store::Apply(const Command& command)
     entry->record = command.record;
     entry->record.effectiveApp.reset();
     entry->record.revision = ++_revision;
+    entry->finalizedEffectiveApp.reset();
+    entry->effectiveAppFinalized = false;
     if (isResult(entry->record.state))
     {
-        auto result = std::find_if(_results.begin(), _results.end(), [&](const auto& item) { return item.record.id == entry->record.id; });
+        const auto effectiveApp = _EffectiveApp(entry->record.id);
+        auto result = std::find_if(_results.begin(), _results.end(), [&](const auto& item) { return item.result.record.id == entry->record.id; });
         if (newResult)
         {
             if (result == _results.end())
@@ -99,7 +102,7 @@ bool Store::Apply(const Command& command)
                 if (_results.size() == MaximumRecords)
                 {
                     result = std::min_element(_results.begin(), _results.end(), [](const auto& a, const auto& b) {
-                        return a.revision == b.revision ? a.record.id < b.record.id : a.revision < b.revision;
+                        return a.result.revision == b.result.revision ? a.result.record.id < b.result.record.id : a.result.revision < b.result.revision;
                     });
                 }
                 else
@@ -108,11 +111,12 @@ bool Store::Apply(const Command& command)
                     result = _results.end() - 1;
                 }
             }
-            *result = Result{ entry->record, _revision, true };
+            *result = StoredResult{ Result{ entry->record, _revision, true }, effectiveApp };
         }
         else if (result != _results.end())
         {
-            result->record = entry->record;
+            result->result.record = entry->record;
+            result->effectiveApp = effectiveApp;
         }
     }
     return true;
@@ -120,6 +124,14 @@ bool Store::Apply(const Command& command)
 
 bool Store::_ClearTransientRecords()
 {
+    for (auto& entry : _records)
+    {
+        if (isResult(entry.record.state) && !entry.effectiveAppFinalized)
+        {
+            entry.finalizedEffectiveApp = _EffectiveApp(entry.record.id);
+            entry.effectiveAppFinalized = true;
+        }
+    }
     auto changed = std::erase_if(_records, [](const auto& entry) { return !isResult(entry.record.state); }) != 0;
     changed |= std::exchange(_nativeLeaseActive, false);
     if (changed)
@@ -145,9 +157,9 @@ bool Store::Acknowledge(const uint64_t observedRevision)
     bool changed = false;
     for (auto& result : _results)
     {
-        if (result.unread && result.revision <= observedRevision)
+        if (result.result.unread && result.result.revision <= observedRevision)
         {
-            result.unread = false;
+            result.result.unread = false;
             changed = true;
         }
     }
@@ -194,16 +206,18 @@ std::optional<std::string> Store::_EffectiveApp(std::string_view id) const
 
 Snapshot Store::GetSnapshot() const
 {
-    Snapshot snapshot{ _observed, _nativeLeaseActive, _revision, {}, _results };
+    Snapshot snapshot{ _observed, _nativeLeaseActive, _revision };
     snapshot.records.reserve(_records.size());
     for (const auto& entry : _records)
     {
         auto& record = snapshot.records.emplace_back(entry.record);
-        record.effectiveApp = _EffectiveApp(record.id);
+        record.effectiveApp = entry.effectiveAppFinalized ? entry.finalizedEffectiveApp : _EffectiveApp(record.id);
     }
-    for (auto& result : snapshot.results)
+    snapshot.results.reserve(_results.size());
+    for (const auto& storedResult : _results)
     {
-        result.record.effectiveApp = result.record.app ? result.record.app : _EffectiveApp(result.record.id);
+        auto& result = snapshot.results.emplace_back(storedResult.result);
+        result.record.effectiveApp = storedResult.effectiveApp;
     }
     const auto order = [](const auto& a, const auto& b) { return a.id < b.id; };
     std::sort(snapshot.records.begin(), snapshot.records.end(), order);

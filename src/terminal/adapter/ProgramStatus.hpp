@@ -102,12 +102,20 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         {
             Record record;
             uint64_t updated = 0;
+            std::optional<std::string> finalizedEffectiveApp;
+            bool effectiveAppFinalized = false;
+        };
+
+        struct StoredResult
+        {
+            Result result;
+            std::optional<std::string> effectiveApp;
         };
 
         std::optional<std::string> _EffectiveApp(std::string_view id) const;
         bool _ClearTransientRecords();
         std::vector<Entry> _records;
-        std::vector<Result> _results;
+        std::vector<StoredResult> _results;
         uint64_t _revision = 0;
         uint64_t _clock = 0;
         bool _observed = false;
