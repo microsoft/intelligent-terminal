@@ -1681,7 +1681,8 @@ class WorkflowContractTests(unittest.TestCase):
         trigger = workflow.split("\npermissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger)
         self.assertNotIn("\n  pull_request:", trigger)
-        self.assertIn("verifyCiSecurity({ artifactNames:", workflow)
+        self.assertIn("verifyCiSecurity({", workflow)
+        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", workflow)
         self.assertIn("files.some(f => relevantPath(f.filename)", workflow)
         self.assertIn("relevantPath(f.previous_filename", workflow)
         shared = (root / ".github/skills/ghaw-pr-security/scripts/security-review.mjs").read_text()

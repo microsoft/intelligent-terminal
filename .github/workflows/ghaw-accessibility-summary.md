@@ -4,6 +4,9 @@ on:
   bots: ['github-actions[bot]']
   workflow_call:
     inputs:
+      native-artifact-id:
+        type: string
+        required: true
       triage-result:
         type: string
         required: true
@@ -82,7 +85,7 @@ steps:
     with:
       github-token: ${{ github.token }}
       run-id: ${{ github.event.inputs.ci_run_id }}
-      name: ci-accessibility-native-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
+      artifact-ids: ${{ inputs.native-artifact-id }}
       path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
 post-steps:
   - name: Require actual complete final output

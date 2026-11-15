@@ -127,18 +127,21 @@ class PartialRerunTests(unittest.TestCase):
         self.assertFalse(fnmatchcase("accessibility-deep-54321",
                                     expand(summary["with"]["pattern"], 2)))
 
-    def test_partial_ai_rerun_keeps_the_admitted_ci_attempt_for_both_native_consumers(self):
-        names = []
-        for job in (self.main["agent"], self.summary):
+    def test_partial_ai_rerun_keeps_the_exact_admitted_artifact_for_both_native_consumers(self):
+        self.assertEqual("${{ needs.admission.outputs.native_artifact_id }}",
+                         self.main["final-summary"]["with"]["native-artifact-id"])
+        for job, expression in (
+            (self.main["agent"], "${{ needs.admission.outputs.native_artifact_id }}"),
+            (self.summary, "${{ inputs.native-artifact-id }}"),
+        ):
             native = step_named(job, "Download original-head CI native evidence")
+            self.assertRegex(native["uses"], r"^actions/download-artifact@[0-9a-f]{40}$")
+            self.assertEqual(expression, native["with"]["artifact-ids"])
+            self.assertNotIn("name", native["with"])
             for attempt in (1, 2):
-                name = expand(native["with"]["name"], attempt)
-                name = name.replace("${{ github.event.inputs.ci_run_id }}", "91").replace(
-                    "${{ github.event.inputs.ci_run_attempt }}", "2")
-                names.append(name)
+                self.assertEqual("105", expand(native["with"]["artifact-ids"], attempt).replace(expression, "105"))
                 self.assertEqual("${{ github.event.inputs.ci_run_id }}", native["with"]["run-id"])
                 self.assertIn("${{ github.run_attempt }}", native["with"]["path"])
-        self.assertEqual(["ci-accessibility-native-91-2"] * 4, names)
 
     def test_rerun_replaces_stage_artifact_even_after_incomplete_production(self):
         for job, upload_name in (

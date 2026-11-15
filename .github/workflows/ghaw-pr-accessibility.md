@@ -81,6 +81,7 @@ jobs:
       pull-requests: read
     outputs:
       applicable: ${{ steps.admit.outputs.applicable }}
+      native_artifact_id: ${{ steps.admit.outputs.native_artifact_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -107,7 +108,11 @@ jobs:
             const metadata = (await github.rest.repos.get(context.repo)).data;
             if (context.ref !== `refs/heads/${metadata.default_branch}` ||
                 process.env.REQUESTED_WORKFLOW_SHA !== process.env.EXPECTED_WORKFLOW_SHA) throw Error('Untrusted worker revision.');
-            verifyCiSecurity({ artifactNames: run => [`ci-accessibility-native-${run.id}-${run.run_attempt}`] });
+            const verified = verifyCiSecurity({
+              producerJob: 'Native accessibility / Native Axe.Windows smoke',
+              artifactNames: (run, producer) => [`ci-accessibility-native-${run.id}-${producer.run_attempt}`]
+            });
+            core.setOutput('native_artifact_id', String(verified.artifacts[0].id));
             const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR_NUMBER) })).data;
             if (pr.draft) throw Error('Draft PR is not eligible.');
             const aw = JSON.parse(context.payload.inputs.aw_context || '{}');
@@ -200,7 +205,10 @@ jobs:
         run: |
           node --input-type=module -e '
             import { verifyCiSecurity } from "./.github/skills/ghaw-pr-security/scripts/security-review.mjs";
-            verifyCiSecurity({ artifactNames: run => [`ci-accessibility-native-${run.id}-${run.run_attempt}`] });
+            verifyCiSecurity({
+              producerJob: "Native accessibility / Native Axe.Windows smoke",
+              artifactNames: (run, producer) => [`ci-accessibility-native-${run.id}-${producer.run_attempt}`]
+            });
           '
 
   safe_outputs:
@@ -218,6 +226,7 @@ jobs:
       copilot-requests: write
     secrets: inherit
     with:
+      native-artifact-id: ${{ needs.admission.outputs.native_artifact_id }}
       triage-result: ${{ needs.triage-route.result }}
       route: ${{ needs.triage-route.outputs.route }}
       deep-result: ${{ needs.agent.result }}
@@ -231,7 +240,7 @@ steps:
     with:
       github-token: ${{ github.token }}
       run-id: ${{ github.event.inputs.ci_run_id }}
-      name: ci-accessibility-native-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}
+      artifact-ids: ${{ needs.admission.outputs.native_artifact_id }}
       path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/native
 
   - name: Download original triage

@@ -230,7 +230,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertIn("HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
         self.assertIn("actions/download-artifact@", discovery)
         self.assertIn("run-id:", discovery)
-        self.assertIn("ci-accessibility-native-", discovery)
+        self.assertIn("artifact-ids: ${{ needs.admission.outputs.native_artifact_id }}", discovery)
         self.assertNotIn("extract-native", discovery)
         self.assertNotIn("push_commit_sha", discovery)
 
@@ -308,7 +308,8 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
 
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("verifyCiSecurity({ artifactNames:", caller)
+        self.assertIn("verifyCiSecurity({", caller)
+        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", caller)
         scope = (ROOT / "build/scripts/ci-accessibility-scope.mjs").read_text(encoding="utf-8")
         producer = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
         self.assertIn("export function relevantPath", scope)

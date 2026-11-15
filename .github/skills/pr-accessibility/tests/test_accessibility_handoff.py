@@ -254,14 +254,16 @@ class CompiledGraphTests(unittest.TestCase):
         # available to the final summary.
         summary = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(
             encoding="utf-8"))["jobs"]["agent"]
-        for job in (self.jobs["agent"], summary):
+        for job, artifact_id in (
+            (self.jobs["agent"], "${{ needs.admission.outputs.native_artifact_id }}"),
+            (summary, "${{ inputs.native-artifact-id }}"),
+        ):
             native = next(step for step in job["steps"]
                           if step.get("name") == "Download original-head CI native evidence")
             self.assertNotIn("if", native)
             self.assertEqual("${{ github.event.inputs.ci_run_id }}", native["with"]["run-id"])
-            self.assertEqual(
-                "ci-accessibility-native-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}",
-                native["with"]["name"])
+            self.assertEqual(artifact_id, native["with"]["artifact-ids"])
+            self.assertNotIn("name", native["with"])
             self.assertEqual("read", job["permissions"]["actions"])
 
     def test_native_selection_requires_complete_deep_production(self):
@@ -293,8 +295,12 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("admission", self.jobs["agent"]["needs"])
         self.assertNotIn("deep-admission", self.jobs)
         admission = self.jobs["admission"]["steps"][-1]
-        self.assertIn("verifyCiSecurity({ artifactNames:", admission["with"]["script"])
-        self.assertIn("ci-accessibility-native-${run.id}-${run.run_attempt}", admission["with"]["script"])
+        self.assertIn("verifyCiSecurity({", admission["with"]["script"])
+        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", admission["with"]["script"])
+        self.assertIn("ci-accessibility-native-${run.id}-${producer.run_attempt}", admission["with"]["script"])
+        self.assertIn("String(verified.artifacts[0].id)", admission["with"]["script"])
+        self.assertEqual("${{ steps.admit.outputs.native_artifact_id }}",
+                         self.jobs["admission"]["outputs"]["native_artifact_id"])
         for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
             jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
             self.assertNotIn("admission", jobs)
@@ -322,7 +328,8 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertLess(steps.index(download), steps.index(execution))
         publication = self.jobs["publication-admission"]
         self.assertIn("agent", publication["needs"])
-        self.assertIn("verifyCiSecurity({ artifactNames:", publication["steps"][-1]["run"])
+        self.assertIn("verifyCiSecurity({", publication["steps"][-1]["run"])
+        self.assertIn('producerJob: "Native accessibility / Native Axe.Windows smoke"', publication["steps"][-1]["run"])
         self.assertIn("publication-admission", self.jobs["safe_outputs"]["needs"])
 
     def test_existing_parallel_ci_build_publishes_payload_without_a_second_build(self):

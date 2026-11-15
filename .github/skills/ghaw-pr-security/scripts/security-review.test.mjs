@@ -1031,11 +1031,15 @@ function accessibilityCiFixture() {
   const artifact = { id: 105, name: 'ci-accessibility-native-91-2', expired: false,
     workflow_run: { id: 91, head_sha: HEAD } };
   const workflow = { id: 7, path: run.path, state: 'active' };
+  const producer = { name: 'Native accessibility / Native Axe.Windows smoke',
+    run_id: 91, run_attempt: 2, head_sha: HEAD, status: 'completed', conclusion: 'success' };
+  const jobsEndpoint = 'actions/runs/91/jobs?filter=all&per_page=100&page=1';
   const runsEndpoint = `actions/workflows/7/runs?event=pull_request&head_sha=${HEAD}&per_page=100&page=1`;
   const responses = {
     '': { id: 42, full_name: 'owner/repo', default_branch: 'main' },
     'actions/runs/91': run, 'actions/workflows/pr-ci.yml': workflow, 'pulls/17': pull,
     [runsEndpoint]: { workflow_runs: [run] },
+    [jobsEndpoint]: { jobs: [producer] },
     'actions/runs/91/artifacts?per_page=100&page=1': { artifacts: [artifact] },
     [`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`]: { merge_base_commit: { sha: BASE } },
     [`git/trees/${HEAD}?recursive=1`]: ciDefinitionTree(),
@@ -1047,16 +1051,62 @@ function accessibilityCiFixture() {
     assert(Object.hasOwn(responses, endpoint), `Unexpected CI API: ${endpoint}`);
     return responses[endpoint];
   };
-  return { run, pull, artifact, environment, workflow, responses, request, calls, runsEndpoint,
+  return { run, pull, artifact, producer, jobsEndpoint, environment, workflow, responses, request, calls, runsEndpoint,
     verify: () => verifyCiSecurity({ environment, request,
-      artifactNames: run => [`ci-accessibility-native-${run.id}-${run.run_attempt}`] }) };
+      producerJob: producer.name,
+      artifactNames: (run, job) => [`ci-accessibility-native-${run.id}-${job.run_attempt}`] }) };
 }
 
-test('accessibility reuses the full CI boundary with only the exact native artifact, not security outputs or job inventories', () => {
+test('accessibility reuses the full CI boundary with only the exact native producer artifact', () => {
   const f = accessibilityCiFixture();
   assert.deepEqual(f.verify().artifacts, [f.artifact]);
   assert(f.calls.includes(f.runsEndpoint), 'Native admission must request freshness.');
-  assert(!f.calls.some(endpoint => endpoint.includes('/jobs')));
+  assert(f.calls.includes(f.jobsEndpoint));
+});
+
+test('successful retained native producer survives unrelated failed-job reruns without relaxing current CI identity', () => {
+  const f = accessibilityCiFixture();
+  f.producer.run_attempt = 1;
+  f.artifact.name = 'ci-accessibility-native-91-1';
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  assert.equal(f.verify().identity.runAttempt, 2);
+  f.artifact.name = 'ci-accessibility-native-91-2';
+  assert.throws(f.verify, /CI artifact identity/);
+  f.artifact.name = 'ci-accessibility-native-91-1';
+  f.environment.CI_RUN_ATTEMPT = '1';
+  assert.throws(f.verify, /CI run identity/);
+  f.environment.CI_RUN_ATTEMPT = '2';
+  f.responses[f.runsEndpoint].workflow_runs.push({ ...f.run, id: 92, run_number: 15 });
+  assert.throws(f.verify, /newer PR CI run/);
+});
+
+for (const [name, change] of [
+  ['failed latest', f => { f.producer.conclusion = 'failure'; }],
+  ['cancelled latest', f => { f.producer.conclusion = 'cancelled'; }],
+  ['pending latest', f => { f.producer.status = 'in_progress'; }],
+  ['missing producer', f => { f.responses[f.jobsEndpoint].jobs = []; }],
+  ['wrong head', f => { f.producer.head_sha = BASE; }],
+  ['wrong run', f => { f.producer.run_id++; }],
+  ['duplicate latest', f => { f.responses[f.jobsEndpoint].jobs.push({ ...f.producer }); }],
+  ['future attempt', f => { f.producer.run_attempt++; }],
+  ['missing attempt', f => { delete f.producer.run_attempt; }],
+  ['unsafe attempt', f => { f.producer.run_attempt = Number.MAX_SAFE_INTEGER + 1; }],
+]) test(`native producer selection rejects ${name} instead of falling back to successful attempt one`, () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.jobsEndpoint].jobs.push({ ...f.producer, run_attempt: 1 });
+  change(f);
+  assert.throws(f.verify, /CI producer/);
+});
+
+test('native producer selection paginates all attempts and uses the unique latest producer', () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.jobsEndpoint].jobs = Array(100).fill({ name: 'unrelated' });
+  f.responses[f.jobsEndpoint.replace('&page=1', '&page=2')] = {
+    jobs: [{ ...f.producer, run_attempt: 1 }, f.producer],
+  };
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  f.producer.conclusion = 'failure';
+  assert.throws(f.verify, /CI producer/);
 });
 
 for (const [status, conclusion] of [

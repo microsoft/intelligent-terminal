@@ -1022,7 +1022,7 @@ export function validateCiArtifacts(artifacts, run) {
   });
 }
 
-export function verifyCiSecurity({ environment = process.env, request, artifactNames } = {}) {
+export function verifyCiSecurity({ environment = process.env, request, artifactNames, producerJob } = {}) {
   const repository = environment.GITHUB_REPOSITORY;
   const identity = {
     repository, repositoryId: Number(environment.GITHUB_REPOSITORY_ID),
@@ -1065,9 +1065,24 @@ export function verifyCiSecurity({ environment = process.env, request, artifactN
     validateCiFreshness(run, collect(
       `actions/workflows/${workflow.id}/runs?event=pull_request&head_sha=${identity.headSha}`, 'workflow_runs'));
   }
+  let producer;
+  if (producerJob !== undefined) {
+    if (typeof producerJob !== 'string' || !producerJob || !artifactNames) fail('CI producer selection is invalid');
+    const jobs = collect(`actions/runs/${identity.runId}/jobs?filter=all`, 'jobs')
+      .filter(job => job.name === producerJob);
+    if (!jobs.length || jobs.some(job => !Number.isSafeInteger(job.run_attempt) ||
+        job.run_attempt < 1 || job.run_attempt > run.run_attempt)) fail('CI producer attempt is invalid');
+    const latestAttempt = Math.max(...jobs.map(job => job.run_attempt));
+    const latest = jobs.filter(job => job.run_attempt === latestAttempt);
+    if (latest.length !== 1 || latest[0].run_id !== run.id || latest[0].head_sha !== run.head_sha ||
+        latest[0].status !== 'completed' || latest[0].conclusion !== 'success') {
+      fail('CI producer identity or successful conclusion is invalid');
+    }
+    producer = latest[0];
+  }
   const available = collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts');
   const artifacts = artifactNames
-    ? artifactNames(run).map(name => validateCiArtifact(available, run, name))
+    ? artifactNames(run, producer).map(name => validateCiArtifact(available, run, name))
     : validateCiArtifacts(available, run);
   return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
 }

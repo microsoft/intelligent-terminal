@@ -170,7 +170,8 @@ class CiNativeGraphTests(unittest.TestCase):
         self.assertEqual("${{ github.workflow_sha }}", checkout["with"]["ref"])
         boundary = next(step for step in gate["steps"]
                         if step.get("name") == "Recheck CI freshness at publication boundary")
-        self.assertIn("verifyCiSecurity({ artifactNames:", boundary["run"])
+        self.assertIn("verifyCiSecurity({", boundary["run"])
+        self.assertIn('producerJob: "Native accessibility / Native Axe.Windows smoke"', boundary["run"])
         self.assertEqual("${{ github.event.inputs.ci_run_attempt }}", boundary["env"]["CI_RUN_ATTEMPT"])
         self.assertIn("publication-admission", jobs["safe_outputs"]["needs"])
         self.assertIn("needs.publication-admission.result == 'success'", jobs["safe_outputs"]["if"])

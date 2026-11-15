@@ -42,7 +42,9 @@ ordinary C++ units and path-gated Axe are sibling consumers of the single C++
 build. Standard pinned artifact Actions carry the necessary runtime files.
 The C++ producer attempt is explicit so partial reruns can reuse the retained
 build without claiming it was rebuilt. The native result artifact identifies
-the actual scan attempt.
+the actual scan attempt. Admission selects the latest successful same-head
+native producer from Actions job metadata and passes its validated artifact ID
+to both Linux consumers, even when a green CI rerun retained that producer.
 
 TestHost staging gathers real recipe mappings plus loose AfterBuild content:
 component DLLs/WinMDs, resources/XBFs, agent assets and TAEF runtime, without PDBs
