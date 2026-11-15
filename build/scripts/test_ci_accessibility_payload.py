@@ -259,7 +259,13 @@ class PayloadTests(unittest.TestCase):
 
     def test_all_ordinary_units_and_loose_resources_survive_without_testhost_or_symbols(self):
         root = self.workspace / "bin/x64/Debug"
-        for name in PAYLOAD.UNIT_DLLS | {"te.exe", "Wex.Common.dll", "resources.pri", "ignored.pdb", "ignored.lib"}:
+        expected_units = {
+            "Conhost.Unit.Tests.dll", "Conhost.Interactivity.Win32.Unit.Tests.dll",
+            "til.unit.tests.dll", "Types.Unit.Tests.dll", "TextBuffer.Unit.Tests.dll",
+            "ConAdapter.Unit.Tests.dll", "ConParser.Unit.Tests.dll", "Control.Unit.Tests.dll",
+            "SettingsModel.Unit.Tests.dll", "Terminal.Core.Unit.Tests.dll", "Terminal.App.Unit.Tests.dll",
+        }
+        for name in expected_units | {"te.exe", "Wex.Common.dll", "resources.pri", "ignored.pdb", "ignored.lib"}:
             # Actual MSBuild output in CI43214343855 (not the PowerShell
             # expectation's lowercase spelling): til.Unit.Tests.dll.
             actual_name = "til.Unit.Tests.dll" if name == "til.unit.tests.dll" else name
@@ -271,6 +277,21 @@ class PayloadTests(unittest.TestCase):
         self.assertFalse((self.output / "TestHostApp").exists())
         self.assertFalse((self.output / "units/ignored.pdb").exists())
         self.assertTrue((self.output / "units/resources.pri").exists())
+        manifest = self.output / "unit-payload.json"
+        original = manifest.read_bytes()
+        for name in expected_units:
+            actual_name = "til.Unit.Tests.dll" if name == "til.unit.tests.dll" else name
+            relative = f"units/{actual_name}"
+            path = self.output / relative
+            contents = path.read_bytes()
+            path.unlink()
+            metadata = json.loads(original)
+            del metadata["files"][relative]
+            manifest.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.subTest(missing=name), self.assertRaisesRegex(ValueError, "Incomplete"):
+                PAYLOAD.check_units(self.output, IDENTITY)
+            path.write_bytes(contents)
+            manifest.write_bytes(original)
         for identity in ({**IDENTITY, "CI_RUN_ATTEMPT": "3"}, {**IDENTITY, "EXPECTED_HEAD_SHA": "b" * 40}):
             with self.assertRaisesRegex(ValueError, "provenance"):
                 PAYLOAD.check_units(self.output, identity)

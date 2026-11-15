@@ -1,5 +1,7 @@
 """CI topology and retained execution contracts; no builds or desktop interaction."""
+import json
 from pathlib import Path
+import subprocess
 import unittest
 import yaml
 
@@ -39,11 +41,10 @@ class CiNativeGraphTests(unittest.TestCase):
 
     def test_original_tests_and_security_artifacts_remain_required(self):
         tests = next(s for s in self.jobs["cpp-tests"]["steps"] if s.get("name") == "Test all C++ units")
-        for name in ("Conhost.Unit.Tests.dll", "Conhost.Interactivity.Win32.Unit.Tests.dll", "til.unit.tests.dll",
-                     "Types.Unit.Tests.dll", "TextBuffer.Unit.Tests.dll", "ConAdapter.Unit.Tests.dll",
-                     "ConParser.Unit.Tests.dll", "Control.Unit.Tests.dll", "SettingsModel.Unit.Tests.dll",
-                     "Terminal.Core.Unit.Tests.dll", "Terminal.App.Unit.Tests.dll"):
-            self.assertIn(name, tests["run"])
+        verify = next(s for s in self.jobs["cpp-tests"]["steps"]
+                      if s.get("name") == "Verify unit payload identity and completeness")
+        self.assertIn("ci-accessibility-payload.py check-units", verify["run"])
+        self.assertIn("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", verify["run"])
         self.assertIn("-MatchPattern '*unit.test*.dll'", tests["run"])
         self.assertIn("'/testTimeout:0:00:30','/sessionTimeout:0:15:00'", tests["run"])
         rust = next(s for s in self.jobs["rust"]["steps"] if s.get("name") == "Test all x64 Rust units")
@@ -100,6 +101,31 @@ class CiNativeGraphTests(unittest.TestCase):
         name = download["with"]["name"].replace("${{ github.run_id }}", "91").replace(
             "${{ needs.cpp.outputs.payload-attempt }}", str(retained_producer))
         self.assertEqual("ci-cpp-units-91-1", name)
+
+    def test_retained_instruction_categories_can_start_required_ci(self):
+        patterns = (
+            ".github/**", "**/.github/**", "**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md",
+            "**/copilot-instructions.md", "**/SKILL.md", "**/*.instructions.md",
+            "**/*.agent.md", "**/.mcp.json", "**/.claude/**", "**/.copilot/**",
+            "**/.agents/**", "**/.gemini/**",
+        )
+        paths = self.ci[True]["pull_request"]["paths"]
+        # Instruction-only changes classified for review must be able to start
+        # its authoritative CI prerequisite, at both root and nested paths.
+        examples = [pattern.removeprefix("**/").replace("**", "nested/file").replace("*", "review")
+                    for pattern in patterns]
+        examples += ["nested/" + path for path in examples]
+        classifier = (ROOT / "build/scripts/ci-accessibility-scope.mjs").as_uri()
+        classified = json.loads(subprocess.check_output(
+            ["node", "--input-type=module", "-e",
+             f"import {{ relevantPath }} from {json.dumps(classifier)}; "
+             "console.log(JSON.stringify(JSON.parse(process.argv[1]).map(relevantPath)));",
+             json.dumps(examples)], text=True))
+        self.assertEqual([True] * len(examples), classified)
+        for pattern in patterns:
+            with self.subTest(pattern=pattern):
+                self.assertIn(pattern, paths)
+        self.assertNotIn("doc/**", paths)
 
     def test_domain_procedure_delegates_execution_but_retains_evidence_and_repairs(self):
         skill = (ROOT / ".github/skills/pr-accessibility/SKILL.md").read_text(encoding="utf-8")

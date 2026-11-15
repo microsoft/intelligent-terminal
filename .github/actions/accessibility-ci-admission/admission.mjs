@@ -9,51 +9,28 @@ const sha = value => /^[0-9a-f]{40}$/.test(value ?? '');
 const positive = value => /^[1-9][0-9]*$/.test(String(value ?? ''));
 const worker = 'ghaw-pr-accessibility.lock.yml';
 
-export function validateBuildJobs(jobs, run) {
+function validateJobs(jobs, run, applicable, requireNative) {
   for (const [name, steps] of [
     ['C++ build', ['Build production Terminal and C++ tests', 'Stage ordinary C++ unit test payload',
-      'Publish C++ unit test payload']],
+      'Publish C++ unit test payload', ...(requireNative ?
+        ['Stage complete original-head TestHost layout', 'Publish accessibility TestHost payload'] : [])]],
     ['C++ unit tests', ['Test all C++ units']],
     ['Rust build and unit tests', ['Build x64 Rust binaries', 'Test all x64 Rust units']],
+    ...(applicable || requireNative ? [
+      ['Native accessibility / Native Axe.Windows smoke',
+        ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar',
+          'Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']],
+    ] : []),
   ]) {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1 || matches[0].run_id !== run.id || matches[0].run_attempt !== run.run_attempt ||
         matches[0].head_sha !== run.head_sha || matches[0].status !== 'completed' ||
-        matches[0].conclusion !== 'success') throw Error('Required exact-attempt PR build did not complete.');
+        matches[0].conclusion !== 'success') throw Error(`Required exact-attempt CI job did not complete: ${name}`);
     for (const step of steps) {
       const executed = (matches[0].steps ?? []).filter(item => item.name === step);
       if (executed.length !== 1 || executed[0].status !== 'completed' || executed[0].conclusion !== 'success') {
-        throw Error('Required PR build/test step did not execute successfully.');
+        throw Error(`Required CI step did not execute successfully: ${name} / ${step}`);
       }
-    }
-  }
-}
-
-export function validateTestHostProducer(jobs, run) {
-  const producers = jobs.filter(job => job.name === 'C++ build');
-  if (producers.length !== 1 || producers[0].run_id !== run.id ||
-      producers[0].run_attempt !== run.run_attempt || producers[0].head_sha !== run.head_sha ||
-      producers[0].status !== 'completed' || producers[0].conclusion !== 'success') {
-    throw Error('Missing successful exact-attempt TestHost producer.');
-  }
-  for (const name of ['Stage complete original-head TestHost layout', 'Publish accessibility TestHost payload']) {
-    const uploads = (producers[0].steps ?? []).filter(step => step.name === name);
-    if (uploads.length !== 1 || uploads[0].status !== 'completed' || uploads[0].conclusion !== 'success') {
-      throw Error('TestHost publication did not complete successfully.');
-    }
-  }
-}
-
-export function validateNativeJobs(jobs, run) {
-  const matches = jobs.filter(job => job.name === 'Native accessibility / Native Axe.Windows smoke');
-  if (matches.length !== 1 || matches[0].run_id !== run.id || matches[0].run_attempt !== run.run_attempt ||
-      matches[0].head_sha !== run.head_sha || matches[0].status !== 'completed' ||
-      matches[0].conclusion !== 'success') throw Error('Native CI evidence incomplete: exact-attempt scan job did not succeed.');
-  for (const name of ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Scan Sidebar',
-    'Record native CI results', 'Upload native accessibility evidence', 'Enforce native scan results']) {
-    const steps = (matches[0].steps ?? []).filter(step => step.name === name);
-    if (steps.length !== 1 || steps[0].status !== 'completed' || steps[0].conclusion !== 'success') {
-      throw Error('Native CI evidence incomplete: required scan receipt/upload/enforcement did not succeed.');
     }
   }
 }
@@ -141,7 +118,6 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   }
   const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,
     { ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100 });
-  validateBuildJobs(jobs, run);
   if (pr.draft) throw Error('Draft pull requests are not eligible.');
   if (!source) {
     const aw = JSON.parse(inputs.aw_context ?? '{}');
@@ -158,7 +134,7 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
     files.some(file => relevantPath(file.filename) || relevantPath(file.previous_filename ?? ''));
   // A green workflow with skipped native work is not full relevant-PR CI.
   // Check this before every model entry, not only the archive consumer.
-  if (applicable || requireNative) validateNativeJobs(jobs, run);
+  validateJobs(jobs, run, applicable, requireNative);
   if (deduplicate) {
     const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
       { ...context.repo, workflow_id: worker, event: 'workflow_dispatch', per_page: 100 });
@@ -173,7 +149,6 @@ export async function admit({ github, context, trustedSha, deduplicate = false, 
   const outputs = { pull_request: JSON.stringify(pull), ci_run_id: String(run.id),
     ci_run_attempt: String(run.run_attempt), applicable: String(applicable) };
   if (requireNative) {
-    validateTestHostProducer(jobs, run);
     const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
       { ...context.repo, run_id: run.id, per_page: 100 });
     const artifact = validateCiArtifact(artifacts, run, `ci-accessibility-native-${run.id}-${run.run_attempt}`);

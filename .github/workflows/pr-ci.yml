@@ -12,8 +12,20 @@ on:
       - 'oss/**'
       - 'res/**'
       - '.cargo/**'
-      - '.github/workflows/pr-ci.yml'
-      - '.github/workflows/native-accessibility.yml'
+      - '.github/**'
+      - '**/.github/**'
+      - '**/AGENTS.md'
+      - '**/CLAUDE.md'
+      - '**/GEMINI.md'
+      - '**/copilot-instructions.md'
+      - '**/SKILL.md'
+      - '**/*.instructions.md'
+      - '**/*.agent.md'
+      - '**/.mcp.json'
+      - '**/.claude/**'
+      - '**/.copilot/**'
+      - '**/.agents/**'
+      - '**/.gemini/**'
       - 'test/accessibility/**'
       - '*.props'
       - '*.targets'
@@ -236,17 +248,6 @@ jobs:
       - name: Test all C++ units
         run: |
           $ErrorActionPreference = 'Stop'
-          $expected = @(
-            'Conhost.Unit.Tests.dll', 'Conhost.Interactivity.Win32.Unit.Tests.dll',
-            'til.unit.tests.dll', 'Types.Unit.Tests.dll', 'TextBuffer.Unit.Tests.dll',
-            'ConAdapter.Unit.Tests.dll', 'ConParser.Unit.Tests.dll',
-            'Control.Unit.Tests.dll', 'SettingsModel.Unit.Tests.dll',
-            'Terminal.Core.Unit.Tests.dll', 'Terminal.App.Unit.Tests.dll'
-          )
-          $tests = @(Get-ChildItem bin\x64\Debug -Recurse -File -Filter '*unit.test*.dll')
-          foreach ($name in $expected) {
-            if ($name -notin $tests.Name) { throw "Missing C++ unit test binary: $name" }
-          }
           & .\build\scripts\Run-Tests.ps1 -MatchPattern '*unit.test*.dll' `
             -Platform x64 -Configuration Debug -Root bin\x64\Debug `
             -AdditionalTaefArguments '/testTimeout:0:00:30','/sessionTimeout:0:15:00'

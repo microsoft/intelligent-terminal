@@ -45,8 +45,8 @@ class MarkdownHandoffTests(unittest.TestCase):
                 handoff.triage(text, CHANGED)
 
     def test_native_requires_explicit_supported_selection(self):
-        self.assertEqual("true", handoff.native("# Native checks: Axe.Windows\n\nRelevant settings UIA changes."))
-        self.assertEqual("false", handoff.native("# Native checks: None\n\nSource-only change."))
+        handoff.native("# Native checks: Axe.Windows\n\nRelevant settings UIA changes.")
+        handoff.native("# Native checks: None\n\nSource-only change.")
         for text in ("", "# Uncertain\n\nMaybe native", "# Native checks: None",
                      "# Native checks: Axe.Windows\n\n", "# Native checks: Other\n\nReason"):
             with self.subTest(text=text), self.assertRaises(ValueError):
@@ -195,6 +195,20 @@ class ProducerOutputTests(unittest.TestCase):
                     self.assert_no_result(self.run_producer("deep", self.root))
             path.write_text(original, encoding="utf-8")
 
+    def test_deep_producer_validates_native_selection_without_a_second_job(self):
+        path = self.root / "native-checks.md"
+        for choice in ("Axe.Windows", "None", "Other", "Uncertain", ""):
+            original = f"# Native checks: {choice}\n\nActual evidence selection.\n"
+            path.write_text(original, encoding="utf-8")
+            result = self.run_producer("deep", self.root)
+            with self.subTest(choice=choice):
+                if choice in ("Axe.Windows", "None"):
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertEqual("Complete\n", result.stdout)
+                else:
+                    self.assert_no_result(result)
+                self.assertEqual(original, path.read_text(encoding="utf-8"))
+
     def test_native_incomplete_and_missing_queue_override_plausible_files(self):
         for text in (None, "", '{"items":[]}\n', 'invalid\n',
                      '{"type":"report_incomplete","reason":"infrastructure_error"}\n',
@@ -233,9 +247,7 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("steps.route.outputs.route", route["outputs"]["route"])
 
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
-        selector = self.jobs["native-selection"]
-        self.assertEqual("agent", selector["needs"])
-        self.assertIn("steps.selection.outputs.native", selector["outputs"]["native"])
+        self.assertNotIn("native-selection", self.jobs)
         native = self.jobs["native-evidence"]
         self.assertEqual("admission", native["needs"])
         self.assertIn("needs.admission.outputs.applicable == 'true'", native["if"])
@@ -244,11 +256,10 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertNotIn("native-runtime", self.jobs)
 
     def test_native_selection_requires_complete_deep_production(self):
-        selector = self.jobs["native-selection"]
-        self.assertEqual(
-            "needs.agent.result == 'success'",
-            selector["if"],
-        )
+        check = next(step for step in self.jobs["agent"]["steps"]
+                     if step.get("id") == "actual-output")
+        self.assertIn('accessibility_handoff.py" deep', check["run"])
+        self.assertIn('--producer-outcome "$PRODUCER_OUTCOME"', check["run"])
         # A file left by a crashed producer is diagnostic, not a valid decision.
         self.assertIn("needs.agent.result == 'success'", self.jobs["safe_outputs"]["if"])
         upload = next(step for step in self.jobs["agent"]["steps"]
@@ -259,11 +270,10 @@ class CompiledGraphTests(unittest.TestCase):
         summary = self.jobs["final-summary"]
         self.assertIn("always()", summary["if"])
         self.assertEqual(
-            {"admission", "agent", "native-evidence", "native-selection", "safe_outputs", "triage", "triage-route"},
+            {"admission", "agent", "native-evidence", "safe_outputs", "triage", "triage-route"},
             set(summary["needs"]),
         )
-        for key in ("deep-result", "native-result", "publication-result", "triage-result",
-                    "native-selection-result", "route"):
+        for key in ("deep-result", "native-result", "publication-result", "triage-result", "route"):
             self.assertIn(key, summary["with"])
         self.assertIn("needs.admission.result == 'success'", summary["if"])
         self.assertIn("needs.admission.outputs.applicable == 'true'", summary["if"])
@@ -404,9 +414,12 @@ class CompiledGraphTests(unittest.TestCase):
         source = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn("Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/native-checks.md` at the run root", source)
         self.assertNotIn("beside the triage", source)
-        selector = next(s for s in self.jobs["native-selection"]["steps"] if s.get("id") == "selection")
-        self.assertIn('"Generated Files/$ACCESSIBILITY_RUN/native-checks.md"', selector["run"])
-        self.assertNotIn("/triage-input/native-checks.md", str(selector))
+        check = next(s for s in self.jobs["agent"]["steps"] if s.get("id") == "actual-output")
+        self.assertIn('"Generated Files/$ACCESSIBILITY_RUN"', check["run"])
+        upload = next(s for s in self.jobs["agent"]["steps"]
+                      if s.get("name") == "Upload deep review evidence even when incomplete")
+        self.assertIn("/native-checks.md", upload["with"]["path"])
+        self.assertNotIn("/triage-input/native-checks.md", upload["with"]["path"])
 
     def test_domain_outputs_are_generated_and_not_publication_paths(self):
         deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

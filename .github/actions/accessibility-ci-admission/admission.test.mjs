@@ -103,7 +103,7 @@ for (const name of ['Scan FRE', 'Scan Agents settings', 'Scan FRE settings', 'Sc
       const f = fixture();
       if (outcome === 'missing') f.native.steps = f.native.steps.filter(step => step.name !== name);
       else f.native.steps.find(step => step.name === name).conclusion = outcome;
-      await assert.rejects(admit(f), /scan receipt\/upload\/enforcement/);
+      await assert.rejects(admit(f), new RegExp(`Required CI step.*${name}`));
     });
   }
 }
@@ -293,7 +293,7 @@ for (const [name, change] of [
 ]) test(`all model admission rejects green CI with ${name}`, async () => {
   for (const dispatch of [false, true]) {
     const f = fixture(dispatch); change(f);
-    await assert.rejects(admit(f), /Native CI evidence incomplete/);
+    await assert.rejects(admit(f), /Native accessibility/);
   }
 });
 
@@ -308,6 +308,39 @@ test('ordinary partial rerun support never admits retained build evidence as a f
   for (const dispatch of [false, true]) {
     const f = fixture(dispatch);
     f.producer.run_attempt = 1; // Consumer/run are attempt2, build was retained.
-    await assert.rejects(admit(f), /Required exact-attempt PR build/);
+    await assert.rejects(admit(f), /Required exact-attempt CI job.*C\+\+ build/);
+  }
+});
+
+test('one job validator enforces identity, uniqueness and successful steps for every lane', async () => {
+  for (const lane of ['producer', 'units', 'rust', 'native']) {
+    for (const mutate of [
+      job => { job.run_id++; }, job => { job.run_attempt--; },
+      job => { job.head_sha = BASE; }, job => { job.status = 'in_progress'; },
+      job => { job.conclusion = 'failure'; },
+      job => { job.steps.push({ ...job.steps.at(-1) }); },
+      job => { job.steps.at(-1).status = 'in_progress'; },
+      job => { job.steps.at(-1).conclusion = 'skipped'; },
+    ]) {
+      const f = fixture(true);
+      mutate(f[lane]);
+      await assert.rejects(admit({ ...f, requireNative: true }), /Required.*CI/);
+    }
+    const f = fixture(true);
+    f.setJobs([f.producer, f.units, f.rust, f.native, f[lane]]);
+    await assert.rejects(admit({ ...f, requireNative: true }), /Required exact-attempt CI job/);
+  }
+});
+
+test('native consumption still requires both TestHost staging and publication steps', async () => {
+  for (const name of ['Stage complete original-head TestHost layout', 'Publish accessibility TestHost payload']) {
+    for (const outcome of ['missing', 'skipped', 'failure', 'duplicate']) {
+      const f = fixture(true);
+      const step = f.producer.steps.find(item => item.name === name);
+      if (outcome === 'missing') f.producer.steps = f.producer.steps.filter(item => item !== step);
+      else if (outcome === 'duplicate') f.producer.steps.push({ ...step });
+      else step.conclusion = outcome;
+      await assert.rejects(admit({ ...f, requireNative: true }), /Required CI step/);
+    }
   }
 });

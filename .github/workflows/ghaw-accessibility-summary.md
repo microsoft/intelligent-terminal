@@ -16,9 +16,6 @@ on:
       native-result:
         type: string
         required: true
-      native-selection-result:
-        type: string
-        required: true
       publication-result:
         type: string
         required: true
@@ -178,7 +175,6 @@ Authoritative job outcomes:
 - Triage: `${{ inputs.triage-result }}`; validated route: `${{ inputs.route }}`.
 - Deep review: `${{ inputs.deep-result }}`.
 - Original-head CI native evidence consumption: `${{ inputs.native-result }}`.
-- Native selection validation: `${{ inputs.native-selection-result }}`.
 - Repair publication: `${{ inputs.publication-result }}`.
 - Safe-output processing status: `${{ inputs.publication-status }}`.
 - Confirmed published tip, if any: `${{ inputs.published-sha }}`.

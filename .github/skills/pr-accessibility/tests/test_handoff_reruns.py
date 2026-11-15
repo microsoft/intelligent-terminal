@@ -167,12 +167,10 @@ class PartialRerunTests(unittest.TestCase):
                 # Domain working directories remain attempt-specific.
                 self.assertIn("${{ github.run_attempt }}", consumer["with"]["path"])
 
-    def test_retained_deep_is_available_to_retried_selector_and_summary(self):
+    def test_retained_deep_is_available_to_retried_summary(self):
         producer = step_named(self.main["agent"], "Upload deep review evidence even when incomplete")
         deep_name = expand(producer["with"]["name"], 1)
-        selector = next(step for step in self.main["native-selection"]["steps"]
-                        if "download-artifact@" in step.get("uses", ""))
-        self.assertEqual(deep_name, expand(selector["with"]["name"], 2))
+        self.assertIn("/native-checks.md", producer["with"]["path"])
         summary = step_named(self.summary, "Download review handoffs")
         triage = step_named(self.triage, "Preserve original triage even when invalid")
         for name in (deep_name, expand(triage["with"]["name"], 1)):

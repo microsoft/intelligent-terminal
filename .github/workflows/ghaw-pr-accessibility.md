@@ -200,30 +200,6 @@ jobs:
     needs: [admission, triage-route, deep-admission, native-evidence]
     if: needs.triage-route.result == 'success' && (needs.triage-route.outputs.route == 'Related' || needs.triage-route.outputs.route == 'Uncertain')
 
-  native-selection:
-    needs: [agent]
-    if: needs.agent.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      native: ${{ steps.selection.outputs.native }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          name: accessibility-deep-${{ github.run_id }}
-          path: Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}
-      - id: selection
-        run: |
-          set -euo pipefail
-          native="$(python3 .github/skills/pr-accessibility/scripts/accessibility_handoff.py native \
-            "Generated Files/$ACCESSIBILITY_RUN/native-checks.md")"
-          echo "native=$native" >> "$GITHUB_OUTPUT"
-
   publication-admission:
     needs: [agent]
     runs-on: ubuntu-latest
@@ -243,7 +219,7 @@ jobs:
     if: needs.agent.result == 'success' && needs.publication-admission.result == 'success'
 
   final-summary:
-    needs: [admission, native-evidence, triage, triage-route, agent, native-selection, safe_outputs]
+    needs: [admission, native-evidence, triage, triage-route, agent, safe_outputs]
     if: ${{ always() && needs.admission.result == 'success' && needs.admission.outputs.applicable == 'true' }}
     uses: ./.github/workflows/ghaw-accessibility-summary.lock.yml
     permissions:
@@ -257,7 +233,6 @@ jobs:
       route: ${{ needs.triage-route.outputs.route }}
       deep-result: ${{ needs.agent.result }}
       native-result: ${{ needs.native-evidence.result }}
-      native-selection-result: ${{ needs.native-selection.result }}
       publication-result: ${{ needs.safe_outputs.result }}
       publication-status: ${{ needs.safe_outputs.outputs.process_safe_outputs_status }}
       published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}

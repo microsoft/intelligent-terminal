@@ -60,8 +60,10 @@ in parallel with Rust. Ordinary **C++ unit tests** consume the staged unit-test
 payload; path-gated **Native accessibility / Native Axe.Windows smoke** consumes
 `ci-accessibility-testhost-RUN-ATTEMPT`. Both are sibling consumers after the
 build, not serial dependencies. Producer and admission use the same conservative
-path classifier. Docs-only changes do not start native CI. Every accessibility
-model, including triage and summary, waits for authoritative entire PR CI success.
+path classifier. Ordinary docs-only changes do not start native CI; retained
+instruction/configuration categories do start PR CI, including native scans,
+even without product changes. Every accessibility model, including triage and
+summary, waits for authoritative entire PR CI success.
 There is no Windows job or rebuild fallback in gh-aw.
 
 Ordinary CI consumers carry the C++ producer attempt explicitly. A failed-job-only
@@ -143,6 +145,9 @@ model retry is enabled.
 Complete describes file delivery only. A later report-validation or publication
 failure does not erase the actual AI handoff or change it to No result; that
 failure remains a separate unsuccessful review/publication outcome.
+The deep producer validates `native-checks.md` with its other handoff files
+before recording Complete. That selection informs the summary, not CI scheduling.
+There is no separate selection job or second artifact download to validate it.
 
 The existing gh-aw `agent` artifact is a downloadable diagnostic ZIP containing
 session logs, SDK events and stdio, using the framework's secret redaction.

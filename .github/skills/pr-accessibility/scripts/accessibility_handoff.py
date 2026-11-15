@@ -39,7 +39,6 @@ def native(text):
         raise ValueError("invalid native-check selection")
     if len(text.encode("utf-8")) > 16384:
         raise ValueError("native selection exceeds 16 KiB")
-    return "true" if text.startswith("# Native checks: Axe.Windows\n") else "false"
 
 
 def read_output(path, limit):
@@ -122,7 +121,7 @@ def receipt(path, native=Path("/tmp/gh-aw")):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("triage", "native", "deep", "summary", "receipt"))
+    parser.add_argument("kind", choices=("triage", "deep", "summary", "receipt"))
     parser.add_argument("path", type=Path)
     parser.add_argument("--base")
     parser.add_argument("--head")
@@ -147,8 +146,6 @@ def main():
             ["git", "diff", "--no-ext-diff", "--name-only", "-z", f"{args.base}...{args.head}"], text=True
         )
         result = triage(text, set(data.rstrip("\0").split("\0")))
-    elif args.kind == "native":
-        result = native(text)
     else:
         result = summary(text)
     print(result)
