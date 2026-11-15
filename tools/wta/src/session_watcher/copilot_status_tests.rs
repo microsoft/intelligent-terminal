@@ -187,10 +187,11 @@ async fn blocking_probe_releases_admission_and_cancels_worker_on_timeout_or_drop
         let (finished, mut finished_rx) = tokio::sync::oneshot::channel();
         let mut waiter = Box::pin(run_probe(gate.clone(), move |cancellation| {
             started.send(()).unwrap();
-            while !cancellation.load(Ordering::Acquire) {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !cancellation.load(Ordering::Acquire) && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(1));
             }
-            cancelled.send(()).unwrap();
+            cancelled.send(cancellation.load(Ordering::Acquire)).unwrap();
             release_rx.recv().unwrap();
             finished.send(()).unwrap();
         }));
@@ -205,18 +206,30 @@ async fn blocking_probe_releases_admission_and_cancels_worker_on_timeout_or_drop
         } else {
             drop(waiter);
         }
-        cancelled_rx.await.unwrap();
+        let readmission = run_probe(gate.clone(), |_| 42).await;
+        let cancellation = tokio::time::timeout(Duration::from_secs(3), cancelled_rx).await;
+        let worker_was_unfinished = matches!(
+            finished_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        );
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), finished_rx)
+            .await
+            .expect("blocking worker did not finish after release")
+            .expect("blocking worker exited without reporting completion");
+
         assert_eq!(
-            run_probe(gate.clone(), |_| 42).await,
+            readmission,
             Ok(42),
             "a timed-out or abandoned probe must release admission"
         );
-        assert!(matches!(
-            finished_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ));
-        release.send(()).unwrap();
-        finished_rx.await.unwrap();
+        assert!(
+            cancellation
+                .expect("worker did not observe cancellation before its deadline")
+                .expect("blocking worker exited before reporting cancellation"),
+            "worker must observe the cancellation signal"
+        );
+        assert!(worker_was_unfinished, "worker should still be blocked at readmission");
     }
 }
 
