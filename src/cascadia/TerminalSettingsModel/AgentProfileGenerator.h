@@ -13,9 +13,14 @@
 
 namespace winrt::Microsoft::Terminal::Settings::Model
 {
+    namespace implementation
+    {
+        struct GlobalAppSettings;
+    }
     class AgentProfileGenerator final : public IDynamicProfileGenerator
     {
     public:
+        explicit AgentProfileGenerator(const implementation::GlobalAppSettings* settings = nullptr);
         template<typename T>
         class BasicDiscoveryCache
         {
@@ -83,5 +88,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model
         static void GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles,
                                      const DiscoveryCache::Snapshot& host,
                                      const WslSnapshot& wsl);
+
+    private:
+        std::vector<winrt::hstring> _customCommands;
     };
 }

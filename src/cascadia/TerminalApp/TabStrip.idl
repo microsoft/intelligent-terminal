@@ -78,6 +78,8 @@ namespace TerminalApp
         String StatusLabelText;
         String WindowHintText;
         Boolean HasUnreadActivity { get; };
+        Object IconSource;
+        Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs

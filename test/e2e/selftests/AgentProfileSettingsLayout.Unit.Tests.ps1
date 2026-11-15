@@ -19,10 +19,33 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
             ForEach-Object { $_.Groups[1].Value } | Sort-Object)
         $ids.Count | Should -BeGreaterThan 0
         $schema = Get-Content -LiteralPath (Join-Path $repoRoot 'doc\cascadia\profiles.schema.json') -Raw | ConvertFrom-Json
-        $enum = @($schema.'$defs'.Profile.properties.'agentProfile.id'.enum)
+        $identity = $schema.'$defs'.Profile.properties.'agentProfile.id'
+        @($identity.type) | Should -HaveCount 2
+        $identity.type | Should -Contain 'string'
+        $identity.type | Should -Contain 'null'
+        $builtinBranches = @($identity.anyOf | Where-Object { $_.PSObject.Properties.Name -contains 'enum' })
+        $builtinBranches | Should -HaveCount 1
+        $enum = @($builtinBranches[0].enum)
         $enum | Should -Contain ''
-        ($enum | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object) -join ',' |
+        $enum | Should -Not -Contain $null
+        ($enum | Where-Object { $_ -ne '' } | Sort-Object) -join ',' |
             Should -BeExactly ($ids -join ',')
+        $customBranches = @($identity.anyOf | Where-Object { $_.PSObject.Properties.Name -contains 'pattern' })
+        $customBranches | Should -HaveCount 1
+        $customBranches[0].type | Should -BeExactly 'string'
+        @($identity.anyOf | Where-Object { $_.type -eq 'null' }) | Should -HaveCount 1
+        $pattern = $customBranches[0].pattern
+        $pattern | Should -Not -BeNullOrEmpty
+        foreach ($id in @('custom:x', 'custom:my agent', 'custom:my "agent"', 'custom:my\agent')) {
+            $id | Should -MatchExactly $pattern
+        }
+        foreach ($id in @('', 'unknown', 'Copilot', 'custom:', 'custom: ', 'custom: x', 'custom:x ', 'custom: my agent', 'custom:my agent ', "custom:my`ragent", "custom:my`nagent", "custom:my`tagent") + $ids) {
+            $id | Should -Not -MatchExactly $pattern
+        }
+        foreach ($id in $ids) {
+            "prefix$id" | Should -Not -MatchExactly $pattern
+            "${id}suffix" | Should -Not -MatchExactly $pattern
+        }
     }
 
     It 'keeps auxiliary assistant selectors only on the shell base page' {
@@ -84,7 +107,7 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $header | Should -Match 'bool IsAgentProfile\(\) const \{ return !_profile\.AgentProfileId\(\)\.empty\(\); \}'
     }
 
-    It 'has no native-profile policy warning or launch-policy check' {
+    It 'omits native-profile policy warnings while validating every native provider before launch' {
         $base.SelectNodes('//*') | Where-Object {
             $_.GetAttribute('Uid', $xamlNamespace) -eq 'Profile_AgentPolicyBlocked'
         } | Should -BeNullOrEmpty
@@ -103,7 +126,7 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         $native | Should -Not -Match '\bCheckLaunchPolicy\b'
         $page | Should -Not -Match '\bCheckLaunchPolicy\b'
         $page | Should -Match 'Command\(profile, true\)'
-        $page | Should -Match 'if \(!Registry::SupportsNativeProfile\(std::wstring_view\{ profile.AgentProfileId\(\) \}\)\)'
+        $page | Should -Match 'const auto id = Registry::CanonicalNativeAgentProviderId\(std::wstring_view\{ provider \}\);\s*THROW_HR_IF\(E_INVALIDARG, id\.empty\(\)\);\s*Policy::Reload\(\);\s*THROW_HR_IF\(E_ACCESSDENIED, !Registry::IsNativeAgentProviderAllowed\(id, \*Policy::_GetSnapshot\(\)\)\);'
     }
 
     It 'removes unused permission and split picker projections without removing JSON settings' {
@@ -132,8 +155,17 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         } | Should -BeNullOrEmpty
     }
 
-    It 'does not add a public setting or shift existing WinRT members for page selection' {
+    It 'exposes read-only agent identity to the indicator and resume controls without adding a JSON setting' {
         $idl = Get-Content -LiteralPath (Join-Path $editorRoot 'ProfileViewModel.idl') -Raw
-        $idl | Should -Not -Match 'Boolean IsAgentProfile\b'
+        $idl | Should -Match 'Boolean IsAgentProfile \{ get; \};'
+        foreach ($uid in @('Profile_AgentIndicator', 'Profile_AgentResumeArguments')) {
+            $controls = @($base.SelectNodes('//*') | Where-Object {
+                $_.GetAttribute('Uid', $xamlNamespace) -eq $uid
+            })
+            $controls | Should -HaveCount 1
+            $controls[0].GetAttribute('Visibility') | Should -BeExactly '{x:Bind Profile.IsAgentProfile, Mode=OneWay}'
+        }
+        $schema = Get-Content -LiteralPath (Join-Path $repoRoot 'doc\cascadia\profiles.schema.json') -Raw | ConvertFrom-Json
+        $schema.'$defs'.Profile.properties.PSObject.Properties.Name | Should -Not -Contain 'isAgentProfile'
     }
 }

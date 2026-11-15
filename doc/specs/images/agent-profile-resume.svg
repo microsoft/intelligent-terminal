@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1180" viewBox="0 0 1440 1180" role="img" aria-labelledby="title description">
+  <title id="title">Agent profiles: proposed resume settings</title>
+  <desc id="description">Annotated design, not a product screenshot. The Claude profile adds resume arguments without a command preview or placeholder input. Terminal appends the session ID automatically after the launch command, startup arguments, and resume arguments, only when resuming. Managed originals cannot be deleted. Custom agents get linked profiles. Agent Pane uses ACP session loading.</desc>
+  <defs>
+    <style>
+      text { font-family: 'Segoe UI', sans-serif; fill: #eeeeee; font-size: 16px; }
+      .small { font-size: 14px; fill: #bcbcbc; }
+      .heading { font-size: 24px; font-weight: 600; }
+      .label { font-weight: 600; }
+      .code { font-family: Consolas, monospace; font-size: 16px; }
+      .accent { fill: #94d5ff; }
+      .panel { fill: #252525; stroke: #454545; }
+      .field { fill: #191919; stroke: #727272; }
+      .badge { fill: #183c50; stroke: #4a9cc8; }
+      .note { fill: #182b36; stroke: #4a9cc8; }
+      .number { fill: #111111; font-weight: 700; text-anchor: middle; }
+      .line { fill: none; stroke: #78ccff; stroke-width: 2; }
+    </style>
+  </defs>
+  <rect width="1440" height="1180" rx="14" fill="#141414"/>
+  <text x="32" y="43" class="heading">Agent profiles / Resume a session with its profile</text>
+  <text x="32" y="72" class="small">ANNOTATED MOCKUP - not a product screenshot. Unchanged settings are abbreviated.</text>
+
+  <rect x="28" y="96" width="946" height="651" rx="10" class="panel"/>
+  <rect x="28" y="96" width="218" height="651" rx="10" fill="#202020"/>
+  <text x="48" y="132" class="label">Settings</text>
+  <text x="48" y="172" class="small">AI Agents</text>
+  <text x="48" y="214" class="label">Profiles</text>
+  <text x="48" y="252" class="small">Windows PowerShell</text>
+  <text x="48" y="288" class="small">GitHub Copilot</text>
+  <rect x="39" y="307" width="196" height="37" rx="4" fill="#304552"/>
+  <text x="54" y="332">Claude</text>
+  <text x="48" y="373" class="small">Codex</text>
+  <text x="48" y="409" class="small">Gemini</text>
+  <text x="48" y="445" class="small">OpenCode</text>
+  <text x="48" y="481" class="small">Google Antigravity</text>
+  <text x="48" y="517" class="small">My custom agent</text>
+  <text x="48" y="553" class="small">Agent Pane</text>
+  <text x="272" y="137" class="heading">Claude</text>
+  <rect x="394" y="113" width="158" height="31" rx="12" class="badge"/>
+  <text x="410" y="134" class="small accent">Agent profile</text>
+  <text x="272" y="164" class="small">Provider: Claude | Native CLI | Windows host</text>
+  <text x="272" y="202" class="label">Command line</text>
+  <rect x="272" y="215" width="672" height="37" rx="4" class="field"/>
+  <text x="285" y="240" class="code">C:\Tools\claude.exe</text>
+  <text x="272" y="282" class="label">Model</text>
+  <rect x="272" y="294" width="672" height="37" rx="4" class="field"/>
+  <text x="285" y="319" class="small">Agent default</text>
+  <text x="272" y="361" class="label">Additional startup arguments</text>
+  <rect x="272" y="373" width="672" height="37" rx="4" class="field"/>
+  <text x="285" y="398" class="code">--add-dir "C:\shared project"</text>
+  <text x="272" y="442" class="label">Resume arguments</text>
+  <text x="780" y="442" class="small accent">Reset to default</text>
+  <rect x="272" y="454" width="672" height="37" rx="4" class="field"/>
+  <text x="285" y="479" class="code">--resume</text>
+  <text x="272" y="515" class="small">Added after normal startup arguments only when resuming a session.</text>
+  <text x="272" y="537" class="small">The session ID is appended automatically, even if this field is empty.</text>
+  <text x="272" y="580" class="small">Your launch command and additional startup arguments are kept.</text>
+  <text x="272" y="603" class="small">Resume arguments and the session ID are added only when you resume.</text>
+  <text x="272" y="652" class="small">Starting directory / appearance / hide / copy: unchanged</text>
+  <rect x="272" y="675" width="672" height="48" rx="4" class="note"/>
+  <text x="286" y="695" class="small">This profile is managed by AI Agents.</text>
+  <text x="286" y="714" class="small">You can hide it instead.                                      [Hide profile]</text>
+
+  <path d="M 560 128 H 995" class="line"/>
+  <circle cx="566" cy="128" r="13" fill="#78ccff"/><text x="566" y="134" class="number">1</text>
+  <text x="1016" y="125" class="label accent">Explicit Agent profile label</text>
+  <text x="1016" y="151" class="small">Uses existing agentProfile.id.</text>
+  <text x="1016" y="174" class="small">Copies keep their agent identity.</text>
+  <path d="M 948 472 H 995 V 268" class="line"/>
+  <circle cx="953" cy="472" r="13" fill="#78ccff"/><text x="953" y="478" class="number">2</text>
+  <text x="1016" y="253" class="label accent">Editable resume arguments</text>
+  <text x="1016" y="279" class="small">Built-in default + reset.</text>
+  <text x="1016" y="302" class="small">Type --resume, not a placeholder.</text>
+  <text x="1016" y="325" class="small">The session ID is automatic.</text>
+  <path d="M 948 594 H 1002 V 410" class="line"/>
+  <circle cx="953" cy="594" r="13" fill="#78ccff"/><text x="953" y="600" class="number">3</text>
+  <text x="1016" y="400" class="label accent">Keep normal launch intact</text>
+  <text x="1016" y="426" class="small">Launch + startup arguments,</text>
+  <text x="1016" y="449" class="small">then resume arguments + ID.</text>
+  <text x="1016" y="472" class="small">No resume suffix on a new session.</text>
+  <path d="M 948 699 H 1002 V 568" class="line"/>
+  <circle cx="953" cy="699" r="13" fill="#78ccff"/><text x="953" y="705" class="number">4</text>
+  <text x="1016" y="556" class="label accent">No Delete for managed originals</text>
+  <text x="1016" y="582" class="small">Hide or copy instead.</text>
+  <text x="1016" y="605" class="small">Copies remain deletable.</text>
+  <text x="1016" y="628" class="small">Removing agent support releases</text>
+  <text x="1016" y="651" class="small">protection on retained settings.</text>
+
+  <rect x="28" y="770" width="680" height="300" rx="10" class="panel"/>
+  <circle cx="54" cy="800" r="13" fill="#78ccff"/><text x="54" y="806" class="number">5</text>
+  <text x="80" y="808" class="heading">Profiles / My custom agent</text>
+  <text x="50" y="845" class="small">Generated from the custom entry in AI Agents settings</text>
+  <text x="50" y="881" class="label">Command line (native CLI)</text>
+  <rect x="50" y="893" width="635" height="37" rx="4" class="field"/>
+  <text x="63" y="918" class="small">Not configured - enter this agent's native CLI command</text>
+  <text x="50" y="958" class="accent">Agent profile | custom:&lt;id&gt;</text>
+  <text x="50" y="993" class="small">Configure the native command and resume arguments in this profile.</text>
+  <text x="50" y="1018" class="small">ACP / delegation commands stay separate and unchanged.</text>
+  <text x="50" y="1043" class="small">No guessed resume flag. No automatic ACP-command reuse.</text>
+
+  <rect x="730" y="770" width="682" height="300" rx="10" class="panel"/>
+  <circle cx="756" cy="800" r="13" fill="#78ccff"/><text x="756" y="806" class="number">6</text>
+  <text x="782" y="808" class="heading">Profiles / Agent Pane</text>
+  <rect x="752" y="832" width="158" height="31" rx="12" class="badge"/>
+  <text x="768" y="853" class="small accent">Managed profile</text>
+  <text x="752" y="902" class="label">Session restore</text>
+  <text x="752" y="932">Managed by the agent pane (ACP)</text>
+  <text x="752" y="972" class="small">Uses session/load, not native CLI resume arguments.</text>
+  <text x="752" y="999" class="small">Appearance remains editable. No helper command editing added.</text>
+  <text x="752" y="1032" class="small">This profile is required by the agent pane and cannot be deleted.</text>
+
+  <rect x="28" y="1092" width="1384" height="61" rx="8" class="note"/>
+  <text x="48" y="1118" class="label">Sessions / Resume</text>
+  <text x="48" y="1141" class="small">Profile settings own native resume syntax. No provider flag fallback. Recorded profile + source -> resume. Live session -> focus existing pane.</text>
+</svg>

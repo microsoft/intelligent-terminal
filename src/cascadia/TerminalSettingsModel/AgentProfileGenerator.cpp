@@ -3,9 +3,11 @@
 
 #include "pch.h"
 #include "AgentProfileGenerator.h"
+#include "GlobalAppSettings.h"
 #include "DynamicProfileUtils.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/CustomAgentId.h"
 #include <mutex>
 #include <set>
 
@@ -19,7 +21,22 @@ namespace
         static AgentProfileGenerator::WslSourceCache cache;
         return cache;
     }
+}
 
+AgentProfileGenerator::AgentProfileGenerator(const implementation::GlobalAppSettings* settings)
+{
+    if (settings)
+    {
+        for (const auto& commands : { settings->AcpCustomCommands(), settings->DelegateCustomCommands() })
+        {
+            for (const auto& command : commands)
+            {
+                _customCommands.emplace_back(command);
+            }
+        }
+        _customCommands.emplace_back(settings->AcpCustomCommand());
+        _customCommands.emplace_back(settings->DelegateCustomCommand());
+    }
 }
 
 std::wstring_view AgentProfileGenerator::GetNamespace() const noexcept
@@ -133,6 +150,25 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         });
     }
     GenerateProfiles(profiles, host, WslCache().Read());
+    if (::Microsoft::Terminal::Settings::Model::AgentPolicy::IsCustomAgentAllowed())
+    {
+        std::set<std::wstring> seen;
+        for (const auto& command : _customCommands)
+        {
+            const auto id = L"custom:" + std::wstring{ ::Microsoft::Terminal::Settings::Model::DeriveCustomAgentId(command) };
+            if (command.empty() || id == L"custom:" || !seen.insert(id).second)
+            {
+                continue;
+            }
+            auto profile = CreateDynamicProfile(AgentProfiles::GeneratedIdentity(id));
+            profile->Name(winrt::hstring{ id.substr(7) });
+            profile->AgentProfileId(winrt::hstring{ id });
+            profile->StartingDirectory(L"%USERPROFILE%");
+            // ACP adapters are not native interactive commands.
+            profile->Commandline(L"");
+            profiles.emplace_back(std::move(profile));
+        }
+    }
 }
 
 void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles,
@@ -151,6 +187,13 @@ void AgentProfileGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
         profile->Icon(winrt::hstring{ L"ms-appx:///AgentIcons/" + std::wstring{ agent.id } + L".svg" });
         profile->AgentProfileId(winrt::hstring{ agent.id });
         profile->AgentProfileSource(winrt::hstring{ distro.empty() ? L"host" : L"wsl:" + std::wstring{ distro } });
+        profile->StartingDirectory(L"%USERPROFILE%");
+        // Generation defaults only. Runtime resume reads the effective profile.
+        const auto resume = agent.id == L"opencode"    ? L"--session" :
+                            agent.id == L"codex"       ? L"resume" :
+                            agent.id == L"antigravity" ? L"--conversation" :
+                                                         L"--resume";
+        profile->AgentProfileResumeArguments(resume);
         profile->Commandline(winrt::hstring{ distro.empty() ?
                                                  AgentProfiles::BuildCommand(executable, agent.id, {}, {}, {}) :
                                                  AgentProfiles::BuildWslCommand(distro, agent.id, {}, {}, {}) });

@@ -233,7 +233,7 @@ void SettingsLoader::GenerateProfiles()
     generateProfiles(AzureCloudShellGenerator{});
     generateProfiles(VisualStudioGenerator{});
     AgentProfileGenerator::RestoreSavedWslProfiles(userSettings.profiles);
-    generateProfiles(AgentProfileGenerator{});
+    generateProfiles(AgentProfileGenerator{ userSettings.globals.get() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         sshProfilesGenerated = generateProfiles(SshHostGenerator{});
@@ -276,7 +276,7 @@ void SettingsLoader::GenerateExtensionPackagesFromProfileGenerators()
     generateExtensionPackages(WslDistroGenerator{});
     generateExtensionPackages(AzureCloudShellGenerator{});
     generateExtensionPackages(VisualStudioGenerator{});
-    generateExtensionPackages(AgentProfileGenerator{});
+    generateExtensionPackages(AgentProfileGenerator{ userSettings.globals.get() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
         generateExtensionPackages(SshHostGenerator{});
@@ -538,26 +538,27 @@ void SettingsLoader::FinalizeLayering()
     }
 }
 
-// Let's say a user doesn't know that they need to write `"hidden": true` in
-// order to prevent a profile from showing up (and a settings UI doesn't exist).
-// Naturally they would open settings.json and try to remove the profile object.
-// This section of code recognizes if a profile was seen before and marks it as
-// `"hidden": true` by default and thus ensures the behavior the user expects:
-// Profiles won't show up again after they've been removed from settings.json.
+// Hide previously generated, deletable profiles removed from settings.json.
+// Protected originals are restored and persisted instead; explicit hiding is
+// handled separately.
 //
 // Returns true if something got changed and
 // the settings need to be saved to disk.
-bool SettingsLoader::DisableDeletedProfiles()
+bool SettingsLoader::DisableDeletedProfiles(ApplicationState& state)
 {
-    const auto& state = winrt::get_self<ApplicationState>(ApplicationState::SharedInstance());
-    auto generatedProfileIds = state->GeneratedProfiles();
+    auto generatedProfileIds = state.GeneratedProfiles();
     auto newGeneratedProfiles = false;
+    auto restoredProtectedProfiles = false;
 
     for (const auto& profile : _getNonUserOriginProfiles())
     {
         if (generatedProfileIds.emplace(profile->Guid()).second)
         {
             newGeneratedProfiles = true;
+        }
+        else if (!profile->IsDeletable())
+        {
+            restoredProtectedProfiles = true;
         }
         else
         {
@@ -568,10 +569,10 @@ bool SettingsLoader::DisableDeletedProfiles()
 
     if (newGeneratedProfiles)
     {
-        state->GeneratedProfiles(generatedProfileIds);
+        state.GeneratedProfiles(generatedProfileIds);
     }
 
-    return newGeneratedProfiles;
+    return newGeneratedProfiles || restoredProtectedProfiles;
 }
 
 // Returns true if something got changed and
@@ -662,6 +663,31 @@ bool SettingsLoader::FixupUserSettings()
 
     auto fixedUp = userSettings.fixupsAppliedDuringLoad;
     fixedUp = userSettings.globals->FixupsAppliedDuringLoad() || fixedUp;
+
+    if (!userSettings.globals->AgentProfileStartingDirectoryMigrationCompleted())
+    {
+        auto hasAgentProfiles = false;
+        for (const auto& profile : userSettings.profiles)
+        {
+            if (!profile->AgentProfileId().empty() || profile->Source() == ::Microsoft::Terminal::AgentProfiles::Source)
+            {
+                hasAgentProfiles = true;
+                if (profile->StartingDirectory().empty())
+                {
+                    const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                        profile->AgentProfileId(), profile->AgentProfileSource());
+                    profile->StartingDirectory(backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                                                   L"~" : L"%USERPROFILE%");
+                }
+            }
+        }
+        if (hasAgentProfiles)
+        {
+            // Persist completion with the directories, not in a separate state write.
+            userSettings.globals->AgentProfileStartingDirectoryMigrationCompleted(true);
+            fixedUp = true;
+        }
+    }
 
     fixedUp = RemapColorSchemeForProfile(userSettings.baseLayerProfile) || fixedUp;
     for (const auto& profile : userSettings.profiles)
@@ -1339,7 +1365,7 @@ try
 
     // DisableDeletedProfiles returns true whenever we encountered any new generated/dynamic profiles.
     // Similarly FixupUserSettings returns true, when it encountered settings that were patched up.
-    mustWriteToDisk |= loader.DisableDeletedProfiles();
+    mustWriteToDisk |= loader.DisableDeletedProfiles(*applicationState);
     mustWriteToDisk |= loader.FixupUserSettings();
     mustWriteToDisk |= loader.AddDynamicProfileFolders();
 
@@ -1514,6 +1540,7 @@ CascadiaSettings::CascadiaSettings(SettingsLoader&& loader) :
 
     for (const auto& profile : loader.userSettings.profiles)
     {
+        profile->SettingsOwner = winrt::make_weak<Model::GlobalAppSettings>(*loader.userSettings.globals);
         // If a generator stops producing a certain profile (e.g. WSL or PowerShell were removed) or
         // a profile from a fragment doesn't exist anymore, we should also stop including the
         // matching user's profile in _allProfiles (since they aren't functional anyways).
