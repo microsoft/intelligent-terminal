@@ -304,6 +304,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _quickFixButtonCollapsible{ false };
         bool _quickFixesAvailable{ false };
         bool _agentPasteShortcutFallbackEnabled{ false };
+        bool _agentRightClickContextMenuEnabled{ false };
         til::CoordType _quickFixBufferPos{};
 
         std::shared_ptr<ThrottledFunc<>> _playWarningBell;
