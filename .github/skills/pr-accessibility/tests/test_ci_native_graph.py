@@ -32,7 +32,7 @@ class CiNativeGraphTests(unittest.TestCase):
         names = [s.get("name") for s in build]
         self.assertNotIn("Test all C++ units", names)
         self.assertLess(names.index("Build production Terminal and C++ tests"),
-                        names.index("Stage ordinary C++ unit test payload"))
+                        names.index("Publish C++ unit test payload"))
         self.assertLess(names.index("Stage complete original-head TestHost layout"),
                         names.index("Publish accessibility TestHost payload"))
         for job in ("cpp-tests",):
@@ -42,9 +42,9 @@ class CiNativeGraphTests(unittest.TestCase):
     def test_original_tests_and_security_artifacts_remain_required(self):
         tests = next(s for s in self.jobs["cpp-tests"]["steps"] if s.get("name") == "Test all C++ units")
         verify = next(s for s in self.jobs["cpp-tests"]["steps"]
-                      if s.get("name") == "Verify unit payload identity and completeness")
-        self.assertIn("ci-accessibility-payload.py check-units", verify["run"])
-        self.assertIn("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", verify["run"])
+                      if s.get("name") == "Verify ordinary unit test completeness")
+        self.assertIn("Missing ordinary C++ unit test", verify["run"])
+        self.assertIn("Missing TAEF runner", verify["run"])
         self.assertIn("-MatchPattern '*unit.test*.dll'", tests["run"])
         self.assertIn("'/testTimeout:0:00:30','/sessionTimeout:0:15:00'", tests["run"])
         rust = next(s for s in self.jobs["rust"]["steps"] if s.get("name") == "Test all x64 Rust units")
@@ -56,7 +56,11 @@ class CiNativeGraphTests(unittest.TestCase):
             self.assertEqual(1, len(uploads))
             self.assertIn(f"ci-security-{language}-", uploads[0]["with"]["name"])
         tests_names = [s.get("name") for s in self.jobs["cpp-tests"]["steps"]]
-        self.assertLess(tests_names.index("Verify unit payload identity and completeness"), tests_names.index("Test all C++ units"))
+        self.assertLess(tests_names.index("Verify ordinary unit test completeness"), tests_names.index("Test all C++ units"))
+        upload = next(s for s in self.jobs["cpp"]["steps"] if s.get("name") == "Publish C++ unit test payload")
+        self.assertIn("bin/x64/Debug/**", upload["with"]["path"])
+        self.assertIn("!bin/x64/Debug/TestHostApp/**", upload["with"]["path"])
+        self.assertNotIn("resources.pri", upload["with"]["path"])
 
     def test_failed_or_missing_native_receipts_are_uploaded_before_enforcement(self):
         steps = self.native["jobs"]["native-smoke"]["steps"]
@@ -82,25 +86,28 @@ class CiNativeGraphTests(unittest.TestCase):
         self.assertEqual("${{ github.run_attempt }}", self.jobs["cpp"]["outputs"]["payload-attempt"])
         steps = self.jobs["cpp-tests"]["steps"]
         download = next(s for s in steps if s.get("name") == "Download original build unit payload")
-        verify = next(s for s in steps if s.get("name") == "Verify unit payload identity and completeness")
         self.assertEqual("ci-cpp-units-${{ github.run_id }}-${{ needs.cpp.outputs.payload-attempt }}",
                          download["with"]["name"])
-        self.assertEqual("${{ needs.cpp.outputs.payload-attempt }}", verify["env"]["CI_RUN_ATTEMPT"])
         self.assertEqual("${{ needs.cpp.outputs.payload-attempt }}", self.jobs["axe"]["with"]["payload-attempt"])
         native = self.native["jobs"]["native-smoke"]["steps"]
-        fetch = next(s for s in native if s.get("name") == "Download authenticated artifact without extracting it")
-        extract = next(s for s in native if s.get("name") == "Verify archive integrity and complete portable layout before extraction")
-        self.assertEqual("${{ inputs.payload-attempt }}", fetch["env"]["PAYLOAD_ATTEMPT"])
-        self.assertIn("process.env.PAYLOAD_ATTEMPT", fetch["with"]["script"])
-        self.assertEqual("${{ inputs.payload-attempt }}", extract["env"]["CI_RUN_ATTEMPT"])
+        fetch = next(s for s in native if s.get("name") == "Download original build TestHost payload")
+        self.assertEqual("ci-accessibility-testhost-${{ github.run_id }}-${{ inputs.payload-attempt }}",
+                         fetch["with"]["name"])
+        self.assertTrue(fetch["uses"].startswith("actions/download-artifact@"))
         # Native result receipts still identify the actual native execution,
-        # not the older build attempt used solely for payload verification.
+        # not the older build attempt used solely for payload transport.
         self.assertEqual("${{ github.run_attempt }}", self.native["env"]["CI_RUN_ATTEMPT"])
         current_attempt, retained_producer = 2, 1
         self.assertNotEqual(current_attempt, retained_producer)
         name = download["with"]["name"].replace("${{ github.run_id }}", "91").replace(
             "${{ needs.cpp.outputs.payload-attempt }}", str(retained_producer))
         self.assertEqual("ci-cpp-units-91-1", name)
+        name = fetch["with"]["name"].replace("${{ github.run_id }}", "91").replace(
+            "${{ inputs.payload-attempt }}", str(retained_producer))
+        self.assertEqual("ci-accessibility-testhost-91-1", name)
+        upload = next(s for s in native if s.get("name") == "Upload native accessibility evidence")
+        self.assertEqual("ci-accessibility-native-${{ github.run_id }}-${{ github.run_attempt }}",
+                         upload["with"]["name"])
 
     def test_retained_instruction_categories_can_start_required_ci(self):
         patterns = (
@@ -161,8 +168,10 @@ class CiNativeGraphTests(unittest.TestCase):
         self.assertIn(gate["needs"], ("agent", ["agent"]))
         checkout = next(step for step in gate["steps"] if step.get("uses", "").startswith("actions/checkout@"))
         self.assertEqual("${{ github.workflow_sha }}", checkout["with"]["ref"])
-        self.assertTrue(any(step.get("uses") == "./.github/actions/accessibility-ci-admission"
-                            for step in gate["steps"]))
+        boundary = next(step for step in gate["steps"]
+                        if step.get("name") == "Recheck CI freshness at publication boundary")
+        self.assertIn("verifyCiSecurity({ artifactNames:", boundary["run"])
+        self.assertEqual("${{ github.event.inputs.ci_run_attempt }}", boundary["env"]["CI_RUN_ATTEMPT"])
         self.assertIn("publication-admission", jobs["safe_outputs"]["needs"])
         self.assertIn("needs.publication-admission.result == 'success'", jobs["safe_outputs"]["if"])
 

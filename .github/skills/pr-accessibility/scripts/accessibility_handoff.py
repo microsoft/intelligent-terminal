@@ -5,10 +5,8 @@ This parses decisions, never renders the human summary or judges accessibility.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 
@@ -86,51 +84,15 @@ def deep(path):
     native(read_output(path / "native-checks.md", 16384))
     return "Complete"
 
-def receipt(path, native=Path("/tmp/gh-aw")):
-    stdio = native / "agent-stdio.log"
-    text = stdio.read_text(encoding="utf-8", errors="replace") if stdio.is_file() else ""
-    ids = sorted(set(re.findall(
-        r"^\[copilot-sdk-driver\] \[sdk-driver\] session created: sessionId=([0-9a-fA-F-]{36})$",
-        text, re.MULTILINE)))
-    # Native capture copies HOME sessions; retain only IDs created by this job.
-    state = native / "sandbox/agent/logs/copilot-session-state"
-    if state.is_symlink():
-        state.unlink()
-    elif state.is_dir():
-        for child in state.iterdir():
-            if child.name not in ids or child.is_symlink():
-                if child.is_dir() and not child.is_symlink():
-                    shutil.rmtree(child)
-                else:
-                    child.unlink()
-    stage = os.environ["PRODUCER_STAGE"]
-    fields = {
-        "run": os.environ["GITHUB_RUN_ID"], "attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-        "head": os.environ["PRODUCER_HEAD"], "workflow": os.environ["PRODUCER_WORKFLOW"],
-        "diagnostic-id": f"{stage}-{os.environ['PRODUCER_HEAD']}-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}",
-        "source": os.environ["PRODUCER_SOURCE"],
-        "result": os.environ["PRODUCER_RESULT"],
-        "execution": os.environ["PRODUCER_OUTCOME"] or "unknown",
-        "sessionID": ",".join(ids) or "unknown",
-        "session-source": "native agent-stdio.log SDK createSession metadata",
-        "diagnostics-artifact": os.environ["DIAGNOSTIC_ARTIFACT"],
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
-
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("triage", "deep", "summary", "receipt"))
+    parser.add_argument("kind", choices=("triage", "deep", "summary"))
     parser.add_argument("path", type=Path)
     parser.add_argument("--base")
     parser.add_argument("--head")
     parser.add_argument("--producer-outcome")
     parser.add_argument("--safe-outputs", type=Path)
     args = parser.parse_args()
-    if args.kind == "receipt":
-        receipt(args.path)
-        return
     if args.producer_outcome is not None:
         if args.safe_outputs is None:
             raise ValueError("producer validation requires the native safe-output queue")

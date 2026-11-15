@@ -248,12 +248,21 @@ class CompiledGraphTests(unittest.TestCase):
 
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
         self.assertNotIn("native-selection", self.jobs)
-        native = self.jobs["native-evidence"]
-        self.assertEqual("admission", native["needs"])
-        self.assertIn("needs.admission.outputs.applicable == 'true'", native["if"])
-        self.assertNotIn("triage", native["if"])
-        self.assertIn("native-evidence", self.jobs["agent"]["needs"])
+        self.assertNotIn("native-evidence", self.jobs)
         self.assertNotIn("native-runtime", self.jobs)
+        # CI ran before this workflow; None skips deep, not the native evidence
+        # available to the final summary.
+        summary = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(
+            encoding="utf-8"))["jobs"]["agent"]
+        for job in (self.jobs["agent"], summary):
+            native = next(step for step in job["steps"]
+                          if step.get("name") == "Download original-head CI native evidence")
+            self.assertNotIn("if", native)
+            self.assertEqual("${{ github.event.inputs.ci_run_id }}", native["with"]["run-id"])
+            self.assertEqual(
+                "ci-accessibility-native-${{ github.event.inputs.ci_run_id }}-${{ github.event.inputs.ci_run_attempt }}",
+                native["with"]["name"])
+            self.assertEqual("read", job["permissions"]["actions"])
 
     def test_native_selection_requires_complete_deep_production(self):
         check = next(step for step in self.jobs["agent"]["steps"]
@@ -270,10 +279,10 @@ class CompiledGraphTests(unittest.TestCase):
         summary = self.jobs["final-summary"]
         self.assertIn("always()", summary["if"])
         self.assertEqual(
-            {"admission", "agent", "native-evidence", "safe_outputs", "triage", "triage-route"},
+            {"admission", "agent", "safe_outputs", "triage", "triage-route"},
             set(summary["needs"]),
         )
-        for key in ("deep-result", "native-result", "publication-result", "triage-result", "route"):
+        for key in ("deep-result", "publication-result", "triage-result", "route"):
             self.assertIn(key, summary["with"])
         self.assertIn("needs.admission.result == 'success'", summary["if"])
         self.assertIn("needs.admission.outputs.applicable == 'true'", summary["if"])
@@ -281,14 +290,14 @@ class CompiledGraphTests(unittest.TestCase):
     def test_all_costly_entrypoints_require_ci_admission(self):
         self.assertIn("admission", self.jobs["triage"]["needs"])
         self.assertIn("needs.admission.outputs.applicable == 'true'", self.jobs["triage"]["if"])
-        self.assertIn("deep-admission", self.jobs["agent"]["needs"])
-        self.assertIn("triage-route", self.jobs["deep-admission"]["needs"])
+        self.assertIn("admission", self.jobs["agent"]["needs"])
+        self.assertNotIn("deep-admission", self.jobs)
+        admission = self.jobs["admission"]["steps"][-1]
+        self.assertIn("verifyCiSecurity({ artifactNames:", admission["with"]["script"])
+        self.assertIn("ci-accessibility-native-${run.id}-${run.run_attempt}", admission["with"]["script"])
         for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
             jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
-            costly = jobs.get("agent", jobs.get("native-smoke"))
-            self.assertIn("admission", costly["needs"])
-            self.assertTrue(any(step.get("uses") == "./.github/actions/accessibility-ci-admission"
-                                for step in jobs["admission"]["steps"]))
+            self.assertNotIn("admission", jobs)
         controller = yaml.safe_load((ROOT / ".github/workflows/ghaw-pr-accessibility-controller.yml").read_text())
         # PyYAML's YAML 1.1 parser represents the Actions `on` key as True.
         self.assertEqual(["PR CI"], controller[True]["workflow_run"]["workflows"])
@@ -302,25 +311,19 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertNotIn("native-selection", dependencies)
         self.assertNotIn("final-summary", dependencies)
 
-    def test_native_consumer_verifies_archive_before_models_and_never_uses_repairs(self):
-        consumer = self.jobs["native-evidence"]
-        admission = next(step for step in consumer["steps"]
-                         if step.get("uses") == "./.github/actions/accessibility-ci-admission")
-        self.assertEqual("true", admission["with"]["require-native"])
-        extraction = next(step for step in consumer["steps"]
-                          if step.get("name") == "Verify and extract untrusted CI native evidence")
-        self.assertEqual("${{ fromJSON(github.event.inputs.pull_request).head.sha }}",
-                         extraction["env"]["EXPECTED_HEAD_SHA"])
-        self.assertIn("ci-accessibility-payload.py extract-native", extraction["run"])
-        self.assertIn('--digest "$ARTIFACT_DIGEST"', extraction["run"])
-        self.assertNotIn("published-sha", str(consumer))
-        self.assertEqual("ubuntu-latest", consumer["runs-on"])
-        self.assertEqual("read", consumer["permissions"]["actions"])
-        upload = next(step for step in consumer["steps"]
-                      if step.get("name") == "Preserve verified original-head CI native evidence")
-        self.assertLess(consumer["steps"].index(extraction), consumer["steps"].index(upload))
-        self.assertNotIn("always()", upload.get("if", ""))
-        self.assertIn("native-evidence", self.jobs["deep-admission"]["needs"])
+    def test_native_consumer_uses_pinned_cross_run_download_before_models(self):
+        steps = self.jobs["agent"]["steps"]
+        download = next(step for step in steps
+                        if step.get("name") == "Download original-head CI native evidence")
+        self.assertRegex(download["uses"], r"^actions/download-artifact@[0-9a-f]{40}$")
+        self.assertEqual("${{ github.token }}", download["with"]["github-token"])
+        self.assertNotIn("published-sha", str(download))
+        execution = next(step for step in steps if step.get("id") == "agentic_execution")
+        self.assertLess(steps.index(download), steps.index(execution))
+        publication = self.jobs["publication-admission"]
+        self.assertIn("agent", publication["needs"])
+        self.assertIn("verifyCiSecurity({ artifactNames:", publication["steps"][-1]["run"])
+        self.assertIn("publication-admission", self.jobs["safe_outputs"]["needs"])
 
     def test_existing_parallel_ci_build_publishes_payload_without_a_second_build(self):
         ci = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
@@ -351,7 +354,7 @@ class CompiledGraphTests(unittest.TestCase):
             membership = next(step for step in jobs["pre_activation"]["steps"] if step.get("id") == "check_membership")
             self.assertEqual("github-actions[bot]", membership["env"]["GH_AW_ALLOWED_BOTS"])
             self.assertNotIn("read", membership["env"]["GH_AW_REQUIRED_ROLES"])
-            self.assertIn("admission", jobs["agent"]["needs"])
+            self.assertNotIn("admission", jobs)
 
     def test_reusable_workflow_permissions_fit_callers(self):
         levels = {"none": 0, "read": 1, "write": 2}
@@ -366,7 +369,7 @@ class CompiledGraphTests(unittest.TestCase):
             # The artifact conclusion handler needs actions:write at the caller
             # ceiling, never on the model job. No reusable job may publish issues.
             self.assertNotIn("issues", child["jobs"]["agent"]["permissions"])
-            self.assertNotIn("actions", child["jobs"]["agent"]["permissions"])
+            self.assertIn(child["jobs"]["agent"]["permissions"].get("actions"), (None, "read"))
             self.assertNotIn("issues", caller["permissions"])
 
     def test_original_triage_is_available_to_deep_and_final(self):
@@ -374,13 +377,14 @@ class CompiledGraphTests(unittest.TestCase):
         summary = (ROOT / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
         self.assertIn("Download original triage", deep)
         self.assertIn("inputs/accessibility-triage-*", summary)
-        self.assertIn("including uncertainty", summary)
+        self.assertIn("original triage explanation and Uncertain doubt", summary)
         self.assertIn("review incomplete", summary)
-        self.assertIn("never \"No issues\"", summary)
+        self.assertIn("None means deep review skipped, not accessibility passed", summary)
+        self.assertIn("complete deep handoff remains evidence when later\nvalidation/publication fails", summary)
 
     def test_model_triage_extraction_cannot_replace_verified_ci_native_evidence(self):
         steps = self.jobs["agent"]["steps"]
-        native = next(s for s in steps if s.get("name") == "Download verified original-head CI native evidence")
+        native = next(s for s in steps if s.get("name") == "Download original-head CI native evidence")
         triage = next(s for s in steps if s.get("name") == "Download original triage")
         native_path = native["with"]["path"]
         triage_path = triage["with"]["path"]
@@ -391,8 +395,15 @@ class CompiledGraphTests(unittest.TestCase):
         producer = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-triage.lock.yml").read_text(
             encoding="utf-8"))["jobs"]["agent"]
         upload = next(s for s in producer["steps"] if s.get("name") == "Preserve original triage even when invalid")
-        self.assertEqual(["/triage.md", "/triage-producer.txt"],
+        self.assertEqual(["/triage.md"],
                          ["/" + line.rsplit("/", 1)[-1] for line in upload["with"]["path"].splitlines()])
+        summary = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(
+            encoding="utf-8"))["jobs"]["agent"]
+        summary_inputs = next(s for s in summary["steps"] if s.get("name") == "Download review handoffs")
+        summary_native = next(s for s in summary["steps"]
+                              if s.get("name") == "Download original-head CI native evidence")
+        self.assertEqual(summary_native["with"]["path"].removesuffix("/native") + "/inputs",
+                         summary_inputs["with"]["path"])
         # A hostile extra native member in a retained/model-authored artifact
         # still stays in the triage namespace, even though producer scope now
         # prevents publishing it. Use the actual compiled destination suffix.
@@ -405,10 +416,13 @@ class CompiledGraphTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as stream:
                 stream.writestr("triage.md", "# None\n\nUntrusted model handoff.\n")
                 stream.writestr("native/fre/result.json", "forged PASS")
-            with zipfile.ZipFile(archive) as stream:
-                stream.extractall(root / triage_path.rsplit("/", 1)[-1])
-            self.assertEqual("verified original CI result", verified.read_text())
-            self.assertEqual("forged PASS", (root / "triage-input/native/fre/result.json").read_text())
+            for destination in (triage_path, summary_inputs["with"]["path"]):
+                with self.subTest(destination=destination):
+                    target = root / destination.rsplit("/", 1)[-1]
+                    with zipfile.ZipFile(archive) as stream:
+                        stream.extractall(target)
+                    self.assertEqual("verified original CI result", verified.read_text())
+                    self.assertEqual("forged PASS", (target / "native/fre/result.json").read_text())
 
     def test_native_selection_output_stays_at_explicit_run_root_after_triage_isolation(self):
         source = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")

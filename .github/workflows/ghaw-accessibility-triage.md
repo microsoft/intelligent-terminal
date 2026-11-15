@@ -47,21 +47,6 @@ env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
   ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
   ACCESSIBILITY_BASE_SHA: ${{ fromJSON(github.event.inputs.pull_request).base.sha }}
-jobs:
-  admission:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          persist-credentials: false
-      - uses: ./.github/actions/accessibility-ci-admission
-  agent:
-    needs: [admission]
 steps:
   - name: Prepare run directory
     run: |
@@ -79,29 +64,15 @@ post-steps:
         "Generated Files/$ACCESSIBILITY_RUN/triage.md" \
         --base "$ACCESSIBILITY_BASE_SHA" --head "$ACCESSIBILITY_HEAD_SHA" \
         --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
-  - name: Record triage producer identity even when incomplete
-    if: always()
-    env:
-      PRODUCER_HEAD: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
-      PRODUCER_WORKFLOW: ${{ github.workflow_sha }}
-      PRODUCER_OUTCOME: ${{ steps.agentic_execution.outcome }}
-      PRODUCER_RESULT: ${{ steps.actual-output.outcome == 'success' && 'Complete' || 'No result' }}
-      PRODUCER_STAGE: triage
-      PRODUCER_SOURCE: .github/workflows/ghaw-accessibility-triage.md
-      DIAGNOSTIC_ARTIFACT: ${{ needs.activation.outputs.artifact_prefix }}agent
-    run: |
-      python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" receipt \
-        "Generated Files/$ACCESSIBILITY_RUN/triage-producer.txt"
   - name: Preserve original triage even when invalid
     if: always()
     uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
     with:
-      # One current artifact per producer/run; the file records its actual attempt.
+      # Stable stage name supports retained jobs; job outcome gates consumption.
       name: accessibility-triage-${{ github.run_id }}
       overwrite: true
       path: |
         Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/triage.md
-        Generated Files/accessibility-${{ github.run_id }}-${{ github.run_attempt }}/triage-producer.txt
       if-no-files-found: warn
       retention-days: 14
 ---
@@ -144,5 +115,5 @@ The final summarizer also receives this original
 handoff, including uncertainty. Request noop after writing it.
 Do not use the final chat message or a safe-output noop as the handoff itself.
 Missing, empty, incomplete or crashed output is **No result**; never replace it
-with a guessed None/Uncertain decision. Native job logs and its diagnostic
-receipt remain available in Actions; no retry or synthetic AI fallback is used.
+with a guessed None/Uncertain decision. Use the existing gh-aw job diagnostics;
+no retry, custom session receipt or synthetic AI fallback is used.

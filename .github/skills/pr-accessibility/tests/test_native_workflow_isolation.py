@@ -12,6 +12,8 @@ import yaml
 
 
 ROOT = Path(__file__).parents[4]
+SCRATCH = ROOT / "Generated Files"
+SCRATCH.mkdir(exist_ok=True)
 
 
 class TrustedHarnessIdentityTests(unittest.TestCase):
@@ -19,7 +21,7 @@ class TrustedHarnessIdentityTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         step = workflow.split("      - name: Verify immutable trusted harness\n", 1)[1]
         script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("      - name:", 1)[0])
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
             root = Path(directory)
             harness = root / "trusted-accessibility"
             harness.mkdir()
@@ -59,7 +61,7 @@ class NativeCiIdentityTests(unittest.TestCase):
                        "GITHUB_REPOSITORY_ID": "42", "PR_REPOSITORY_ID": "42",
                        "EXPECTED_TRUSTED_SHA": "c" * 40, "TRUSTED_HARNESS_SHA": "c" * 40,
                        "PR_BASE_SHA": "b" * 40, "EXPECTED_HEAD_SHA": "a" * 40, "PR_HEAD_SHA": "a" * 40}
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
             path = Path(directory) / "verify.ps1"
             path.write_text("function git { '" + "c" * 40 + "' }\n" + step["run"], encoding="utf-8")
             for key, value in ((None, None), ("GITHUB_EVENT_NAME", "workflow_dispatch"),
@@ -71,6 +73,52 @@ class NativeCiIdentityTests(unittest.TestCase):
                                             capture_output=True, text=True, timeout=30)
                     self.assertEqual(key is None, result.returncode == 0, result.stderr)
 
+    def test_build_payload_uses_authoritative_same_run_artifact_not_self_reported_metadata(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8"))
+        step = next(s for s in workflow["jobs"]["native-smoke"]["steps"]
+                    if s.get("name") == "Download original build TestHost payload")
+        self.assertRegex(step["uses"], r"actions/download-artifact@[0-9a-f]{40}$")
+        self.assertEqual("ci-accessibility-testhost-${{ github.run_id }}-${{ inputs.payload-attempt }}",
+                         step["with"]["name"])
+        self.assertNotIn("run-id", step["with"])  # Cannot select another producer run.
+        self.assertNotIn("payload.json", str(workflow))
+
+
+class OrdinaryUnitCompletenessTests(unittest.TestCase):
+    def test_real_workflow_check_requires_every_unit_and_local_or_root_runner(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
+        step = next(s for s in workflow["jobs"]["cpp-tests"]["steps"]
+                    if s.get("name") == "Verify ordinary unit test completeness")
+        names = ("Conhost.Unit.Tests.dll", "Conhost.Interactivity.Win32.Unit.Tests.dll",
+                 "til.Unit.Tests.dll", "Types.Unit.Tests.dll", "TextBuffer.Unit.Tests.dll",
+                 "ConAdapter.Unit.Tests.dll", "ConParser.Unit.Tests.dll", "Control.Unit.Tests.dll",
+                 "SettingsModel.Unit.Tests.dll", "Terminal.Core.Unit.Tests.dll", "Terminal.App.Unit.Tests.dll")
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            root = Path(directory)
+            group = root / "bin/x64/Debug/units"
+            group.mkdir(parents=True)
+            for name in names:
+                (group / name).write_bytes(b"fixture")
+            runner = group / "te.exe"
+            runner.write_bytes(b"fixture")
+            script = root / "verify.ps1"
+            script.write_text(step["run"], encoding="utf-8")
+            for missing in (None, *names, "te.exe"):
+                path = group / missing if missing else None
+                if path:
+                    path.unlink()
+                with self.subTest(missing=missing):
+                    result = subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root,
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertEqual(missing is None, result.returncode == 0, result.stderr)
+                if path:
+                    path.write_bytes(b"fixture")
+            runner.unlink()
+            (group.parent / "te.exe").write_bytes(b"fixture")
+            result = subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root,
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, result.returncode, result.stderr)
+
 
 class FrameworkDependencyInstallationTests(unittest.TestCase):
     publisher = "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
@@ -79,7 +127,7 @@ class FrameworkDependencyInstallationTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         step = workflow.split("      - name: Install test host framework dependencies\n", 1)[1]
         script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("      - name: Scan FRE\n", 1)[0])
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
             root = Path(directory)
             helper_dir = root / "trusted-accessibility/build/scripts"
             package_dir = helper_dir / "packages"
@@ -166,7 +214,8 @@ if ($failure) { exit 1 }
 class NativeWorkflowIsolationTests(unittest.TestCase):
     def test_worker_consumes_ci_evidence_without_windows_or_builds(self):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
-        self.assertIn("\n  native-evidence:\n", compiled)
+        self.assertIn("Download original-head CI native evidence", compiled)
+        self.assertNotIn("\n  native-evidence:\n", compiled)
         self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         self.assertNotIn("windows-", compiled)
         self.assertNotIn("call tools\\razzle.cmd", compiled)
@@ -175,11 +224,14 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         compiled = (ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         publication = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("native-runtime", publication)
-        discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  native-evidence:\n", 1)[1], maxsplit=1)[0]
+        discovery = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  agent:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("- native-selection", discovery)
         self.assertNotIn("- safe_outputs", discovery)
-        self.assertIn("EXPECTED_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
-        self.assertIn("require-native: \"true\"", discovery)
+        self.assertIn("HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}", discovery)
+        self.assertIn("actions/download-artifact@", discovery)
+        self.assertIn("run-id:", discovery)
+        self.assertIn("ci-accessibility-native-", discovery)
+        self.assertNotIn("extract-native", discovery)
         self.assertNotIn("push_commit_sha", discovery)
 
     def test_reusable_native_definition_has_no_telemetry_or_secret_references(self):
@@ -228,7 +280,8 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertNotIn("call tools\\razzle.cmd", native)
         self.assertNotIn("call bx", native)
-        self.assertIn("ci-accessibility-payload.py extract", native)
+        self.assertIn("actions/download-artifact@", native)
+        self.assertNotIn("ci-accessibility-payload.py extract", native)
         for surface in ("fre", "fre-settings", "agents", "sidebar"):
             self.assertIn(f"-Surface {surface}", native)
         self.assertRegex(native, r"timeout-minutes: \d+")
@@ -255,12 +308,11 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
 
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("uses: ./.github/actions/accessibility-ci-admission", caller)
+        self.assertIn("verifyCiSecurity({ artifactNames:", caller)
         scope = (ROOT / "build/scripts/ci-accessibility-scope.mjs").read_text(encoding="utf-8")
-        admission = (ROOT / ".github/actions/accessibility-ci-admission/admission.mjs").read_text(encoding="utf-8")
         producer = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
         self.assertIn("export function relevantPath", scope)
-        self.assertIn("build/scripts/ci-accessibility-scope.mjs", admission)
+        self.assertIn("build/scripts/ci-accessibility-scope.mjs", caller)
         self.assertIn("build/scripts/ci-accessibility-scope.mjs", producer)
 
     def test_actual_sidebar_row_predicate_rejects_history_header_only_without_a_desktop(self):
@@ -268,7 +320,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         predicate = scan.split("Where-Object { ", 1)[1].split(" } |", 1)[0]
         current = {"ProcessId": 45, "IsOffscreen": False, "Name": "PowerShell",
                    "ClassName": "Microsoft.UI.Xaml.Controls.TreeViewItem", "AutomationId": ""}
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
             path = Path(directory) / "row-predicate.ps1"
             for mode, edits, expected in (
                 ("live-tab", {}, True),
@@ -357,7 +409,7 @@ foreach ($case in @('owned', 'missing-pattern', 'missing-owner', 'foreign-owner'
     if ($accepted -ne ($case -eq 'owned')) { throw "Wrong row selection owner admission: $case" }
 }
 """
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
             path = Path(directory) / "selection-predicate.ps1"
             path.write_text(script, encoding="utf-8")
             result = subprocess.run(["pwsh", "-NoProfile", "-File", str(path), str(scan_path)],

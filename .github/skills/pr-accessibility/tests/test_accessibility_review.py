@@ -1636,45 +1636,44 @@ class WorkflowContractTests(unittest.TestCase):
     def test_exact_citation_prompt_preserves_compact_no_finding_exception(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        self.assertIn("When detailed `review_checks` are included or actual findings exist", workflow)
-        self.assertIn("it does not need per-file citation records", workflow)
-        self.assertIn("Check all changed locales", workflow)
-        self.assertIn("Companion citations do not replace", workflow)
-        self.assertIn("prepared-signal coverage, reviewed-source identity", workflow)
-        self.assertNotIn("Before requesting completion or publication, check every", workflow)
+        skill = (root / ".github/skills/pr-accessibility/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("No-finding reports may omit detailed `review_checks`", workflow)
+        self.assertIn("Review all classified changed files and locales", workflow)
+        self.assertIn("signal coverage", workflow)
+        self.assertIn("The union of records must cover every classified changed file", skill)
+        self.assertIn("immutable source", skill)
 
     def test_agent_summary_is_written_from_template_and_displayed_unchanged(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn('--summary "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md"', workflow)
         summary = (root / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
-        self.assertIn('summary="Generated Files/$ACCESSIBILITY_RUN/summary.md"', summary)
         self.assertIn("## Human action and limits", workflow)
         self.assertIn("| Proposed fix commit |", workflow)
         self.assertIn("[commit SHA](COMMIT_URL)", workflow)
         self.assertIn("`${{ github.server_url }}`", workflow)
         self.assertIn("prepared `publication.repository`", workflow)
-        self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
+        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
         self.assertIn("original PR", workflow)
         self.assertIn("may revert any fix commit", workflow)
         self.assertIn("only once below the table", workflow)
-        self.assertIn("set `review_checks`, `findings`, `dismissed_signals` and `patch_files`", workflow)
-        self.assertIn("preserve every prepared runtime", workflow)
+        self.assertIn("emit empty", workflow)
+        self.assertIn("honest runtime-check statuses", workflow)
         self.assertIn("Include this paragraph only if repair commits exist; otherwise remove it.", workflow)
-        self.assertNotIn("script: |", workflow)
         self.assertNotIn("summary.push(", workflow)
 
     def test_native_discovery_is_preserved_without_a_summary_renderer(self):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", workflow)
-        self.assertIn("\n  native-evidence:", workflow)
+        self.assertIn("Download original-head CI native evidence", workflow)
         self.assertNotIn("checks: write", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
         self.assertNotIn("\n  accessibility-report:", compiled)
-        self.assertIn("\n  native-evidence:", compiled)
+        self.assertNotIn("\n  native-evidence:", compiled)
+        self.assertIn("ci-accessibility-native-", compiled)
         summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
-        self.assertIn('cat "$summary" >> "$GITHUB_STEP_SUMMARY"', summary)
+        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
 
     def test_support_paths_are_classified_by_trusted_ci_admission(self):
         root = Path(__file__).parents[4]
@@ -1682,11 +1681,11 @@ class WorkflowContractTests(unittest.TestCase):
         trigger = workflow.split("\npermissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger)
         self.assertNotIn("\n  pull_request:", trigger)
-        self.assertIn("uses: ./.github/actions/accessibility-ci-admission", workflow)
-        admission = (root / ".github/actions/accessibility-ci-admission/admission.mjs").read_text()
-        self.assertIn("files.some(file => relevantPath(file.filename)", admission)
-        self.assertIn("relevantPath(file.previous_filename", admission)
-        self.assertIn("validateCiDefinition(...trees)", admission)
+        self.assertIn("verifyCiSecurity({ artifactNames:", workflow)
+        self.assertIn("files.some(f => relevantPath(f.filename)", workflow)
+        self.assertIn("relevantPath(f.previous_filename", workflow)
+        shared = (root / ".github/skills/ghaw-pr-security/scripts/security-review.mjs").read_text()
+        self.assertIn("validateCiDefinition(api(", shared)
 
     def test_agent_and_detection_have_explicit_spend_caps(self):
         root = Path(__file__).parents[4]
@@ -1720,7 +1719,7 @@ class WorkflowContractTests(unittest.TestCase):
         upload = workflow.split("name: Upload deep review evidence even when incomplete", 1)[1].split("\n---", 1)[0]
         self.assertIn("if: always()", upload)
         self.assertIn("path: |", upload)
-        for filename in ("prepared.json", "final.json", "deep-summary.md", "native-checks.md", "deep-producer.txt"):
+        for filename in ("prepared.json", "final.json", "deep-summary.md", "native-checks.md"):
             self.assertIn(f"Generated Files/accessibility-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}/{filename}",
                           upload)
         self.assertIn('Generated Files/$ACCESSIBILITY_RUN/final.json', workflow)
@@ -1732,7 +1731,7 @@ class WorkflowContractTests(unittest.TestCase):
         stage = workflow.index('git show "$WORKFLOW_SHA:.github/skills/pr-accessibility/SKILL.md"')
         checkout = workflow.index('git checkout -B "$HEAD_REF" "$HEAD_SHA"')
         self.assertLess(stage, checkout)
-        self.assertRegex(workflow, r"follow the\s+staged skill")
+        self.assertIn("Follow that skill", workflow)
         self.assertIn('--prepared "$TRUSTED_ACCESSIBILITY/prepared.json"', workflow)
         self.assertIn("--no-replace-objects", workflow)
         compiled = (root / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(encoding="utf-8")
@@ -1763,8 +1762,8 @@ class WorkflowContractTests(unittest.TestCase):
         dependencies = agent.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
         self.assertIn("- activation", dependencies)
         self.assertIn("- triage-route", dependencies)
-        self.assertIn("- native-evidence", dependencies)
-        self.assertIn("\n  native-evidence:\n", compiled)
+        self.assertIn("- admission", dependencies)
+        self.assertIn("Download original-head CI native evidence", agent)
         self.assertNotIn("uses: ./.github/workflows/native-accessibility.yml", compiled)
         publisher = re.split(r"\n  [a-zA-Z][\w-]*:\n", compiled.split("\n  safe_outputs:\n", 1)[1], maxsplit=1)[0]
         dependencies = publisher.split("    needs:\n", 1)[1].split("\n    if:", 1)[0]
@@ -1797,9 +1796,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Get-DependenciesFromAppxRecipe.ps1", workflow)
         self.assertIn("shell: powershell", workflow)
         self.assertIn("FRE_SETTINGS_OUTCOME", workflow)
-        self.assertIn("name: Checkout trusted native harness", workflow)
+        self.assertIn("name: Checkout immutable trusted consumer", workflow)
         self.assertIn("trusted-accessibility\\test\\accessibility\\Invoke-AxeWindowsTestHost.ps1", workflow)
-        self.assertIn("ci-accessibility-payload.py check-native", workflow)
+        self.assertIn("ci-accessibility-payload.py record-native", workflow)
         transport = (root / "build/scripts/ci-accessibility-payload.py").read_text(encoding="utf-8")
         self.assertIn('n.get("is_offscreen") is False', transport)
         self.assertIn('scan["visible_state_marker"] != marker', transport)

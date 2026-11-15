@@ -1022,7 +1022,7 @@ export function validateCiArtifacts(artifacts, run) {
   });
 }
 
-export function verifyCiSecurity({ environment = process.env, request } = {}) {
+export function verifyCiSecurity({ environment = process.env, request, artifactNames } = {}) {
   const repository = environment.GITHUB_REPOSITORY;
   const identity = {
     repository, repositoryId: Number(environment.GITHUB_REPOSITORY_ID),
@@ -1044,7 +1044,7 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   const collect = (endpoint, key) => {
     const items = [];
     for (let page = 1; page <= 20; page++) {
-      const batch = api(`${endpoint}?per_page=100&page=${page}`)[key];
+      const batch = api(`${endpoint}${endpoint.includes('?') ? '&' : '?'}per_page=100&page=${page}`)[key];
       if (!Array.isArray(batch)) fail('invalid CI API list');
       items.push(...batch);
       if (batch.length < 100) return items;
@@ -1060,7 +1060,15 @@ export function verifyCiSecurity({ environment = process.env, request } = {}) {
   validateCiDefinition(api(`git/trees/${identity.headSha}?recursive=1`),
     api(`git/trees/${comparison.merge_base_commit.sha}?recursive=1`));
   validateCiPull(api(`pulls/${identity.prNumber}`), run, identity);
-  const artifacts = validateCiArtifacts(collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts'), run);
+  if (artifactNames) {
+    // Other CI consumers reuse this identity boundary, not the security report schema.
+    validateCiFreshness(run, collect(
+      `actions/workflows/${workflow.id}/runs?event=pull_request&head_sha=${identity.headSha}`, 'workflow_runs'));
+  }
+  const available = collect(`actions/runs/${identity.runId}/artifacts`, 'artifacts');
+  const artifacts = artifactNames
+    ? artifactNames(run).map(name => validateCiArtifact(available, run, name))
+    : validateCiArtifacts(available, run);
   return { run, artifacts, identity: { runId: String(run.id), runAttempt: run.run_attempt, headSha: run.head_sha } };
 }
 
