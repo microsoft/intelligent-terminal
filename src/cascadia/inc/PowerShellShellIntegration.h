@@ -978,10 +978,9 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // functions, whose non-terminating Set-Location errors leave $? true.
     // v14: limit shell integration to Intelligent Terminal using its host marker.
     // v15: keep per-wrapper prompt delegates stable across renderer restoration.
-    // v16: safely leave older sessions untouched when strict mode is enabled.
-    // v17: retain manual prompt rearming in constrained language.
+    // Preserve strict-mode legacy sessions and constrained-language manual rearming.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 17;
+    inline constexpr int kVersion = 15;
 
     inline std::wstring ScriptFileName()
     {
