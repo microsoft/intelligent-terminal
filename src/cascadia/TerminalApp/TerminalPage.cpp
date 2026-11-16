@@ -6195,20 +6195,55 @@ namespace winrt::TerminalApp::implementation
                     }
                     self->_layoutUpdatedRevoker.revoke();
                     const auto groups = std::exchange(self->_startupKeptGroups, {});
+                    const auto manager = winrt::get_self<ContentManager>(self->_manager);
+                    std::vector<winrt::guid> selectionCandidates;
+                    for (const auto& groupId : groups)
+                    {
+                        if (manager->WasKeptGroupSelectedOnWindowClose(groupId))
+                        {
+                            selectionCandidates.push_back(groupId);
+                        }
+                    }
                     _agentPaneLog(fmt::format("restoring kept startup tabs count={} content_width={} content_height={}",
                                               groups.size(),
                                               self->_tabContent.ActualWidth(),
                                               self->_tabContent.ActualHeight()));
                     for (const auto& groupId : groups)
                     {
+                        const auto candidate = std::ranges::find(selectionCandidates, groupId);
+                        const auto stableId = winrt::to_hstring(groupId);
+                        const auto existingTab = candidate != selectionCandidates.end() ? self->_FindTabByStableId(stableId) : nullptr;
+                        const bool alreadyPresent = existingTab && self->_GetTabIndex(*existingTab).has_value();
+                        bool restored = false;
+                        bool restoreThrew = false;
                         try
                         {
-                            self->RestoreKeptGroup(groupId);
+                            restored = self->RestoreKeptGroup(groupId);
                         }
                         catch (...)
                         {
+                            restoreThrew = true;
                             LOG_CAUGHT_EXCEPTION();
                             _agentPaneLog(fmt::format("kept startup tab restore failed tab={}", winrt::to_string(winrt::to_hstring(groupId))));
+                        }
+                        // Notifications may throw after commit. Only a newly attached,
+                        // consumed group can restore this batch's window selection.
+                        if (candidate != selectionCandidates.end() &&
+                            (alreadyPresent || (!restored && !restoreThrew) ||
+                             self->_manager.KeptGroupOwner(groupId) || !self->_FindTabByStableId(stableId)))
+                        {
+                            selectionCandidates.erase(candidate);
+                        }
+                    }
+                    for (const auto& groupId : selectionCandidates)
+                    {
+                        if (const auto tab = self->_FindTabByStableId(winrt::to_hstring(groupId)))
+                        {
+                            if (const auto index = self->_GetTabIndex(*tab))
+                            {
+                                self->_SelectTab(*index);
+                                break;
+                            }
                         }
                     }
                     self->_restoringStartupKeptGroups = false;
@@ -15792,6 +15827,8 @@ namespace winrt::TerminalApp::implementation
             }
         }
         CATCH_LOG()
+        const auto selectedTab = _GetFocusedTabImpl();
+        const auto selectedTabId = selectedTab ? winrt::guid{ selectedTab->StableId() } : winrt::guid{};
         _windowCloseAccepted = true;
         auto rollback = wil::scope_exit([&]() noexcept {
             _windowCloseAccepted = false;
@@ -15802,6 +15839,7 @@ namespace winrt::TerminalApp::implementation
         {
             _KeepTabRunning(_GetTabImpl(tab));
         }
+        winrt::get_self<ContentManager>(_manager)->MarkKeptGroupSelectedOnWindowClose(*this, selectedTabId);
         rollback.release();
         CloseWindowRequested.raise(*this, closingLayout);
     }

@@ -810,6 +810,23 @@ namespace winrt::TerminalApp::implementation
         return it == _keptGroups.end() ? nullptr : it->second.owner;
     }
 
+    void ContentManager::MarkKeptGroupSelectedOnWindowClose(const winrt::TerminalApp::TerminalPage& owner, const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        if (it != _keptGroups.end() && it->second.owner == owner && !it->second.restoring)
+        {
+            it->second.selectedOnWindowClose = true;
+        }
+    }
+
+    bool ContentManager::WasKeptGroupSelectedOnWindowClose(const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        return it != _keptGroups.end() && !it->second.restoring && it->second.selectedOnWindowClose;
+    }
+
     winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> ContentManager::KeptPanes()
     {
         _CheckThread();
