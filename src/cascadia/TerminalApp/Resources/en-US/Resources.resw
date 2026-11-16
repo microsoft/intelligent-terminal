@@ -172,6 +172,10 @@
     <value>{0} panes</value>
     <comment>Pane count shown after the shell or tab title on the first line of a tooltip. Only used when a tab contains more than one pane. {0} is the number of panes.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Pane {0} of {1}</value>
+    <comment>Accessible context appended to a pane activation button's title and status in the sidebar. Distinguishes panes with identical titles. {0} is the one-based position among the tab's visible pane rows, in display order; {1} is the total number of those rows. This phrase is also the accessible name when the pane has no title. Pane is a noun, not a command.</comment>
+  </data>
   <data name="TabCloseSubMenu" xml:space="preserve">
     <value>Close</value>
   </data>

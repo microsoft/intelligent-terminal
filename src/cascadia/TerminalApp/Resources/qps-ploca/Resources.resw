@@ -1739,4 +1739,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>[!!_Ŵåïţïñğ ƒöŕ åûţĥöŕïžåţïöñ..._!!]</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>[!!_Ｐａｎｅ {0} ｏｆ {1}_!!]</value>
+  </data>
 </root>

@@ -2110,3 +2110,5 @@ workstream
 AXSTATIC
 ghaw
 OTLP
+testhost
+ucrtbased

@@ -1766,4 +1766,7 @@
     <value>正在等待授权...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>第 {0} 个窗格，共 {1} 个</value>
+  </data>
 </root>

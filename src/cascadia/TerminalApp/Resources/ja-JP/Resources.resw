@@ -1751,4 +1751,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>承認を待機中...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{1} 個中 {0} 番目のペイン</value>
+  </data>
 </root>

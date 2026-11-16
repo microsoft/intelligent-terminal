@@ -849,4 +849,7 @@
     <value>ଅନୁମୋଦନ ପାଇଁ ଅପେକ୍ଷା ହେଉଛି...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>ମୋଟ {1}ରୁ ପେନ୍ {0}</value>
+  </data>
 </root>

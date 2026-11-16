@@ -556,6 +556,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabKeyboardFocusPreservesSelection);
+        TEST_METHOD(VerticalTabAutomationSelectionOwner);
+        TEST_METHOD(VerticalTabPaneAutomationNames);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(PaneContextMenuOmitsDirectClose);
         TEST_METHOD(VerticalTabPaneSelectionTracksSelectedTab);
@@ -855,6 +857,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(WindowSnapshotPrefersCurrentWindows);
         TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
         TEST_METHOD(KeepRunningStartupRestoresBatchAfterLayout);
+        TEST_METHOD(KeepRunningWindowCloseRestoresSelection);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(ElevatedPersistedTabKeepsShellCommands);
@@ -3938,6 +3941,294 @@ namespace TerminalAppLocalTests
                 destination->_OnFirstLayout(nullptr, nullptr);
                 VERIFY_ARE_EQUAL(rejectFirst ? 1u : 2u, destination->_tabs.Size());
             });
+        }
+    }
+
+    void TabTests::KeepRunningWindowCloseRestoresSelection()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+        const auto applicationState = ApplicationState::SharedInstance();
+        bool freCompleted{};
+        TestOnUIThread([&]() {
+            freCompleted = applicationState.AgentFreCompleted();
+            applicationState.AgentFreCompleted(true);
+        });
+        const auto restoreFre = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { applicationState.AgentFreCompleted(freCompleted); });
+        });
+        enum class Outcome
+        {
+            Restore,
+            RejectPreferred,
+            DiscardPreferred,
+            NonKeptPreferred,
+            RejectAll,
+            ExplicitOther,
+            MultipleOwners,
+            RejectEarlierOwner,
+        };
+        struct Scenario
+        {
+            uint32_t selected{};
+            bool reversed{};
+            bool persisted{};
+            Outcome outcome{ Outcome::Restore };
+        };
+        std::vector<Scenario> scenarios;
+        for (const auto persisted : { false, true })
+        {
+            for (const auto reversed : { false, true })
+            {
+                for (uint32_t selected = 0; selected < 3; ++selected)
+                {
+                    scenarios.push_back({ selected, reversed, persisted });
+                }
+            }
+        }
+        for (const auto outcome : { Outcome::RejectPreferred, Outcome::DiscardPreferred, Outcome::NonKeptPreferred, Outcome::RejectAll, Outcome::ExplicitOther })
+        {
+            scenarios.push_back({ 0, false, false, outcome });
+            scenarios.push_back({ 1, true, true, outcome });
+        }
+        for (const auto outcome : { Outcome::MultipleOwners, Outcome::RejectEarlierOwner })
+        {
+            scenarios.push_back({ 0, false, false, outcome });
+            scenarios.push_back({ 2, true, false, outcome });
+        }
+        for (const auto& scenario : scenarios)
+        {
+            const auto hidden = scenario.selected != 2;
+            auto fixture = _createContentTransferFixture(false, hidden, true, false, 100);
+            ::details::Event completed;
+            ::details::Event nextTurn;
+            winrt::event_token initializedToken{};
+            winrt::event_token closeToken{};
+            winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> peer;
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    fixture->destination->Initialized(initializedToken);
+                    fixture->destination->CloseWindowRequested(closeToken);
+                    fixture->source->_manager.DiscardAllKeptGroups();
+                    if (peer)
+                    {
+                        peer->ShutdownPanes();
+                        peer = nullptr;
+                    }
+                    _closeContentTransferFixture(*fixture, false);
+                    fixture.reset();
+                });
+            });
+            std::vector<winrt::guid> groups;
+            std::vector<uint64_t> contentIds;
+            std::vector<std::shared_ptr<::details::Event>> ready;
+            TestOnUIThread([&]() {
+                const auto source = fixture->source;
+                groups.emplace_back(fixture->original.stableId);
+                contentIds.push_back(fixture->original.activePane->GetTerminalControl().ContentId());
+                for (uint32_t i = 1; i < 3; ++i)
+                {
+                    winrt::guid id;
+                    VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&id)));
+                    const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+                    fixture->connections.push_back(connection);
+                    const auto pane = source->_MakePane(nullptr, nullptr, *connection);
+                    const auto initialized = std::make_shared<::details::Event>();
+                    pane->GetTerminalControl().Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
+                    ready.push_back(initialized);
+                    source->_CreateNewTabFromPane(pane);
+                    const auto tab = source->_GetFocusedTabImpl();
+                    tab->SuppressAgentPrewarm();
+                    groups.emplace_back(tab->StableId());
+                    contentIds.push_back(tab->GetActiveTerminalControl().ContentId());
+                }
+                fixture->host.UpdateLayout();
+            });
+            for (const auto& initialized : ready)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
+            }
+            std::vector<winrt::guid> restoreOrder = groups;
+            if (scenario.reversed)
+            {
+                std::ranges::reverse(restoreOrder);
+            }
+            const auto preferred = groups[scenario.selected];
+            std::vector<winrt::guid> expectedOrder;
+            winrt::guid expected{};
+            const auto verifySelection = [&]() {
+                const auto destination = fixture->destination;
+                VERIFY_ARE_EQUAL(expectedOrder.size(), static_cast<size_t>(destination->_tabs.Size()));
+                if (!expectedOrder.empty())
+                {
+                    const auto tab = destination->_GetFocusedTabImpl();
+                    VERIFY_IS_NOT_NULL(tab);
+                    VERIFY_ARE_EQUAL(winrt::to_hstring(expected), tab->StableId());
+                    const auto originalIndex = static_cast<size_t>(std::ranges::find(groups, expected) - groups.begin());
+                    VERIFY_ARE_EQUAL(contentIds[originalIndex], tab->GetActiveTerminalControl().ContentId());
+                    for (uint32_t i = 0; i < expectedOrder.size(); ++i)
+                    {
+                        VERIFY_ARE_EQUAL(winrt::to_hstring(expectedOrder[i]), destination->_GetTabImpl(destination->_tabs.GetAt(i))->StableId());
+                    }
+                }
+            };
+            TestOnUIThread([&]() {
+                const auto source = fixture->source;
+                source->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+                source->_settings.GlobalSettings().FirstWindowPreference(
+                    scenario.persisted ? FirstWindowPreference::PersistedLayout : FirstWindowPreference::DefaultProfile);
+                for (uint32_t i = 0; i < groups.size(); ++i)
+                {
+                    source->_GetTabImpl(source->_tabs.GetAt(i))->KeepRunning(scenario.outcome != Outcome::NonKeptPreferred || i != scenario.selected);
+                }
+                const auto first = fixture->original.tab;
+                first->ToggleZoom();
+                VERIFY_IS_TRUE(source->_SelectTab(scenario.selected));
+                VERIFY_ARE_EQUAL(winrt::to_hstring(preferred), source->_GetFocusedTabImpl()->StableId());
+                source->CloseWindow();
+                VERIFY_IS_TRUE(source->_windowCloseAccepted);
+                VERIFY_ARE_EQUAL(scenario.outcome == Outcome::NonKeptPreferred ? 1u : 0u, source->_tabs.Size());
+                source->ShutdownPanes();
+                const auto destination = fixture->destination;
+                const auto multipleOwners = scenario.outcome == Outcome::MultipleOwners || scenario.outcome == Outcome::RejectEarlierOwner;
+                if (multipleOwners)
+                {
+                    peer = _createStartupRestorePeer(source);
+                    fixture->host.Children().Append(*peer);
+                    fixture->host.UpdateLayout();
+                    VERIFY_IS_TRUE(peer->RestoreKeptGroup(restoreOrder[1]));
+                    peer->CloseWindow();
+                    VERIFY_IS_TRUE(peer->_windowCloseAccepted);
+                    VERIFY_ARE_EQUAL(0u, peer->_tabs.Size());
+                }
+                if (scenario.outcome == Outcome::ExplicitOther)
+                {
+                    restoreOrder = { groups[(scenario.selected + 1) % groups.size()] };
+                }
+                for (const auto& id : restoreOrder)
+                {
+                    const auto missing = id == preferred &&
+                                         (scenario.outcome == Outcome::DiscardPreferred || scenario.outcome == Outcome::NonKeptPreferred);
+                    const auto rejected = scenario.outcome == Outcome::RejectAll ||
+                                          ((scenario.outcome == Outcome::RejectPreferred || scenario.outcome == Outcome::RejectEarlierOwner) && id == preferred);
+                    if (!missing && !rejected)
+                    {
+                        expectedOrder.push_back(id);
+                    }
+                }
+                if (!expectedOrder.empty())
+                {
+                    expected = scenario.outcome == Outcome::Restore ? preferred : expectedOrder.back();
+                    if (multipleOwners)
+                    {
+                        expected = scenario.outcome == Outcome::MultipleOwners ? preferred : restoreOrder[1];
+                    }
+                }
+                if (scenario.outcome == Outcome::RejectPreferred || scenario.outcome == Outcome::RejectAll || scenario.outcome == Outcome::RejectEarlierOwner)
+                {
+                    const auto preferredContent = contentIds[scenario.selected];
+                    destination->_contentTransferTestHook = [=](Stage stage, uint64_t contentId, uint32_t) {
+                        THROW_HR_IF(E_ABORT, stage == Stage::ControlAttached && (scenario.outcome == Outcome::RejectAll || contentId == preferredContent));
+                    };
+                }
+                initializedToken = destination->Initialized([&](auto&&, auto&&) {
+                    verifySelection();
+                    completed.Set();
+                    fixture->destination->Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low, [&]() {
+                        verifySelection();
+                        nextTurn.Set();
+                    });
+                });
+                closeToken = destination->CloseWindowRequested([&](auto&&, auto&&) {
+                    VERIFY_IS_TRUE(expectedOrder.empty());
+                    completed.Set();
+                });
+                destination->SetStartupKeptGroups(restoreOrder);
+                destination->_OnFirstLayout(nullptr, nullptr);
+                destination->ContentTransferReceiverReady();
+                destination->ContentTransferReceiverReady();
+                VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+                if (scenario.outcome == Outcome::DiscardPreferred)
+                {
+                    // The queued startup callback must tolerate a group disappearing.
+                    source->_manager.DiscardKeptGroup(preferred);
+                }
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+            if (!expectedOrder.empty())
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+            }
+            TestOnUIThread([&]() {
+                const auto destination = fixture->destination;
+                verifySelection();
+                VERIFY_IS_FALSE(destination->_restoringStartupKeptGroups);
+                destination->ContentTransferReceiverReady();
+                destination->_OnFirstLayout(nullptr, nullptr);
+                verifySelection();
+                if (const auto first = destination->_FindTabByStableId(fixture->original.stableId))
+                {
+                    VERIFY_ARE_EQUAL(3, first->GetLeafPaneCount());
+                    VERIFY_ARE_EQUAL(hidden, first->HasStashedAgentPane());
+                    VERIFY_IS_TRUE(first->IsZoomed());
+                    VERIFY_ARE_EQUAL(contentIds[0], first->GetActiveTerminalControl().ContentId());
+                }
+                for (uint32_t i = 0; i < groups.size(); ++i)
+                {
+                    const auto intentionallyClosed = i == scenario.selected &&
+                                                     (scenario.outcome == Outcome::DiscardPreferred || scenario.outcome == Outcome::NonKeptPreferred);
+                    if (!intentionallyClosed)
+                    {
+                        const auto connectionIndex = i == 0 ? 0 : fixture->connections.size() - 3 + i;
+                        VERIFY_ARE_EQUAL(0u, fixture->connections[connectionIndex]->CloseCount());
+                    }
+                }
+                if (scenario.outcome == Outcome::RejectPreferred)
+                {
+                    VERIFY_IS_TRUE(fixture->source->_manager.KeptGroups().HasKey(preferred));
+                    destination->_contentTransferTestHook = {};
+                    const auto other = expectedOrder.back();
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(other))));
+                    expectedOrder.pop_back();
+                    expectedOrder.push_back(preferred);
+                    expectedOrder.push_back(other);
+                    expected = preferred;
+                    ResetEvent(completed.m_handle);
+                    ResetEvent(nextTurn.m_handle);
+                    destination->_startupState = winrt::TerminalApp::implementation::StartupState::NotInitialized;
+                    destination->SetStartupKeptGroups({ preferred, other });
+                    destination->_OnFirstLayout(nullptr, nullptr);
+                }
+                if (scenario.outcome == Outcome::ExplicitOther)
+                {
+                    VERIFY_IS_TRUE(destination->RestoreKeptGroup(preferred));
+                    const auto other = groups[(scenario.selected + 2) % groups.size()];
+                    VERIFY_IS_TRUE(destination->RestoreKeptGroup(other));
+                    VERIFY_ARE_EQUAL(winrt::to_hstring(other), destination->_GetFocusedTabImpl()->StableId());
+                }
+            });
+            if (scenario.outcome == Outcome::RejectPreferred)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+                TestOnUIThread([&]() {
+                    verifySelection();
+                    const auto destination = fixture->destination;
+                    const auto other = expectedOrder.back();
+                    // A consumed selection marker must not survive a fresh keep.
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(preferred))));
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(other))));
+                    expected = other;
+                    ResetEvent(completed.m_handle);
+                    ResetEvent(nextTurn.m_handle);
+                    destination->_startupState = winrt::TerminalApp::implementation::StartupState::NotInitialized;
+                    destination->SetStartupKeptGroups({ preferred, other });
+                    destination->_OnFirstLayout(nullptr, nullptr);
+                });
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+                TestOnUIThread([&]() { verifySelection(); });
+            }
         }
     }
 
@@ -21144,6 +21435,139 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(Visibility::Visible, paneBackground.Visibility());
             VERIFY_IS_TRUE(strip.SelectedItem() == second);
             VERIFY_ARE_EQUAL(1u, selectionChanges);
+        });
+    }
+
+    void TabTests::VerticalTabAutomationSelectionOwner()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            namespace Peers = Automation::Peers;
+            namespace Providers = Automation::Provider;
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem first, second;
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.SelectedItem(second);
+            strip.UpdateLayout();
+
+            const auto wrapper = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(strip);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Group, wrapper.GetAutomationControlType());
+            VERIFY_ARE_EQUAL(impl->VerticalTabsHeader().Text(), wrapper.GetName());
+            VERIFY_IS_NULL(wrapper.GetPattern(Peers::PatternInterface::Selection));
+            const auto tree = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(impl->ItemsList());
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Tree, tree.GetAutomationControlType());
+            const auto selection = tree.GetPattern(Peers::PatternInterface::Selection).as<Providers::ISelectionProvider>();
+            VERIFY_IS_FALSE(selection.CanSelectMultiple());
+            // WinUI 2.8 TreeViewListAutomationPeer::GetSelection deliberately
+            // returns an empty array (virtualized/collapsed nodes). The native
+            // row providers and TreeView model are the selected-state contract.
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+
+            const auto firstRow = strip.ContainerFromIndex(0).as<Control>();
+            const auto secondRow = strip.ContainerFromIndex(1).as<Control>();
+            const auto firstPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(firstRow);
+            const auto secondPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(secondRow);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::TreeItem, firstPeer.GetAutomationControlType());
+            const auto firstSelection = firstPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            const auto secondSelection = secondPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            VERIFY_IS_NOT_NULL(firstSelection.SelectionContainer());
+            VERIFY_IS_TRUE(firstSelection.SelectionContainer() == secondSelection.SelectionContainer());
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+
+            uint32_t changes = 0;
+            const auto changed = strip.SelectionChanged(winrt::auto_revoke, [&](auto&&, auto&&) { ++changes; });
+            VERIFY_IS_TRUE(firstRow.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(0u, changes);
+            firstSelection.Select();
+            VERIFY_IS_TRUE(strip.SelectedItem() == first);
+            VERIFY_IS_TRUE(firstSelection.IsSelected());
+            VERIFY_IS_FALSE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(1u, changes);
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(first));
+            strip.SelectedItem(second);
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_ARE_EQUAL(2u, changes);
+
+            // A caller-supplied label still wins over the localized heading.
+            Automation::AutomationProperties::SetName(strip, L"Caller sidebar label");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Caller sidebar label" }, wrapper.GetName());
+            strip.TabItems().RemoveAt(0);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+        });
+    }
+
+    void TabTests::VerticalTabPaneAutomationNames()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Agent group"));
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            const auto first = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"GitHub Copilot", true);
+            const auto second = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"GitHub Copilot", false);
+            const auto panes = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first, second });
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            const auto row = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+            const auto paneList = row.Children().GetAt(1).as<ItemsControl>();
+            const auto buttonAt = [&](const uint32_t index) {
+                return Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(index), 0).as<FrameworkElement>().FindName(L"PaneActivateButton").as<Button>();
+            };
+            const auto nameAt = [&](const uint32_t index) {
+                return Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(buttonAt(index)).GetName();
+            };
+            const auto position = [&](const uint32_t index, const uint32_t count) {
+                return winrt::hstring{ RS_fmt(L"SidebarPanePosition", index, count) };
+            };
+            VERIFY_IS_FALSE(position(1, 2).empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(2, 2), nameAt(1));
+            VERIFY_IS_FALSE(nameAt(0) == nameAt(1));
+
+            // Different session context and status survive in the actual peers.
+            first.AutomationName(L"GitHub Copilot, repository alpha, needs attention");
+            second.AutomationName(L"GitHub Copilot, repository beta, complete");
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(second.AutomationName() + L", " + position(2, 2), nameAt(1));
+            const auto retained = impl->DisplayItemForTab(tab).PaneItems().GetAt(0);
+
+            // The same bound row gets the new position after reconciliation.
+            const auto reordered = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ second, first });
+            impl->SetPaneItems(tab, reordered, true);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->DisplayItemForTab(tab).PaneItems().GetAt(1) == retained);
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(2, 2), nameAt(1));
+            VERIFY_IS_TRUE(buttonAt(1).Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+
+            uint32_t activatedId = 0;
+            const auto activation = strip.PaneActivationRequested(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                activatedId = args.ContentId();
+            });
+            impl->OnPaneActivateClick(buttonAt(1), RoutedEventArgs{});
+            VERIFY_ARE_EQUAL(11u, activatedId);
+
+            first.AutomationName(L"");
+            impl->SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first }), false);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(position(1, 1), nameAt(0));
+            VERIFY_IS_TRUE(first.AutomationName().empty());
         });
     }
 

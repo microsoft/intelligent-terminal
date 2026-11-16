@@ -663,4 +663,7 @@
     <value>Baimenaren zain...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{0}. panela ({1} guztira)</value>
+  </data>
 </root>

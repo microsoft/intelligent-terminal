@@ -1,0 +1,71 @@
+name: Accessibility Review after CI
+on:
+  workflow_run:
+    workflows: ['PR CI']
+    types: [completed]
+permissions: {}
+concurrency:
+  group: accessibility-ci-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+jobs:
+  admit:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.id == github.event.repository.id
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Admit and dispatch current relevant CI
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          TRUSTED_SHA: ${{ github.workflow_sha }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { validateCiRun, validateCiPull } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/.github/skills/ghaw-pr-security/scripts/security-review.mjs`));
+            const { relevantPath } = await import(pathToFileURL(
+              `${process.env.GITHUB_WORKSPACE}/build/scripts/ci-accessibility-scope.mjs`));
+            const source = context.payload.workflow_run;
+            const run = (await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id })).data;
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const identity = { repository, repositoryId: context.payload.repository.id,
+              runId: String(source.id), runAttempt: source.run_attempt, headSha: source.head_sha,
+              defaultBranch: context.payload.repository.default_branch };
+            validateCiRun(run, identity);
+            const associated = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { ...context.repo, commit_sha: run.head_sha, per_page: 100 });
+            const candidates = associated.filter(pr => pr.state === 'open' &&
+              pr.head?.sha === run.head_sha && pr.head?.ref === run.head_branch &&
+              pr.head?.repo?.id === identity.repositoryId && pr.base?.repo?.id === identity.repositoryId);
+            if (candidates.length !== 1) throw Error('Expected one current same-repository CI pull request.');
+            const pr = (await github.rest.pulls.get({ ...context.repo, pull_number: candidates[0].number })).data;
+            validateCiPull(pr, run, { ...identity, prNumber: pr.number });
+            if (pr.draft) return;
+            const files = await github.paginate(github.rest.pulls.listFiles,
+              { ...context.repo, pull_number: pr.number, per_page: 100 });
+            if (files.length < 3000 && !files.some(f => relevantPath(f.filename) || relevantPath(f.previous_filename || ''))) return;
+            // Only immutable routing identity crosses into the default-branch worker.
+            const pull = { number: pr.number,
+              head: { sha: pr.head.sha, ref: pr.head.ref, repo: { id: identity.repositoryId, full_name: repository } },
+              base: { sha: pr.base.sha, ref: pr.base.ref, repo: { id: identity.repositoryId, full_name: repository } } };
+            const reviews = await github.paginate(github.rest.actions.listWorkflowRuns,
+              { ...context.repo, workflow_id: 'ghaw-pr-accessibility.lock.yml',
+                event: 'workflow_dispatch', per_page: 100 });
+            if (reviews.some(review => review.display_title === `Accessibility CI ${run.id}-${run.run_attempt}`)) return;
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'ghaw-pr-accessibility.lock.yml',
+              ref: identity.defaultBranch,
+              inputs: {
+                pull_request: JSON.stringify(pull),
+                ci_run_id: String(run.id), ci_run_attempt: String(run.run_attempt),
+                expected_workflow_sha: process.env.TRUSTED_SHA,
+                aw_context: JSON.stringify({ item_type: 'pull_request', item_number: pr.number,
+                  repo: repository, event_type: 'pull_request', head_sha: pr.head.sha, base_sha: pr.base.sha }),
+              },
+            });

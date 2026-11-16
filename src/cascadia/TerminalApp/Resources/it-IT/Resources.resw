@@ -1749,4 +1749,7 @@ Per tutte le opzioni disponibili, esegui 'wt new-tab --help'.</value>
     <value>In attesa dell&apos;autorizzazione...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Riquadro {0} di {1}</value>
+  </data>
 </root>

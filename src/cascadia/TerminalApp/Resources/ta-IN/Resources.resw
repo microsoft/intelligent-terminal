@@ -827,4 +827,7 @@
     <value>அங்கீகாரத்திற்காகக் காத்திருக்கிறது...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>மொத்தம் {1} இல் பலகம் {0}</value>
+  </data>
 </root>

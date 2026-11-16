@@ -39,7 +39,8 @@ For TAEF, also build `TerminalApp.LocalTests.dll`; `runut` in a razzle environme
 runs it from the TestHostApp output, not the LocalTests output.
 
 For native scans, use `test\accessibility\Invoke-AxeWindowsTestHost.ps1` with
-`-Surface` set to `fre`, `fre-settings`, or `agents`. Supply the built manifest,
+`-Surface` set to `fre`, `fre-settings`, `agents`, or `sidebar`. Sidebar uses the
+existing visual route and requires visible production tab rows. Supply the built manifest,
 Axe.Windows path, output directory, and exact source SHA. An interactive Windows
 desktop and the app's framework dependencies are required. Setup and artifact
 limitations are documented in `doc\ghaw\ghaw-pr-accessibility.md`.

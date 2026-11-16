@@ -844,4 +844,7 @@
     <value>Venter på godkendelse...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Rude {0} af {1}</value>
+  </data>
 </root>

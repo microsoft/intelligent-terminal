@@ -848,4 +848,7 @@
     <value>ಅನುಮತಿಗಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>ಒಟ್ಟು {1}ರಲ್ಲಿ ಪೇನ್ {0}</value>
+  </data>
 </root>

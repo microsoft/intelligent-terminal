@@ -848,4 +848,7 @@
     <value>അംഗീകാരത്തിനായി കാത്തിരിക്കുന്നു...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>ആകെ {1} പെയിനുകളിൽ {0}-ാം പെയിൻ</value>
+  </data>
 </root>

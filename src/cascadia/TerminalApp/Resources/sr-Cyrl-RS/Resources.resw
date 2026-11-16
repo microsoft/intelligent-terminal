@@ -1734,4 +1734,7 @@
     <value>Чекање на ауторизацију...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Панел {0} од {1}</value>
+  </data>
 </root>

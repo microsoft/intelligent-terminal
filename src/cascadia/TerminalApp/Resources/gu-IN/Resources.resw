@@ -848,4 +848,7 @@
     <value>અધિકૃતતાની રાહ જોવામાં આવી રહી છે...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>કુલ {1}માંથી પેન {0}</value>
+  </data>
 </root>

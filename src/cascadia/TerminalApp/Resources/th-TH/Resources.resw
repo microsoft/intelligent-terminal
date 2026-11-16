@@ -756,4 +756,7 @@
     <value>กำลังรอการอนุญาต...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>แผงที่ {0} จาก {1}</value>
+  </data>
 </root>

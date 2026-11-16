@@ -848,4 +848,7 @@
     <value>प्राधिकरण की प्रतीक्षा हो रही है...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{1} में से पेन {0}</value>
+  </data>
 </root>
