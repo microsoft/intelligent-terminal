@@ -15798,9 +15798,16 @@ namespace winrt::TerminalApp::implementation
             _closingStartupRestoreLayout = nullptr;
         });
         const std::vector<winrt::TerminalApp::Tab> closingTabs{ _tabs.begin(), _tabs.end() };
+        std::optional<KeptWindowGeometry> keptGeometry;
+        if (std::ranges::any_of(closingTabs, [](const auto& tab) { return winrt::get_self<Tab>(tab)->KeepRunning(); }))
+        {
+            // Removing the first tab may change page layout. All tabs from this
+            // close must retain the same pre-detach size and native origin.
+            keptGeometry = winrt::get_self<ContentManager>(_manager)->CaptureKeptWindowGeometry(*this);
+        }
         for (const auto& tab : closingTabs)
         {
-            _KeepTabRunning(_GetTabImpl(tab));
+            _KeepTabRunning(_GetTabImpl(tab), keptGeometry ? &*keptGeometry : nullptr);
         }
         rollback.release();
         CloseWindowRequested.raise(*this, closingLayout);
