@@ -39,9 +39,7 @@ Blocked work takes precedence over working work. An actual hook/ACP input reques
 cannot be answered by a program reporting Working, Done or Clear. Unseen errors
 and completions remain observable even when a subsequent report immediately
 returns to Idle. Focusing a pane does not acknowledge a result; deliberate input
-does. The tab context menu also provides **Mark results as seen**, which
-acknowledges only the result revisions observed when invoked, across that tab's
-panes. Acknowledging a result never clears a blocked task.
+does. Acknowledging a result never clears a blocked task.
 
 Tab and pane tooltips show bounded, plain-text task details, including task IDs,
 application labels, titles, blocking reasons and messages. Program text is

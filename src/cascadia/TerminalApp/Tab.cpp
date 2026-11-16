@@ -2473,19 +2473,6 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Items().Append(_exportTabMenuItem);
         contextMenuFlyout.Items().Append(_findMenuItem);
         contextMenuFlyout.Items().Append(_restartConnectionMenuItem);
-        if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
-        {
-            Controls::MenuFlyoutItem acknowledge;
-            acknowledge.Text(RS_(L"ProgramStatusMarkSeen"));
-            Automation::AutomationProperties::SetAutomationId(acknowledge, L"ProgramStatusMarkSeen");
-            acknowledge.Click([weakThis](auto&&, auto&&) {
-                if (const auto tab = weakThis.get())
-                {
-                    tab->ProgramStatusAcknowledgeRequested.raise();
-                }
-            });
-            contextMenuFlyout.Items().Append(acknowledge);
-        }
         contextMenuFlyout.Items().Append(_switchTabLayoutMenuItem);
         contextMenuFlyout.Items().Append(menuSeparator);
 

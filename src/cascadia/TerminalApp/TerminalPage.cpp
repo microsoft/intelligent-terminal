@@ -13692,25 +13692,6 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{ details };
     }
 
-    void TerminalPage::_AcknowledgeProgramStatusForTab(Tab& tab)
-    {
-        if (const auto root = tab.GetRootPane())
-        {
-            root->WalkTree([&](const auto& pane) {
-                if (const auto control = pane->GetTerminalControl())
-                {
-                    const auto snapshot = _ReadProgramStatus(control);
-                    if (snapshot["revision"].isUInt64() &&
-                        (snapshot.get("unseen_done", 0).asUInt() != 0 || snapshot.get("unseen_error", 0).asUInt() != 0))
-                    {
-                        control.AcknowledgeProgramStatus(snapshot["revision"].asUInt64());
-                    }
-                }
-                return false;
-            });
-        }
-    }
-
     void TerminalPage::_UpdateProgramStatusForTab(Tab& tab)
     {
         if constexpr (!Feature_ProgramStatusProtocol::IsEnabled())
@@ -15704,14 +15685,6 @@ namespace winrt::TerminalApp::implementation
     {
         auto weakTab{ hostingTab.get_weak() };
         auto weakThis{ get_weak() };
-        hostingTab.ProgramStatusAcknowledgeRequested([weakTab, weakThis]() {
-            const auto page = weakThis.get();
-            const auto tab = weakTab.get();
-            if (page && tab)
-            {
-                page->_AcknowledgeProgramStatusForTab(*tab);
-            }
-        });
         hostingTab.TabStatus().PropertyChanged([weakTab, weakThis](auto&&, const WUX::Data::PropertyChangedEventArgs& args) {
             if (args.PropertyName() == L"IsKeepRunning")
             {

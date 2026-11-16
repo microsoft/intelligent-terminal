@@ -274,7 +274,6 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::Tab, winrt::Microsoft::Terminal::Settings::Model::TabLayout> TabLayoutChangeRequested;
         til::event<winrt::delegate<>> KeepRunningEnabledByUser;
         til::event<winrt::delegate<bool>> PinRequested;
-        til::event<winrt::delegate<>> ProgramStatusAcknowledgeRequested;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;

@@ -1108,7 +1108,6 @@ namespace winrt::TerminalApp::implementation
         void _SyncNativeAgentStatusMode();
         void _PublishNativeAgentSignal(const Microsoft::Terminal::Control::TermControl& control, bool attention, uint64_t progressState);
         void _UpdateProgramStatusForTab(Tab& tab);
-        void _AcknowledgeProgramStatusForTab(Tab& tab);
         ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus _ProgramPaneStatus(const Json::Value& snapshot, const Microsoft::Terminal::Control::TermControl& control);
         static std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus> _ParseHistoryProgramStatus(const Json::Value& pane);
         static winrt::hstring _ProgramSummaryText(const ::Microsoft::Terminal::ProgramStatusPresentation::Summary& summary);

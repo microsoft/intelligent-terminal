@@ -807,10 +807,6 @@
     <value>పూర్తయింది</value>
     <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
   </data>
-  <data name="ProgramStatusMarkSeen" xml:space="preserve">
-    <value>ఫలితాలను చూసినట్లుగా గుర్తించండి</value>
-    <comment>Tab context-menu command: acknowledge the currently observed completed or failed program results in this tab. Does not clear tasks, dismiss input requests, or acknowledge results that arrive later.</comment>
-  </data>
   <data name="ProgramStatusPreviousResult" xml:space="preserve">
     <value>మునుపటి ఫలితం</value>
     <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>

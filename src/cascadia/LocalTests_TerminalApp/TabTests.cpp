@@ -752,7 +752,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryStatusDeltaPreservesCollection);
         TEST_METHOD(ProgramStatusHistoryProjectionPreservesIdentityAndClearsFacet);
-        TEST_METHOD(ProgramStatusTaskbarIdentityAndUnreadAcknowledgment);
+        TEST_METHOD(ProgramStatusTaskbarIdentityUnreadRetentionAndNativeFallback);
         TEST_METHOD(ProgramStatusUsesOnlyTheSelectedAgentStatusLine);
         TEST_METHOD(ProgramStatusOverlayRefreshesFinalMetadataPresentation);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
@@ -15292,7 +15292,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::ProgramStatusTaskbarIdentityAndUnreadAcknowledgment()
+    void TabTests::ProgramStatusTaskbarIdentityUnreadRetentionAndNativeFallback()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -15386,8 +15386,6 @@ namespace TerminalAppLocalTests
         });
         TestOnUIThread([&]() {
             VERIFY_ARE_EQUAL(1u, unseenDone());
-            page->_AcknowledgeProgramStatusForTab(*tab);
-            VERIFY_ARE_EQUAL(0u, unseenDone());
         });
         emit(u"\x1b]7501;state=clear\x1b\\\x1b]9;4;1;73\x7");
         _waitForContentTransferReviewUI([&]() {
