@@ -417,35 +417,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void ContentManager::UpdateAgentCompletionFromProgramStatus(
-        const uint64_t contentId,
-        const winrt::guid& paneId,
-        const std::string_view status,
-        const bool focused)
-    {
-        _CheckThread();
-        bool changed = false;
-        {
-            std::lock_guard lock{ _mutex };
-            const auto it = _content.find(contentId);
-            if (it == _content.end())
-            {
-                return;
-            }
-            const auto connection = it->second.core.Core().Connection();
-            auto& completion = it->second.completion;
-            if (!connection || connection.SessionId() != paneId || completion.paneId != paneId || completion.sessionId.empty())
-            {
-                return;
-            }
-            changed = completion.UpdateProgramStatus(status, focused);
-        }
-        if (changed)
-        {
-            AgentCompletionChanged.raise(paneId);
-        }
-    }
-
     bool ContentManager::HasReportedAgentStatus(const uint64_t contentId) const
     {
         std::lock_guard lock{ _mutex };
@@ -501,8 +472,6 @@ namespace winrt::TerminalApp::implementation
             {
                 it->second.completion.unread = false;
                 it->second.completion.wasAttention = false;
-                it->second.completion.programUnread = false;
-                it->second.completion.programAttention = false;
                 changed = it->second.completion.paneId;
             }
         }

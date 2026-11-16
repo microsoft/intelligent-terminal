@@ -14237,15 +14237,6 @@ namespace winrt::TerminalApp::implementation
                                 manager->UpdateAgentCompletion(
                                     control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focused);
                             }
-                            const auto snapshot = _ReadProgramStatus(control);
-                            if (const auto connection = control.Connection())
-                            {
-                                const std::string_view status = snapshot.get("unseen_error", 0).asUInt() != 0 ? "Attention" :
-                                                                snapshot.get("unseen_done", 0).asUInt() != 0  ? "Idle" :
-                                                                                                              "";
-                                manager->UpdateAgentCompletionFromProgramStatus(
-                                    control.ContentId(), connection.SessionId(), status, focused);
-                            }
                         }
                         return false;
                     });
@@ -14265,7 +14256,26 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        const auto kind = winrt::get_self<ContentManager>(_manager)->UnreadAgentCompletion(control.ContentId());
+        auto kind = winrt::get_self<ContentManager>(_manager)->UnreadAgentCompletion(control.ContentId());
+        if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+        {
+            if (control.Connection())
+            {
+                const auto snapshot = _ReadProgramStatus(control);
+                if (snapshot["revision"].isUInt64())
+                {
+                    if (snapshot.get("unseen_error", 0).asUInt() != 0)
+                    {
+                        kind = ContentManager::UnreadAgentCompletionKind::Attention;
+                    }
+                    else if (snapshot.get("unseen_done", 0).asUInt() != 0 &&
+                             kind == ContentManager::UnreadAgentCompletionKind::None)
+                    {
+                        kind = ContentManager::UnreadAgentCompletionKind::Complete;
+                    }
+                }
+            }
+        }
         if (needsAttention)
         {
             *needsAttention = kind == ContentManager::UnreadAgentCompletionKind::Attention;
@@ -14299,6 +14309,17 @@ namespace winrt::TerminalApp::implementation
             if (const auto control = tab.GetActiveTerminalControl();
                 control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
             {
+                if constexpr (Feature_ProgramStatusProtocol::IsEnabled())
+                {
+                    if (control.Connection())
+                    {
+                        const auto snapshot = _ReadProgramStatus(control);
+                        if (snapshot["revision"].isUInt64())
+                        {
+                            control.AcknowledgeProgramStatus(snapshot["revision"].asUInt64());
+                        }
+                    }
+                }
                 winrt::get_self<ContentManager>(_manager)->MarkAgentCompletionRead(control.ContentId());
             }
         }

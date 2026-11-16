@@ -21,7 +21,6 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AttentionRearmsAfterStateTransition);
         TEST_METHOD(UnreadKindTracksCompletionClassification);
         TEST_METHOD(ReadingOnePanePreservesOtherPaneActivity);
-        TEST_METHOD(ProgramAcknowledgmentPreservesCanonicalUnread);
     };
 
     void AgentCompletionTests::CompletionRequiresObservedActivity()
@@ -111,24 +110,6 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(CompletionKind::Complete, state.UnreadKind());
         state.Update(pane, "replacement", "claude", "Idle", false);
         VERIFY_ARE_EQUAL(CompletionKind::None, state.UnreadKind());
-    }
-
-    void AgentCompletionTests::ProgramAcknowledgmentPreservesCanonicalUnread()
-    {
-        const winrt::guid pane{ L"64791111-2222-3333-4444-555555555555" };
-        CompletionState state;
-        state.Update(pane, "session", "copilot", "Idle", false);
-        state.UpdateProgramStatus("Attention", false);
-        VERIFY_ARE_EQUAL(CompletionKind::Attention, state.UnreadKind());
-        state.UpdateProgramStatus("", false);
-        VERIFY_ARE_EQUAL(CompletionKind::None, state.UnreadKind());
-
-        state.Update(pane, "session", "copilot", "Working", false);
-        state.Update(pane, "session", "copilot", "Idle", false);
-        state.UpdateProgramStatus("Attention", false);
-        VERIFY_ARE_EQUAL(CompletionKind::Attention, state.UnreadKind());
-        state.UpdateProgramStatus("", false);
-        VERIFY_ARE_EQUAL(CompletionKind::Complete, state.UnreadKind());
     }
 
     void AgentCompletionTests::NewActivityAndIdentityResetCompletion()
