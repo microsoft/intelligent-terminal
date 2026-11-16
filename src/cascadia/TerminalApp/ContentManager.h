@@ -54,6 +54,7 @@ namespace winrt::TerminalApp::implementation
                                                                               const std::string& nativeAgentLaunchLocation = {});
         winrt::hstring NativeAgentProviderId(uint64_t contentId) const;
         winrt::hstring NativeAgentProviderIdForPane(const winrt::guid& paneId) const;
+        bool UsesNativeAgentFallback(uint64_t contentId) const;
         struct NativeAgentObservationIdentity
         {
             winrt::hstring providerId;
@@ -130,6 +131,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::TerminalPage> KeptPages();
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::Tab> KeptTabs(const winrt::TerminalApp::TerminalPage& owner);
         winrt::TerminalApp::TerminalPage KeptGroupOwner(const winrt::guid& groupId);
+        void MarkKeptGroupSelectedOnWindowClose(const winrt::TerminalApp::TerminalPage& owner, const winrt::guid& groupId);
+        bool WasKeptGroupSelectedOnWindowClose(const winrt::guid& groupId);
         winrt::Windows::Foundation::Rect KeptGroupBounds(const winrt::guid& groupId);
         winrt::TerminalApp::WindowRequestedArgs KeptWindowRequest(const winrt::Windows::Foundation::Collections::IVectorView<winrt::guid>& groups);
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
@@ -171,6 +174,7 @@ namespace winrt::TerminalApp::implementation
             std::optional<uint64_t> observationOwnerGeneration;
         };
         static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
+        bool _UsesNativeAgentFallback(const TerminalContent& content) const noexcept;
         std::unordered_map<uint64_t, TerminalContent> _content;
         bool _nativeAgentSessionEventsEnabled{ true };
         uint64_t _nativeAgentObservationGeneration{ 0 };
@@ -189,6 +193,7 @@ namespace winrt::TerminalApp::implementation
             KeptWindowGeometry geometry;
             bool restoring{ false };
             SharedWtaLease lease;
+            bool selectedOnWindowClose{ false };
         };
         // All windows share this dispatcher. Retaining the tab and its event owner
         // preserves the live pane tree, helper lifetime and background protocol routing.

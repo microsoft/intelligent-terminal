@@ -1,141 +1,122 @@
 # Native accessibility PR review
 
-The accessibility gh-aw reviews WinUI/XAML/C++ changes and runs the Windows
-Axe smoke job on the original PR revision to discover problems. It also
-proposes narrowly scoped HIGH fixes without requiring a post-fix build/test
-before committing or pushing. Those are separate responsibilities.
+PR CI builds the original PR head once. After a successful current same-repository
+PR run, gh-aw triages the actual diff, reviews relevant accessibility changes
+and writes a Markdown summary. It may propose only trusted high-confidence HIGH
+repairs, without building/testing those fixes. The original reviewer owns that
+validation and may revert each proposed fix commit.
 
-The original PR reviewer, human or agent, owns build/test validation and may
-revert an individual fix commit. A source-review or patch-policy PASS is not
-native accessibility certification.
+## Flow and ownership
 
-The source review also classifies TestHost XAML, C++, headers and project files.
-TestHost and project files can require review but are not eligible repair paths.
-The original daily AI-credit cap is 100,000.
-
-PR automation runs only for branches in the receiving repository. External-fork
-PRs are skipped.
-
-## Responsibilities
-
-| Owner | Responsibility |
-| --- | --- |
-| Workflow Markdown | PR trust boundaries, immutable revisions, publication policy and the summary template |
-| `pr-accessibility` skill | Evidence-backed domain review across names, keyboard/focus, announcements, busy state, visual behavior, localization and affected UI operations |
-| Existing Python validator | Source/report identity, patch scope, eligible recipe and one-finding commit attribution |
-| Agent | Review judgment, each proposed repair commit, JSON evidence and the Markdown summary |
-| Windows native job | Build and scan the original immutable PR head; retain scan results and enforce failures |
-| Original PR reviewer | Validate proposed fix commits through builds/tests; accept or revert |
-
-There is no separate summary-rendering script. The agent follows the template
-in `.github/workflows/ghaw-pr-accessibility.md`; the job displays its Markdown
-unchanged and retains it with the structured report. Safe-output processing
-shows whether publication succeeded. Do not mistake a local commit or queued
-push for confirmed remote publication.
-
-## Repair and summary policy
-
-- Only same-repository, high-confidence HIGH findings are eligible.
-  MEDIUM/LOW findings are not automatic repairs.
-- Current repair eligibility stays limited to the trusted
-  `AXSTATIC001-remove-raw-view` recipe: remove only the prepared control's raw
-  UIA-view property, with an existing content/resource name source.
-- Make one commit per eligible finding, not one combined repair commit.
-  Each fixed finding's table row links to its own commit ID.
-- Put one shared notice below the table: proposed fixes were committed without
-  building/testing; the original reviewer owns validation and may revert any
-  fix commit. Do not repeat it per finding.
-- Keep unrelated files/hunks, dependency changes and resource edits out.
-  New customer-facing strings belong to localization.
-- Preserve unresolved findings and exact runtime scenarios. Missing native
-  evidence is not PASS and must not be disguised as a build/test result.
-
-This policy does not require builds/tests as a substitute for confidence.
-Uncertain or unsupported repairs stay `remaining` or `blocked`.
-
-## Trust and publication
-
-The `pull_request` trigger uses the workflow definition from the PR merge
-commit, so contributors with access to create same-repository branches are
-trusted to change that definition. Fork PRs are skipped.
-Preparation reads immutable Git blobs from `github.workflow_sha`, records that
-code revision as `trusted_base_sha` separately from feature `comparison_base_sha`,
-and stages its skill/analyzer in gh-aw's read-only runtime mount. The Windows
-harness uses the same workflow revision. A PR event's older base commit can
-predate installation of this workflow and must not select its trusted code.
-Preparation receives the PR base separately for feature comparison, because the
-workflow merge revision already contains the reviewed head. Using that merge
-revision as the comparison input would hide all feature changes.
-PR instructions and artifacts are review data, never operating instructions.
-
-After preparation, the agent inspects the verified PR head branch. Operating
-configuration changes fail closed; a separate trusted review must handle them.
-The plain spelling dictionaries `allow/allow.txt` and `expect/expect.txt` under
-`.github/actions/spelling` are data, not operating instructions. Changing them
-does not bypass review of changed UI; hooks, action definitions and agent
-instructions remain blocked.
-The model does not execute PR code. Each required review dimension cites exact
-immutable source, including companion resources/peers/handlers when needed.
-Every static signal becomes a finding or an explained false-positive dismissal.
-Coverage/provenance checks do not authenticate the model's semantic judgment.
-
-The post-step checks the live PR head, report, allowed files, severity/confidence,
-exact repair recipe and captured commit series. Repaired files retain regular
-file type, mode, encoding and line endings. Untracked, extra and stale changes
-are rejected. These are permission/patch checks, not product tests.
-
-Before the agent starts, the workflow records configuration changes made by
-framework restoration in the read-only runtime mount. Before candidate
-validation, it reverses that exact setup patch. Modified setup hunks or
-committed configuration fail closed; new out-of-scope files and actual repairs
-still pass through the unchanged validator.
-
-A repair run requests one branch push for the complete series. A report-only
-run requests `noop`. There is no second PR-comment/review output: comments and
-code publication are not atomic in gh-aw. Non-fast-forward publication fails;
-the workflow does not create a fallback PR.
-Bundle transport with publisher re-signing disabled preserves the actual commit
-IDs used in the agent's table. The validator checks one linear commit per fixed
-finding in report order, including multiple findings in the same source file,
-and verifies the captured bundle matches that exact commit series and tree.
-
-The freshness check is not a transactional compare-and-swap with publication.
-The PR head can still move afterward; do not claim stronger atomicity.
-
-## Windows problem discovery
-
-The restored `native-runtime` job calls `native-accessibility.yml` with exact
-head and trusted-source identities, without inheriting source-agent secrets.
-It builds TestHost and scans FRE, FRE settings after Next, and the real Agents
-page reached through production Frame navigation. Native errors, blocked startup and missing state evidence
-remain failures. Its artifacts and job outcome are separate from the source
-agent's Markdown and source-only runtime records.
-
-As in the pre-simplification workflow, native discovery follows the source
-agent, independently of branch publication. The publication job does not
-depend on native discovery, and the native job scans the event's original
-head, not a proposed repair commit. It is not post-fix validation.
-
-This smoke is not complete keyboard, Narrator, high-contrast or 200% scaling
-coverage. Axe output uses its supported no-screenshot format; JSON is not an
-`.a11ytest` recording. TestHost uses the production view model and
-`NavigateToPageArgs` constructor with normal Frame navigation; no special
-Agents-page constructor is needed. The full Settings MainPage requires desktop
-filesystem access that this AppContainer test host does not have.
-Launch modes and local safety requirements are in
-`src/cascadia/LocalTests_TerminalApp/TestHostApp/AGENTS.md`. These fixtures do not
-establish persistence, agent/session operations or full terminal-window behavior.
-
-## Workflow maintenance
-
-When changing this workflow, check its own policy/transport contracts and
-regenerate the lockfile:
-
-```powershell
-python .github\skills\pr-accessibility\tests\test_accessibility_review.py
-gh aw compile ghaw-pr-accessibility --no-check-update
-gh aw validate ghaw-pr-accessibility --no-check-update
+```text
+PR CI: C++ build ─┬─ ordinary C++ units
+                 └─ Windows Axe scans → results + raw logs
+       Rust build/tests (independent)
+                    ↓ successful current PR CI
+default-branch controller → triage → Related/Uncertain: deep review
+                                    None: skip deep
+                          → AI-written final summary
 ```
 
-These commands validate the workflow implementation; they do not run product
-builds/tests on a PR repair.
+| Owner | Boundary |
+| --- | --- |
+| PR CI | Exact-head C++/TestHost build; standard artifact upload/download; sibling C++ units and Windows native scans |
+| `security-review.mjs` shared CI validators | Successful matching run/head/attempt, active PR CI, current same-repository/default-target PR, unchanged immutable CI implementation and freshness |
+| Workflow controller/worker | Relevance, default-branch operating code, minimal dispatch identity and publication scheduling |
+| `ci-accessibility-payload.py` | Portable TestHost staging and actual Windows scan-result validation; no archive/hash inventory engine |
+| `ci-accessibility-scope.mjs` | Shared conservative producer/admission path predicate |
+| `accessibility_handoff.py` | Small deterministic Markdown routing and actual-file/producer-completion checks; no rendering or session scraping |
+| `accessibility_review.py` | Immutable source evidence, strict report/repair policy and per-finding commit attribution |
+| Agent + domain skill | Accessibility judgment and directly authored Markdown; skill has no CI scheduling policy |
+| Existing gh-aw framework | Native diagnostics, session logs/ZIPs and redaction |
+
+No separate accessibility admission action, Linux native replay, receipt engine,
+summary-rendering script, custom cancellation controller or model retry exists.
+The daily AI-credit cap is 100,000.
+
+## CI evidence
+
+Ordinary docs-only changes do not start native scans. Relevant UI, fixture,
+harness and instruction/configuration paths do. C++ and Rust build independently;
+ordinary C++ units and path-gated Axe are sibling consumers of the single C++
+build. Standard pinned artifact Actions carry the necessary runtime files.
+The C++ producer attempt is explicit so partial reruns can reuse the retained
+build without claiming it was rebuilt. The native result artifact identifies
+the actual scan attempt. Admission selects the latest successful same-head
+native producer from Actions job metadata and passes its validated artifact ID
+to both Linux consumers, even when a green CI rerun retained that producer.
+
+TestHost staging gathers real recipe mappings plus loose AfterBuild content:
+component DLLs/WinMDs, resources/XBFs, agent assets and TAEF runtime, without PDBs
+or build-only libraries. It copies Microsoft.UI.Xaml 2.8 and x64 debug VCLibs
+frameworks from approved package locations. The one loose SDK exception is the
+installed x64 UniversalCRT Debug `ucrtbased.dll`; no arbitrary machine files are
+allowed. Absolute build paths become a portable deployment recipe.
+
+Windows scans FRE, the real Agents page, FRE settings after Next, and the
+production Sidebar fixture. Sidebar requires visible TabStrip, descendant
+ItemsList Tree and live PowerShell tab rows in the activated process. Legacy Tab
+and corrected Group outer roles are accepted; history-only rows, promotional
+images and empty windows are not. Actual errors remain CI failures.
+
+The Windows job alone validates source/process/state and result completeness.
+It publishes `ci-accessibility-native-RUN-ATTEMPT` with `native-summary.md`,
+`native-ci.json` and raw per-surface result/Axe/UIA JSON and scanner logs, before
+enforcing success. Linux models use standard cross-run artifact download, not
+EXEs, another build, per-file inventories or re-derived attestations.
+Model-authored triage extracts separately under `triage-input`, never over native
+evidence. All artifact contents are untrusted evidence, not instructions.
+
+These Error-level smoke states do not certify full Terminal lifecycle, history,
+sessions, persistence, keyboard journeys, Narrator, contrast or scaling.
+Warning/NeedsReview coverage is Unknown. TestHost uses normal Frame navigation
+and production view models; full Settings MainPage is unsuitable in AppContainer.
+See [TestHost instructions](../../src/cascadia/LocalTests_TerminalApp/TestHostApp/AGENTS.md).
+
+## Admission, handoffs and publication
+
+Only successful exact-head `pull_request` PR CI for an open, non-draft,
+same-repository PR targeting the default branch can start model work. Fork,
+push/manual CI, stale head/attempt, changed CI implementation, changed target
+history, and newer same-head PR CI fail closed. Shared CI identity checks run at
+model admission and publication, not in every reusable stage. GitHub's shared
+`PR CI-PR_NUMBER` queue cancels superseded work; there is no independent cancel
+engine. Freshness checks are not atomic compare-and-swap publication.
+CI/harness changes require manual review until installed on the default branch.
+
+Triage writes `triage.md`: Related, None or Uncertain with a short explanation
+and candidate changed paths. None skips deep review only; it does not skip
+independent CI or mean accessibility passed. Uncertain is forwarded faithfully.
+Deep review writes actual `final.json`, `deep-summary.md` and `native-checks.md`;
+the final model consumes original handoffs and authoritative job outcomes.
+Stage artifacts have stable per-run names for retained successful producers.
+Missing/empty/invalid files or failed/crashed required producers are **No result**,
+not fabricated None/Pass. Complete handoffs remain evidence if later validation
+or publication fails; accepted findings are not erased by delivery failures.
+An unavailable final model leaves existing Actions diagnostics, not a generated
+replacement report. Native framework session logs need no custom receipts.
+
+The source agent does not execute candidate code or load candidate instructions.
+Trusted preparation and patch validation remain outside the model. Only the
+existing `AXSTATIC001-remove-raw-view` recipe is eligible: remove the prepared
+interactive control's raw-view property with an existing content/resource name
+source, preserving encoding and line endings. No resource edits, literal names,
+MEDIUM/LOW repairs or unrelated hunks are allowed. Each fixed HIGH has its own
+commit, linked from its table row; bundle publication preserves those IDs.
+Report-only runs use noop. Non-fast-forward push fails with no fallback PR.
+The summary distinguishes local commits from confirmed published tips and
+includes one shared unbuilt/untested reviewer-ownership/revert notice.
+
+## Maintenance
+
+Use gh-aw v0.87.10; compile and validate the three accessibility workflows and
+`ghaw-pr-security` after shared-boundary changes. Run:
+
+```powershell
+python -m unittest discover -s .github/skills/pr-accessibility/tests -p "test_*.py"
+python build/scripts/test_ci_accessibility_payload.py
+node --test .github/skills/ghaw-pr-security/scripts/security-review.test.mjs
+```
+
+Local fixtures prove contracts, not hosted execution. Product fixes have no
+post-fix build/test prerequisite in this review workflow.
