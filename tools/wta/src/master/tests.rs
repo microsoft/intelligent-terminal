@@ -2313,11 +2313,16 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                 "retired",
                 "collision",
                 "unavailable",
+                "uppercase",
+                "braced",
+                "mixed",
+                "ambiguous",
             ] {
                 let wt = Arc::new(MockWtChannel::ok());
                 let state = make_state_with_wt(wt.clone());
                 let pane = uuid::Uuid::new_v4();
-                let session = uuid::Uuid::new_v4();
+                let session =
+                    uuid::Uuid::parse_str("abcdef01-2345-6789-abcd-ef0123456789").unwrap();
                 let source = crate::agent_source::AgentSource::Wsl {
                     distro: "Ubuntu".into(),
                 };
@@ -2342,7 +2347,12 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                     .record_pane_connected(&pane.to_string())
                     .await;
                 let mut row = crate::session_registry::SessionInfo::new(
-                    session.to_string().into(),
+                    match scenario {
+                        "uppercase" | "mixed" | "ambiguous" => session.to_string().to_uppercase(),
+                        "braced" => format!("{{{session}}}"),
+                        _ => session.to_string(),
+                    }
+                    .into(),
                     PathBuf::from("/home/native"),
                 );
                 row.provider_id = Some("copilot".into());
@@ -2351,16 +2361,55 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                 row.title = Some("Same title is not ownership evidence".into());
                 row.status = Some(crate::agent_sessions::AgentStatus::Historical);
                 state.registry.upsert(row.clone()).await;
+                let mut inventory = vec![row.clone()];
+                let other_session =
+                    uuid::Uuid::parse_str("12345678-abcd-4321-abcd-123456789abc").unwrap();
+                let other_pane = uuid::Uuid::new_v4();
+                if matches!(scenario, "mixed" | "ambiguous") {
+                    let mut other_admission = admission.clone();
+                    other_admission["pane_id"] = serde_json::json!(other_pane.to_string());
+                    state
+                        .registry
+                        .apply_native_observation(serde_json::from_value(other_admission).unwrap())
+                        .await;
+                    state
+                        .registry
+                        .record_pane_connected(&other_pane.to_string())
+                        .await;
+                    let mut other = row.clone();
+                    other.session_id = other_session.to_string().into();
+                    inventory.push(other);
+                }
+                if scenario == "ambiguous" {
+                    let mut equivalent = row.clone();
+                    equivalent.session_id = format!("{{{session}}}").into();
+                    inventory.push(equivalent);
+                }
+                for extra in &inventory[1..] {
+                    state.registry.upsert(extra.clone()).await;
+                }
+                let inventory_before = inventory.clone();
                 let registry = state.registry.clone();
                 let agent_for_probe = agent.clone();
                 let row_for_probe = row.clone();
                 refresh_native_wsl_copilot_correlations_with_probe(
                     &state,
                     &agent,
-                    &[row.clone()],
+                    &inventory,
                     |distro, ids| async move {
                         assert_eq!(distro, "Ubuntu");
-                        assert_eq!(ids, vec![session.to_string()]);
+                        for id in &ids {
+                            assert_eq!(*id, uuid::Uuid::parse_str(id).unwrap().to_string());
+                        }
+                        let mut expected = match scenario {
+                            "ambiguous" => vec![other_session.to_string()],
+                            "mixed" => vec![session.to_string(), other_session.to_string()],
+                            _ => vec![session.to_string()],
+                        };
+                        let mut actual = ids;
+                        actual.sort();
+                        expected.sort();
+                        assert_eq!(actual, expected);
                         match scenario {
                             "epoch" => {
                                 let mut replacement = admission.clone();
@@ -2400,7 +2449,11 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                             "unavailable" => return Err(anyhow::anyhow!("lease unavailable")),
                             _ => {}
                         }
-                        Ok(vec![(session, pane)])
+                        let mut leases = vec![(session, pane)];
+                        if matches!(scenario, "mixed" | "ambiguous") {
+                            leases.push((other_session, other_pane));
+                        }
+                        Ok(leases)
                     },
                 )
                 .await;
@@ -2414,11 +2467,37 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                     .await
                     .unwrap();
                 assert_eq!(unchanged, row);
+                for original in &inventory_before {
+                    assert_eq!(
+                        state
+                            .registry
+                            .lookup_identity(&crate::session_registry::SessionIdentity::from_info(
+                                original
+                            ))
+                            .await
+                            .as_ref(),
+                        Some(original)
+                    );
+                }
                 let (statuses, _) = state.registry.pane_status_snapshot().await;
+                if matches!(scenario, "mixed" | "ambiguous") {
+                    assert_eq!(
+                        statuses
+                            .iter()
+                            .find(|status| status.pane_id == other_pane.to_string())
+                            .unwrap()
+                            .inferred_history_key,
+                        inventory[1].history_row_key()
+                    );
+                }
                 let advisory = statuses
                     .iter()
-                    .find(|status| status.inferred_history_key.is_some());
-                if matches!(scenario, "bind" | "collision") {
+                    .find(|status| status.pane_id == pane.to_string())
+                    .filter(|status| status.inferred_history_key.is_some());
+                if matches!(
+                    scenario,
+                    "bind" | "collision" | "uppercase" | "braced" | "mixed"
+                ) {
                     let advisory = advisory.unwrap();
                     assert!(advisory.agent_session_id.is_none());
                     assert_eq!(advisory.pane_id, pane.to_string());

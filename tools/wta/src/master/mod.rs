@@ -7421,14 +7421,29 @@ where
                 && row.location == location
                 && row.session_universe.is_none()
                 && row.origin != Some(crate::agent_sessions::SessionOrigin::AgentPane)
-                && uuid::Uuid::parse_str(row.session_id.0.as_ref()).is_ok()
+        })
+        .filter_map(|row| {
+            uuid::Uuid::parse_str(row.session_id.0.as_ref())
+                .ok()
+                .map(|session| (session, row))
         })
         .collect();
-    candidates.sort_by_key(|row| std::cmp::Reverse(row.last_activity_at_ms));
+    // Equivalent UUID spellings cannot choose between distinct raw history keys.
+    candidates.sort_by_key(|(session, _)| *session);
+    candidates = candidates
+        .chunk_by(|a, b| a.0 == b.0)
+        .filter(|group| {
+            group
+                .iter()
+                .all(|(_, row)| row.session_id == group[0].1.session_id)
+        })
+        .map(|group| group[0])
+        .collect();
+    candidates.sort_by_key(|(_, row)| std::cmp::Reverse(row.last_activity_at_ms));
     let sessions: Vec<_> = candidates
         .iter()
         .take(crate::session_watcher::wsl_copilot_identity::MAX_SESSIONS)
-        .map(|row| row.session_id.to_string())
+        .map(|(session, _)| session.to_string())
         .collect();
     if sessions.is_empty() {
         return state
@@ -7456,9 +7471,9 @@ where
     }
     let mut correlations = Vec::new();
     for (session, pane) in leases {
-        let Some(row) = candidates
+        let Some((_, row)) = candidates
             .iter()
-            .find(|row| row.session_id.to_string() == session.to_string())
+            .find(|(candidate, _)| *candidate == session)
         else {
             continue;
         };
