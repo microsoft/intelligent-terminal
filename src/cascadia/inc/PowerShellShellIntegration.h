@@ -978,7 +978,6 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // functions, whose non-terminating Set-Location errors leave $? true.
     // v14: limit shell integration to Intelligent Terminal using its host marker.
     // v15: keep per-wrapper prompt delegates stable across renderer restoration.
-    // Preserve strict-mode legacy sessions and constrained-language manual rearming.
     // ───────────────────────────────────────────────────────────────────
     inline constexpr int kVersion = 15;
 
@@ -1192,10 +1191,8 @@ if (-not $Global:__ShellInteg_Installed) {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
         $gle           = $(__ShellInteg_GetLastExitCode)
 
-        # A chaining renderer can call an older wrapper. Each wrapper keeps
-        # its own delegate; only the outermost wrapper emits command marks.
+        # Only the outermost wrapper emits command marks.
         if ($Global:__ShellInteg_Rendering) {
-            # ConstrainedLanguage retains the shared wrapper's chaining fallback.
             if (-not $Global:__ShellInteg_CanInspectErrors) {
                 if ($Global:__ShellInteg_PrevPrompt) {
                     return (& $Global:__ShellInteg_PrevPrompt)
@@ -1324,15 +1321,13 @@ if (-not $Global:__ShellInteg_Installed) {
         }
     }
 
-    # Restricted language keeps the shared wrapper for manual rearming.
-    # FullLanguage wrappers capture a private delegate instead of changing
-    # the global fallback when an external renderer takes over prompt.
     $Global:__ShellInteg_Wrapper = $function:prompt
     if ($Global:__ShellInteg_CanInspectErrors) {
         $Global:__ShellInteg_PromptTemplate = $function:prompt
         $Global:__ShellInteg_Wrappers = New-Object 'System.Runtime.CompilerServices.ConditionalWeakTable[System.Management.Automation.ScriptBlock,System.Object]'
         function Global:__ShellInteg_NewWrapper {
             param([scriptblock]$__ShellInteg_OriginalPrompt)
+            # Capture this parameter for the template's unqualified delegate lookup.
             return $Global:__ShellInteg_PromptTemplate.GetNewClosure()
         }
         $Global:__ShellInteg_Wrapper = __ShellInteg_NewWrapper $Global:__ShellInteg_OriginalPrompt
@@ -1344,8 +1339,7 @@ if (-not $Global:__ShellInteg_Installed) {
 # Recognize restored wrappers as well as the most recent one. Weak keys avoid
 # retaining every transient renderer for the lifetime of an interactive shell.
 function Global:__ShellInteg_Rearm {
-    # Older integrations never initialized this variable. Leave those sessions
-    # untouched; a null value in this version instead means restricted language.
+    # An absent registry variable identifies a pre-closure session; do not migrate it.
     if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }
     if ($null -eq $Global:__ShellInteg_Wrapper) { return }
     $current = $function:prompt
@@ -1358,8 +1352,7 @@ function Global:__ShellInteg_Rearm {
     # profile, which makes Set-Item raise SessionStateUnauthorizedAccessException.
     # Shell integration is a convenience; never let it take the shell down.
     try {
-        # No automatic readline hook in ConstrainedLanguage, but re-sourcing
-        # the integration still restores the original shared-state wrapper.
+        # ConstrainedLanguage cannot use closures; retain the shared-delegate path.
         if (-not $Global:__ShellInteg_CanInspectErrors) {
             if ($current -ne $Global:__ShellInteg_OriginalPrompt) {
                 $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
