@@ -118,6 +118,14 @@ void AgentProfileGenerator::WslSourceCache::RestoreSavedProfiles(const std::vect
         {
             continue;
         }
+        // Keep each provider's first saved spelling because it participates in its profile GUID.
+        if (std::ranges::any_of(_sources, [&](const auto& candidate) {
+                return til::compare_ordinal_insensitive(candidate.distro, backend->wslDistro) == 0 &&
+                       candidate.agentIds.contains(std::wstring{ agentId });
+            }))
+        {
+            continue;
+        }
         auto found = std::ranges::find(_sources, backend->wslDistro, &::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot::distro);
         if (found == _sources.end())
         {

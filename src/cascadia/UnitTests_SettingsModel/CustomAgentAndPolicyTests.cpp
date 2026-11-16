@@ -103,6 +103,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileWslDiscoveryParsing);
         TEST_METHOD(AgentProfileWslSavedMetadataRecovery);
         TEST_METHOD(AgentProfileWslSavedMetadataCaseInsensitiveRetention);
+        TEST_METHOD(AgentProfileWslSavedMetadataCaseInsensitiveRecovery);
         TEST_METHOD(AgentProfileWslGenerationUsesSavedMetadata);
         TEST_METHOD(AgentProfileWslPersistence);
         TEST_METHOD(AgentProfileWslSkipsShellIntegration);
@@ -1460,6 +1461,43 @@ namespace SettingsModelUnitTests
 
         cache.Update({ { L"saved-wsl-test", {}, true, false } });
         VERIFY_IS_TRUE(cache.Read().front().agentIds.empty());
+    }
+
+    void CustomAgentAndPolicyTests::AgentProfileWslSavedMetadataCaseInsensitiveRecovery()
+    {
+        SetPolicy(MakePolicy());
+        for (const std::wstring_view firstDistro : { L"Saved-WSL-Test", L"saved-wsl-test" })
+        {
+            const std::wstring secondDistro{ firstDistro == L"Saved-WSL-Test" ? L"saved-wsl-test" : L"Saved-WSL-Test" };
+            const winrt::hstring duplicateSource{ L"wsl:" + secondDistro };
+            std::vector<winrt::com_ptr<implementation::Profile>> saved;
+            AgentProfileGenerator::GenerateProfiles(saved, {}, { { std::wstring{ firstDistro }, { L"copilot" }, false } });
+            AgentProfileGenerator::GenerateProfiles(saved, {}, {
+                                                                   { secondDistro, { L"copilot", L"claude" }, false },
+                                                                   { L"Other-Saved-WSL-Test", { L"copilot" }, false },
+                                                               });
+            for (const auto& profile : saved)
+            {
+                profile->Source(L"IntelligentTerminal.AgentProfiles");
+            }
+            AgentProfileGenerator::WslSourceCache cache;
+            cache.RestoreSavedProfiles(saved);
+            std::ranges::reverse(saved);
+            cache.RestoreSavedProfiles(saved);
+            std::vector<winrt::com_ptr<implementation::Profile>> regenerated;
+            AgentProfileGenerator::GenerateProfiles(regenerated, {}, cache.Read());
+            VERIFY_ARE_EQUAL(size_t{ 3 }, regenerated.size());
+            for (const auto& expected : saved)
+            {
+                if (expected->AgentProfileId() == L"copilot" && expected->AgentProfileSource() == duplicateSource)
+                {
+                    continue;
+                }
+                VERIFY_IS_TRUE(std::ranges::any_of(regenerated, [&](const auto& profile) {
+                    return profile->Guid() == expected->Guid();
+                }));
+            }
+        }
     }
 
     void CustomAgentAndPolicyTests::AgentProfileWslGenerationUsesSavedMetadata()

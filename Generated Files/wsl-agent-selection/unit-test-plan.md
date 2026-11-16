@@ -38,6 +38,7 @@ listing a case here does not claim that its code exists or passed.
 | V16 | General Settings construction, settings-file reload, or reload restoring Agent-page navigation | No active WSL discovery; preserve current/saved evidence and unsaved editor state. |
 | V17 | Navigate repeatedly while discovery is pending | One in-flight discovery; completion targets live VMs without forced global settings reload. |
 | V18 | Saved distro casing differs from fresh discovery | All four pickers select one available entry; availability warnings follow it. Preserve saved spelling and model. Provider IDs, literal prefixes, custom IDs and inheritance remain exact. |
+| V19 | Restore saved native profiles with case-equivalent distro names, in either casing order, then restore again in reverse order | Emit one profile per provider/distro identity. Preserve the first restored provider's GUID, another provider's existing differently cased GUID, and unrelated distro profiles; no Linux discovery. |
 
 ## Binding, reload, and model behavior
 
