@@ -93,3 +93,28 @@ A separate explicit approval is required before:
 - changing GitHub permissions or branch protection;
 - opening a non-draft PR if that implies readiness for review;
 - merging, tagging, releasing, or deploying.
+
+
+## Upstream PR #1388 audit — 2026-11-16
+
+Audit source: https://github.com/microsoft/intelligent-terminal/pull/1388
+
+Observed upstream state at audit time:
+- PR is open, not merged, and targets `main`.
+- Head: `fef550e3f7b92382fcdd861f0fe768d9747dc003`; base: `1048e7c38569056fe25a5055e26a5ea26fbffdcf`.
+- 24 commits; 242 changed files; 8,239 additions and 203 deletions.
+- The PR contains native C++ parser/adapter/ConPTY/Terminal UI changes, Rust WTA integration, shell fallback, E2E tests, and broad localization changes. It is not a small isolated protocol patch.
+- The PR's description reports focused parser/adapter/WTA tests passing, but explicitly says full E2E and live WSL/SSH/multiplexer paths were not run.
+- Review threads currently report no unresolved inline threads. Recent review summaries still call for human Windows lifecycle/accessibility validation, especially acknowledgment/attention behavior. A prior review identified an unread-state reconciliation concern; a later summary says no open issues but still requests human validation.
+- Earlier review findings included checklist ID/title mapping, ABI slot ordering, session-identity arbitration, and localization correctness. Follow-up commits are recorded in the thread history as fixes; they still require verification against the final source tree before adoption.
+
+Local compatibility check:
+- Local `main` is `acc38beb5eead22d5dc0a01e93ad2dd89957e478`.
+- Comparing local `main` to upstream PR head reports 144 commits ahead, with local main as the merge base.
+- Therefore the upstream PR is not based on the current local fork head. Applying it wholesale would import 144 upstream commits and a large set of unrelated project changes, not merely OSC 7501 support.
+
+Decision:
+- **Do not cherry-pick or merge PR #1388 wholesale into this fork.**
+- Keep this branch documentation-only until a compatibility strategy is approved: either update the fork from upstream in a separately reviewed operation, or isolate the minimum OSC 7501 parser/adapter changes and port them against the current fork APIs with focused tests.
+- The current ChatGPT/GitHub connector session can inspect and edit text files, but cannot build the native Windows Terminal solution or execute the Windows/TAEF, Rust target, and live terminal integration test matrix. No build/test pass is claimed here.
+- No upstream branch, local `main`, permissions, workflows, runtime settings, or deployment was changed by this audit.
