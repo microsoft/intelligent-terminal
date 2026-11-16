@@ -133,10 +133,13 @@ test('controller reports execution status on the admitted PR commit, not the wor
     ['success', 'true', 'success', 'success', 'false', 'success'],
     ['success', 'false', 'skipped', 'skipped', '', 'success'],
     ['failure', 'true', 'skipped', 'success', 'true', 'failure'],
-    ['failure', 'true', 'skipped', 'skipped', '', 'failure'],
-    ['cancelled', 'true', 'skipped', 'skipped', '', 'cancelled'],
+    ['failure', 'true', 'skipped', 'failure', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', '', 'neutral'],
+    ['cancelled', 'true', 'skipped', 'skipped', '', 'neutral'],
+    ['success', 'true', 'skipped', 'skipped', '', 'neutral'],
     ['success', 'true', 'failure', 'skipped', 'false', 'failure'],
-    ['success', 'true', 'success', 'failure', 'false', 'failure'],
+    ['success', 'true', 'success', 'failure', 'false', 'neutral'],
   ]) {
     const calls = [], outputs = {};
     const github = { rest: { checks: {
@@ -147,6 +150,8 @@ test('controller reports execution status on the admitted PR commit, not the wor
     const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
       SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report,
       REVIEW_BLOCKING: blocking, CANONICAL_RESULT: blocking ? 'success' : 'failure',
+      PUBLICATION: repair === 'skipped' ? 'none' : 'push',
+      DIAGNOSTIC_RUN_URL: analysis !== 'success' ? 'https://github.com/owner/repo/actions/runs/789' : '',
       GITHUB_RUN_ATTEMPT: '1' } };
     await execute(pending)(github, context, process, core);
     process.env.REVIEW_CHECK_ID = outputs.review_check_id;
@@ -155,9 +160,15 @@ test('controller reports execution status on the admitted PR commit, not the wor
     assert.equal(calls[0].head_sha, HEAD);
     assert.equal(calls[1].check_run_id, 1234);
     assert.equal(calls[1].conclusion, expected);
-    assert(calls.every(value => value.details_url.endsWith('/actions/runs/456')));
-    if (blocking === 'true') assert.equal(calls[1].output.title, 'Changes required');
-    else if (!['success', 'cancelled'].includes(expected)) assert.equal(calls[1].output.title, 'Review did not complete');
+    assert(calls[0].details_url.endsWith('/actions/runs/456'));
+    const diagnosticRun = process.env.DIAGNOSTIC_RUN_URL ? '789' : '456';
+    assert(calls[1].details_url.endsWith(`/actions/runs/${expected === 'neutral' ? diagnosticRun : '456'}`));
+    if (expected === 'failure') assert.equal(calls[1].output.title, 'Changes required');
+    else if (expected === 'neutral') {
+      assert.equal(calls[1].output.title, 'Security review unavailable');
+      assert.match(calls[1].output.summary, /No security conclusion/);
+      assert(calls[1].output.summary.includes(`/actions/runs/${diagnosticRun}`));
+    }
   }
   const github = { rest: { checks: {
     create: async () => assert.fail('No admitted head; no check write.'),
@@ -407,7 +418,6 @@ test('controller separates cached PR base from new worker SHA and rejects dispat
     assert.equal(env.EXPECTED_BASE_SHA, BASE);
   }
   assert(controller.includes('[ "$WORKER_CONCLUSION" = success ]'));
-  assert(controller.includes('echo "::error::The internal security worker did not succeed."'));
 });
 
 test('controller correlates dispatched runs beyond the first page with the same immutable identity', async () => {
