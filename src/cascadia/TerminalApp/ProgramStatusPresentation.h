@@ -57,14 +57,6 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
         std::wstring description;
     };
 
-    struct AttentionTarget
-    {
-        uint32_t contentId{};
-        Category category{};
-        bool unseenDone{};
-        bool unseenError{};
-    };
-
     inline std::wstring DisplayText(const std::wstring_view text)
     {
         std::wstring result;
@@ -80,41 +72,6 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
             }
         }
         return result;
-    }
-
-    inline std::optional<uint32_t> NextAttention(const std::span<const AttentionTarget> panes, const std::optional<uint32_t> currentContentId)
-    {
-        const auto attentionCategory = [](const AttentionTarget& pane) {
-            return pane.category == Category::Working && pane.unseenError ? Category::Error :
-                   pane.category == Category::Working && pane.unseenDone  ? Category::Done :
-                                                                            pane.category;
-        };
-        auto priority = Category::None;
-        size_t begin = 0;
-        for (size_t i = 0; i < panes.size(); ++i)
-        {
-            const auto category = attentionCategory(panes[i]);
-            if ((category == Category::Done || category >= Category::Attention) && category > priority)
-            {
-                priority = category;
-            }
-            if (currentContentId == panes[i].contentId)
-            {
-                begin = i + 1;
-            }
-        }
-        if (priority != Category::None)
-        {
-            for (size_t offset = 0; offset < panes.size(); ++offset)
-            {
-                const auto& pane = panes[(begin + offset) % panes.size()];
-                if (attentionCategory(pane) == priority)
-                {
-                    return pane.contentId;
-                }
-            }
-        }
-        return std::nullopt;
     }
 
     inline Summary Reduce(const std::span<const PaneStatus> panes)

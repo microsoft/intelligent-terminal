@@ -2485,17 +2485,6 @@ namespace winrt::TerminalApp::implementation
                 }
             });
             contextMenuFlyout.Items().Append(acknowledge);
-
-            Controls::MenuFlyoutItem next;
-            next.Text(RS_(L"ProgramStatusNextAttention"));
-            Automation::AutomationProperties::SetAutomationId(next, L"ProgramStatusNextAttention");
-            next.Click([weakThis](auto&&, auto&&) {
-                if (const auto tab = weakThis.get())
-                {
-                    tab->_pendingProgramAttentionNavigation = true;
-                }
-            });
-            contextMenuFlyout.Items().Append(next);
         }
         contextMenuFlyout.Items().Append(_switchTabLayoutMenuItem);
         contextMenuFlyout.Items().Append(menuSeparator);
@@ -2516,16 +2505,6 @@ namespace winrt::TerminalApp::implementation
         contextMenuFlyout.Closed([weakThis](auto&&, auto&&) {
             if (auto tab{ weakThis.get() })
             {
-                if (std::exchange(tab->_pendingProgramAttentionNavigation, false))
-                {
-                    tab->TabViewItem().Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weakThis]() {
-                        if (const auto deferredTab = weakThis.get())
-                        {
-                            deferredTab->NextProgramAttentionRequested.raise();
-                        }
-                    });
-                    return;
-                }
                 // GH#10112 - if we're opening the tab renamer, don't
                 // immediately toss focus to the control. We don't want to steal
                 // focus from the tab renamer.

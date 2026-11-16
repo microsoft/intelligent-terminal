@@ -833,10 +833,6 @@
     <value>नतिजाहरूलाई हेरिएको भनी चिन्ह लगाउनुहोस्</value>
     <comment>Tab context-menu command: acknowledge the currently observed completed or failed program results in this tab. Does not clear tasks, dismiss input requests, or acknowledge results that arrive later.</comment>
   </data>
-  <data name="ProgramStatusNextAttention" xml:space="preserve">
-    <value>ध्यान दिनुपर्ने अर्को फलक</value>
-    <comment>Tab context-menu command: focus the highest-priority pane needing attention in this window, cycling between equally urgent panes. Includes input requests, blocked work, and unseen results. Focusing does not acknowledge a result.</comment>
-  </data>
   <data name="ProgramStatusPreviousResult" xml:space="preserve">
     <value>अघिल्लो नतिजा</value>
     <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>

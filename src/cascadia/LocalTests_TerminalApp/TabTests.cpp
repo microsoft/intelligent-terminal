@@ -752,7 +752,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryRefreshPreservesCollection);
         TEST_METHOD(VerticalTabHistoryStatusDeltaPreservesCollection);
         TEST_METHOD(ProgramStatusHistoryProjectionPreservesIdentityAndClearsFacet);
-        TEST_METHOD(ProgramStatusAttentionAndTaskbarUseStablePaneIdentity);
+        TEST_METHOD(ProgramStatusTaskbarIdentityAndUnreadAcknowledgment);
         TEST_METHOD(ProgramStatusUsesOnlyTheSelectedAgentStatusLine);
         TEST_METHOD(ProgramStatusOverlayRefreshesFinalMetadataPresentation);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
@@ -15292,7 +15292,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::ProgramStatusAttentionAndTaskbarUseStablePaneIdentity()
+    void TabTests::ProgramStatusTaskbarIdentityAndUnreadAcknowledgment()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
@@ -15385,9 +15385,6 @@ namespace TerminalAppLocalTests
             return unseenDone() == 1;
         });
         TestOnUIThread([&]() {
-            page->_FocusNextProgramAttention();
-            VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == tab);
-            VERIFY_ARE_EQUAL(tab->GetRootPane()->ContentId().value(), tab->GetActivePane()->ContentId().value());
             VERIFY_ARE_EQUAL(1u, unseenDone());
             page->_AcknowledgeProgramStatusForTab(*tab);
             VERIFY_ARE_EQUAL(0u, unseenDone());

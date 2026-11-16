@@ -13711,73 +13711,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_FocusNextProgramAttention()
-    {
-        using namespace ::Microsoft::Terminal::ProgramStatusPresentation;
-        std::vector<AttentionTarget> candidates;
-        std::optional<uint32_t> current;
-        if (const auto tab = _GetFocusedTabImpl())
-        {
-            if (const auto pane = tab->GetActivePane())
-            {
-                current = pane->ContentId();
-            }
-        }
-        for (const auto& projected : _tabs)
-        {
-            if (const auto tab = _GetTabImpl(projected))
-            {
-                if (const auto root = tab->GetRootPane())
-                {
-                    root->WalkTree([&](const auto& pane) {
-                        if (const auto control = pane->GetTerminalControl())
-                        {
-                            const auto status = _ProgramPaneStatus(_ReadProgramStatus(control), control);
-                            if (const auto contentId = pane->ContentId())
-                            {
-                                candidates.push_back({ *contentId, Reduce(std::span{ &status, 1 }).category, status.unseenDone != 0, status.unseenError != 0 });
-                            }
-                        }
-                        return false;
-                    });
-                }
-            }
-        }
-        if (const auto target = NextAttention(candidates, current))
-        {
-            for (uint32_t i = 0; i < _tabs.Size(); ++i)
-            {
-                if (const auto tab = _GetTabImpl(_tabs.GetAt(i)))
-                {
-                    const auto pane = tab->GetRootPane() ? tab->GetRootPane()->FindPaneByContentId(*target) : nullptr;
-                    if (pane && pane->Id())
-                    {
-                        _SelectTab(i);
-                        _UnZoomIfNeeded();
-                        if (pane->IsHidden())
-                        {
-                            if (pane->IsAgentPane())
-                            {
-                                const auto direction = _AgentPanePositionToSplitDirection(
-                                    tab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()));
-                                if (!tab->RestoreStashedAgentPane(direction))
-                                {
-                                    LOG_HR_MSG(E_UNEXPECTED, "Could not restore the agent pane needing attention");
-                                    return;
-                                }
-                                _RequestAgentStateForTab(tab, std::nullopt, true);
-                                return;
-                            }
-                            tab->ShowPane();
-                        }
-                        tab->FocusPane(*pane->Id());
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
     void TerminalPage::_UpdateProgramStatusForTab(Tab& tab)
     {
         if constexpr (!Feature_ProgramStatusProtocol::IsEnabled())
@@ -15777,12 +15710,6 @@ namespace winrt::TerminalApp::implementation
             if (page && tab)
             {
                 page->_AcknowledgeProgramStatusForTab(*tab);
-            }
-        });
-        hostingTab.NextProgramAttentionRequested([weakThis]() {
-            if (const auto page = weakThis.get())
-            {
-                page->_FocusNextProgramAttention();
             }
         });
         hostingTab.TabStatus().PropertyChanged([weakTab, weakThis](auto&&, const WUX::Data::PropertyChangedEventArgs& args) {

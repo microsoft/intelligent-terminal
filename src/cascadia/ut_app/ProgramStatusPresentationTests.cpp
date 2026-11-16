@@ -17,7 +17,6 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CanonicalActivitySurvivesCompletionWithoutInventingProgress);
         TEST_METHOD(TabAggregationCountsPanesAndNeverAveragesJobs);
         TEST_METHOD(AcknowledgmentRemovesAttentionWithoutInventingLiveness);
-        TEST_METHOD(AttentionNavigationPrioritizesRequestsAndWrapsWithoutAcknowledging);
         TEST_METHOD(UntrustedTextCannotOverrideChromeDirection);
         TEST_METHOD(SingleStatusUsesTheWinningFactsDescription);
         TEST_METHOD(CurrentMessagesTakePrecedenceOverTitles);
@@ -103,30 +102,6 @@ namespace TerminalAppUnitTests
         panes[0].blocked = 1;
         panes[0].unseenError = 0;
         VERIFY_IS_TRUE(Reduce(panes).category == Category::Blocked);
-    }
-
-    void ProgramStatusPresentationTests::AttentionNavigationPrioritizesRequestsAndWrapsWithoutAcknowledging()
-    {
-        std::vector<AttentionTarget> panes{
-            { 10, Category::Working },
-            { 20, Category::Done },
-            { 30, Category::Blocked },
-            { 40, Category::InputRequest },
-            { 50, Category::InputRequest },
-        };
-        VERIFY_ARE_EQUAL(40u, NextAttention(panes, 20).value());
-        VERIFY_ARE_EQUAL(50u, NextAttention(panes, 40).value());
-        VERIFY_ARE_EQUAL(40u, NextAttention(panes, 50).value());
-        VERIFY_ARE_EQUAL(40u, NextAttention(panes, std::nullopt).value());
-        panes.resize(3);
-        VERIFY_ARE_EQUAL(30u, NextAttention(panes, 30).value());
-        panes.resize(2);
-        VERIFY_ARE_EQUAL(20u, NextAttention(panes, 10).value());
-        panes.resize(1);
-        VERIFY_IS_FALSE(NextAttention(panes, 10).has_value());
-        VERIFY_IS_FALSE(NextAttention({}, std::nullopt).has_value());
-        panes = { { 60, Category::Working, true }, { 70, Category::Working } };
-        VERIFY_ARE_EQUAL(60u, NextAttention(panes, 70).value());
     }
 
     void ProgramStatusPresentationTests::UntrustedTextCannotOverrideChromeDirection()
@@ -266,10 +241,5 @@ namespace TerminalAppUnitTests
             pane.taskState = "working";
             VERIFY_IS_TRUE(Reduce(std::span{ &pane, 1 }).category == Category::Working);
         }
-        const std::vector<AttentionTarget> candidates{
-            { 1, Category::Working, false, true },
-            { 2, Category::Working, true },
-        };
-        VERIFY_ARE_EQUAL(1u, NextAttention(candidates, std::nullopt).value());
     }
 }

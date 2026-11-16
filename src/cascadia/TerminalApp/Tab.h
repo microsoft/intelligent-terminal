@@ -275,7 +275,6 @@ namespace winrt::TerminalApp::implementation
         til::event<winrt::delegate<>> KeepRunningEnabledByUser;
         til::event<winrt::delegate<bool>> PinRequested;
         til::event<winrt::delegate<>> ProgramStatusAcknowledgeRequested;
-        til::event<winrt::delegate<>> NextProgramAttentionRequested;
 
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
         til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> CloseRequested;
@@ -339,7 +338,6 @@ namespace winrt::TerminalApp::implementation
         Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility _closeButtonVisibility{ Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility::Always };
         winrt::Microsoft::Terminal::Settings::Model::TabLayout _switchTabLayoutTarget{ winrt::Microsoft::Terminal::Settings::Model::TabLayout::Vertical };
         std::optional<winrt::Microsoft::Terminal::Settings::Model::TabLayout> _pendingTabLayoutChange;
-        bool _pendingProgramAttentionNavigation{};
 
         std::shared_ptr<Pane> _rootPane{ nullptr };
         std::shared_ptr<Pane> _activePane{ nullptr };

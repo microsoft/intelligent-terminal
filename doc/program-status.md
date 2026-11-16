@@ -43,13 +43,6 @@ does. The tab context menu also provides **Mark results as seen**, which
 acknowledges only the result revisions observed when invoked, across that tab's
 panes. Acknowledging a result never clears a blocked task.
 
-**Next pane needing attention** searches only the current window. Actual input
-requests take priority over blocked work, errors, general attention and unseen
-completions. Repeated invocation cycles through equally urgent panes in tab/pane
-order. It does not reorder rows or acknowledge results.
-Busy panes with unread completions remain navigation targets. A target in a
-stashed assistant pane is restored without changing its chat/session view.
-
 Tab and pane tooltips show bounded, plain-text task details, including task IDs,
 application labels, titles, blocking reasons and messages. Program text is
 untrusted: it does not grant permissions, open links, execute commands or bind
