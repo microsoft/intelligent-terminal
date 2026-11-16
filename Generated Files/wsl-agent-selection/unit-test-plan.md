@@ -15,6 +15,7 @@ listing a case here does not claim that its code exists or passed.
 | S3 | Explicit unknown source, empty WSL name, unsafe name, malformed qualified selection | Invalid source is not host fallback; no launchable binding. |
 | S4 | Source-qualified choice conversion | Round trip Windows, Ubuntu, Debian, known providers; no provider ID pollution or distro aliasing. |
 | S5 | Policy blocks provider/custom agents | Same restriction for host and every WSL distro; raw saved value is not a bypass. |
+| S6 | Explicit empty/null global ACP/delegate sources and their persisted nulls | Load/save/reload preserves accepted Host-equivalent values. Schema accepts omitted, empty, null, host and valid bounded WSL sources; reject malformed/unsafe sources, overlong distro names and wrong JSON types. |
 
 ## Discovery and picker view models
 

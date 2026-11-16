@@ -281,6 +281,23 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"host" }, copy->DelegateAgentSource());
         VERIFY_IS_TRUE(implementation::IsAISettingChange("global.acpAgentSource"));
         VERIFY_IS_TRUE(implementation::IsAISettingChange("global.delegateAgentSource"));
+        for (const auto* json : {
+                 R"({"acpAgentSource":"","delegateAgentSource":""})",
+                 R"({"acpAgentSource":null,"delegateAgentSource":null})",
+             })
+        {
+            const auto globals = implementation::GlobalAppSettings::FromJson(VerifyParseSucceeded(json));
+            VERIFY_IS_TRUE(globals->HasAcpAgentSource());
+            VERIFY_IS_TRUE(globals->HasDelegateAgentSource());
+            VERIFY_IS_TRUE(globals->AcpAgentSource().empty());
+            VERIFY_IS_TRUE(globals->DelegateAgentSource().empty());
+            const auto serialized = globals->ToJson();
+            VERIFY_IS_TRUE(serialized.isMember("acpAgentSource") && serialized["acpAgentSource"].isNull());
+            VERIFY_IS_TRUE(serialized.isMember("delegateAgentSource") && serialized["delegateAgentSource"].isNull());
+            const auto reloaded = implementation::GlobalAppSettings::FromJson(serialized);
+            VERIFY_IS_TRUE(reloaded->AcpAgentSource().empty());
+            VERIFY_IS_TRUE(reloaded->DelegateAgentSource().empty());
+        }
     }
 
     void SerializationTests::GlobalSettings()

@@ -2504,15 +2504,21 @@
         },
         "acpAgentSource": {
           "description": "Execution source of the global agent pane provider, independent of the terminal profile. An explicit WSL source never falls back to Windows.",
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "default": "host",
-          "pattern": "^(host|wsl:[A-Za-z0-9._+\\-]{1,256})$"
+          "pattern": "^(host|wsl:[A-Za-z0-9._+\\-]{1,256})?$"
         },
         "delegateAgentSource": {
           "description": "Execution source of the global command palette delegate provider. Existing settings default to Windows.",
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "default": "host",
-          "pattern": "^(host|wsl:[A-Za-z0-9._+\\-]{1,256})$"
+          "pattern": "^(host|wsl:[A-Za-z0-9._+\\-]{1,256})?$"
         },
         "startupActions": {
           "description": "Sets the list of actions to apply if no command line is provided. Uses the same format as command line arguments",
