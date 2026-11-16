@@ -3008,7 +3008,7 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Entrez un identifiant de modèle pris en charge par cet agent. Laissez ce champ vide pour utiliser la configuration propre à l’agent. S’applique aux nouvelles sessions.</value>
+    <value>Entrez un identifiant de modèle pris en charge par cet agent. Laissez ce champ vide pour utiliser la configuration propre à l’agent.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3078,5 +3078,17 @@ Alt+Shift+/ saisir une requête ; Alt+Shift+B lancer sans requête initiale.</va
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal ajoute automatiquement les outils en ligne de commande d’agents installés en tant que profils. Ouvrez-en un depuis le menu de nouvel onglet pour commencer.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>Profil d’agent</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>Arguments de reprise</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>Ajoutés après les arguments de démarrage habituels uniquement lors de la reprise d’une session. L’identifiant de session est automatiquement ajouté à la fin.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

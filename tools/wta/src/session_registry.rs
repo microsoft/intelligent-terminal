@@ -1166,6 +1166,15 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
+    QualifiedHook {
+        identity: SessionIdentity,
+        pane_session_id: String,
+        event: crate::agent_sessions::QualifiedHookActivity,
+    },
+    QualifiedResume {
+        identity: SessionIdentity,
+        event: crate::agent_sessions::QualifiedResumeEvent,
+    },
     SessionStarted {
         key: crate::agent_sessions::AgentKey,
         cli_source: SessionHookCliSource,
@@ -1238,6 +1247,19 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
     fn from(value: &crate::agent_sessions::SessionEvent) -> Self {
         use crate::agent_sessions::SessionEvent;
         match value {
+            SessionEvent::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            } => Self::QualifiedHook {
+                identity: identity.clone(),
+                pane_session_id: pane_session_id.clone(),
+                event: event.clone(),
+            },
+            SessionEvent::QualifiedResume { identity, event } => Self::QualifiedResume {
+                identity: identity.clone(),
+                event: event.clone(),
+            },
             SessionEvent::SessionStarted {
                 key,
                 cli_source,
@@ -1336,6 +1358,18 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
 impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
     fn from(value: SessionHookParams) -> Self {
         match value {
+            SessionHookParams::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            } => Self::QualifiedHook {
+                identity,
+                pane_session_id,
+                event,
+            },
+            SessionHookParams::QualifiedResume { identity, event } => {
+                Self::QualifiedResume { identity, event }
+            }
             SessionHookParams::SessionStarted {
                 key,
                 cli_source,
@@ -1886,6 +1920,9 @@ pub trait SessionRegistry: Send + Sync {
     ) -> Option<SessionInfo>;
 
     async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo>;
+
+    /// Correlate an InUse row's hook evidence with its exact indexed pane owner.
+    async fn has_in_use_hook_pane_owner(&self, identity: &SessionIdentity) -> bool;
 
     /// Snapshot the full set. Order is unspecified — callers that need a
     /// stable order should sort by `session_id` themselves. The clone is
@@ -2617,6 +2654,18 @@ impl SessionRegistry for InMemoryRegistry {
     async fn lookup_identity(&self, identity: &SessionIdentity) -> Option<SessionInfo> {
         let guard = self.inner.lock().await;
         guard.sessions.get(identity).cloned()
+    }
+
+    async fn has_in_use_hook_pane_owner(&self, identity: &SessionIdentity) -> bool {
+        let guard = self.inner.lock().await;
+        guard.sessions.get(identity).is_some_and(|row| {
+            row.status == Some(AgentStatus::InUse)
+                && row.cwd_evidence.hook.is_some()
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|pane| guard.active_by_pane.get(&pane_key(pane)) == Some(identity))
+        })
     }
 
     async fn lookup_active_by_pane(&self, pane_session_id: &str) -> Option<SessionInfo> {
@@ -4027,6 +4076,33 @@ fn apply_event_qualified_at_ms(
     qualified_activity: Option<&SessionIdentity>,
     now: u64,
 ) -> bool {
+    if let SessionEvent::QualifiedHook {
+        identity,
+        pane_session_id,
+        event,
+    } = ev
+    {
+        let pane = pane_key(&pane_session_id);
+        if identity.history_key.is_none()
+            || state.active_by_pane.get(&pane) != Some(&identity)
+            || state.native_panes.contains_key(&pane)
+            || !state
+                .sessions
+                .get(&identity)
+                .is_some_and(|row| row.session_universe.is_none())
+        {
+            return false;
+        }
+        let key = identity.session_id.to_string();
+        return apply_event_qualified_at_ms(state, event.into_event(key), Some(&identity), now);
+    }
+    if let SessionEvent::QualifiedResume { identity, event } = ev {
+        if identity.history_key.is_none() {
+            return false;
+        }
+        let key = identity.session_id.to_string();
+        return apply_event_qualified_at_ms(state, event.into_event(key), Some(&identity), now);
+    }
     let unqualified_activity_key = match &ev {
         SessionEvent::ToolStarting { key, .. }
         | SessionEvent::ToolReturned { key, .. }
@@ -4161,7 +4237,38 @@ fn apply_event_qualified_at_ms(
         } => {
             let sid = acp::schema::v1::SessionId::new(key.clone());
             let pane_known = !pane_session_id.is_empty();
-            let existing_identity = unique_identity_for_raw(state, &sid);
+            let provider_id = cli_source.canonical_provider_id();
+            // A receipt can bind this exact qualified row before its first hook.
+            // Raw-ID ambiguity must not make its own pane look foreign.
+            let existing_identity = state
+                .active_by_pane
+                .get(&pane_session_id)
+                .filter(|identity| {
+                    identity.session_id == sid
+                        && state.sessions.get(*identity).is_some_and(|row| {
+                            provider_id.is_some() && row.provider_id == provider_id
+                        })
+                })
+                .cloned()
+                .or_else(|| {
+                    let identity = SessionIdentity {
+                        session_id: sid.clone(),
+                        history_key: HistoryRowKey::new(
+                            provider_id.as_deref()?,
+                            SessionLocation::Host,
+                            sid.to_string(),
+                            None,
+                        ),
+                    };
+                    state.sessions.contains_key(&identity).then_some(identity)
+                })
+                .or_else(|| {
+                    unique_identity_for_raw(state, &sid).filter(|identity| {
+                        state.sessions.get(identity).is_some_and(|row| {
+                            row.provider_id.is_none() || row.provider_id == provider_id
+                        })
+                    })
+                });
 
             // GUARD: PowerShell shell-integration hooks fire from wherever
             // an agent ran a tool, NOT from the agent's home pane. For
@@ -4689,15 +4796,40 @@ fn apply_event_qualified_at_ms(
         } => apply_connection_failure_locked(state, &pane_session_id, &reason, now),
         SessionEvent::ResumeDispatched { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
+            let snapshot_in_use = qualified_activity.is_some()
+                && !state
+                    .native_panes
+                    .values()
+                    .any(|pane| pane.bound_identity.as_ref() == Some(&identity))
+                && state.sessions.get(&identity).is_some_and(|row| {
+                    row.status == Some(AgentStatus::InUse)
+                        && row.location == SessionLocation::Host
+                        && row.origin != Some(SessionOrigin::AgentPane)
+                        && row.session_universe.is_none()
+                        && !row.born_bound_pane
+                        && row.bound_pid.is_none()
+                });
+            if snapshot_in_use {
+                if let Some(row) = state.sessions.get_mut(&identity) {
+                    // The existing transition clears this snapshot-only hint and its index.
+                    row.status = Some(AgentStatus::Historical);
+                }
+            }
             mark_resume_dispatched_identity_locked(state, &identity)
                 .is_some_and(|(flipped, _)| flipped)
         }
         SessionEvent::ResumeFailed { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             let Some(entry) = state.sessions.get_mut(&identity) else {
@@ -4716,9 +4848,19 @@ fn apply_event_qualified_at_ms(
             pane_session_id,
         } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
+            if qualified_activity.is_some()
+                && !state.sessions.get(&identity).is_some_and(|row| {
+                    row.status == Some(AgentStatus::Idle) && row.pane_session_id.is_none()
+                })
+            {
+                return false;
+            }
             // The helper callback only binds an already-dispatched attempt.
             // A hook followed by PaneClosed may have ended it while the
             // callback was in flight; only an explicit new resume may revive it.
@@ -4732,6 +4874,7 @@ fn apply_event_qualified_at_ms(
             }
             assign_resume_pane_identity_locked(state, &identity, pane_session_id, now)
         }
+        SessionEvent::QualifiedResume { .. } | SessionEvent::QualifiedHook { .. } => false,
     }
 }
 

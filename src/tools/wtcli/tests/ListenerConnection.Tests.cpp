@@ -51,12 +51,14 @@ namespace NativeMock
     unsigned registerCalls = 0;
     ITerminalProtocol* queryServer = nullptr;
 
-    struct ProfileServer : ITerminalProtocol
+    struct ProfileServer : ITerminalProtocol, ITerminalProtocolNativeAgent
     {
         const char* capabilities = R"(["list_profiles"])";
         const char* profiles = R"([{"id":"{5784e726-2a17-4932-bd11-18a387ef9c02}","name":"Copilot","is_default":false,"agent_id":"copilot"}])";
         HRESULT queryResult = S_OK;
         unsigned queryCalls = 0;
+        unsigned nativeInterfaceQueries = 0;
+        unsigned nativeResumeCalls = 0;
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
         {
@@ -64,6 +66,13 @@ namespace NativeMock
             if (iid == __uuidof(IUnknown) || iid == __uuidof(ITerminalProtocol))
             {
                 *object = static_cast<ITerminalProtocol*>(this);
+                AddRef();
+                return S_OK;
+            }
+            if (iid == __uuidof(ITerminalProtocolNativeAgent))
+            {
+                ++nativeInterfaceQueries;
+                *object = static_cast<ITerminalProtocolNativeAgent*>(this);
                 AddRef();
                 return S_OK;
             }
@@ -105,6 +114,13 @@ namespace NativeMock
         HRESULT STDMETHODCALLTYPE Unsubscribe() override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE SendEvent(BSTR) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetPaneContext(GUID, boolean, long, long, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CreateAgentCliTab(unsigned __int64, BSTR, BSTR, BSTR, BSTR, boolean, boolean, BSTR, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SplitAgentCliPane(GUID, BSTR, float, BSTR, BSTR, boolean, BSTR, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CreateNativeProfileResumeTab(unsigned __int64, BSTR, BSTR*) override
+        {
+            ++nativeResumeCalls;
+            return E_NOTIMPL;
+        }
     };
 
     HRESULT LoadProxy(wil::unique_hmodule& module)
@@ -145,6 +161,12 @@ namespace NativeMock
             *object = nullptr;
             if (iid != __uuidof(ITerminalProtocol))
                 throw std::runtime_error("wrong protocol interface");
+            if (queryServer)
+            {
+                *object = queryServer;
+                queryServer->AddRef();
+                return S_OK;
+            }
             return E_NOINTERFACE;
         }
         HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return S_OK; }
@@ -285,6 +307,20 @@ namespace NativeMock
         return result;
     }
 
+    int NativeProfileResume()
+    {
+        wchar_t executable[] = L"wtcli";
+        wchar_t json[] = L"--json";
+        wchar_t command[] = L"native-profile-resume";
+        wchar_t windowOption[] = L"--window-id";
+        wchar_t windowId[] = L"42";
+        wchar_t payload[] = L"{\"method\":\"resume_in_new_agent_tab\",\"params\":{\"request_id\":\"owned\",\"window_id\":\"42\",\"resume_target\":\"native\",\"agent_source\":\"host\",\"session_id\":\"external\",\"agent_id\":\"custom:hookless\"}}";
+        wchar_t* argv[]{ executable, json, command, windowOption, windowId, payload };
+        const auto result = WtcliMain(6, argv);
+        winrt::uninit_apartment();
+        return result;
+    }
+
     void CheckProfileQueries()
     {
         Reset();
@@ -395,6 +431,29 @@ int wmain()
             supportsFactory = false;
             Require(Publish(true, fromStdin) == 1);
             Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == 0);
+        }
+
+        for (const auto factoryRegistered : { false, true })
+        {
+            Reset();
+            registered = factoryRegistered;
+            Require(NativeProfileResume() != 0, "native resume must fail when no existing protocol instance can be created");
+            Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u),
+                    "native-profile-resume must never activate a replacement Terminal");
+        }
+
+        for (const auto capabilities : { R"(["create_agent_cli_tab","split_agent_cli_pane"])", "{}" })
+        {
+            Reset();
+            ProfileServer server;
+            server.capabilities = capabilities;
+            queryServer = &server;
+            const auto resetServer = wil::scope_exit([]() noexcept { queryServer = nullptr; });
+            Require(NativeProfileResume() != 0, "native resume must reject unsupported or malformed capabilities");
+            Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == 1,
+                    "native resume capability checks must use only the existing Terminal");
+            Require(server.nativeInterfaceQueries == 0 && server.nativeResumeCalls == 0,
+                    "native resume capability gate must run before native interface QI and the appended method");
         }
 
         puts("Listener/publisher connection tests passed (no real COM server or agent).");

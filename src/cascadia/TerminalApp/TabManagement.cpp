@@ -13,6 +13,7 @@
 #include "ContentManager.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPaneRestore.h"
+#include "../inc/AgentProfileUtils.h"
 #include "Utils.h"
 #include "../../types/inc/utils.hpp"
 #include "../../inc/til/string.h"
@@ -61,26 +62,31 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
-    winrt::hstring TerminalPage::_AgentIconForControl(const TermControl& control, const winrt::hstring& profileIcon)
+    winrt::hstring TerminalPage::_AgentIconForControl(const TermControl& control,
+                                                      const winrt::hstring& profileIcon,
+                                                      const winrt::Microsoft::Terminal::Settings::Model::Profile& profile)
     {
         if (control)
         {
-            const auto providerId = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
+            auto providerId = winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId());
             if (const auto agentInfo = _RichTabAgentInfoForControl(control);
-                agentInfo &&
-                !agentInfo->providerId.empty() &&
-                (agentInfo->status == "Idle" ||
-                 agentInfo->status == "Working" ||
-                 agentInfo->status == "Attention" ||
-                 agentInfo->status == "Error"))
+                agentInfo && !agentInfo->providerId.empty() &&
+                (agentInfo->status == "Idle" || agentInfo->status == "Working" ||
+                 agentInfo->status == "Attention" || agentInfo->status == "Error"))
             {
-                return _IsBuiltinAgentProviderId(agentInfo->providerId) ?
-                           ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ winrt::to_hstring(agentInfo->providerId) }) :
-                           profileIcon;
+                providerId = winrt::to_hstring(agentInfo->providerId);
             }
             if (!providerId.empty())
             {
-                return ::Microsoft::Terminal::UI::AgentIcons::IconPathForProvider(std::wstring_view{ providerId });
+                if (profile && ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(profile.AgentProfileId(), providerId))
+                {
+                    return profile.Icon().Resolved();
+                }
+                if (const auto generatedProfile = _FindNativeAgentProfile(providerId, {}))
+                {
+                    return generatedProfile.Icon().Resolved();
+                }
+                return L"ms-appx:///AgentIcons/generic.svg";
             }
         }
         return profileIcon;
@@ -543,7 +549,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (const auto content{ sourcePane->GetContent() })
         {
-            const auto icon = _AgentIconForControl(sourcePane->GetTerminalControl(), content.Icon());
+            const auto icon = _AgentIconForControl(sourcePane->GetTerminalControl(), content.Icon(), sourcePane->GetProfile());
             const auto theme = _settings.GlobalSettings().CurrentTheme();
             const auto iconStyle = (theme && theme.Tab()) ? theme.Tab().IconStyle() : IconStyle::Default;
 
@@ -806,23 +812,41 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
 
+            // These args were emitted by the running pane with its profile GUID.
+            // Inspect without launch-time validation: a deleted profile is still
+            // saveable, but must fail explicitly if the saved action is restored.
+            const auto profile = terminalArgs.Profile().empty() ? Profile{ nullptr } :
+                                                                  _settings.FindProfile(Utils::GuidFromString(terminalArgs.Profile().c_str()));
+            const auto provider = profile ? profile.AgentProfileId() :
+                                            (terminalArgs.Commandline().empty() ? terminalArgs.NativeAgentProviderId() : winrt::hstring{});
+            const auto profileResume = !provider.empty() &&
+                                       ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(provider, binding->second.agent) &&
+                                       (binding->second.backend.empty() || std::wstring_view{ binding->second.backend }.starts_with(L"host:"));
+            if (profileResume)
+            {
+                // Keep the existing profile GUID and conversation ID, not a frozen
+                // command. Recompute from effective settings at the next launch.
+                terminalArgs.NativeAgentSessionId(binding->second.sessionId);
+                terminalArgs.Commandline(L"");
+            }
+
             // Prefer rebuilding from the agent id: it is validated, while a
             // command line handed to us by a hook is not. Fall back to the
             // recorded one when we cannot spell the resume ourselves — an
             // agent absent from `ResumeInvocations`, or a session id that
             // fails validation — rather than dropping the binding entirely.
             namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
-            auto resume = binding->second.agent.empty() ?
+            auto resume = profileResume || binding->second.agent.empty() ?
                               winrt::hstring{} :
                               winrt::hstring{ Restore::BuildResumeCommandline(
                                   binding->second.backend.empty() ? binding->second.agent : binding->second.backend,
                                   binding->second.sessionId,
                                   binding->second.cwd) };
-            if (resume.empty())
+            if (!profileResume && resume.empty())
             {
                 resume = binding->second.resumeCommandline;
             }
-            if (!resume.empty())
+            if (profileResume || !resume.empty())
             {
                 const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(
                     std::wstring_view{ binding->second.backend });
@@ -850,7 +874,10 @@ namespace winrt::TerminalApp::implementation
                         terminalArgs.StartingDirectory(binding->second.cwd);
                     }
                 }
-                terminalArgs.Commandline(resume);
+                if (!profileResume)
+                {
+                    terminalArgs.Commandline(resume);
+                }
             }
         }
     }

@@ -51,6 +51,11 @@ import "unknwn.idl";
                              [in] boolean background,
                              [in] BSTR providerId,
                              [out, retval] BSTR* json);
+
+    // Appended: the creation receipt is a request result, not an event.
+    HRESULT CreateNativeProfileResumeTab([in] unsigned hyper windowId,
+                                         [in] BSTR eventJson,
+                                         [out, retval] BSTR* json);
 };
 
 // Terminal protocol — implemented by WindowsTerminal.exe, activated by the

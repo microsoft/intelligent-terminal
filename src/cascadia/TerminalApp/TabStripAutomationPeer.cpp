@@ -21,12 +21,16 @@ namespace winrt::TerminalApp::implementation
 
     winrt::Windows::UI::Xaml::Automation::Peers::AutomationControlType TabStripAutomationPeer::GetAutomationControlTypeCore() const
     {
-        return winrt::Windows::UI::Xaml::Automation::Peers::AutomationControlType::Tab;
+        // Selection belongs to the hosted TreeViewList. This peer groups that
+        // tree with search, filters, and sidebar chrome; it is not a second
+        // selection container (and its children are TreeItems, not TabItems).
+        return winrt::Windows::UI::Xaml::Automation::Peers::AutomationControlType::Group;
     }
 
-    winrt::hstring TabStripAutomationPeer::GetLocalizedControlTypeCore() const
+    winrt::hstring TabStripAutomationPeer::GetNameCore() const
     {
-        return RS_(L"TabStrip_ControlType");
+        const auto name = m_inner.as<winrt::Windows::UI::Xaml::Automation::Peers::IAutomationPeerOverrides>().GetNameCore();
+        return name.empty() ? RS_(L"VerticalTabsHeader/Text") : name;
     }
 
     winrt::Windows::UI::Xaml::Automation::Peers::AutomationOrientation TabStripAutomationPeer::GetOrientationCore() const

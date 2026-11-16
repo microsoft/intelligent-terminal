@@ -222,6 +222,13 @@ command marks or retained Closed/Failed connection states. Sessions ON applies
 the hook/OSC arbitration above. A reused saved pane GUID cannot
 inherit the closed pane's explicit ownership marker.
 
+Helper-initiated native resume retains the selected provider/location-qualified
+identity across pending, receipt, and failure events, including a provider rebind
+while creation is in flight. Equal provider raw IDs do not share pending state.
+The external native profile request still receives the provider's unchanged raw session ID.
+Qualified hook binding wins over a late receipt or failure; legacy resume events
+without qualification are rejected when the raw ID names multiple registry rows.
+
 The watcher design below describes registry tracking, not an authority to
 infer native pane identity when Sessions is OFF.
 
