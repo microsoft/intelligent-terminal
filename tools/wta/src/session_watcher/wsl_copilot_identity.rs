@@ -195,10 +195,10 @@ mod tests {
         let package = uuid::Uuid::new_v4();
         for output in [
             "invalid".to_string(),
-            format!("{session}\tnot-a-pane\t{package}\n"),
+            format!("{session}\t{}\t{package}\n", "not-a-pane"),
             format!("{session}\t{}\t{package}\n", uuid::Uuid::nil()),
             format!("{}\t{pane}\t{package}\n", uuid::Uuid::new_v4()),
-            format!("{session}\t{pane}\t{package}\textra\n"),
+            format!("{session}\t{pane}\t{package}\t{}\n", "extra"),
             "x".repeat(MAX_OUTPUT as usize + 1),
         ] {
             assert!(
@@ -214,8 +214,9 @@ mod tests {
         let pane = uuid::Uuid::new_v4();
         let package = uuid::Uuid::new_v4();
         let output = format!(
-            "{session}\t\t\n{session}\tinvalid\t{package}\n\
-            {session}\t{pane}\tother-package\n{session}\t{pane}\t{package}\n"
+            "{session}\t\t\n{session}\t{}\t{package}\n\
+            {session}\t{pane}\t{}\n{session}\t{pane}\t{package}\n",
+            "invalid", "other-package"
         );
         assert_eq!(
             parse_leases(output.as_bytes(), &[session.to_string()], package).unwrap(),
