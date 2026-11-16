@@ -125,7 +125,7 @@ Author(s):
     X(hstring, AgentProfileModel, "agentProfile.model", L"")                                                                                                   \
     X(hstring, AgentProfilePermissionMode, "agentProfile.permissionMode", L"")                                                                                 \
     X(hstring, AgentProfileArguments, "agentProfile.arguments", L"")                                                                                           \
-    X(hstring, AgentProfileResumeArguments, "agentProfile.resumeArguments", L"")                                                                                \
+    X(hstring, AgentProfileResumeArguments, "agentProfile.resumeArguments", L"")                                                                               \
     X(hstring, DefaultSplitProfile, "defaultSplitProfile", L"")                                                                                                \
     X(hstring, AgentPaneBackend, "agentPaneBackend", L"")                                                                                                      \
     X(hstring, CommandPaletteAgent, "commandPaletteAgent", L"")                                                                                                \

@@ -81,7 +81,8 @@ namespace Microsoft::Terminal::AgentProfiles
                 Settings::Model::AgentPaneBackend::SourceEquals(backend->SettingsSource(), executionSource) &&
                 Settings::Model::AgentRegistry::AgentIdEquals(id, providerId) &&
                 profile.Guid() == GeneratedGuid(backend->source == Settings::Model::AgentPaneBackendSource::Wsl ?
-                                                    backend->SelectionId() : std::wstring{ originalId }))
+                                                    backend->SelectionId() :
+                                                    std::wstring{ originalId }))
             {
                 // Case-distinct generated identities must not select an arbitrary original.
                 if (original)

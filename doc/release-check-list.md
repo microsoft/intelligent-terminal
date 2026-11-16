@@ -465,6 +465,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_
 - [ ] `C343` `[new]` `[E2E]` **Bare launch opens a new tab without attaching kept tabs:** With no windows and two detached tabs, Start menu Open and explicit profile launches create a new ordinary tab while retained processes stay alive and detached; only explicit session activation attaches them. _(E2E: `Feature.KeepRunningFocus`.)_
+- [ ] `C506` `[new]` `[E2E]` **Tray restoration preserves window geometry and live sessions across five closes:** With a hosted titlebar and default launch mode, five close/notification-area restore cycles preserve the original normal-window frame within two physical pixels and retain shell/helper processes and ACP session identity. _(E2E: `Feature.KeepRunningFocus`; automated notification callback, not a physical tray click; live validation pending.)_
 
 ### Surfaces
 

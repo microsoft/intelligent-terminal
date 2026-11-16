@@ -820,8 +820,7 @@ namespace winrt::TerminalApp::implementation
             const auto provider = profile ? profile.AgentProfileId() :
                                             (terminalArgs.Commandline().empty() ? terminalArgs.NativeAgentProviderId() : winrt::hstring{});
             const auto profileResume = ::Microsoft::Terminal::AgentProfiles::MatchesResumeBinding(
-                provider, profile ? profile.AgentProfileSource() : winrt::hstring{},
-                binding->second.agent, binding->second.backend);
+                provider, profile ? profile.AgentProfileSource() : winrt::hstring{}, binding->second.agent, binding->second.backend);
             if (profileResume)
             {
                 // Keep the existing profile GUID and conversation ID, not a frozen
@@ -1036,13 +1035,13 @@ namespace winrt::TerminalApp::implementation
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
-    bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
+    bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab, const KeptWindowGeometry* geometry)
     {
         if (!tab || !tab->KeepRunning() || !_GetTabIndex(*tab))
         {
             return false;
         }
-        _manager.KeepTab(*this, *tab);
+        winrt::get_self<ContentManager>(_manager)->KeepTab(*this, *tab, geometry);
         auto rollback = wil::scope_exit([&]() noexcept {
             if (_GetTabIndex(*tab))
             {

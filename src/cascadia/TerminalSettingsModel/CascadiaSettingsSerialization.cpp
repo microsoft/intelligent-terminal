@@ -677,7 +677,8 @@ bool SettingsLoader::FixupUserSettings()
                     const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
                         profile->AgentProfileId(), profile->AgentProfileSource());
                     profile->StartingDirectory(backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
-                                                   L"~" : L"%USERPROFILE%");
+                                                   L"~" :
+                                                   L"%USERPROFILE%");
                 }
             }
         }

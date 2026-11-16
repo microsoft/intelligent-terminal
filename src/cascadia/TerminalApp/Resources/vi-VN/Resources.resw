@@ -732,4 +732,7 @@
     <value>Chuyển sang tab dọc để xem nhanh hoạt động của các tác tử. Nhấp chuột phải vào một tab rồi chọn {0}.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Ngăn {0} trong tổng số {1}</value>
+  </data>
 </root>
