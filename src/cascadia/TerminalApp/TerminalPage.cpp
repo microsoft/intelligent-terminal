@@ -30,6 +30,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentIconUtils.h"
 #include "../inc/AgentProfileUtils.h"
+#include "../inc/CustomAgentId.h"
 #include "../inc/NewTabMenuUtils.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
@@ -3335,7 +3336,8 @@ namespace winrt::TerminalApp::implementation
         }
 
         if (const auto paneSessionId = _TryParsePaneSessionId(paneId);
-            paneSessionId && _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+            paneSessionId && _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() &&
+            winrt::get_self<ContentManager>(_manager)->AcceptsAgentSessionEvents(*paneSessionId))
         {
             _pendingRestoredSessionBindings.erase(*paneSessionId);
             // A CLI that exited on its own leaves nothing to resume. One that
@@ -13032,8 +13034,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         if (control.ConnectionState() != ConnectionState::Connected &&
-            (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() ||
-             winrt::get_self<ContentManager>(_manager)->NativeAgentProviderId(control.ContentId()).empty()))
+            !winrt::get_self<ContentManager>(_manager)->UsesNativeAgentFallback(control.ContentId()))
         {
             return;
         }
@@ -13398,10 +13399,6 @@ namespace winrt::TerminalApp::implementation
                 _ReplayRestoredSessionBindings(tab, /*helperSubscribed*/ false);
             }
         }
-        if (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() && !replacement)
-        {
-            return;
-        }
         for (const auto& runtimeTab : _RuntimeTabs())
         {
             if (const auto tab = _GetTabImpl(runtimeTab); tab && tab->GetRootPane())
@@ -13410,6 +13407,11 @@ namespace winrt::TerminalApp::implementation
                     if (const auto control = pane->GetTerminalControl())
                     {
                         const auto manager = winrt::get_self<ContentManager>(_manager);
+                        if (!replacement && _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() &&
+                            !manager->UsesNativeAgentFallback(control.ContentId()))
+                        {
+                            return false;
+                        }
                         const auto identity = manager->NativeAgentObservationForContent(control.ContentId());
                         const auto paneId = _TryParsePaneSessionId(_FindSessionIdForControl(control));
                         if (!replacement && identity && paneId)
@@ -13429,7 +13431,7 @@ namespace winrt::TerminalApp::implementation
                         }
                         if (replacement)
                         {
-                            if (_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                            if (!manager->UsesNativeAgentFallback(control.ContentId()))
                             {
                                 _PublishNativeAgentObservation(control, "reset", true, std::nullopt, true);
                             }
@@ -13469,7 +13471,8 @@ namespace winrt::TerminalApp::implementation
         }
         const auto previous = manager->NativeAgentObservationForContent(control.ContentId());
         const auto paneSessionId = _TryParsePaneSessionId(paneId);
-        const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
+        const auto enabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() &&
+                             !manager->UsesNativeAgentFallback(control.ContentId());
         std::string agentSessionId;
         std::string source;
         bool explicitBinding = false;
@@ -13646,7 +13649,8 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_PublishNativeAgentSignal(const TermControl& control, const bool attention, const uint64_t progressState)
     {
         _SyncNativeAgentStatusMode();
-        if (!_lastEffectiveAgentSessionManagementEnabled.value() || !attention)
+        if (!_lastEffectiveAgentSessionManagementEnabled.value() || !attention ||
+            winrt::get_self<ContentManager>(_manager)->UsesNativeAgentFallback(control.ContentId()))
         {
             _PublishNativeAgentObservation(control, attention ? "bell" : "progress", false, progressState);
         }
@@ -13689,7 +13693,8 @@ namespace winrt::TerminalApp::implementation
         {
             return std::nullopt;
         }
-        if (!_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        if (!_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() ||
+            winrt::get_self<ContentManager>(_manager)->UsesNativeAgentFallback(control.ContentId()))
         {
             const auto identity = winrt::get_self<ContentManager>(_manager)->NativeAgentObservationForContent(control.ContentId());
             if (identity)
@@ -15219,8 +15224,7 @@ namespace winrt::TerminalApp::implementation
                                 }
                                 else
                                 {
-                                    if (page->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() ||
-                                        winrt::get_self<ContentManager>(page->_manager)->NativeAgentProviderId(term2.ContentId()).empty())
+                                    if (!winrt::get_self<ContentManager>(page->_manager)->UsesNativeAgentFallback(term2.ContentId()))
                                     {
                                         page->_DetachRichTabControl(term2);
                                     }
@@ -18547,8 +18551,7 @@ namespace winrt::TerminalApp::implementation
         const auto& termControl = paneContent.GetTermControl();
         _SyncNativeAgentStatusMode();
         const auto manager = winrt::get_self<ContentManager>(_manager);
-        const auto nativeFallback = !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() &&
-                                    !manager->NativeAgentProviderId(termControl.ContentId()).empty();
+        const auto nativeFallback = manager->UsesNativeAgentFallback(termControl.ContentId());
         std::optional<_PaneAgentSession> resumeBinding;
         std::string resumeLocation;
         const auto oldPaneId = _FindSessionIdForControl(termControl);

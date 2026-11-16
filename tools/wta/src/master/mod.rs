@@ -667,6 +667,8 @@ struct MasterStateInner {
     /// so a rejected/unknown helper request safely falls back to it.
     pub(crate) default_agent_cmd: String,
     pub(crate) default_agent_id: Option<String>,
+    /// Only the master's host settings projection can establish discovery authority.
+    custom_agent_commands: Mutex<CustomAcpCatalog>,
     /// Allowlist of agent ids a helper may select over the pipe, from the
     /// host's GPO-filtered set (`--allowed-agent-ids`). `None` = the flag was
     /// absent (manual runs / older hosts): any *known* agent id is accepted.
@@ -1902,6 +1904,76 @@ fn agent_admission_key_with_provider(
 }
 
 #[derive(Default)]
+struct CustomAcpCatalog {
+    known: bool,
+    epoch: u64,
+    bindings: HashMap<String, CustomAcpBinding>,
+    discovery_commands: HashMap<String, String>,
+    unknown_cancelled: tokio_util::sync::CancellationToken,
+    inventories: HashMap<String, HashSet<String>>,
+}
+
+struct CustomAcpBinding {
+    command: String,
+    epoch: u64,
+    cancelled: tokio_util::sync::CancellationToken,
+    needs_complete_inventory: bool,
+}
+
+impl CustomAcpCatalog {
+    fn permit(
+        &self,
+        agent: &AgentCli,
+        state: &MasterStateInner,
+    ) -> Option<(u64, tokio_util::sync::CancellationToken)> {
+        if !uses_custom_acp_catalog(agent)
+            || agent
+                .history_refresh
+                .retired
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return None;
+        }
+        if !self.known {
+            return (state
+                .default_agent_id
+                .as_deref()
+                .is_some_and(|id| id.eq_ignore_ascii_case(&agent.resolved_agent_id))
+                && matches_history_command(agent, &state.default_agent_cmd))
+            .then(|| (0, self.unknown_cancelled.clone()));
+        }
+        let binding = self
+            .bindings
+            .get(&agent.resolved_agent_id.to_ascii_lowercase())?;
+        let matches = matches_history_command(agent, &binding.command);
+        matches.then(|| (binding.epoch, binding.cancelled.clone()))
+    }
+
+    fn commands(&self) -> HashMap<String, String> {
+        self.discovery_commands.clone()
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.discovery_commands.is_empty()
+    }
+}
+
+fn matches_history_command(agent: &AgentCli, command: &str) -> bool {
+    agent.cmd_key == agent_cmd_key(command, Some(&agent.resolved_agent_id), &agent.source)
+        && agent
+            .history_refresh
+            .target
+            .get()
+            .is_none_or(|target| target.command == command)
+}
+
+fn uses_custom_acp_catalog(agent: &AgentCli) -> bool {
+    agent.resolved_agent_id.starts_with("custom:")
+        && agent.source == crate::agent_source::AgentSource::Host
+}
+
+#[derive(Default)]
 struct AgentHistoryRefresh {
     gate: Arc<Mutex<HistoryRefreshState>>,
     mutation_gate: Mutex<()>,
@@ -1937,6 +2009,7 @@ impl From<crate::session_registry::HistoryLoadStatus> for HistorySyncStatus {
 
 #[derive(Default)]
 struct HistoryRefreshState {
+    catalog_epoch: Option<u64>,
     next_refresh_at: Option<tokio::time::Instant>,
     failures: u32,
     startup_exhausted: bool,
@@ -5111,6 +5184,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
+        custom_agent_commands: Mutex::new(CustomAcpCatalog::default()),
         allowed_agent_ids,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -7304,6 +7378,36 @@ async fn sync_host_history(
     agent: &AgentCli,
     refresh: &mut HistoryRefreshState,
 ) -> Result<(bool, usize), HistoryRefreshFailure> {
+    let permit = if uses_custom_acp_catalog(agent) {
+        let permit = state
+            .custom_agent_commands
+            .lock()
+            .await
+            .permit(agent, state);
+        let Some((epoch, cancelled)) = permit else {
+            if let Err(error) = refresh.query.stop().await {
+                tracing::warn!(target: "master_history", %error, "obsolete custom ACP history query could not stop");
+            }
+            return Err(HistoryRefreshFailure::Other);
+        };
+        if refresh.catalog_epoch != Some(epoch) {
+            if refresh.catalog_epoch.is_some() {
+                refresh
+                    .query
+                    .stop()
+                    .await
+                    .map_err(|_| HistoryRefreshFailure::Other)?;
+                refresh.query = history::HistoryQuery::default();
+                refresh.failures = 0;
+                refresh.last_count = None;
+            }
+            refresh.cwd_baseline = None;
+            refresh.catalog_epoch = Some(epoch);
+        }
+        Some((epoch, cancelled))
+    } else {
+        None
+    };
     let host_acp_cwd = host_acp_cwd_enabled(agent);
     if host_acp_cwd
         && (!refresh.query.in_flight()
@@ -7329,8 +7433,39 @@ async fn sync_host_history(
     let complete_inventory = state
         .registry
         .has_pending_native_inference(&agent.resolved_agent_id, &agent.source.session_location())
-        .await;
-    let listing = match host_session_list_raw(agent, refresh, complete_inventory).await {
+        .await
+        || (uses_custom_acp_catalog(agent)
+            && state
+                .custom_agent_commands
+                .lock()
+                .await
+                .bindings
+                .get(&agent.resolved_agent_id.to_ascii_lowercase())
+                .is_some_and(|binding| binding.needs_complete_inventory));
+    let poll = async {
+        if let Some((_, cancelled)) = &permit {
+            tokio::select! {
+                biased;
+                _ = cancelled.cancelled() => Err(HistoryRefreshFailure::Other),
+                result = host_session_list_raw(agent, refresh, complete_inventory) => result,
+            }
+        } else {
+            host_session_list_raw(agent, refresh, complete_inventory).await
+        }
+    }
+    .await;
+    if permit
+        .as_ref()
+        .is_some_and(|(_, cancelled)| cancelled.is_cancelled())
+    {
+        refresh
+            .query
+            .stop()
+            .await
+            .map_err(|_| HistoryRefreshFailure::Other)?;
+        return Err(HistoryRefreshFailure::Other);
+    }
+    let listing = match poll {
         Ok(listing) => listing,
         Err(error) => {
             if !refresh.query.in_flight() {
@@ -7361,9 +7496,25 @@ async fn sync_host_history(
         .iter()
         .map(|row| row.session_id.to_string())
         .collect();
-    let mut rows = host_history_via_acp(state, agent, &sessions)
-        .await
-        .ok_or(HistoryRefreshFailure::Other)?;
+    let classify = async {
+        let rows = host_history_via_acp(state, agent, &sessions)
+            .await
+            .ok_or(HistoryRefreshFailure::Other)?;
+        let mutation = agent.history_refresh.mutation_gate.lock().await;
+        Ok::<_, HistoryRefreshFailure>((rows, mutation))
+    };
+    let (mut rows, _mutation) = if let Some((_, cancelled)) = &permit {
+        tokio::select! {
+            biased;
+            _ = cancelled.cancelled() => {
+                refresh.query.stop().await.map_err(|_| HistoryRefreshFailure::Other)?;
+                return Err(HistoryRefreshFailure::Other);
+            },
+            result = classify => result?,
+        }
+    } else {
+        classify.await?
+    };
     // Identity inference must see untitled candidates too; otherwise filtering
     // history could turn an ambiguous inventory into a false unique match.
     let inference_inventory: Vec<_> = rows
@@ -7371,7 +7522,19 @@ async fn sync_host_history(
         .map(crate::session_registry::agent_session_to_session_info)
         .collect();
     crate::session_history::retain_titled_history(&mut rows, &sessions);
-    let _mutation = agent.history_refresh.mutation_gate.lock().await;
+    // Hold the catalog guard through every registry commit, not just a pre-check.
+    let mut catalog = if let Some((epoch, _)) = &permit {
+        let catalog = state.custom_agent_commands.lock().await;
+        if catalog
+            .permit(agent, state)
+            .is_none_or(|(current, _)| current != *epoch)
+        {
+            return Err(HistoryRefreshFailure::Other);
+        }
+        Some(catalog)
+    } else {
+        None
+    };
     if agent
         .history_refresh
         .retired
@@ -7395,6 +7558,14 @@ async fn sync_host_history(
     // one delete the other's rows on every poll, forever.
     let (prunable_ids, previously_listed): (std::collections::HashSet<String>, _) = {
         let mut ever = agent.listed_ever.lock().await;
+        if let Some(catalog) = catalog.as_ref() {
+            if let Some(previous) = catalog
+                .inventories
+                .get(&agent.resolved_agent_id.to_ascii_lowercase())
+            {
+                ever.extend(previous.iter().cloned());
+            }
+        }
         // A full inference inventory may have populated rows beyond page one.
         // A later ordinary first-page refresh cannot prove those rows deleted.
         let mut prunable: HashSet<_> = if refresh.query.last_response_complete() {
@@ -7415,6 +7586,19 @@ async fn sync_host_history(
                 .iter()
                 .map(|row| row.session_id.to_string()),
         );
+        if let Some(catalog) = catalog.as_mut() {
+            catalog
+                .inventories
+                .insert(agent.resolved_agent_id.to_ascii_lowercase(), ever.clone());
+            if refresh.query.last_response_complete() {
+                if let Some(binding) = catalog
+                    .bindings
+                    .get_mut(&agent.resolved_agent_id.to_ascii_lowercase())
+                {
+                    binding.needs_complete_inventory = false;
+                }
+            }
+        }
         (prunable, previous)
     };
 
@@ -7691,6 +7875,18 @@ async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Op
         return refresh.last_count;
     }
     let result = sync_host_history(state, agent, &mut refresh).await;
+    let catalog = if uses_custom_acp_catalog(agent) {
+        let catalog = state.custom_agent_commands.lock().await;
+        if catalog
+            .permit(agent, state)
+            .is_none_or(|(epoch, _)| Some(epoch) != refresh.catalog_epoch)
+        {
+            return None;
+        }
+        Some(catalog)
+    } else {
+        None
+    };
     let delay = if result.is_ok() {
         refresh.failures = 0;
         HISTORY_REFRESH_INTERVAL
@@ -7719,6 +7915,7 @@ async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Op
         .history_refresh
         .generation
         .fetch_add(1, Ordering::Release);
+    drop(catalog);
     drop(refresh);
     let status_changed = update_history_sync_status(state).await;
     if status_changed || result.is_ok_and(|(changed, _)| changed) {
@@ -7762,6 +7959,16 @@ async fn publish_history_sync_status(state: &MasterStateInner) -> bool {
         .collect();
     let mut has_successful_agent = false;
     for agent in agents {
+        if uses_custom_acp_catalog(&agent)
+            && state
+                .custom_agent_commands
+                .lock()
+                .await
+                .permit(&agent, state)
+                .is_none()
+        {
+            continue;
+        }
         if let Some(failure) = *agent.history_refresh.failure.lock().await {
             failures.push(failure);
         } else if !agent.history_refresh.retired.load(Ordering::Acquire)
@@ -7773,7 +7980,13 @@ async fn publish_history_sync_status(state: &MasterStateInner) -> bool {
         }
     }
     let status = history_sync_status(&failures, has_successful_agent);
-    state.history_status.send_replace(status) != status
+    state.history_status.send_if_modified(|current| {
+        if *current == status {
+            return false;
+        }
+        *current = status;
+        true
+    })
 }
 
 fn history_sync_status(
@@ -7794,6 +8007,34 @@ fn history_sync_status(
 }
 
 fn start_history_refresh_loop(state: &Arc<MasterStateInner>) {
+    let catalog_state = Arc::downgrade(state);
+    tokio::task::spawn_local(async move {
+        let mut ticks = tokio::time::interval(HISTORY_REFRESH_INTERVAL);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            ticks.tick().await;
+            let Some(state) = catalog_state.upgrade() else {
+                break;
+            };
+            let bindings_changed = refresh_custom_agent_catalog(&state).await;
+            let status_changed = update_history_sync_status(&state).await;
+            if bindings_changed || status_changed {
+                broadcast_ext_to_helpers(
+                    &state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+            if bindings_changed {
+                let state = Arc::clone(&state);
+                tokio::task::spawn_local(async move {
+                    let commands = state.custom_agent_commands.lock().await.commands();
+                    let ids: Vec<_> = commands.keys().map(String::as_str).collect();
+                    refresh_host_history_agents(&state, &ids).await;
+                });
+            }
+        }
+    });
     let weak = Arc::downgrade(state);
     tokio::task::spawn_local(async move {
         let mut ticks = tokio::time::interval(HISTORY_REFRESH_INTERVAL);
@@ -7850,6 +8091,16 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
         let _ownership = ownership;
         loop {
             let Some(state) = state.upgrade() else { break };
+            if uses_custom_acp_catalog(&agent)
+                && state
+                    .custom_agent_commands
+                    .lock()
+                    .await
+                    .permit(&agent, &state)
+                    .is_none()
+            {
+                break;
+            }
             if agent.history_refresh.retired.load(Ordering::Acquire) {
                 break;
             }
@@ -7906,6 +8157,17 @@ async fn refresh_host_history_agents(state: &Arc<MasterStateInner>, agent_ids: &
     .await
 }
 
+async fn host_history_agent_command(state: &MasterStateInner, agent_id: &str) -> String {
+    state
+        .custom_agent_commands
+        .lock()
+        .await
+        .bindings
+        .get(agent_id)
+        .map(|binding| binding.command.clone())
+        .unwrap_or_else(|| crate::agent_registry::build_acp_command(agent_id, None))
+}
+
 async fn refresh_host_history_agents_with<F, Fut>(
     state: &Arc<MasterStateInner>,
     agent_ids: &[&str],
@@ -7917,41 +8179,71 @@ where
 {
     let initialize = &initialize;
     let results = futures::future::join_all(agent_ids.iter().map(|&agent_id| async move {
-        let command = crate::agent_registry::build_acp_command(agent_id, None);
+        let (command, catalog_epoch) = if agent_id.starts_with("custom:") {
+            let catalog = state.custom_agent_commands.lock().await;
+            let Some(binding) = catalog.bindings.get(agent_id) else { return true };
+            (binding.command.clone(), Some(binding.epoch))
+        } else {
+            (host_history_agent_command(state, agent_id).await, None)
+        };
         let key = agent_cmd_key(
             &command,
             Some(agent_id),
             &crate::agent_source::AgentSource::Host,
         );
+        let current_catalog_epoch = |catalog: &CustomAcpCatalog| {
+            catalog_epoch.is_none_or(|epoch| {
+                catalog
+                    .bindings
+                    .get(agent_id)
+                    .is_some_and(|binding| binding.epoch == epoch)
+            })
+        };
         let epoch = match state.startup_registry.retry_epoch(&key).await {
             Ok(epoch) => epoch,
             Err(error) => {
+                let catalog = state.custom_agent_commands.lock().await;
+                if !current_catalog_epoch(&catalog) {
+                    return true;
+                }
                 tracing::warn!(target: "master_history", agent_id, %error, "could not read startup retry epoch");
                 state.history_discovery_errors.lock().await.insert(key, HistoryRefreshFailure::Other);
                 return false;
             }
         };
-        if let Some(retry) = state.history_discovery_retries.lock().await.get_mut(&key) {
-            retry.observe_retry_epoch(epoch);
-        }
-        if state
-                .history_discovery_retries
-                .lock()
-                .await
-                .get(&key)
-                .is_some_and(|retry| !retry.retry_due())
         {
-            state
-                .history_discovery_errors
-                .lock()
-                .await
-                .insert(key, HistoryRefreshFailure::Other);
-            return false;
+            let catalog = state.custom_agent_commands.lock().await;
+            if !current_catalog_epoch(&catalog) {
+                return true;
+            }
+            let retry_due = {
+                let mut retries = state.history_discovery_retries.lock().await;
+                if let Some(retry) = retries.get_mut(&key) {
+                    retry.observe_retry_epoch(epoch);
+                    retry.retry_due()
+                } else {
+                    true
+                }
+            };
+            if !retry_due {
+                state
+                    .history_discovery_errors
+                    .lock()
+                    .await
+                    .insert(key, HistoryRefreshFailure::Other);
+                return false;
+            }
         }
-        let agent = match initialize(command, agent_id.to_string()).await {
+        let initialized = initialize(command.clone(), agent_id.to_string()).await;
+        let agent = match initialized {
             Ok(agent) => agent,
             Err(error) => {
-                let lease = match state.startup_registry.lock(&key).await {
+                let lease = state.startup_registry.lock(&key).await;
+                let catalog = state.custom_agent_commands.lock().await;
+                if !current_catalog_epoch(&catalog) {
+                    return true;
+                }
+                let lease = match lease {
                     Ok(lease) => lease,
                     Err(epoch_error) => {
                         tracing::warn!(target: "master_history", agent_id, error = %epoch_error, "could not validate startup failure epoch");
@@ -7984,13 +8276,24 @@ where
                 return false;
             }
         };
-        state.history_discovery_retries.lock().await.remove(&key);
-        if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
-            state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
-            tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+        {
+            let catalog = state.custom_agent_commands.lock().await;
+            if !current_catalog_epoch(&catalog) {
+                return true;
+            }
+            state.history_discovery_retries.lock().await.remove(&key);
+            if agent.cached_init_resp.agent_capabilities.session_capabilities.list.is_none() {
+                state.history_discovery_errors.lock().await.remove(&agent.cmd_key);
+                tracing::debug!(target: "master_history", agent_id, "agent does not support session/list");
+                return true;
+            }
+        }
+        let refreshed = refresh_agent_history(state, &agent).await;
+        let catalog = state.custom_agent_commands.lock().await;
+        if !current_catalog_epoch(&catalog) {
             return true;
         }
-        if refresh_agent_history(state, &agent).await.is_none() {
+        if refreshed.is_none() {
             let failure = agent.history_refresh.failure.lock().await.unwrap_or(HistoryRefreshFailure::Other);
             state.history_discovery_errors.lock().await.insert(agent.cmd_key.clone(), failure);
             tracing::warn!(target: "master_history", agent_id, "could not load agent history");
@@ -8004,6 +8307,216 @@ where
 
 fn request_host_history_refresh(state: &Arc<MasterStateInner>) {
     request_host_history_discovery(state);
+}
+
+async fn refresh_custom_agent_catalog(state: &MasterStateInner) -> bool {
+    let Some(wt) = state.wt.as_ref() else {
+        return false; // Offline explicit helper history does not require discovery authority.
+    };
+    let result = async {
+        let commands = tokio::time::timeout(
+            HISTORY_REFRESH_INTERVAL,
+            wt.request("get_custom_acp_commands", serde_json::Value::Null),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("custom ACP catalog read timed out"))??;
+        config::parse_custom_acp_agent_catalog(&commands)
+    }
+    .await;
+    match result {
+        Ok(commands) => {
+            let mut catalog = state.custom_agent_commands.lock().await;
+            if catalog.known && catalog.commands() == commands {
+                state
+                    .history_discovery_errors
+                    .lock()
+                    .await
+                    .remove("custom-agent-catalog");
+                return false;
+            }
+            let discovery_commands = commands;
+            let mut commands = discovery_commands.clone();
+            // Startup argv is independently trusted for history, never discovery.
+            // A current catalog binding takes precedence over that selected command.
+            if let Some(id) = state
+                .default_agent_id
+                .as_ref()
+                .filter(|id| id.starts_with("custom:"))
+            {
+                if !state.default_agent_cmd.trim().is_empty() {
+                    commands
+                        .entry(id.to_ascii_lowercase())
+                        .or_insert_with(|| state.default_agent_cmd.clone());
+                }
+            }
+            let mut removed: HashSet<_> = catalog
+                .bindings
+                .keys()
+                .chain(catalog.inventories.keys())
+                .filter(|id| !commands.contains_key(*id))
+                .cloned()
+                .collect();
+            if !catalog.known {
+                for row in state.registry.snapshot().await {
+                    if let Some(key) = row.history_row_key().filter(|key| {
+                        key.provider_id.starts_with("custom:")
+                            && key.location == crate::agent_sessions::SessionLocation::Host
+                            && key.session_universe.is_none()
+                            && !commands.contains_key(&key.provider_id)
+                    }) {
+                        removed.insert(key.provider_id.clone());
+                    }
+                }
+                for id in commands.keys().chain(removed.iter()) {
+                    state
+                        .registry
+                        .invalidate_native_listing(
+                            id,
+                            &crate::agent_sessions::SessionLocation::Host,
+                        )
+                        .await;
+                }
+            }
+            let changed: Vec<_> = catalog
+                .bindings
+                .iter()
+                .filter(|(id, binding)| commands.get(*id) != Some(&binding.command))
+                .map(|(id, binding)| (id.clone(), binding.epoch))
+                .collect();
+            let obsolete_keys: HashSet<_> = changed
+                .iter()
+                .filter_map(|(id, _)| {
+                    catalog.bindings.get(id).map(|binding| {
+                        agent_cmd_key(
+                            &binding.command,
+                            Some(id),
+                            &crate::agent_source::AgentSource::Host,
+                        )
+                    })
+                })
+                .collect();
+            catalog.unknown_cancelled.cancel();
+            for (id, _) in &changed {
+                if let Some(binding) = catalog.bindings.remove(id) {
+                    binding.cancelled.cancel();
+                }
+                state
+                    .registry
+                    .invalidate_native_listing(id, &crate::agent_sessions::SessionLocation::Host)
+                    .await;
+            }
+            for (id, command) in commands {
+                if !catalog.bindings.contains_key(&id) {
+                    state
+                        .registry
+                        .invalidate_native_listing(
+                            &id,
+                            &crate::agent_sessions::SessionLocation::Host,
+                        )
+                        .await;
+                    catalog.epoch += 1;
+                    let epoch = catalog.epoch;
+                    catalog.bindings.insert(
+                        id,
+                        CustomAcpBinding {
+                            command,
+                            epoch,
+                            cancelled: tokio_util::sync::CancellationToken::new(),
+                            needs_complete_inventory: true,
+                        },
+                    );
+                }
+            }
+            catalog.known = true;
+            catalog.discovery_commands = discovery_commands;
+            for id in removed {
+                catalog.inventories.remove(&id);
+                for row in state.registry.snapshot().await {
+                    if row.history_row_key().is_some_and(|key| {
+                        key.provider_id == id
+                            && key.location == crate::agent_sessions::SessionLocation::Host
+                            && key.session_universe.is_none()
+                    }) {
+                        let identity = crate::session_registry::SessionIdentity::from_info(&row);
+                        state
+                            .registry
+                            .remove_identity_if(&identity, &|current| {
+                                current.origin
+                                    != Some(crate::agent_sessions::SessionOrigin::AgentPane)
+                                    && matches!(
+                                        current.status,
+                                        Some(
+                                            crate::agent_sessions::AgentStatus::Historical
+                                                | crate::agent_sessions::AgentStatus::Ended
+                                        )
+                                    )
+                            })
+                            .await;
+                    }
+                }
+            }
+            let obsolete_epochs: HashSet<_> =
+                changed.iter().map(|(_, epoch)| *epoch).chain([0]).collect();
+            state
+                .history_discovery_retries
+                .lock()
+                .await
+                .retain(|key, _| !obsolete_keys.contains(key));
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .retain(|key, _| !obsolete_keys.contains(key));
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .remove("custom-agent-catalog");
+            drop(catalog);
+            let agents: Vec<_> = state
+                .agents
+                .lock()
+                .await
+                .values()
+                .filter_map(|cell| cell.get().cloned())
+                .collect();
+            for agent in agents
+                .into_iter()
+                .filter(|agent| uses_custom_acp_catalog(agent))
+            {
+                let gate = Arc::clone(&agent.history_refresh.gate);
+                let obsolete_epochs = obsolete_epochs.clone();
+                tokio::spawn(async move {
+                    let mut refresh = gate.lock().await;
+                    if refresh
+                        .catalog_epoch
+                        .is_some_and(|epoch| obsolete_epochs.contains(&epoch))
+                    {
+                        if let Err(error) = refresh.query.stop().await {
+                            tracing::warn!(target: "master_history", %error, "obsolete custom ACP history query cleanup failed");
+                        }
+                        refresh.cwd_baseline = None;
+                        refresh.next_refresh_at = None;
+                        drop(refresh);
+                        agent.history_refresh.retry_requested.notify_one();
+                    }
+                });
+            }
+            true
+        }
+        Err(_) => {
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .insert("custom-agent-catalog".into(), HistoryRefreshFailure::Other);
+            tracing::warn!(
+                target: "master_history",
+                "custom ACP catalog read failed; retaining last trusted catalog"
+            );
+            false
+        }
+    }
 }
 
 async fn retry_failed_host_history_discovery(state: &Arc<MasterStateInner>) {
@@ -8060,7 +8573,11 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
             state
                 .history_discovery_state
                 .fetch_and(!2, Ordering::AcqRel);
-            state.history_discovery_errors.lock().await.clear();
+            state
+                .history_discovery_errors
+                .lock()
+                .await
+                .retain(|key, _| key == "custom-agent-catalog");
             let allowed_ids = state.allowed_agent_ids.clone();
             let discovery = tokio::task::spawn_blocking(move || {
                 let npx_available = crate::agent_check::host_npx_available();
@@ -8073,21 +8590,28 @@ fn request_host_history_discovery(state: &Arc<MasterStateInner>) {
             .await;
             match discovery {
                 Ok(agent_ids) => {
-                    let eligible_keys: HashSet<_> = agent_ids
-                        .iter()
-                        .map(|id| {
-                            agent_cmd_key(
-                                &crate::agent_registry::build_acp_command(id, None),
-                                Some(id),
-                                &crate::agent_source::AgentSource::Host,
-                            )
-                        })
+                    let catalog = state.custom_agent_commands.lock().await;
+                    let custom_commands = catalog.commands();
+                    let agent_ids: Vec<&str> = agent_ids
+                        .into_iter()
+                        .chain(custom_commands.keys().map(String::as_str))
                         .collect();
+                    let mut eligible_keys = HashSet::new();
+                    for id in &agent_ids {
+                        eligible_keys.insert(agent_cmd_key(
+                            &custom_commands.get(*id).cloned().unwrap_or_else(|| {
+                                crate::agent_registry::build_acp_command(id, None)
+                            }),
+                            Some(id),
+                            &crate::agent_source::AgentSource::Host,
+                        ));
+                    }
                     state
                         .history_discovery_retries
                         .lock()
                         .await
                         .retain(|key, _| eligible_keys.contains(key));
+                    drop(catalog);
                     refresh_host_history_agents(&state, &agent_ids).await;
                 }
                 Err(error) => {
@@ -12098,16 +12622,22 @@ async fn agent_for_row(
     provider_id: Option<&str>,
 ) -> Option<Arc<AgentCli>> {
     let want = stamped_cli(cli);
-    let agents = state.agents.lock().await;
-    agents
+    let agents: Vec<_> = state
+        .agents
+        .lock()
+        .await
         .values()
         .filter_map(|cell| cell.get().cloned())
-        .find(|agent| {
-            provider_id.map_or_else(
+        .collect();
+    let catalog = state.custom_agent_commands.lock().await;
+    agents.into_iter().find(|agent| {
+        (!uses_custom_acp_catalog(agent) || catalog.permit(agent, state).is_some())
+            && provider_id.map_or_else(
                 || stamped_cli(agent.cli_source.as_ref()) == want,
                 |provider| agent.resolved_agent_id.eq_ignore_ascii_case(provider),
-            ) && &agent.source.session_location() == location
-        })
+            )
+            && &agent.source.session_location() == location
+    })
 }
 
 /// ACP replacement for the former on-disk single-session title refresh. Cheap

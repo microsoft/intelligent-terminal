@@ -83,6 +83,22 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    bool ContentManager::_UsesNativeAgentFallback(const TerminalContent& content) const noexcept
+    {
+        const auto& provider = content.explicitNativeAgentProviderId.empty() ?
+                                   content.nativeAgentProviderId :
+                                   content.explicitNativeAgentProviderId;
+        return !content.agentHelper && !provider.empty() &&
+               (!_nativeAgentSessionEventsEnabled || !::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsSessionHooks(provider));
+    }
+
+    bool ContentManager::UsesNativeAgentFallback(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it != _content.end() && _UsesNativeAgentFallback(it->second);
+    }
+
     std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::NativeAgentObservationForContent(const uint64_t contentId) const
     {
         std::lock_guard lock{ _mutex };
@@ -312,7 +328,7 @@ namespace winrt::TerminalApp::implementation
             it->second.reportedAgentStatusPaneId.reset();
             it->second.parsedProgress.reset();
             it->second.lastConfirmedOwner = {};
-            if (!_nativeAgentSessionEventsEnabled)
+            if (_UsesNativeAgentFallback(it->second))
             {
                 it->second.explicitNativeAgentProviderId = winrt::hstring{};
                 _agentBindings.erase(contentId);
@@ -354,19 +370,16 @@ namespace winrt::TerminalApp::implementation
     bool ContentManager::AcceptsAgentSessionEvents(const winrt::guid& paneId) const
     {
         std::lock_guard lock{ _mutex };
-        if (_nativeAgentSessionEventsEnabled)
-        {
-            return true;
-        }
         for (const auto& [id, content] : _content)
         {
             const auto connection = content.core.Core().Connection();
             if (connection && connection.SessionId() == paneId)
             {
-                return content.agentHelper;
+                return content.agentHelper ||
+                       (_nativeAgentSessionEventsEnabled && !_UsesNativeAgentFallback(content));
             }
         }
-        return false;
+        return _nativeAgentSessionEventsEnabled;
     }
 
     void ContentManager::UpdateAgentCompletion(
@@ -541,7 +554,7 @@ namespace winrt::TerminalApp::implementation
                 std::lock_guard lock{ _mutex };
                 if (const auto found = _content.find(contentId); found != _content.end())
                 {
-                    if (!_nativeAgentSessionEventsEnabled && !found->second.agentHelper && found->second.observation.modeEpoch != 0)
+                    if (_UsesNativeAgentFallback(found->second) && found->second.observation.modeEpoch != 0)
                     {
                         retired = found->second.observation;
                     }
