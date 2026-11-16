@@ -62,6 +62,22 @@ no new MVVM framework, generic store or conversation-ID migration is required.
 
 ## Sessions OFF: native observations in the shared registry
 
+Hookless custom providers use this native observation path whether Sessions is
+ON or OFF. The choice is pane-local and uses the provider's registered hook
+capability; it does not disable history discovery or change hook-backed panes.
+ACP helper panes retain their direct ACP session ownership in either mode.
+
+The master reads configured custom ACP commands through the existing host raw
+`GetSettings` contract and the local `wtcli get-settings --custom-acp-commands`
+persisted-configuration projection, independently of the selected agent pane.
+The exact trusted startup selection is a history-only fallback when no catalog
+binding exists; it is not a discovery entry. Existing host history discovery
+includes configured providers, so a custom Agent Profile does not
+need an agent pane using the same provider first. Delegate-only commands and
+native-profile command overrides are not assumed to implement ACP. As with other
+providers, list support and sufficient unambiguous evidence are required for
+advisory correlation; a list result is not confirmed native session ownership.
+
 Terminal uses `EffectiveAgentSessionManagementEnabled()` (the user setting
 combined with hooks policy), not listener availability, to enable native
 OSC/BEL observation publishing. WTA remains the authoritative status source.

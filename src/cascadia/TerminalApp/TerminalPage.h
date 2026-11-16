@@ -60,6 +60,7 @@ namespace winrt::Microsoft::Terminal::Settings
 
 namespace winrt::TerminalApp::implementation
 {
+    struct KeptWindowGeometry;
     struct TerminalSettingsCache;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
@@ -1002,7 +1003,7 @@ namespace winrt::TerminalApp::implementation
         bool _applyingSidebarFilters{ false };
         ::TerminalApp::SidebarTelemetry::KeyboardEntry _sidebarKeyboardEntry;
         bool _IsSidebarElement(const Windows::Foundation::IInspectable& element) const;
-        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
+        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab, const KeptWindowGeometry* geometry = nullptr);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
