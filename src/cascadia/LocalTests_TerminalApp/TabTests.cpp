@@ -3950,7 +3950,7 @@ namespace TerminalAppLocalTests
             const winrt::Windows::Foundation::Rect bounds{ 0, 0, 900, 600 };
             for (const auto hostedTitlebar : { false, true })
             {
-                for (const auto mode : { LaunchMode::DefaultMode, LaunchMode::FocusMode, LaunchMode::MaximizedFocusMode })
+                for (const auto mode : { LaunchMode::DefaultMode, LaunchMode::MaximizedMode, LaunchMode::FocusMode, LaunchMode::MaximizedFocusMode })
                 {
                     settings.GlobalSettings().ShowTabsInTitlebar(hostedTitlebar);
                     settings.GlobalSettings().AlwaysShowTabs(true);
@@ -3967,6 +3967,14 @@ namespace TerminalAppLocalTests
                         VERIFY_ARE_EQUAL(bounds.Width * scale, size.Width);
                         VERIFY_ARE_EQUAL((bounds.Height + chromeHeight) * scale, size.Height);
                         VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
+                    }
+                    VERIFY_SUCCEEDED(window->Initialize(nullptr));
+                    for (const auto dpi : { 96u, 144u })
+                    {
+                        const auto scale = static_cast<float>(dpi) / 96.0f;
+                        const auto size = window->GetLaunchDimensions(dpi);
+                        VERIFY_ARE_EQUAL(bounds.Width * scale, size.Width);
+                        VERIFY_ARE_EQUAL(bounds.Height * scale, size.Height);
                     }
                 }
             }

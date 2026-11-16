@@ -59,20 +59,22 @@ namespace ItE2E {
         public static void RestoreFromTray(uint pid) {
             IntPtr target = IntPtr.Zero;
             int matches = 0;
+            var brands = new[] { "Intelligent Terminal", "Windows Terminal Dev", "Windows Terminal Preview", "Windows Terminal Canary" };
             EnumWindows((window, parameter) => {
                 uint owner;
                 GetWindowThreadProcessId(window, out owner);
                 if (owner == pid) {
                     var name = new StringBuilder(256);
                     GetClassName(window, name, name.Capacity);
-                    if (name.ToString().StartsWith("Windows Terminal Dev", StringComparison.Ordinal)) {
+                    var receiverClass = name.ToString();
+                    if (Array.Exists(brands, brand => receiverClass == brand || receiverClass.StartsWith(brand + " ", StringComparison.Ordinal))) {
                         target = window;
                         matches++;
                     }
                 }
                 return true;
             }, IntPtr.Zero);
-            if (matches != 1) throw new InvalidOperationException("Expected one owned Dev notification receiver.");
+            if (matches != 1) throw new InvalidOperationException("Expected one owned Terminal notification receiver.");
             UIntPtr result;
             // WindowEmperor's notification callback, NIN_SELECT. Not a physical tray click.
             if (SendMessageTimeout(target, 0x403, UIntPtr.Zero, new IntPtr(0x400), 2, 10000, out result) == IntPtr.Zero)
@@ -107,6 +109,8 @@ namespace ItE2E {
         } -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
+            showTabsInTitlebar = $true
+            launchMode = 'default'
             'warning.confirmOnClose' = 'never'
             firstWindowPreference = 'defaultProfile'
             startupActions = ''

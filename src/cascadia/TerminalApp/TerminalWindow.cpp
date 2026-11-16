@@ -681,7 +681,9 @@ namespace winrt::TerminalApp::implementation
         {
             // The retained page includes in-page tabs and the bottom toolbar,
             // but not the titlebar hosted above it in the native window.
-            const auto hostedTitlebar = _settings.GlobalSettings().ShowTabsInTitlebar() &&
+            // After Initialize, native non-client sizing includes that titlebar.
+            const auto hostedTitlebar = !_root &&
+                                        _settings.GlobalSettings().ShowTabsInTitlebar() &&
                                         !WI_IsFlagSet(GetLaunchMode(), LaunchMode::FocusMode);
             const auto titlebarHeight = hostedTitlebar ? 40.0f : 0.0f;
             return { _startupKeptSize.Width * scale, (_startupKeptSize.Height + titlebarHeight) * scale };
