@@ -664,6 +664,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SessionCompletionUnreadFollowsTabFocus);
         TEST_METHOD(SessionCompletionClearsWhenActivePaneRegainsFocus);
         TEST_METHOD(SessionCompletionSnapshotsPreserveReadState);
+        TEST_METHOD(ProgramStatusRefreshPreservesUnreadCompletionAcrossSnapshotGap);
         TEST_METHOD(SessionCompletionHistoryPreservesCanonicalStatusAndRows);
         TEST_METHOD(SessionAttentionUnreadIsPaneLocal);
         TEST_METHOD(SidebarUnreadGroupAndDismissSlotStayStable);
@@ -749,6 +750,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ProgramStatusHistoryProjectionPreservesIdentityAndClearsFacet);
         TEST_METHOD(ProgramStatusAttentionAndTaskbarUseStablePaneIdentity);
         TEST_METHOD(ProgramStatusUsesOnlyTheSelectedAgentStatusLine);
+        TEST_METHOD(ProgramStatusOverlayRefreshesFinalMetadataPresentation);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusColors);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -13185,6 +13187,94 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::ProgramStatusRefreshPreservesUnreadCompletionAcrossSnapshotGap()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(
+            winrt::guid{ L"64a11111-2222-3333-4444-555555555555" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(
+            winrt::guid{ L"64b11111-2222-3333-4444-555555555555" }, State::Connected);
+        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> owner;
+        winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                control = nullptr;
+                owner = nullptr;
+                page = nullptr;
+            });
+        });
+
+        TestOnUIThread([&]() {
+            owner = page->_GetFocusedTabImpl();
+            control = owner->GetActiveTerminalControl();
+            const auto other = page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second));
+            VERIFY_IS_NOT_NULL(other);
+            page->_GetTabImpl(other)->SuppressAgentPrewarm();
+            VERIFY_IS_FALSE(owner->IsFocused());
+
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(first->SessionId()));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("osc-gap-session", paneId, "copilot", 1000, "Working"));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("osc-gap-session", paneId, "copilot", 2000, "Idle"));
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(first->SessionId(), "osc-gap-session", "copilot"));
+            VERIFY_IS_TRUE(owner->_headerControl.Presentation().HasUnreadActivity());
+
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_IS_TRUE(std::ranges::any_of(display.PaneItems(), [&](const auto& pane) {
+                return pane.ContentId() == control.ContentId() && pane.HasUnreadActivity();
+            }));
+
+            page->_richTabAgentStatusByPaneId.clear();
+            page->_richTabAgentStatusBySessionId.clear();
+            VERIFY_IS_TRUE(owner->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_IS_TRUE(std::ranges::any_of(display.PaneItems(), [&](const auto& pane) {
+                return pane.ContentId() == control.ContentId() && pane.HasUnreadActivity();
+            }));
+        });
+
+        const std::u16string sequence{ u"\x1b]7501;state=working:progress=37\x1b\\" };
+        TestOnUIThread([&]() {
+            first->TerminalOutput.raise(winrt::array_view<const char16_t>{ sequence.data(), sequence.data() + sequence.size() });
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Working" && std::wstring_view{ owner->_programStatusText }.find(L"37") != std::wstring_view::npos;
+        });
+
+        TestOnUIThread([&]() {
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(first->SessionId(), "osc-gap-session", "copilot"));
+            VERIFY_IS_TRUE(owner->_headerControl.Presentation().HasUnreadActivity());
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_IS_TRUE(std::ranges::any_of(display.PaneItems(), [&](const auto& pane) {
+                return pane.ContentId() == control.ContentId() && pane.HasUnreadActivity();
+            }));
+
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(first->SessionId()));
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("replacement-session", paneId, "claude", 3000, "Idle"));
+            VERIFY_IS_FALSE(manager->HasUnreadAgentCompletion(first->SessionId(), "osc-gap-session", "copilot"));
+            VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+            VERIFY_IS_TRUE(page->_ApplyAgentSessionStatusDelta("osc-native-completion", paneId, "copilot", 4000, "Working"));
+            VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+        });
+
+        const std::u16string completed{ u"\x1b]7501;state=done\x1b\\" };
+        TestOnUIThread([&]() {
+            first->TerminalOutput.raise(winrt::array_view<const char16_t>{ completed.data(), completed.data() + completed.size() });
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_headerControl.Presentation().HasUnreadActivity();
+        });
+        TestOnUIThread([&]() {
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            VERIFY_IS_TRUE(manager->HasUnreadAgentCompletion(first->SessionId(), "osc-native-completion", "copilot"));
+            owner->Focus(FocusState::Programmatic);
+            VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+        });
+    }
+
     void TabTests::SessionCompletionHistoryPreservesCanonicalStatusAndRows()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
@@ -14850,6 +14940,40 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\repo" }, tab->_headerControl.MetadataText());
             VERIFY_IS_TRUE(tab->_headerControl.IsMetadataVisible());
             VERIFY_ARE_EQUAL(title, tab->Title());
+        });
+    }
+
+    void TabTests::ProgramStatusOverlayRefreshesFinalMetadataPresentation()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            tab->SetVerticalTabLayout(true);
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation presentation;
+            presentation.text = L"Waiting for input\nfeature/long";
+            presentation.accessibilityText = presentation.text;
+            presentation.tooltip = presentation.text;
+            presentation.agentStatus = "Attention";
+            presentation.agentStatusRanges = { { 0, 17 } };
+            presentation.fieldRanges = { { "agentStatus", 0, 17 }, { "branch", 18, 12 } };
+            tab->SetRichTabPresentation(presentation);
+            tab->SetUnreadAgentActivity(true);
+
+            tab->SetProgramStatusPresentation(L"Done", L"Task details", {}, "Complete", true);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Done\nfeature/long" }, tab->_headerControl.MetadataText());
+            VERIFY_IS_NOT_NULL(tab->_headerControl.Presentation().MetadataEllipsisRanges());
+            VERIFY_ARE_EQUAL(2u, tab->_headerControl.Presentation().MetadataEllipsisRanges().Size());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(0).Start);
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(0).End);
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TextEllipsisKind::None, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(0).Kind);
+            VERIFY_ARE_EQUAL(uint64_t{ 5 }, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(1).Start);
+            VERIFY_ARE_EQUAL(uint64_t{ 16 }, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(1).End);
+            VERIFY_ARE_EQUAL(winrt::TerminalApp::TextEllipsisKind::Branch, tab->_headerControl.Presentation().MetadataEllipsisRanges().GetAt(1).Kind);
+
+            const auto automationName = Automation::AutomationProperties::GetName(tab->TabViewItem());
+            VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(L"Done") != std::wstring_view::npos);
+            VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(RS_(L"VerticalTabsHistoryStatusComplete")) == std::wstring_view::npos);
         });
     }
 

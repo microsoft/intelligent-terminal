@@ -77,6 +77,12 @@ namespace winrt::TerminalApp::implementation
         void SetNativeAgentSessionEventsEnabled(bool enabled);
         void MarkAgentHelper(uint64_t contentId);
         bool AcceptsAgentSessionEvents(const winrt::guid& paneId) const;
+        enum class UnreadAgentCompletionKind
+        {
+            None,
+            Complete,
+            Attention,
+        };
         struct AgentCompletionState
         {
             winrt::guid paneId{};
@@ -101,9 +107,17 @@ namespace winrt::TerminalApp::implementation
                 wasAttention = attention;
                 return wasUnread != unread || (identityChanged && (wasUnread || unread));
             }
+            UnreadAgentCompletionKind UnreadKind() const noexcept
+            {
+                return !unread ? UnreadAgentCompletionKind::None :
+                       wasAttention ? UnreadAgentCompletionKind::Attention :
+                                      UnreadAgentCompletionKind::Complete;
+            }
         };
         void UpdateAgentCompletion(uint64_t contentId, const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId, std::string_view status, bool focused);
+        void UpdateAgentCompletionFromProgramStatus(uint64_t contentId, const winrt::guid& paneId, std::string_view status, bool focused);
         bool HasReportedAgentStatus(uint64_t contentId) const;
+        UnreadAgentCompletionKind UnreadAgentCompletion(uint64_t contentId) const;
         bool HasUnreadAgentCompletion(const winrt::guid& paneId, std::string_view sessionId, std::string_view providerId) const;
         void MarkAgentCompletionRead(uint64_t contentId);
         void ResetAgentCompletion(uint64_t contentId);

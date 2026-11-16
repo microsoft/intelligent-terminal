@@ -87,6 +87,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AgentCwdInvalidatesOnlyTrustedGitStatusField);
         TEST_METHOD(DetachedSessionDoesNotReuseOldGitMetadata);
         TEST_METHOD(AgentStatusOverlayReplacesOneLineAndPreservesOtherMetadata);
+        TEST_METHOD(AgentStatusOverlayGeometricallyRemapsFieldRanges);
     };
 
     void RichTabProviderTests::AgentStatusOverlayReplacesOneLineAndPreservesOtherMetadata()
@@ -119,6 +120,64 @@ namespace TerminalAppUnitTests
         original.agentStatusRanges = { { 8, 6 } };
         VERIFY_ARE_EQUAL(std::wstring{ L"C:\\repo" }, ProviderBroker::OverlayAgentStatus(original, {}, {})->text);
         VERIFY_ARE_EQUAL(std::wstring{ L"Active\nC:\\repo" }, ProviderBroker::OverlayAgentStatus(original, L"Active", "Working")->text);
+    }
+
+    void RichTabProviderTests::AgentStatusOverlayGeometricallyRemapsFieldRanges()
+    {
+        const auto verifyRanges = [](const Presentation& presentation, const std::vector<Presentation::FieldRange>& expected) {
+            VERIFY_ARE_EQUAL(expected.size(), presentation.fieldRanges.size());
+            for (size_t i = 0; i < expected.size(); ++i)
+            {
+                VERIFY_ARE_EQUAL(expected[i].field, presentation.fieldRanges[i].field);
+                VERIFY_ARE_EQUAL(expected[i].start, presentation.fieldRanges[i].start);
+                VERIFY_ARE_EQUAL(expected[i].length, presentation.fieldRanges[i].length);
+                VERIFY_IS_TRUE(presentation.fieldRanges[i].start < presentation.text.size());
+                VERIFY_IS_TRUE(presentation.fieldRanges[i].length <= presentation.text.size() - presentation.fieldRanges[i].start);
+            }
+        };
+
+        Presentation leading;
+        leading.text = L"Waiting for input\nfeature/long";
+        leading.agentStatus = "Attention";
+        leading.agentStatusRanges = { { 0, 17 } };
+        leading.fieldRanges = { { "agentStatus", 0, 17 }, { "branch", 18, 12 } };
+        const auto shorter = ProviderBroker::OverlayAgentStatus(leading, L"Done", "Idle");
+        VERIFY_IS_TRUE(shorter.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Done\nfeature/long" }, shorter->text);
+        verifyRanges(*shorter, { { "agentStatus", 0, 4 }, { "branch", 5, 12 } });
+
+        const auto hidden = ProviderBroker::OverlayAgentStatus(shorter, {}, {});
+        VERIFY_IS_TRUE(hidden.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"feature/long" }, hidden->text);
+        verifyRanges(*hidden, { { "branch", 0, 12 } });
+
+        Presentation trailing;
+        trailing.text = L"feature/long\nWorking";
+        trailing.agentStatus = "Working";
+        trailing.agentStatusRanges = { { 13, 7 } };
+        trailing.fieldRanges = { { "branch", 0, 12 }, { "agentStatus", 13, 7 } };
+        const auto longer = ProviderBroker::OverlayAgentStatus(trailing, L"Waiting for input", "Attention");
+        VERIFY_IS_TRUE(longer.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Waiting for input\nfeature/long" }, longer->text);
+        verifyRanges(*longer, { { "agentStatus", 0, 17 }, { "branch", 18, 12 } });
+
+        Presentation legacy;
+        legacy.text = L"Working\nrepo";
+        legacy.agentStatus = "Working";
+        legacy.agentStatusRanges = { { 0, 7 } };
+        legacy.fieldRanges = { { "repository", 8, 4 } };
+        const auto legacyUpdated = ProviderBroker::OverlayAgentStatus(legacy, L"Done", "Idle");
+        VERIFY_IS_TRUE(legacyUpdated.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Done\nrepo" }, legacyUpdated->text);
+        verifyRanges(*legacyUpdated, { { "agentStatus", 0, 4 }, { "repository", 5, 4 } });
+
+        Presentation metadataOnly;
+        metadataOnly.text = L"repo";
+        metadataOnly.fieldRanges = { { "repository", 0, 4 } };
+        const auto added = ProviderBroker::OverlayAgentStatus(metadataOnly, L"Active", "Working");
+        VERIFY_IS_TRUE(added.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Active\nrepo" }, added->text);
+        verifyRanges(*added, { { "agentStatus", 0, 6 }, { "repository", 7, 4 } });
     }
 
     void RichTabProviderTests::ProviderDiagnosticVersionRejectsUntrustedText()

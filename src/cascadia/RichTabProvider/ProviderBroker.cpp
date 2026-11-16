@@ -1432,12 +1432,34 @@ namespace Microsoft::Terminal::RichTab::Provider
                 --start;
                 ++length;
             }
+            const auto end = start + length;
+            for (auto field = result.fieldRanges.begin(); field != result.fieldRanges.end();)
+            {
+                if (field->start >= end)
+                {
+                    field->start -= length;
+                    ++field;
+                }
+                else if (field->start <= start && field->length <= start - field->start)
+                {
+                    ++field;
+                }
+                else
+                {
+                    field = result.fieldRanges.erase(field);
+                }
+            }
             result.text.erase(start, length);
         }
         result.agentStatusRanges.clear();
         result.agentStatus.clear();
         if (!text.empty())
         {
+            const auto prefixLength = text.size() + (result.text.empty() ? 0 : 1);
+            for (auto& field : result.fieldRanges)
+            {
+                field.start += prefixLength;
+            }
             if (!result.text.empty())
             {
                 result.text.insert(0, L"\n");
@@ -1445,6 +1467,7 @@ namespace Microsoft::Terminal::RichTab::Provider
             result.text.insert(0, text);
             result.agentStatusRanges.push_back({ 0, text.size() });
             result.agentStatus = status;
+            result.fieldRanges.insert(result.fieldRanges.begin(), { "agentStatus", 0, text.size() });
         }
         if (result.text.empty())
         {

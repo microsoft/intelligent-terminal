@@ -14275,10 +14275,26 @@ namespace winrt::TerminalApp::implementation
                         if (const auto control = pane->GetTerminalControl();
                             control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned)
                         {
+                            const auto focused = focusedControl &&
+                                                 focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned &&
+                                                 focusedControl.ContentId() == control.ContentId();
                             if (const auto info = _RichTabAgentInfoForControl(control); info && !info->launchMetadata && info->paneSessionId)
                             {
                                 manager->UpdateAgentCompletion(
-                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focusedControl && focusedControl.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned && focusedControl.ContentId() == control.ContentId());
+                                    control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focused);
+                            }
+                            const auto snapshot = _ReadProgramStatus(control);
+                            if (const auto connection = control.Connection();
+                                connection && snapshot.get("working", 0).asUInt() == 0 && snapshot.get("blocked", 0).asUInt() == 0)
+                            {
+                                const std::string_view status = snapshot.get("unseen_error", 0).asUInt() != 0 ? "Attention" :
+                                                                snapshot.get("unseen_done", 0).asUInt() != 0  ? "Idle" :
+                                                                                                              "";
+                                if (!status.empty())
+                                {
+                                    manager->UpdateAgentCompletionFromProgramStatus(
+                                        control.ContentId(), connection.SessionId(), status, focused);
+                                }
                             }
                         }
                         return false;
@@ -14289,14 +14305,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control)
+    bool TerminalPage::_HasUnreadAgentActivity(const TermControl& control, bool* needsAttention)
     {
-        const auto info = control && control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned ?
-                              _RichTabAgentInfoForControl(control) :
-                              std::nullopt;
-        return info && info->paneSessionId &&
-               winrt::get_self<ContentManager>(_manager)->HasUnreadAgentCompletion(
-                   *info->paneSessionId, info->sessionId, info->providerId);
+        if (needsAttention)
+        {
+            *needsAttention = false;
+        }
+        if (!control || control.TransferState() != Microsoft::Terminal::Control::ContentTransferState::Owned)
+        {
+            return false;
+        }
+        const auto kind = winrt::get_self<ContentManager>(_manager)->UnreadAgentCompletion(control.ContentId());
+        if (needsAttention)
+        {
+            *needsAttention = kind == ContentManager::UnreadAgentCompletionKind::Attention;
+        }
+        return kind != ContentManager::UnreadAgentCompletionKind::None;
     }
 
     void TerminalPage::_RefreshTabUnreadActivity(Tab& tab)
@@ -14306,11 +14330,11 @@ namespace winrt::TerminalApp::implementation
         if (const auto root = tab.GetRootPane())
         {
             root->WalkTree([&](const auto& pane) {
-                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control))
+                bool paneNeedsAttention = false;
+                if (const auto control = pane->GetTerminalControl(); _HasUnreadAgentActivity(control, &paneNeedsAttention))
                 {
                     unread = true;
-                    const auto info = _RichTabAgentInfoForControl(control);
-                    needsAttention = needsAttention || (info && info->status == "Attention");
+                    needsAttention = needsAttention || paneNeedsAttention;
                 }
                 return false;
             });
@@ -15133,6 +15157,7 @@ namespace winrt::TerminalApp::implementation
                                 if (tab && winrt::to_string(tab->StableId()) == tabId)
                                 {
                                     page->_UpdateProgramStatusForTab(*tab);
+                                    page->_UpdateAgentCompletions();
                                     page->_ApplyTabListProjection(*tab);
                                     break;
                                 }
@@ -16841,14 +16866,14 @@ namespace winrt::TerminalApp::implementation
                 pane.IsActive || activeSourceContentId == pane.ContentId);
             const auto itemImpl = winrt::get_self<TabStripPaneItem>(item);
             itemImpl->ProgramStatusDetails(pane.Title);
-            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourceControl));
+            bool unreadNeedsAttention = false;
+            itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourceControl, &unreadNeedsAttention));
             itemImpl->ProgressState(pane.ProgressState);
             itemImpl->IsProgressRingActive(pane.ProgressState != 0);
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
             itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
             bool programObserved = false;
-            const auto agentInfo = itemImpl->HasUnreadActivity() ? _RichTabAgentInfoForControl(sourceControl) : std::nullopt;
-            const auto unreadStatus = agentInfo && agentInfo->status == "Attention" ? "Attention" : "Complete";
+            const auto unreadStatus = unreadNeedsAttention ? "Attention" : "Complete";
             bool metadataIncludesUnreadStatus = false;
             std::wstring automationName{ pane.Title.c_str(), pane.Title.size() };
             if (pane.SessionId != winrt::guid{})
@@ -16888,7 +16913,9 @@ namespace winrt::TerminalApp::implementation
                             itemImpl->MetadataText(metadata ? winrt::hstring{ metadata->text } : winrt::hstring{});
                             itemImpl->MetadataVisibility(metadata ? Visibility::Visible : Visibility::Collapsed);
                             itemImpl->MetadataHighlightRanges(metadata ? TabHeaderControl::BuildMetadataHighlightRanges(*metadata) : nullptr);
+                            itemImpl->MetadataEllipsisRanges(metadata ? TabHeaderControl::BuildMetadataEllipsisRanges(*metadata) : nullptr);
                             itemImpl->MetadataHighlightColor(metadata ? TabHeaderControl::AgentStatusHighlightColor(metadata->agentStatus) : TerminalApp::TextHighlightColor::None);
+                            metadataIncludesUnreadStatus = metadata && !metadata->accessibilityText.empty() && metadata->agentStatus == unreadStatus;
                             if (metadata)
                             {
                                 automationName = pane.Title;

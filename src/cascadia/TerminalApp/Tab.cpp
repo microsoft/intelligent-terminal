@@ -774,10 +774,16 @@ namespace winrt::TerminalApp::implementation
             name += _richTabAccessibilityText;
         }
         const auto unreadStatus = _unreadAgentActivityNeedsAttention ? "Attention" : "Complete";
+        std::string_view metadataAgentStatus;
+        if (_programStatusVisible)
+        {
+            metadataAgentStatus = !_programStatusText.empty() ? std::string_view{ _programStatusId } :
+                                  _richTabPresentation ? std::string_view{ _richTabPresentation->agentStatus } :
+                                                         std::string_view{};
+        }
         const auto metadataIncludesUnreadStatus = _isVerticalTabLayout &&
                                                   !_richTabAccessibilityText.empty() &&
-                                                  _richTabPresentation &&
-                                                  _richTabPresentation->agentStatus == unreadStatus;
+                                                  metadataAgentStatus == unreadStatus;
         if (_headerControl.Presentation().HasUnreadActivity() && !metadataIncludesUnreadStatus)
         {
             name += L", ";
