@@ -825,4 +825,7 @@
     <value>तुमच्या एजंटांची हालचाल एकाच नदरेन पळोवपाक उब्या टॅबांक बदलात. टॅबाचेर उजवो क्लिक करात आनी {0} वेंचात.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>{1} मदलो पेन {0}</value>
+  </data>
 </root>

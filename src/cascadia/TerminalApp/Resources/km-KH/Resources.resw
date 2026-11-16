@@ -640,4 +640,7 @@
     <value>ប្ដូរទៅផ្ទាំងបញ្ឈរ ដើម្បីមើលសកម្មភាពភ្នាក់ងាររបស់អ្នកបានមួយភ្លែត។ ចុចកណ្ដុរខាងស្ដាំលើផ្ទាំង ហើយជ្រើសរើស {0}។</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>ផ្ទាំងរង {0} ក្នុងចំណោម {1}</value>
+  </data>
 </root>
