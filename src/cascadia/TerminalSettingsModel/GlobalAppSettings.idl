@@ -209,5 +209,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, SidebarCollapsed);
 
         INHERITABLE_SETTING(Boolean, AgentProfileStartingDirectoryMigrationCompleted);
+        INHERITABLE_SETTING(String, AcpAgentSource);
+        INHERITABLE_SETTING(String, DelegateAgentSource);
     }
 }

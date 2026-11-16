@@ -232,6 +232,7 @@ void SettingsLoader::GenerateProfiles()
     generateProfiles(WslDistroGenerator{});
     generateProfiles(AzureCloudShellGenerator{});
     generateProfiles(VisualStudioGenerator{});
+    AgentProfileGenerator::RestoreSavedWslProfiles(userSettings.profiles);
     generateProfiles(AgentProfileGenerator{ userSettings.globals.get() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
@@ -673,7 +674,11 @@ bool SettingsLoader::FixupUserSettings()
                 hasAgentProfiles = true;
                 if (profile->StartingDirectory().empty())
                 {
-                    profile->StartingDirectory(L"%USERPROFILE%");
+                    const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                        profile->AgentProfileId(), profile->AgentProfileSource());
+                    profile->StartingDirectory(backend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                                                   L"~" :
+                                                   L"%USERPROFILE%");
                 }
             }
         }
@@ -1161,6 +1166,21 @@ void SettingsLoader::_addUserProfileParent(const winrt::com_ptr<implementation::
 
         it->second = child;
         userSettings.profiles.emplace_back(std::move(child));
+    }
+    if (profile->Source() == ::Microsoft::Terminal::AgentProfiles::Source &&
+        std::wstring_view{ profile->AgentProfileSource() }.starts_with(L"wsl:"))
+    {
+        // Persist source identity so stopped/uninstalled sources remain
+        // editable and an explicit saved launch never resolves a host CLI.
+        const auto& child = userSettings.profilesByGuid.at(profile->Guid());
+        if (!child->HasAgentProfileId())
+        {
+            child->AgentProfileId(profile->AgentProfileId());
+        }
+        if (!child->HasAgentProfileSource())
+        {
+            child->AgentProfileSource(profile->AgentProfileSource());
+        }
     }
 }
 

@@ -166,6 +166,17 @@ namespace winrt::TerminalApp::implementation
         // original orientation.
         bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         bool HasStashedAgentPane() const;
+        struct DeferredAgentPaneLayout
+        {
+            winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs args{ nullptr };
+            winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction{
+                winrt::Microsoft::Terminal::Settings::Model::SplitDirection::Automatic
+            };
+            float size{ 0.5f };
+        };
+        const std::optional<DeferredAgentPaneLayout>& DeferredAgentPaneRestore() const noexcept { return _deferredAgentPaneRestore; }
+        void DeferAgentPaneRestore(DeferredAgentPaneLayout layout) { _deferredAgentPaneRestore = std::move(layout); }
+        void ClearDeferredAgentPaneRestore() noexcept { _deferredAgentPaneRestore.reset(); }
         void SuppressAgentPrewarm() noexcept { _agentPrewarmSuppressed = true; }
         void AllowAgentPrewarm() noexcept { _agentPrewarmSuppressed = false; }
         bool AgentPrewarmSuppressed() const noexcept { return _agentPrewarmSuppressed; }
@@ -359,6 +370,7 @@ namespace winrt::TerminalApp::implementation
         AgentOverrideOrigin _agentOverrideOrigin{ AgentOverrideOrigin::User };
         winrt::hstring _agentCurrentId{};
         std::optional<winrt::guid> _agentSourceProfileGuid;
+        std::optional<DeferredAgentPaneLayout> _deferredAgentPaneRestore;
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};

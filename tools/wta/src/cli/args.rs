@@ -220,6 +220,9 @@ pub(crate) struct Cli {
     /// state. Hidden because only WT's pre-warm path should set it.
     #[arg(long, hide = true)]
     pub(crate) start_stashed: bool,
+    /// Host-authorized hidden WSL startup: running source or explicit global default.
+    #[arg(long, hide = true)]
+    pub(crate) allow_stashed_wsl_startup: bool,
 
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
@@ -485,6 +488,9 @@ pub(crate) enum Command {
         /// Authoritative built-in/custom identity supplied by the Settings caller.
         #[arg(long)]
         agent_id: Option<String>,
+        /// Explicitly selected WSL source; omission keeps Windows behavior.
+        #[arg(long)]
+        wsl_distro: Option<String>,
         /// Explicitly retry this target after its previous startup attempt finishes.
         #[arg(long)]
         retry_startup: bool,
@@ -493,8 +499,15 @@ pub(crate) enum Command {
     /// Used by the per-profile Settings picker.
     #[command(hide = true)]
     ProbeAgentSources {
+        #[arg(long, required_unless_present = "all_wsl", conflicts_with = "all_wsl")]
+        wsl_distro: Option<String>,
+        /// Enumerate registered distributions, probing only already-running ones.
         #[arg(long)]
-        wsl_distro: String,
+        all_wsl: bool,
+        /// Explicit Settings discovery permission to start stopped distributions
+        /// for CLI path probes only, never ACP or dependency preparation.
+        #[arg(long, requires = "all_wsl", conflicts_with = "wsl_distro")]
+        start_stopped_wsl: bool,
     },
     /// List built-in ACP agents that WTA can launch on the Windows host.
     /// Used by FRE, Settings, and automatic agent selection so those surfaces

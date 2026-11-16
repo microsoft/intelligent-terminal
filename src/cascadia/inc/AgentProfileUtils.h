@@ -4,6 +4,7 @@
 #pragma once
 
 #include "AgentPaneRestore.h"
+#include "AgentPaneBackend.h"
 #include "AgentRegistry.h"
 #include "DynamicProfileIdentity.h"
 #include "../../types/inc/utils.hpp"
@@ -17,6 +18,33 @@ namespace Microsoft::Terminal::AgentProfiles
 {
     inline constexpr std::wstring_view Source{ L"IntelligentTerminal.AgentProfiles" };
 
+    // Only the profile that owns this provider and execution source may
+    // regenerate the resume command from its current options.
+    inline bool MatchesResumeBinding(const std::wstring_view providerId,
+                                     const std::wstring_view executionSource,
+                                     const std::wstring_view boundProviderId,
+                                     const std::wstring_view boundBackend)
+    {
+        const auto profileBackend = Settings::Model::AgentPaneBackend::FromSettings(providerId, executionSource);
+        const auto sessionBackend = boundBackend.empty() ?
+                                        Settings::Model::AgentPaneBackend::FromSettings(boundProviderId, L"host") :
+                                        Settings::Model::AgentPaneBackend::Parse(boundBackend);
+        return profileBackend && sessionBackend &&
+               Settings::Model::AgentRegistry::AgentIdEquals(providerId, boundProviderId) &&
+               Settings::Model::AgentRegistry::AgentIdEquals(providerId, sessionBackend->agentId) &&
+               Settings::Model::AgentPaneBackend::SourceEquals(profileBackend->SettingsSource(), sessionBackend->SettingsSource());
+    }
+
+    template<typename Profile>
+    AgentPaneRestore::ResumeTarget RestoreTarget(const Profile& profile, const std::wstring_view sessionId)
+    {
+        const auto backend = Settings::Model::AgentPaneBackend::FromSettings(profile.AgentProfileId(), profile.AgentProfileSource());
+        THROW_HR_IF(E_INVALIDARG, !backend);
+        // Legacy host bindings have no backend. WSL bindings must retain the
+        // distro on every restore so the next save cannot mistake them for host.
+        return { std::wstring{ profile.AgentProfileId() }, std::wstring{ sessionId }, backend->source == Settings::Model::AgentPaneBackendSource::Wsl ? backend->SelectionId() : std::wstring{} };
+    }
+
     inline std::wstring GeneratedIdentity(const std::wstring_view providerId)
     {
         return std::wstring{ Source } + L":" + std::wstring{ providerId };
@@ -29,7 +57,7 @@ namespace Microsoft::Terminal::AgentProfiles
     }
 
     template<typename Profiles>
-    auto FindOriginal(const Profiles& profiles, const std::wstring_view providerId)
+    auto FindOriginal(const Profiles& profiles, const std::wstring_view providerId, const std::wstring_view executionSource = L"host")
     {
         using Profile = decltype(profiles.GetAt(0));
         Profile original{ nullptr };
@@ -48,9 +76,13 @@ namespace Microsoft::Terminal::AgentProfiles
                                             Settings::Model::AgentRegistry::AgentIdEquals(inherited.AgentProfileId(), id) ?
                                         inherited.AgentProfileId() :
                                         id;
-            if (profile.Source() == Source &&
+            const auto backend = Settings::Model::AgentPaneBackend::FromSettings(originalId, profile.AgentProfileSource());
+            if (profile.Source() == Source && backend &&
+                Settings::Model::AgentPaneBackend::SourceEquals(backend->SettingsSource(), executionSource) &&
                 Settings::Model::AgentRegistry::AgentIdEquals(id, providerId) &&
-                profile.Guid() == GeneratedGuid(originalId))
+                profile.Guid() == GeneratedGuid(backend->source == Settings::Model::AgentPaneBackendSource::Wsl ?
+                                                    backend->SelectionId() :
+                                                    std::wstring{ originalId }))
             {
                 // Case-distinct generated identities must not select an arbitrary original.
                 if (original)
@@ -218,6 +250,31 @@ namespace Microsoft::Terminal::AgentProfiles
         return command;
     }
 
+    inline std::wstring BuildWslCommand(const std::wstring_view distro,
+                                        const std::wstring_view id,
+                                        const std::wstring_view model,
+                                        const std::wstring_view permissionMode,
+                                        const std::wstring_view arguments)
+    {
+        THROW_HR_IF(E_INVALIDARG, !WslDistroName::IsSafe(distro));
+        THROW_HR_IF(E_INVALIDARG, id.starts_with(L"custom:"));
+        const auto nativeCommand = BuildCommand(Settings::Model::AgentRegistry::CliExecutable(id), id, model, permissionMode, arguments);
+        std::wstring systemDirectory;
+        THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(systemDirectory));
+        std::wstring command;
+        AgentPaneRestore::AppendQuoted(command, systemDirectory + L"\\wsl.exe");
+        command.append(L" --distribution ");
+        // WSL preserves quotes around the distro name. IsSafe excludes whitespace and quotes.
+        command.append(distro);
+        // Login PATH includes user-installed CLIs. Pass arguments as parameters,
+        // never as shell source, and do not involve an ACP adapter.
+        command.append(L" --exec bash -lc ");
+        AgentPaneRestore::AppendQuoted(command, L"exec \"$@\"");
+        command.append(L" bash ");
+        command.append(nativeCommand);
+        return command;
+    }
+
     template<typename Profile>
     bool IsManaged(Profile&& profile)
     {
@@ -240,6 +297,12 @@ namespace Microsoft::Terminal::AgentProfiles
     std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
+        const auto backend = Settings::Model::AgentPaneBackend::FromSettings(profile.AgentProfileId(), profile.AgentProfileSource());
+        THROW_HR_IF_MSG(E_INVALIDARG, !backend, "Invalid native agent execution source");
+        if (backend->source == Settings::Model::AgentPaneBackendSource::Wsl)
+        {
+            return BuildWslCommand(backend->wslDistro, profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments());
+        }
         if (std::wstring_view{ profile.AgentProfileId() }.starts_with(L"custom:"))
         {
             const auto values = ParseArguments(profile.Commandline());

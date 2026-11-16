@@ -64,6 +64,7 @@ use crate::protocol::acp::authentication::{
     authentication_result_for_helper, browser_notification, take_auth_attempt_id, AUTH_TIMEOUT,
 };
 use crate::protocol::acp::conn;
+use crate::protocol::acp::cwd_format::{self, CwdAttemptFailure, CwdNamespace};
 use crate::protocol::acp::spawn::{
     spawn_agent_process_for_source_with_provider, AgentStderrLog, ChildEnvironmentPolicy,
     SharedProviderSelection,
@@ -667,6 +668,7 @@ struct MasterStateInner {
     /// so a rejected/unknown helper request safely falls back to it.
     pub(crate) default_agent_cmd: String,
     pub(crate) default_agent_id: Option<String>,
+    pub(crate) default_agent_source: crate::agent_source::AgentSource,
     /// Only the master's host settings projection can establish discovery authority.
     custom_agent_commands: Mutex<CustomAcpCatalog>,
     /// Allowlist of agent ids a helper may select over the pipe, from the
@@ -1935,10 +1937,11 @@ impl CustomAcpCatalog {
             return None;
         }
         if !self.known {
-            return (state
-                .default_agent_id
-                .as_deref()
-                .is_some_and(|id| id.eq_ignore_ascii_case(&agent.resolved_agent_id))
+            return (state.default_agent_source == crate::agent_source::AgentSource::Host
+                && state
+                    .default_agent_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(&agent.resolved_agent_id))
                 && matches_history_command(agent, &state.default_agent_cmd))
             .then(|| (0, self.unknown_cancelled.clone()));
         }
@@ -2019,6 +2022,7 @@ struct HistoryRefreshState {
     listing_started_at_ms: Option<u64>,
     owner: Option<AgentInstanceId>,
     cwd_baseline: Option<HashMap<crate::session_registry::SessionIdentity, u64>>,
+    cwd_namespace: Option<CwdNamespace>,
 }
 
 impl HistoryRefreshState {
@@ -3237,24 +3241,39 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::NewSessionRequest,
         timeout: std::time::Duration,
-    ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+    ) -> acp::Result<(acp::schema::v1::NewSessionResponse, std::path::PathBuf)> {
         let timeout_secs = timeout.as_secs();
         let started = std::time::Instant::now();
+        let deadline = tokio::time::Instant::now() + timeout;
         let agent = self.resolved_agent("new_session")?;
-        let result = tokio::time::timeout(timeout, agent.conn.new_session(args)).await;
+        let result =
+            match tokio::time::timeout_at(deadline, agent_cwd_attempts(&agent, &args.cwd)).await {
+                Ok(attempts) => {
+                    cwd_format::run_cwd_attempts(&attempts, deadline, |cwd| {
+                        let mut request = args.clone();
+                        request.cwd = cwd;
+                        agent.conn.new_session(request)
+                    })
+                    .await
+                }
+                Err(_) => Err(CwdAttemptFailure::Timeout),
+            };
         let (failure_kind, acp_error_code) = match &result {
-            Ok(Ok(_)) => ("", 0),
-            Ok(Err(e)) => ("AcpError", e.code.into()),
-            Err(_) => ("Timeout", 0),
+            Ok(_) => ("", 0),
+            Err(CwdAttemptFailure::Agent(e)) => ("AcpError", e.code.into()),
+            Err(CwdAttemptFailure::Timeout) => ("Timeout", 0),
         };
         crate::telemetry::log_acp_new_session_complete(
             started.elapsed().as_secs_f64() * 1000.0,
-            matches!(result, Ok(Ok(_))),
+            result.is_ok(),
             "MasterForward",
             failure_kind,
             acp_error_code,
         );
-        result.map_err(|_| {
+        result.map_err(|failure| {
+            if let CwdAttemptFailure::Agent(error) = failure {
+                return error;
+            }
             let message = format!("agent CLI session/new timed out after {timeout_secs}s");
             tracing::error!(
                 target: "master",
@@ -3267,7 +3286,7 @@ impl HelperHandler {
             acp::Error::new(-32603, message.clone()).data(serde_json::json!({
                 "message": message
             }))
-        })?
+        })
     }
 
     fn load_session_timeout_error(
@@ -3399,6 +3418,7 @@ impl HelperHandler {
             .agent
             .get_or_try_init(|| acquire_and_bind_agent(&self.state, self.helper_id, acquire))
             .await?;
+        start_agent_history_worker(&self.state, agent);
         Ok(Arc::clone(agent))
     }
 
@@ -3535,7 +3555,7 @@ impl HelperHandler {
         let ResolvedAgentSelection {
             command: agent_cmd,
             agent_id,
-            source: agent_source,
+            source: mut agent_source,
             explicit_selection,
         } = resolve_agent_selection(
             &self.state.default_agent_cmd,
@@ -3543,10 +3563,22 @@ impl HelperHandler {
             self.state.allowed_agent_ids.as_ref(),
             wta_meta.agent_id.as_deref(),
             wta_meta.model.as_deref(),
-            wta_meta.agent_source.as_deref(),
-            wta_meta.wsl_distro.as_deref(),
+            Some(
+                wta_meta
+                    .agent_source
+                    .as_deref()
+                    .unwrap_or(self.state.default_agent_source.kind()),
+            ),
+            if wta_meta.agent_source.is_some() {
+                wta_meta.wsl_distro.as_deref()
+            } else {
+                self.state.default_agent_source.distro()
+            },
             self.helper_id,
         )?;
+        if explicit_selection != ExplicitAgentSelection::Accepted {
+            agent_source = self.state.default_agent_source.clone();
+        }
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -3790,7 +3822,6 @@ impl HelperHandler {
             .await
             .get(&self.helper_id)
             .and_then(|meta| meta.last_session_id.clone());
-        let cwd_for_registry = args.cwd.clone();
         let agent = match self.resolved_agent("new_session") {
             Ok(agent) => agent,
             Err(error) => {
@@ -3868,7 +3899,7 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let mut resp = match self
+        let (mut resp, cwd_for_registry) = match self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
@@ -4119,7 +4150,7 @@ impl HelperHandler {
             .is_some_and(|sid| sid != &session_id)
             .then(|| SESSION_ROLLBACK_CLOSE_TIMEOUT.min(timeout / 2))
             .unwrap_or_default();
-        let cwd_for_registry = args.cwd.clone();
+        let mut cwd_for_registry = args.cwd.clone();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -4243,14 +4274,29 @@ impl HelperHandler {
             } else {
                 None
             };
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            let load_rpc_timeout = remaining.saturating_sub(rollback_reserve);
-            let load_result = if load_rpc_timeout.is_zero() {
-                Err(self.load_session_timeout_error(timeout, "agent_rpc"))
-            } else {
+            let load_result = async {
+                let attempts = tokio::time::timeout_at(
+                    deadline - rollback_reserve,
+                    agent_cwd_attempts(&agent, &args.cwd),
+                )
+                .await
+                .map_err(|_| self.load_session_timeout_error(timeout, "cwd_resolution"))?;
+                args.cwd = attempts
+                    .into_iter()
+                    .next()
+                    .ok_or_else(acp::Error::internal_error)?;
+                cwd_for_registry = args.cwd.clone();
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                let load_rpc_timeout = remaining.saturating_sub(rollback_reserve);
+                if load_rpc_timeout.is_zero() {
+                    return Err(self.load_session_timeout_error(timeout, "agent_rpc"));
+                }
+                // session/load can replay history or partially load a session.
+                // Resolve once, but never replay the RPC with another cwd.
                 self.forward_load_session_to_agent(args, load_rpc_timeout, timeout)
                     .await
-            };
+            }
+            .await;
             match load_result {
                 Ok(resp) => {
                     loaded_target_physically = true;
@@ -4510,7 +4556,15 @@ impl HelperHandler {
         // (master seeds the registry at startup with disk-derived chat titles;
         // a naked `SessionInfo::new` upsert would blank them to "—" in the
         // session-management view).
-        if let Some(existing) = self.state.registry.lookup(&session_id).await {
+        if let Some(existing) = self
+            .state
+            .registry
+            .lookup_identity(&crate::session_registry::SessionIdentity::from_info(&info))
+            .await
+        {
+            if is_orphan_rebind || rebound_existing_session {
+                info.cwd = existing.cwd.clone();
+            }
             if info.title.is_none() {
                 info.title = existing.title;
             }
@@ -5184,6 +5238,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: config.agent.clone(),
         default_agent_id: config.agent_id.clone(),
+        default_agent_source: config.agent_source.clone(),
         custom_agent_commands: Mutex::new(CustomAcpCatalog::default()),
         allowed_agent_ids,
         helper_meta: Mutex::new(HashMap::new()),
@@ -5913,7 +5968,9 @@ where
                         // OnceCell has published the agent, so every subsequent
                         // reaper can retire it. Start history while pool ownership
                         // is still confirmed, including for warmed/switched agents.
-                        start_agent_history_worker(state, agent);
+                        if matches!(agent.source, crate::agent_source::AgentSource::Host) {
+                            start_agent_history_worker(state, agent);
+                        }
                         return Ok(Arc::clone(agent));
                     }
                 }
@@ -6826,7 +6883,7 @@ async fn serve_helper(
 
     let cleanup = cleanup_disconnected_helper(&handler).await;
     if let Some(agent) = handler.agent.get() {
-        retire_unbound_model_agent(&state, agent).await;
+        retire_unbound_on_demand_agent(&state, agent).await;
     }
 
     tracing::info!(
@@ -6841,8 +6898,10 @@ async fn serve_helper(
     result
 }
 
-async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentCli>) {
-    if !agent.cmd_key.starts_with("model:") {
+async fn retire_unbound_on_demand_agent(state: &MasterStateInner, agent: &Arc<AgentCli>) {
+    if !agent.cmd_key.starts_with("model:")
+        && matches!(agent.source, crate::agent_source::AgentSource::Host)
+    {
         return;
     }
 
@@ -6862,8 +6921,9 @@ async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentC
         tracing::info!(
             target: "master",
             agent = %agent.cmd_key,
-            "retiring unbound model-specific agent CLI"
+            "retiring unbound on-demand agent CLI"
         );
+        retire_agent_history(agent).await;
         agent.conn.shutdown();
     }
 }
@@ -7202,6 +7262,7 @@ async fn host_session_list_raw(
         .owner
         .is_some_and(|owner| owner != agent.instance_id)
     {
+        refresh.cwd_namespace = None;
         if let Err(error) = refresh.query.stop().await {
             tracing::error!(target: "master_history", %error, "previous history generation remains quarantined");
             return Err(HistoryRefreshFailure::Other);
@@ -7216,14 +7277,38 @@ async fn host_session_list_raw(
                 .as_millis() as u64,
         );
     }
-    refresh
+    let result = refresh
         .query
         .poll(
             agent.history_refresh.target.get(),
             &agent.history_refresh.cancelled,
             complete_inventory,
         )
-        .await
+        .await;
+    if let Ok(listing) = &result {
+        refresh.cwd_namespace = if listing.next_cursor.is_none() {
+            cwd_format::detect_namespace(
+                listing.sessions.iter().map(|session| session.cwd.as_path()),
+            )
+        } else {
+            None
+        };
+    }
+    result
+}
+
+async fn agent_cwd_attempts(agent: &AgentCli, cwd: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let native_host = crate::agent_registry::is_known_id(&agent.resolved_agent_id);
+    // Reuse completed per-instance history only. Namespace detection must not
+    // start a history ACP process or wait behind an in-flight inventory.
+    let detected = agent
+        .history_refresh
+        .gate
+        .try_lock()
+        .ok()
+        .filter(|refresh| refresh.owner == Some(agent.instance_id))
+        .and_then(|refresh| refresh.cwd_namespace);
+    cwd_format::build_cwd_attempts(cwd, &agent.source, native_host, detected).await
 }
 
 /// Legacy fallback for rows without a qualified provider identity.
@@ -7365,6 +7450,116 @@ fn host_acp_cwd_enabled(agent: &AgentCli) -> bool {
             }),
         _ => false,
     }
+}
+
+async fn refresh_native_wsl_copilot_correlations(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+    inventory: &[crate::session_registry::SessionInfo],
+) -> bool {
+    refresh_native_wsl_copilot_correlations_with_probe(
+        state,
+        agent,
+        inventory,
+        |distro, sessions| async move {
+            crate::session_watcher::wsl_copilot_identity::probe(&distro, &sessions).await
+        },
+    )
+    .await
+}
+
+async fn refresh_native_wsl_copilot_correlations_with_probe<F, Fut>(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+    inventory: &[crate::session_registry::SessionInfo],
+    probe: F,
+) -> bool
+where
+    F: FnOnce(String, Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<Vec<(uuid::Uuid, uuid::Uuid)>>>,
+{
+    let crate::agent_source::AgentSource::Wsl { distro } = &agent.source else {
+        return false;
+    };
+    if agent.resolved_agent_id != "copilot" {
+        return false;
+    }
+    let location = agent.source.session_location();
+    let pending = state.registry.unbound_native_copilot_panes(&location).await;
+    if pending.is_empty() {
+        return false;
+    }
+    let mut candidates: Vec<_> = inventory
+        .iter()
+        .filter(|row| {
+            row.provider_id.as_deref() == Some("copilot")
+                && row.location == location
+                && row.session_universe.is_none()
+                && row.origin != Some(crate::agent_sessions::SessionOrigin::AgentPane)
+        })
+        .filter_map(|row| {
+            uuid::Uuid::parse_str(row.session_id.0.as_ref())
+                .ok()
+                .map(|session| (session, row))
+        })
+        .collect();
+    // Equivalent UUID spellings cannot choose between distinct raw history keys.
+    candidates.sort_by_key(|(session, _)| *session);
+    candidates = candidates
+        .chunk_by(|a, b| a.0 == b.0)
+        .filter(|group| {
+            group
+                .iter()
+                .all(|(_, row)| row.session_id == group[0].1.session_id)
+        })
+        .map(|group| group[0])
+        .collect();
+    candidates.sort_by_key(|(_, row)| std::cmp::Reverse(row.last_activity_at_ms));
+    let sessions: Vec<_> = candidates
+        .iter()
+        .take(crate::session_watcher::wsl_copilot_identity::MAX_SESSIONS)
+        .map(|(session, _)| session.to_string())
+        .collect();
+    if sessions.is_empty() {
+        return state
+            .registry
+            .correlate_native_copilot_leases(&pending, &[])
+            .await;
+    }
+    let leases = match probe(distro.clone(), sessions).await {
+        Ok(leases) => leases,
+        Err(error) => {
+            tracing::debug!(target: "master_history", %distro, %error,
+                "native WSL identity unavailable; retaining unbound history");
+            return state
+                .registry
+                .correlate_native_copilot_leases(&pending, &[])
+                .await;
+        }
+    };
+    if agent
+        .history_refresh
+        .retired
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return false;
+    }
+    let mut correlations = Vec::new();
+    for (session, pane) in leases {
+        let Some((_, row)) = candidates
+            .iter()
+            .find(|(candidate, _)| *candidate == session)
+        else {
+            continue;
+        };
+        if let Some(key) = row.history_row_key() {
+            correlations.push((key, pane));
+        }
+    }
+    state
+        .registry
+        .correlate_native_copilot_leases(&pending, &correlations)
+        .await
 }
 
 /// Sync master's history rows for `agent` to its `session/list` (the
@@ -7666,6 +7861,8 @@ async fn sync_host_history(
         }
     }
 
+    changed |= refresh_native_wsl_copilot_correlations(state, agent, &inference_inventory).await;
+
     if refresh_titles_from_listing(
         &*state.registry,
         &titles_from_listing(agent, &sessions),
@@ -7856,6 +8053,9 @@ async fn refresh_agent_history(state: &MasterStateInner, agent: &AgentCli) -> Op
             .list
             .is_none()
     {
+        return None;
+    }
+    if !history_usage_eligible(&agent.source, !agent.bound_helpers.lock().await.is_empty()) {
         return None;
     }
     let generation = agent.history_refresh.generation.load(Ordering::Acquire);
@@ -8101,7 +8301,12 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             {
                 break;
             }
-            if agent.history_refresh.retired.load(Ordering::Acquire) {
+            if agent.history_refresh.retired.load(Ordering::Acquire)
+                || !history_usage_eligible(
+                    &agent.source,
+                    !agent.bound_helpers.lock().await.is_empty(),
+                )
+            {
                 break;
             }
             refresh_agent_history(&state, &agent).await;
@@ -8120,6 +8325,15 @@ fn start_agent_history_worker(state: &Arc<MasterStateInner>, agent: &Arc<AgentCl
             }
         }
     });
+}
+
+fn history_usage_eligible(
+    source: &crate::agent_source::AgentSource,
+    has_bound_helper: bool,
+) -> bool {
+    // Both an authorized default prewarm and explicit agent use bind a helper.
+    // Settings path discovery does not; a running distro is not ACP usage.
+    matches!(source, crate::agent_source::AgentSource::Host) || has_bound_helper
 }
 
 fn host_history_agent_ids(
@@ -8338,11 +8552,10 @@ async fn refresh_custom_agent_catalog(state: &MasterStateInner) -> bool {
             let mut commands = discovery_commands.clone();
             // Startup argv is independently trusted for history, never discovery.
             // A current catalog binding takes precedence over that selected command.
-            if let Some(id) = state
-                .default_agent_id
-                .as_ref()
-                .filter(|id| id.starts_with("custom:"))
-            {
+            if let Some(id) = state.default_agent_id.as_ref().filter(|id| {
+                id.starts_with("custom:")
+                    && state.default_agent_source == crate::agent_source::AgentSource::Host
+            }) {
                 if !state.default_agent_cmd.trim().is_empty() {
                     commands
                         .entry(id.to_ascii_lowercase())

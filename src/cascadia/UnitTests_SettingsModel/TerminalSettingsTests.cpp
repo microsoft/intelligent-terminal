@@ -8,6 +8,7 @@
 
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/ModelSerializationHelpers.h"
+#include "../TerminalSettingsModel/ActionArgs.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../TerminalSettingsModel/DynamicProfileUtils.h"
 #include "TestUtils.h"
@@ -62,6 +63,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileAppendRejectsEmbeddedNul);
         TEST_METHOD(AgentProfileAppendPreservesRawCommandline);
         TEST_METHOD(AgentProfileManagedLayoutOrphan);
+        TEST_METHOD(AgentProfileWslResumeLayoutUsesEffectiveOptions);
     };
 
     void TerminalSettingsTests::AcrylicSettingsReachTerminal()
@@ -252,6 +254,44 @@ namespace SettingsModelUnitTests
         profile.Commandline(winrt::hstring{ std::wstring_view{ L"cmd.exe\0retained", 16 } });
         args.Commandline(L"suffix");
         VERIFY_ARE_EQUAL(profile.Commandline() + L" suffix", TerminalSettings::CreateWithNewTerminalArgs(settings, args).DefaultSettings()->Commandline());
+    }
+
+    void TerminalSettingsTests::AgentProfileWslResumeLayoutUsesEffectiveOptions()
+    {
+        const auto settings = winrt::make<implementation::CascadiaSettings>(std::string_view{ R"({
+            "defaultProfile":"{00000000-0000-0000-0000-000000000001}",
+            "profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"WSL Claude",
+                         "agentProfile.id":"claude","agentProfile.source":"wsl:Ubuntu",
+                         "agentProfile.model":"saved-model","agentProfile.permissionMode":"plan",
+                         "agentProfile.arguments":"--add-dir \"/home/me/source tree\"",
+                         "agentProfile.resumeArguments":"--custom-resume"}]})" });
+        NewTerminalArgs saved;
+        saved.Profile(L"{00000000-0000-0000-0000-000000000001}");
+        saved.NativeAgentProviderId(L"claude");
+        saved.NativeAgentSessionId(L"known-session");
+        const auto restored = implementation::NewTerminalArgs::FromJson(implementation::NewTerminalArgs::ToJson(saved));
+        const auto profile = settings.GetProfileForArgs(restored);
+        profile.AgentProfileModel(L"current-model");
+        profile.AgentProfileResumeArguments(L"--resume --custom-option");
+        const auto adapted = TerminalSettings::CreateWithNewTerminalArgs(settings, restored).DefaultSettings();
+        VERIFY_IS_TRUE(adapted->UsesManagedAgentCommand());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"known-session" }, adapted->NativeAgentSessionId());
+        VERIFY_IS_TRUE(std::wstring_view{ adapted->Commandline() }.find(L"current-model") != std::wstring_view::npos);
+        const std::wstring resumed{ adapted->Commandline() };
+        for (const auto option : { L"current-model", L"--permission-mode", L"plan", L"--add-dir", L"/home/me/source tree", L"--resume", L"--custom-option", L"known-session" })
+        {
+            VERIFY_IS_TRUE(resumed.find(option) != std::wstring::npos);
+        }
+        VERIFY_IS_TRUE(resumed.find(L"saved-model") == std::wstring::npos);
+        // Negative control: the old persistence fallback freezes a raw command
+        // and explicitly turns off the adapter's managed-profile resolution.
+        const auto frozen = restored.Copy().as<NewTerminalArgs>();
+        frozen.NativeAgentSessionId(L"");
+        frozen.Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(L"wsl:Ubuntu:claude", L"known-session") });
+        const auto explicitCommand = TerminalSettings::CreateWithNewTerminalArgs(settings, frozen).DefaultSettings();
+        VERIFY_IS_FALSE(explicitCommand->UsesManagedAgentCommand());
+        VERIFY_IS_TRUE(std::wstring_view{ explicitCommand->Commandline() }.find(L"current-model") == std::wstring_view::npos);
+        VERIFY_IS_TRUE(std::wstring_view{ explicitCommand->Commandline() }.find(L"--custom-option") == std::wstring_view::npos);
     }
 
     void TerminalSettingsTests::AgentProfileManagedLayoutOrphan()

@@ -1812,6 +1812,18 @@ namespace winrt::TerminalApp::implementation
         // Use the policy-aware getter — returns empty if the selected agent
         // is blocked by GPO, ensuring we never launch a disallowed agent.
         const auto acpAgent = globals.EffectiveAcpAgent();
+        const auto source = globals.AcpAgentSource();
+        if (source != L"host" && !source.empty())
+        {
+            const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(acpAgent, source);
+            if (!backend)
+            {
+                LOG_HR_MSG(E_INVALIDARG, "Invalid or blocked global ACP source");
+                return {};
+            }
+            return winrt::hstring{ ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+                backend->agentId, std::wstring_view{ globals.AcpModel() }, true) };
+        }
         if (acpAgent.empty())
         {
             // The user's selection is blocked or absent. Try auto-detection
@@ -2095,7 +2107,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        return _settings.GlobalSettings().EffectiveAcpAgent();
+        const auto& globals = _settings.GlobalSettings();
+        if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                globals.EffectiveAcpAgent(), globals.AcpAgentSource()))
+        {
+            return winrt::hstring{ backend->SelectionId() };
+        }
+        return {};
     }
 
     // The launch command a restored agent pane has to record for a custom
@@ -2125,7 +2143,8 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_RestoreAgentPaneFromLayout(const winrt::com_ptr<Tab>& tab,
                                                    const NewTerminalArgs& contentArgs,
                                                    const SplitDirection splitDirection,
-                                                   const float splitSize)
+                                                   const float splitSize,
+                                                   const std::optional<bool> requestedSessionsView)
     {
         if (!tab || !contentArgs)
         {
@@ -2174,8 +2193,19 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        const auto intoSessionsView = fields.view == ::Microsoft::Terminal::AgentPaneRestore::SessionsView;
-        const auto stashed = ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
+        const auto intoSessionsView = requestedSessionsView.value_or(
+            fields.view == ::Microsoft::Terminal::AgentPaneRestore::SessionsView);
+        const auto stashed = !requestedSessionsView.has_value() &&
+                             ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
+        const auto binding = _ResolveAgentPaneSettingsBindingForTab(tab);
+        if (stashed && binding.agentSource == L"wsl" &&
+            !_CanPrewarmAgentBinding(binding,
+                                     std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
+                                     std::wstring_view{ _settings.GlobalSettings().AcpAgentSource() }))
+        {
+            tab->DeferAgentPaneRestore({ contentArgs, splitDirection, splitSize });
+            return true;
+        }
 
         // The saved split geometry is the pane's own, not the configured
         // default: the user may have dragged the splitter, or moved this one
@@ -2194,17 +2224,22 @@ namespace winrt::TerminalApp::implementation
             tab->AgentPanePositionOverride(savedPosition);
         }
 
-        return _AutoCreateHiddenAgentPaneShared(tab,
-                                                intoSessionsView,
-                                                /*autoStash*/ stashed,
-                                                winrt::to_string(fields.sessionId),
-                                                winrt::to_string(contentArgs.StartingDirectory()),
-                                                {},
-                                                winrt::to_string(fields.view),
-                                                std::wstring_view{ savedPosition },
-                                                splitSize,
-                                                /*focusPane*/ !stashed,
-                                                std::wstring_view{ fields.yoloControlOwner });
+        const auto restored = _AutoCreateHiddenAgentPaneShared(tab,
+                                                               intoSessionsView,
+                                                               /*autoStash*/ stashed,
+                                                               winrt::to_string(fields.sessionId),
+                                                               winrt::to_string(contentArgs.StartingDirectory()),
+                                                               {},
+                                                               requestedSessionsView ? (intoSessionsView ? "sessions" : "chat") : winrt::to_string(fields.view),
+                                                               std::wstring_view{ savedPosition },
+                                                               splitSize,
+                                                               /*focusPane*/ !stashed,
+                                                               std::wstring_view{ fields.yoloControlOwner });
+        if (restored)
+        {
+            tab->ClearDeferredAgentPaneRestore();
+        }
+        return restored;
     }
 
     // Resolve the effective delegate agent name from structured settings.
@@ -2297,8 +2332,8 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Resolve the command-palette agent from the active pane's profile.
-        // An empty profile value follows the global delegate setting on the
-        // Windows host. An explicit profile value selects both the agent and
+        // An empty profile value follows the global delegate source. An
+        // explicit profile value selects both the agent and
         // its exact execution source; WTA must not infer or fall back from it.
         const auto& globals = _settings.GlobalSettings();
         auto delegateAgent = _ResolveEffectiveDelegateAgent(globals);
@@ -2306,9 +2341,23 @@ namespace winrt::TerminalApp::implementation
         auto delegateModel = globals.DelegateModel();
         winrt::hstring delegateSource{ L"host" };
         winrt::hstring delegateWslDistro;
+        winrt::hstring configuredBackend;
         if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
         {
-            const auto configuredValue = sourceProfile.CommandPaletteAgent();
+            configuredBackend = sourceProfile.CommandPaletteAgent();
+        }
+        {
+            const auto globalBackend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                delegateAgentId, globals.DelegateAgentSource());
+            if (configuredBackend.empty() && !globalBackend)
+            {
+                LOG_HR_MSG(E_INVALIDARG, "Invalid or blocked global delegate source");
+                return;
+            }
+            const auto configuredValue = configuredBackend.empty() &&
+                                                 globalBackend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                                             winrt::hstring{ globalBackend->SelectionId() } :
+                                             configuredBackend;
             const std::wstring_view configured{ configuredValue };
             if (!configured.empty())
             {
@@ -2541,11 +2590,13 @@ namespace winrt::TerminalApp::implementation
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
             std::wstring{ globals.AcpCustomCommand() },
-            _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
+            (globals.AcpAgentSource().empty() || globals.AcpAgentSource() == L"host") &&
+                    _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
                 std::wstring{} :
                 std::wstring{ globals.AcpModel() },
             _CaptureCustomModelLaunchConfiguration(globals),
         };
+        snapshot.acpAgentSource = globals.AcpAgentSource();
         for (const auto& profile : _settings.AllProfiles())
         {
             snapshot.profileBackends.emplace_back(
@@ -2569,6 +2620,7 @@ namespace winrt::TerminalApp::implementation
     {
         Json::Value identity{ Json::objectValue };
         identity["acp_agent"] = winrt::to_string(winrt::hstring{ snapshot.acpAgent });
+        identity["acp_agent_source"] = winrt::to_string(winrt::hstring{ snapshot.acpAgentSource });
         identity["acp_custom_command"] = winrt::to_string(winrt::hstring{ snapshot.acpCustomCommand });
         identity["acp_model"] = winrt::to_string(winrt::hstring{ snapshot.acpModel });
         identity["allowed_agent_ids"] = Json::arrayValue;
@@ -2613,6 +2665,7 @@ namespace winrt::TerminalApp::implementation
         }
         const bool changed =
             previous.acpAgent != current.acpAgent ||
+            previous.acpAgentSource != current.acpAgentSource ||
             previous.acpCustomCommand != current.acpCustomCommand ||
             previous.acpModel != current.acpModel ||
             previous.customModelLaunch != current.customModelLaunch ||
@@ -2641,6 +2694,7 @@ namespace winrt::TerminalApp::implementation
         // argv, and a profile backend change can move execution between Host
         // and WSL. Those boundaries still require pane reconstruction.
         if (previous.acpCustomCommand != current.acpCustomCommand ||
+            previous.acpAgentSource != current.acpAgentSource ||
             profileBackendsChanged ||
             !isBuiltinAgent(previous.acpAgent) ||
             !isBuiltinAgent(current.acpAgent))
@@ -2832,7 +2886,8 @@ namespace winrt::TerminalApp::implementation
         const std::wstring_view agentId,
         const std::wstring_view agentSource,
         const std::wstring_view modelOverride,
-        const std::wstring_view globalAgentId) noexcept
+        const std::wstring_view globalAgentId,
+        const std::wstring_view globalAgentSource) noexcept
     {
         // Choosing an agent does not also choose a model. A built-in Host override can
         // inherit that same agent's global model without following agent changes.
@@ -2841,6 +2896,7 @@ namespace winrt::TerminalApp::implementation
             return !agentId.empty() &&
                    !til::starts_with(agentId, L"custom:") &&
                    agentSource == L"host" &&
+                   (globalAgentSource.empty() || globalAgentSource == L"host") &&
                    modelOverride.empty() &&
                    ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agentId, globalAgentId);
         }
@@ -2862,7 +2918,8 @@ namespace winrt::TerminalApp::implementation
                 request.agentIdOverride,
                 request.agentSourceOverride,
                 request.agentModelOverride,
-                request.globalAgentId),
+                request.globalAgentId,
+                request.globalAgentSource),
         };
         winrt::hstring agentCliPath;
         bool validSource = true;
@@ -2904,14 +2961,6 @@ namespace winrt::TerminalApp::implementation
                         binding.agentSource == L"wsl");
                 }
 
-                if (backend->source == Backend::AgentPaneBackendSource::Wsl)
-                {
-                    const auto expectedShell = L"wsl:" + backend->wslDistro;
-                    validSource =
-                        !backend->wslDistro.empty() &&
-                        (request.profileActiveShell.empty() ||
-                         request.profileActiveShell == expectedShell);
-                }
             }
             else
             {
@@ -2926,6 +2975,15 @@ namespace winrt::TerminalApp::implementation
                     request.globalAgentId;
             binding.acpModel = request.globalModel;
             agentCliPath = winrt::hstring{ request.globalAgentCliPath };
+            if (const auto backend = Backend::AgentPaneBackend::FromSettings(binding.agentId, request.globalAgentSource))
+            {
+                binding.agentSource = backend->source == Backend::AgentPaneBackendSource::Wsl ? L"wsl" : L"host";
+                binding.agentWslDistro = backend->wslDistro;
+            }
+            else
+            {
+                validSource = false;
+            }
         }
 
         binding.launchable = validSource && !agentCliPath.empty();
@@ -2949,6 +3007,7 @@ namespace winrt::TerminalApp::implementation
         const auto globalAgentCliPath =
             _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
         request.globalAgentId = std::wstring{ globals.EffectiveAcpAgent() };
+        request.globalAgentSource = std::wstring{ globals.AcpAgentSource() };
         request.globalModel = std::wstring{ globals.AcpModel() };
         request.globalAgentCliPath = std::wstring{ globalAgentCliPath };
         if (const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals))
@@ -4239,6 +4298,12 @@ namespace winrt::TerminalApp::implementation
             pushFlagValue(L"--agent", agentCliPath);
         }
         pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                globals.EffectiveAcpAgent(), globals.AcpAgentSource()))
+        {
+            pushFlagValue(L"--agent-source", backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ? L"wsl" : L"host");
+            pushFlagValue(L"--agent-wsl-distro", backend->wslDistro);
+        }
         // Pass the GPO-filtered set of allowed agent ids to the master.
         // A per-tab helper declares the agent it wants by *id* over the
         // pipe; the master reconstructs the command from that id only when
@@ -4299,7 +4364,7 @@ namespace winrt::TerminalApp::implementation
         {
             pushFlagValue(L"--language", lang);
         }
-        if (!_IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals))
+        if (globals.AcpAgentSource() != L"host" || !_IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals))
         {
             pushFlagValue(L"--acp-model", globals.AcpModel());
         }
@@ -4333,6 +4398,19 @@ namespace winrt::TerminalApp::implementation
     // wta-master process that the helpers connect to over a named pipe (helper
     // ↔ master speaks ACP JSON-RPC, master owns the single agent CLI subprocess).
     // See doc/specs/Multi-window-agent-pane.md.
+    bool TerminalPage::_CanPrewarmAgentBinding(
+        const AgentPaneSettingsBinding& binding,
+        const std::wstring_view globalAgentId,
+        const std::wstring_view globalAgentSource)
+    {
+        return binding.launchable &&
+               (binding.agentSource == L"host" ||
+                (binding.agentSource == L"wsl" &&
+                 binding.agentId == globalAgentId &&
+                 globalAgentSource.starts_with(L"wsl:") &&
+                 til::compare_ordinal_insensitive(globalAgentSource.substr(4), binding.agentWslDistro) == 0));
+    }
+
     bool TerminalPage::_AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
                                                         bool intoSessionsView,
                                                         bool autoStash,
@@ -4376,115 +4454,28 @@ namespace winrt::TerminalApp::implementation
             tab->AgentSourceProfileGuid(_AgentSourceProfileGuid(sourceProfile, _settings));
         }
 
-        // Resolve the agent for THIS tab. A per-tab override (set via the
-        // agent-bar chip flyout) wins; otherwise we follow the global
-        // `acpAgent`/`acpModel`. This is what lets Gemini run in one tab and
-        // Claude in another within the same window — each tab's helper
-        // declares its own agent to the multi-agent master.
-        winrt::hstring effectiveAgentId;
-        winrt::hstring effectiveModel;
-        winrt::hstring agentCliPath;
-        winrt::hstring effectiveAgentSource{ L"host" };
-        winrt::hstring effectiveAgentWslDistro;
-        const bool hasAgentOverride = tab->HasAgentOverride();
-        bool hasProfileBackend = false;
-        if (hasAgentOverride)
+        const auto binding = _ResolveAgentPaneSettingsBindingForTab(tab);
+        // Avoid a synchronous WSL query on tab creation. Only the explicit
+        // global provider/source pair is prewarmed; other WSL agents start on explicit use.
+        if (autoStash && binding.agentSource == L"wsl" &&
+            !_CanPrewarmAgentBinding(binding,
+                                     std::wstring_view{ globals.EffectiveAcpAgent() },
+                                     std::wstring_view{ globals.AcpAgentSource() }))
         {
-            effectiveAgentId = tab->AgentIdOverride();
-            effectiveModel = tab->AgentModelOverride();
-            effectiveAgentSource = tab->AgentSourceOverride();
-            effectiveAgentWslDistro = tab->AgentWslDistroOverride();
-            if (_FollowsGlobalAcpModel(true, false, effectiveAgentId, effectiveAgentSource, effectiveModel, globals.EffectiveAcpAgent()))
-            {
-                effectiveModel = globals.AcpModel();
-            }
-            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride(), effectiveAgentSource == L"wsl");
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: non-default WSL source deferred until explicit use");
+            return false;
         }
-        else if (sourceProfile)
-        {
-            const auto configuredValue = sourceProfile.AgentPaneBackend();
-            const std::wstring_view configured{ configuredValue };
-            hasProfileBackend = !configured.empty();
-            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(configured))
-            {
-                effectiveAgentId = winrt::hstring{ backend->agentId };
-                effectiveModel = {};
-                effectiveAgentSource = backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
-                                           winrt::hstring{ L"wsl" } :
-                                           winrt::hstring{ L"host" };
-                effectiveAgentWslDistro = winrt::hstring{ backend->wslDistro };
-                namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-                const auto allowedAgents = Registry::FilteredAcpAgents();
-                const auto knownAndAllowed = std::any_of(
-                    allowedAgents.begin(),
-                    allowedAgents.end(),
-                    [&](const auto& agent) {
-                        return Registry::AgentIdEquals(agent.id, std::wstring_view{ effectiveAgentId });
-                    });
-                if (knownAndAllowed)
-                {
-                    agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, {}, effectiveAgentSource == L"wsl");
-                }
-                if (backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
-                {
-                    const auto shellName = tab->GetActiveTerminalControl().ShellName();
-                    const auto expectedShell = winrt::hstring{ L"wsl:" + backend->wslDistro };
-                    if (!shellName.empty() && shellName != expectedShell)
-                    {
-                        _agentPaneLog("_AutoCreateHiddenAgentPaneShared: profile WSL backend does not match active shell");
-                        agentCliPath = {};
-                    }
-                }
-            }
-            else if (hasProfileBackend)
-            {
-                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: invalid profile agentPaneBackend");
-            }
-        }
-        // `_ResolveAgentCliPathForId` returns empty to signal "fall back"
-        // (the override id is unknown / blocked by GPO, or a custom override
-        // has no usable command line). Honor that contract here instead of
-        // proceeding with an empty command line — otherwise the helper is
-        // launched with no `--agent` but a stale `--agent-id`, and the tab
-        // silently runs whatever the master happens to default to. Fall back
-        // to the global/default agent (the same resolution as the
-        // no-override case). The GPO all-agents-blocked case is still caught
-        // by the policy check below.
-        if (!hasAgentOverride && !hasProfileBackend)
-        {
-            effectiveAgentId = globals.EffectiveAcpAgent();
-            effectiveModel = globals.AcpModel();
-            effectiveAgentSource = L"host";
-            effectiveAgentWslDistro = {};
-            agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
-            // When the global selection is absent/blocked,
-            // _ResolveEffectiveAgentCliPath falls back to auto-detection and
-            // returns a command line — but the *id* it detected is discarded,
-            // leaving effectiveAgentId empty while agentCliPath is non-empty.
-            // The helper would then forward no --agent-id, and the multi-agent
-            // master would pick its own default agent (and mis-stamp the
-            // session's cli_source) instead of the one we actually resolved a
-            // CLI for. Recover the detected id so the helper declares it.
-            // _DetectAgentCli() is deterministic and is the same fallback the
-            // resolver used internally, so it yields the matching id.
-            if (effectiveAgentId.empty() && !agentCliPath.empty())
-            {
-                effectiveAgentId = _DetectAgentCli();
-            }
-        }
-        if (_IsAgentByokConfigured(effectiveAgentId, globals))
-        {
-            effectiveModel.clear();
-        }
-        const bool followsGlobalAcpModel = _FollowsGlobalAcpModel(
-            hasAgentOverride,
-            hasProfileBackend,
+        const auto effectiveAgentId = winrt::hstring{ binding.agentId };
+        const auto effectiveModel = winrt::hstring{ binding.acpModel };
+        const auto effectiveAgentSource = winrt::hstring{ binding.agentSource };
+        const auto effectiveAgentWslDistro = winrt::hstring{ binding.agentWslDistro };
+        const auto agentCliPath = _ResolveAgentCliPathForId(
             effectiveAgentId,
-            effectiveAgentSource,
-            tab->AgentModelOverride(),
-            globals.EffectiveAcpAgent());
-
-        if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
+            effectiveModel,
+            tab->HasAgentOverride() ? tab->AgentCustomCommandOverride() : globals.AcpCustomCommand(),
+            effectiveAgentSource == L"wsl");
+        const auto followsGlobalAcpModel = binding.followsGlobalAcpModel;
+        if (!binding.launchable || agentCliPath.empty())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: explicit agent selection cannot be launched");
             return false;
@@ -4668,6 +4659,10 @@ namespace winrt::TerminalApp::implementation
             // opened the pane" assumption), C++ receives the echo on a
             // stashed pane and restores it — defeating pre-warm.
             helperCmd.append(L" --start-stashed");
+            if (effectiveAgentSource == L"wsl")
+            {
+                helperCmd.append(L" --allow-stashed-wsl-startup");
+            }
         }
         if (!initialAuthAgent.empty())
         {
@@ -4725,9 +4720,11 @@ namespace winrt::TerminalApp::implementation
         // pre-warm runs after startup actions restore that property to the
         // launcher directory, which is System32 for an AUMID activation.
         winrt::hstring paneDirectory;
+        winrt::hstring paneShell;
         if (const auto activeControl = tab->GetActiveTerminalControl())
         {
             paneDirectory = activeControl.WorkingDirectory();
+            paneShell = activeControl.ShellName();
         }
         const auto windowDirectory = _WindowProperties.VirtualWorkingDirectory();
         winrt::hstring profileDirectory;
@@ -4747,7 +4744,9 @@ namespace winrt::TerminalApp::implementation
             [](const std::wstring_view candidate) {
                 const std::wstring path{ candidate };
                 return Utils::IsValidDirectory(path.c_str());
-            });
+            },
+            std::wstring_view{ effectiveAgentWslDistro },
+            std::wstring_view{ paneShell });
         if (!resolvedWorkingDirectories.agent.empty())
         {
             appendHelperFlagValue(L"--agent-source-cwd", resolvedWorkingDirectories.agent);
@@ -5426,6 +5425,7 @@ namespace winrt::TerminalApp::implementation
             cloudModelChanged || customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
+            _lastAgentSettings.acpAgentSource != current.acpAgentSource ||
             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand;
 
         std::vector<winrt::guid> changedProfileBackends;
@@ -5596,6 +5596,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     tabImpl->ClearAgentOverride();
                 }
+                if (affected && !modelHotUpdate)
+                {
+                    tabImpl->ClearDeferredAgentPaneRestore();
+                }
                 if (tabImpl->FindAgentPane() && affected)
                 {
                     hadAny = true;
@@ -5659,9 +5663,13 @@ namespace winrt::TerminalApp::implementation
                             continue;
                         }
 
-                        if (restoredBinding &&
-                            (!connectionState ||
-                             !_CanSwitchAgentInPlace(*restoredBinding, *rebindBinding, *connectionState, helperEventReady)))
+                        if ((tabImpl->HasStashedAgentPane() &&
+                             !_CanPrewarmAgentBinding(*rebindBinding,
+                                                      std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
+                                                      current.acpAgentSource)) ||
+                            (restoredBinding &&
+                             (!connectionState ||
+                              !_CanSwitchAgentInPlace(*restoredBinding, *rebindBinding, *connectionState, helperEventReady))))
                         {
                             tabIdsToRetire.push_back(tabId);
                             panesToRecreateAfterRetirement.emplace_back(
@@ -6017,6 +6025,17 @@ namespace winrt::TerminalApp::implementation
         }
 
         _agentPaneLog("no agent pane on focused tab, creating new one");
+
+        if (const auto& deferred = focusedTab->DeferredAgentPaneRestore())
+        {
+            const auto layout = *deferred;
+            if (_RestoreAgentPaneFromLayout(
+                    focusedTab, layout.args, layout.direction, layout.size, intoSessionsView))
+            {
+                emitAgentPaneOpened();
+            }
+            return;
+        }
 
         if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView, /*autoStash*/ false, std::string_view{}, std::string_view{}, initialAuthAgent))
         {
@@ -8050,7 +8069,10 @@ namespace winrt::TerminalApp::implementation
         if (requestedGuid)
         {
             const auto profile = _settings.FindProfile(*requestedGuid);
-            return profile && Registry::AgentIdEquals(profile.AgentProfileId(), providerId) ? profile : nullptr;
+            return profile && Registry::AgentIdEquals(profile.AgentProfileId(), providerId) &&
+                           (profile.AgentProfileSource().empty() || profile.AgentProfileSource() == L"host") ?
+                       profile :
+                       nullptr;
         }
         if (!sessionId.empty())
         {
@@ -8068,7 +8090,8 @@ namespace winrt::TerminalApp::implementation
                     if (const auto pane = root ? root->FindPaneBySessionId(paneId) : nullptr)
                     {
                         const auto candidate = pane->GetProfile();
-                        if (candidate && Registry::AgentIdEquals(candidate.AgentProfileId(), providerId))
+                        if (candidate && Registry::AgentIdEquals(candidate.AgentProfileId(), providerId) &&
+                            (candidate.AgentProfileSource().empty() || candidate.AgentProfileSource() == L"host"))
                         {
                             if (const auto profile = _settings.FindProfile(candidate.Guid()))
                             {
@@ -8084,6 +8107,15 @@ namespace winrt::TerminalApp::implementation
 
     winrt::hstring TerminalPage::_ResolveSidebarHistoryIconPath(const TerminalApp::TabStripHistoryItem& item)
     {
+        if (item.AgentSource() == L"wsl")
+        {
+            if (const auto profile = ::Microsoft::Terminal::AgentProfiles::FindOriginal(
+                    _settings.AllProfiles(), item.AgentId(), L"wsl:" + std::wstring{ item.WslDistro() }))
+            {
+                return profile.Icon().Resolved();
+            }
+            return L"ms-appx:///AgentIcons/generic.svg";
+        }
         if (const auto profile = _FindNativeAgentProfile(item.AgentId(), item.AgentSource() == L"host" ? item.SessionId() : winrt::hstring{}))
         {
             return profile.Icon().Resolved();
@@ -10073,8 +10105,14 @@ namespace winrt::TerminalApp::implementation
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
             if (settingsInternal->UsesManagedAgentCommand())
             {
-                const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
-                newWorkingDirectory = std::filesystem::absolute(path).wstring();
+                const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+                    profile.AgentProfileId(), profile.AgentProfileSource());
+                // Preserve Linux paths for WSL --cd; only host agents need absolute Windows paths.
+                if (!backend || backend->source != ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+                {
+                    const std::filesystem::path path{ newWorkingDirectory.empty() ? L"." : newWorkingDirectory };
+                    newWorkingDirectory = std::filesystem::absolute(path).wstring();
+                }
             }
             connection = TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),
@@ -11469,35 +11507,9 @@ namespace winrt::TerminalApp::implementation
         }
         if (source == L"wsl")
         {
-            if (wslDistro.empty())
+            if (!::Microsoft::Terminal::WslDistroName::IsSafe(std::wstring_view{ wslDistro }))
             {
-                _agentPaneLog("OnAgentSwitchRequested: WSL source missing distro");
-                return;
-            }
-
-            auto effectivePane = tab->GetActivePane();
-            if (effectivePane && effectivePane->IsAgentPane())
-            {
-                if (const auto rootPane = tab->GetRootPane())
-                {
-                    rootPane->WalkTree([&](const auto& pane) {
-                        if (pane->IsSourceOfAgentPane())
-                        {
-                            effectivePane = pane;
-                        }
-                    });
-                }
-            }
-            winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
-            if (effectivePane)
-            {
-                control = effectivePane->GetTerminalControl();
-            }
-            std::wstring expectedShell{ L"wsl:" };
-            expectedShell.append(std::wstring_view{ wslDistro });
-            if (!control || control.ShellName() != expectedShell)
-            {
-                _agentPaneLog("OnAgentSwitchRequested: WSL source does not match the tab working pane");
+                _agentPaneLog("OnAgentSwitchRequested: invalid WSL distribution");
                 return;
             }
         }
@@ -11511,7 +11523,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
             return;
         }
-        if (_HandleAgentModelSwitch(agentId, params))
+        if (source == L"host" && _HandleAgentModelSwitch(agentId, params))
         {
             return;
         }
@@ -13693,7 +13705,14 @@ namespace winrt::TerminalApp::implementation
         {
             return std::nullopt;
         }
-        if (!_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled() ||
+        const auto sessionsEnabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
+        const auto candidate = _richTabAgentStatusByPaneId.find(*paneSessionId);
+        const auto currentBinding = _paneAgentSessions.find(*paneSessionId);
+        const auto advisory = sessionsEnabled && candidate != _richTabAgentStatusByPaneId.end() &&
+                              candidate->second.sessionId.empty() && candidate->second.inferredHistoryKey.isObject() &&
+                              (currentBinding == _paneAgentSessions.end() || currentBinding->second.sessionId.empty()) &&
+                              control.Connection() && control.Connection().State() == TerminalConnection::ConnectionState::Connected;
+        if (!sessionsEnabled || advisory ||
             winrt::get_self<ContentManager>(_manager)->UsesNativeAgentFallback(control.ContentId()))
         {
             const auto identity = winrt::get_self<ContentManager>(_manager)->NativeAgentObservationForContent(control.ContentId());
@@ -13709,7 +13728,9 @@ namespace winrt::TerminalApp::implementation
                     info->second.modeEpoch == identity->modeEpoch &&
                     ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
                         winrt::to_hstring(info->second.providerId), identity->providerId) &&
-                    info->second.windowId == identity->windowId && info->second.tabId == identity->tabId)
+                    info->second.windowId == identity->windowId && info->second.tabId == identity->tabId &&
+                    (!advisory || (identity->agentSessionId.empty() && !identity->location.empty() &&
+                                   info->second.location == _NativeAgentObservationLocation(identity->location))))
                 {
                     if (!identity->agentSessionId.empty())
                     {
@@ -17999,13 +18020,22 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection, const winrt::hstring& nativeAgentProviderId)
+    TermControl TerminalPage::_CreateNewControlAndContent(const Settings::TerminalSettingsCreateResult& settings, const ITerminalConnection& connection, const winrt::hstring& nativeAgentProviderId, const winrt::hstring& nativeAgentSource)
     {
+        std::string launchLocation;
+        if (!nativeAgentProviderId.empty() && settings.DefaultSettings()->UsesManagedAgentCommand())
+        {
+            if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(nativeAgentProviderId, nativeAgentSource))
+            {
+                launchLocation = backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl ?
+                                     "wsl:" + winrt::to_string(winrt::hstring{ backend->wslDistro }) :
+                                     "Host";
+            }
+        }
         // Do any initialization that needs to apply to _every_ TermControl we
         // create here.
         const auto content = winrt::get_self<ContentManager>(_manager)->CreateAgentCliCore(
-            *settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection, nativeAgentProviderId,
-            !nativeAgentProviderId.empty() && settings.DefaultSettings()->UsesManagedAgentCommand() ? "Host" : "");
+            *settings.DefaultSettings(), settings.UnfocusedSettings().try_as<IControlAppearance>(), connection, nativeAgentProviderId, launchLocation);
         const TermControl control{ content };
         return _SetupControl(control);
     }
@@ -18310,7 +18340,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto restoredAgent = !controlSettings.DefaultSettings()->NativeAgentSessionId().empty() ?
-                                       ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{ std::wstring{ profile.AgentProfileId() }, std::wstring{ controlSettings.DefaultSettings()->NativeAgentSessionId() } } :
+                                       ::Microsoft::Terminal::AgentProfiles::RestoreTarget(profile, controlSettings.DefaultSettings()->NativeAgentSessionId()) :
                                    newTerminalArgs ?
                                        ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(newTerminalArgs.Commandline()) :
                                        ::Microsoft::Terminal::AgentPaneRestore::ResumeTarget{};
@@ -18367,7 +18397,7 @@ namespace winrt::TerminalApp::implementation
         const auto nativeAgentProvider = newTerminalArgs && !newTerminalArgs.NativeAgentProviderId().empty() ?
                                              newTerminalArgs.NativeAgentProviderId() :
                                              winrt::hstring{ profileProvider };
-        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider);
+        const auto control = _CreateNewControlAndContent(controlSettings, connection, nativeAgentProvider, profile.AgentProfileSource());
 
         // Two kinds of pane replay their own history and must not also be
         // seeded from the saved buffer: one running an agent resume command,

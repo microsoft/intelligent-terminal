@@ -37,6 +37,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ClearSettingRestoresInheritance);
         TEST_METHOD(HasSettingAtSpecificLayer);
         TEST_METHOD(AgentPaneBackendDefaultsAndInherits);
+        TEST_METHOD(AgentBackendSelectionMatchesDistroCase);
     };
 
     void ProfileTests::ProfileGeneratesGuid()
@@ -715,5 +716,23 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(L"Ubuntu", parsed->wslDistro);
         VERIFY_ARE_EQUAL(L"copilot", parsed->agentId);
         VERIFY_IS_FALSE(AgentPaneBackend::Parse(L"wsl::copilot").has_value());
+    }
+
+    void ProfileTests::AgentBackendSelectionMatchesDistroCase()
+    {
+        using ::Microsoft::Terminal::Settings::Model::AgentPaneBackend;
+        VERIFY_IS_TRUE(AgentPaneBackend::SelectionEquals(L"wsl:ubuntu:gemini", L"wsl:Ubuntu:gemini"));
+        VERIFY_IS_TRUE(AgentPaneBackend::SelectionEquals(L"wsl:Ubuntu:copilot", L"wsl:UBUNTU:copilot"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"wsl:ubuntu:gemini", L"wsl:Debian:gemini"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"wsl:ubuntu:gemini", L"wsl:Ubuntu:Gemini"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"wsl:ubuntu:gemini", L"WSL:Ubuntu:gemini"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"wsl:ubuntu:gemini", L"host:gemini"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"custom:my-agent", L"custom:My-Agent"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"copilot", L"host:copilot"));
+        VERIFY_IS_TRUE(AgentPaneBackend::SourceEquals(L"wsl:ubuntu", L"wsl:Ubuntu"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SourceEquals(L"wsl:ubuntu", L"WSL:Ubuntu"));
+        VERIFY_IS_FALSE(AgentPaneBackend::SourceEquals(L"", L"host"));
+        VERIFY_IS_TRUE(AgentPaneBackend::SelectionEquals(L"", L""));
+        VERIFY_IS_FALSE(AgentPaneBackend::SelectionEquals(L"", L"host:gemini"));
     }
 }

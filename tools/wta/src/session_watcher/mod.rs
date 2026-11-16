@@ -13,6 +13,7 @@ pub mod classify_copilot;
 pub mod classify_gemini;
 pub(crate) mod copilot_status;
 pub mod discover;
+pub(crate) mod wsl_copilot_identity;
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
