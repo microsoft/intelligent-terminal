@@ -122,6 +122,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::TerminalPage> KeptPages();
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::Tab> KeptTabs(const winrt::TerminalApp::TerminalPage& owner);
         winrt::TerminalApp::TerminalPage KeptGroupOwner(const winrt::guid& groupId);
+        void MarkKeptGroupSelectedOnWindowClose(const winrt::TerminalApp::TerminalPage& owner, const winrt::guid& groupId);
+        bool WasKeptGroupSelectedOnWindowClose(const winrt::guid& groupId);
         winrt::Windows::Foundation::Rect KeptGroupBounds(const winrt::guid& groupId);
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
@@ -180,6 +182,7 @@ namespace winrt::TerminalApp::implementation
             winrt::Windows::Foundation::Rect bounds{};
             bool restoring{ false };
             SharedWtaLease lease;
+            bool selectedOnWindowClose{ false };
         };
         // All windows share this dispatcher. Retaining the tab and its event owner
         // preserves the live pane tree, helper lifetime and background protocol routing.
