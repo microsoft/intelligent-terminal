@@ -1861,15 +1861,7 @@ catch (...)
 
 void WindowEmperor::_createWindowForKeptGroups(std::vector<winrt::guid> groups)
 {
-    winrt::Windows::Foundation::Rect bounds{};
-    for (const auto& group : groups)
-    {
-        const auto saved = _keptManager.KeptGroupBounds(group);
-        bounds.Width = std::max(bounds.Width, saved.Width);
-        bounds.Height = std::max(bounds.Height, saved.Height);
-    }
-    winrt::TerminalApp::WindowRequestedArgs args{ winrt::hstring{}, winrt::hstring{}, bounds };
-    args.KeptGroupIds(winrt::single_threaded_vector<winrt::guid>(std::move(groups)));
+    const auto args = _keptManager.KeptWindowRequest(winrt::single_threaded_vector<winrt::guid>(std::move(groups)).GetView());
     CreateNewWindow(args);
 }
 

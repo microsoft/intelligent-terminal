@@ -1036,13 +1036,13 @@ namespace winrt::TerminalApp::implementation
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
-    bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab)
+    bool TerminalPage::_KeepTabRunning(const winrt::com_ptr<Tab>& tab, const KeptWindowGeometry* geometry)
     {
         if (!tab || !tab->KeepRunning() || !_GetTabIndex(*tab))
         {
             return false;
         }
-        _manager.KeepTab(*this, *tab);
+        winrt::get_self<ContentManager>(_manager)->KeepTab(*this, *tab, geometry);
         auto rollback = wil::scope_exit([&]() noexcept {
             if (_GetTabIndex(*tab))
             {

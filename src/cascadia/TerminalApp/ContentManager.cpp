@@ -720,17 +720,32 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab)
+    KeptWindowGeometry ContentManager::CaptureKeptWindowGeometry(const winrt::TerminalApp::TerminalPage& owner)
+    {
+        _CheckThread();
+        THROW_HR_IF(E_INVALIDARG, !owner);
+        KeptWindowGeometry geometry;
+        geometry.bounds = { 0, 0, static_cast<float>(owner.ActualWidth()), static_cast<float>(owner.ActualHeight()) };
+        geometry.captureOrdinal = ++_keptGeometryCaptureOrdinal;
+        const auto request = winrt::make<LaunchPositionRequest>();
+        winrt::get_self<TerminalPage>(owner)->RequestLaunchPosition.raise(owner, request);
+        const auto position = request.Position();
+        if (position.X && position.Y)
+        {
+            geometry.position = position;
+        }
+        return geometry;
+    }
+
+    void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab, const KeptWindowGeometry* geometry)
     {
         _CheckThread();
         THROW_HR_IF(E_INVALIDARG, !owner || !tab);
         const auto impl = winrt::get_self<Tab>(tab);
         const winrt::guid id{ impl->StableId() };
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !impl->KeepRunning() || _keptGroups.contains(id));
-        const winrt::Windows::Foundation::Rect bounds{
-            0, 0, static_cast<float>(owner.ActualWidth()), static_cast<float>(owner.ActualHeight())
-        };
-        _keptGroups.emplace(id, KeptGroup{ owner, tab, bounds, false, SharedWta::Instance().AcquireKeepRunningLease() });
+        const auto snapshot = geometry ? *geometry : CaptureKeptWindowGeometry(owner);
+        _keptGroups.emplace(id, KeptGroup{ owner, tab, snapshot, false, SharedWta::Instance().AcquireKeepRunningLease() });
         _NotifyKeptSessionsChanged();
     }
 
@@ -874,7 +889,39 @@ namespace winrt::TerminalApp::implementation
         _CheckThread();
         const auto it = _keptGroups.find(groupId);
         THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
-        return it->second.bounds;
+        return it->second.geometry.bounds;
+    }
+
+    winrt::TerminalApp::WindowRequestedArgs ContentManager::KeptWindowRequest(const winrt::Windows::Foundation::Collections::IVectorView<winrt::guid>& groups)
+    {
+        _CheckThread();
+        THROW_HR_IF(E_INVALIDARG, !groups || groups.Size() == 0);
+        winrt::Windows::Foundation::Rect bounds{};
+        const KeptWindowGeometry* newestPosition{};
+        winrt::guid newestGroup{};
+        for (const auto& groupId : groups)
+        {
+            const auto it = _keptGroups.find(groupId);
+            THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
+            THROW_HR_IF(E_ILLEGAL_METHOD_CALL, it->second.restoring);
+            const auto& saved = it->second.geometry;
+            bounds.Width = std::max(bounds.Width, saved.bounds.Width);
+            bounds.Height = std::max(bounds.Height, saved.bounds.Height);
+            if (saved.position &&
+                (!newestPosition || saved.captureOrdinal > newestPosition->captureOrdinal ||
+                 (saved.captureOrdinal == newestPosition->captureOrdinal && groupId < newestGroup)))
+            {
+                newestPosition = &saved;
+                newestGroup = groupId;
+            }
+        }
+        winrt::TerminalApp::WindowRequestedArgs request{ winrt::hstring{}, winrt::hstring{}, bounds };
+        request.KeptGroupIds(winrt::single_threaded_vector<winrt::guid>(wil::to_vector(groups)));
+        if (newestPosition)
+        {
+            request.KeptLaunchPosition(newestPosition->position);
+        }
+        return request;
     }
 
     void ContentManager::CompleteKeptGroupReattach(const winrt::guid& groupId, const bool committed)

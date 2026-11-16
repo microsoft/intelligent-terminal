@@ -32,6 +32,13 @@ Abstract:
 #include <inc/cppwinrt_utils.h>
 namespace winrt::TerminalApp::implementation
 {
+    struct KeptWindowGeometry
+    {
+        winrt::Windows::Foundation::Rect bounds{};
+        winrt::Windows::Foundation::IReference<winrt::Microsoft::Terminal::Settings::Model::LaunchPosition> position{ nullptr };
+        uint64_t captureOrdinal{};
+    };
+
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
@@ -115,7 +122,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring AgentSessionEvent(uint64_t contentId);
         void UpdateKeepRunningTab(const winrt::TerminalApp::Tab& tab);
         bool IsPaneKeepRunning(const winrt::guid& paneId) const;
-        void KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab);
+        KeptWindowGeometry CaptureKeptWindowGeometry(const winrt::TerminalApp::TerminalPage& owner);
+        void KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab, const KeptWindowGeometry* geometry = nullptr);
         bool HasKeptSessions();
         bool IsKeptContent(uint64_t contentId);
         winrt::guid KeptGroupForPane(const winrt::guid& sessionId);
@@ -126,6 +134,7 @@ namespace winrt::TerminalApp::implementation
         void MarkKeptGroupSelectedOnWindowClose(const winrt::TerminalApp::TerminalPage& owner, const winrt::guid& groupId);
         bool WasKeptGroupSelectedOnWindowClose(const winrt::guid& groupId);
         winrt::Windows::Foundation::Rect KeptGroupBounds(const winrt::guid& groupId);
+        winrt::TerminalApp::WindowRequestedArgs KeptWindowRequest(const winrt::Windows::Foundation::Collections::IVectorView<winrt::guid>& groups);
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void NotifyPaneWindowChanged(const winrt::guid& paneId, uint64_t windowId);
@@ -181,7 +190,7 @@ namespace winrt::TerminalApp::implementation
         {
             winrt::TerminalApp::TerminalPage owner{ nullptr };
             winrt::TerminalApp::Tab tab{ nullptr };
-            winrt::Windows::Foundation::Rect bounds{};
+            KeptWindowGeometry geometry;
             bool restoring{ false };
             SharedWtaLease lease;
             bool selectedOnWindowClose{ false };
@@ -191,6 +200,7 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
         std::unordered_map<uint64_t, AgentBinding> _agentBindings;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
+        uint64_t _keptGeometryCaptureOrdinal{};
         // Only kept groups own retention; the sidebar index must not keep tabs alive.
         std::unordered_map<winrt::hstring, winrt::weak_ref<winrt::TerminalApp::Tab>> _keepRunningTabs;
         void _CheckThread() const;

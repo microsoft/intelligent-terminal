@@ -136,7 +136,7 @@ void AppHost::_HandleCommandlineArgs(const winrt::TerminalApp::WindowRequestedAr
 
     if (const auto groups = windowArgs.KeptGroupIds(); groups && groups.Size() > 0)
     {
-        _windowLogic.SetStartupKeptGroups(groups.GetView(), windowArgs.InitialBounds());
+        _windowLogic.SetStartupKeptGroups(groups.GetView(), windowArgs.InitialBounds(), windowArgs.KeptLaunchPosition());
         _launchShowWindowCommand = SW_NORMAL;
     }
     else if (const auto layout = windowArgs.PersistedLayout())
@@ -566,7 +566,12 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
     long adjustedWidth = 0;
 
     // Find nearest monitor.
-    auto hmon = MonitorFromRect(proposedRect.as_win32_rect(), MONITOR_DEFAULTTONEAREST);
+    const auto hasKeptPosition = _windowLogic.HasStartupKeptPosition();
+    // The remaining edges of proposedRect still describe the system default
+    // window. A retained physical origin must select its own monitor and DPI.
+    auto hmon = hasKeptPosition ?
+                    MonitorFromPoint({ proposedRect.left, proposedRect.top }, MONITOR_DEFAULTTONEAREST) :
+                    MonitorFromRect(proposedRect.as_win32_rect(), MONITOR_DEFAULTTONEAREST);
 
     // Get nearest monitor information
     MONITORINFO monitorInfo;
@@ -622,7 +627,9 @@ void AppHost::_initialResizeAndRepositionWindow(const HWND hwnd, til::rect propo
                           Utils::ClampToShortMax(adjustedHeight, 1) };
 
     // Find nearest monitor for the position that we've actually settled on
-    auto hMonNearest = MonitorFromRect(proposedRect.as_win32_rect(), MONITOR_DEFAULTTONEAREST);
+    auto hMonNearest = hasKeptPosition ?
+                           MonitorFromPoint({ proposedRect.left, proposedRect.top }, MONITOR_DEFAULTTONEAREST) :
+                           MonitorFromRect(proposedRect.as_win32_rect(), MONITOR_DEFAULTTONEAREST);
     MONITORINFO nearestMonitorInfo;
     nearestMonitorInfo.cbSize = sizeof(MONITORINFO);
     // Get monitor dimensions:
