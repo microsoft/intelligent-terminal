@@ -7377,6 +7377,101 @@ fn host_acp_cwd_enabled(agent: &AgentCli) -> bool {
     }
 }
 
+async fn refresh_native_wsl_copilot_correlations(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+    inventory: &[crate::session_registry::SessionInfo],
+) -> bool {
+    refresh_native_wsl_copilot_correlations_with_probe(
+        state,
+        agent,
+        inventory,
+        |distro, sessions| async move {
+            crate::session_watcher::wsl_copilot_identity::probe(&distro, &sessions).await
+        },
+    )
+    .await
+}
+
+async fn refresh_native_wsl_copilot_correlations_with_probe<F, Fut>(
+    state: &MasterStateInner,
+    agent: &AgentCli,
+    inventory: &[crate::session_registry::SessionInfo],
+    probe: F,
+) -> bool
+where
+    F: FnOnce(String, Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<Vec<(uuid::Uuid, uuid::Uuid)>>>,
+{
+    let crate::agent_source::AgentSource::Wsl { distro } = &agent.source else {
+        return false;
+    };
+    if agent.resolved_agent_id != "copilot" {
+        return false;
+    }
+    let location = agent.source.session_location();
+    let pending = state.registry.unbound_native_copilot_panes(&location).await;
+    if pending.is_empty() {
+        return false;
+    }
+    let mut candidates: Vec<_> = inventory
+        .iter()
+        .filter(|row| {
+            row.provider_id.as_deref() == Some("copilot")
+                && row.location == location
+                && row.session_universe.is_none()
+                && row.origin != Some(crate::agent_sessions::SessionOrigin::AgentPane)
+                && uuid::Uuid::parse_str(row.session_id.0.as_ref()).is_ok()
+        })
+        .collect();
+    candidates.sort_by_key(|row| std::cmp::Reverse(row.last_activity_at_ms));
+    let sessions: Vec<_> = candidates
+        .iter()
+        .take(crate::session_watcher::wsl_copilot_identity::MAX_SESSIONS)
+        .map(|row| row.session_id.to_string())
+        .collect();
+    if sessions.is_empty() {
+        return state
+            .registry
+            .correlate_native_copilot_leases(&pending, &[])
+            .await;
+    }
+    let leases = match probe(distro.clone(), sessions).await {
+        Ok(leases) => leases,
+        Err(error) => {
+            tracing::debug!(target: "master_history", %distro, %error,
+                "native WSL identity unavailable; retaining unbound history");
+            return state
+                .registry
+                .correlate_native_copilot_leases(&pending, &[])
+                .await;
+        }
+    };
+    if agent
+        .history_refresh
+        .retired
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return false;
+    }
+    let mut correlations = Vec::new();
+    for (session, pane) in leases {
+        let Some(row) = candidates
+            .iter()
+            .find(|row| row.session_id.to_string() == session.to_string())
+        else {
+            continue;
+        };
+        if let Some(key) = row.history_row_key() {
+            correlations.push((key, pane));
+        }
+    }
+    state
+        .registry
+        .correlate_native_copilot_leases(&pending, &correlations)
+        .await
+}
+
 /// Sync master's history rows for `agent` to its `session/list` (the
 /// single source of truth for THAT CLI): add newly-listed sessions and drop
 /// terminal Class-B rows it no longer lists (phantoms, CLI-side deletes).
@@ -7565,6 +7660,8 @@ async fn sync_host_history(
             changed = true;
         }
     }
+
+    changed |= refresh_native_wsl_copilot_correlations(state, agent, &inference_inventory).await;
 
     if refresh_titles_from_listing(
         &*state.registry,

@@ -506,8 +506,16 @@ pub struct NativeAgentObservation {
     pub pane_creation_sequence: Option<u64>,
     #[serde(default)]
     pub current_progress_state: Option<u8>,
+    #[serde(skip)]
+    lease_correlation: Option<NativeSessionLeaseCorrelation>,
     #[serde(flatten)]
     pub event: NativeObservationKind,
+}
+
+#[derive(Debug, Clone)]
+struct NativeSessionLeaseCorrelation {
+    key: HistoryRowKey,
+    observed_at_ms: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -1845,6 +1853,21 @@ pub trait SessionRegistry: Send + Sync {
         Vec::new()
     }
 
+    async fn unbound_native_copilot_panes(
+        &self,
+        _location: &SessionLocation,
+    ) -> Vec<NativeAgentObservation> {
+        Vec::new()
+    }
+
+    async fn correlate_native_copilot_leases(
+        &self,
+        _admissions: &[NativeAgentObservation],
+        _leases: &[(HistoryRowKey, uuid::Uuid)],
+    ) -> bool {
+        false
+    }
+
     async fn has_pending_native_inference(
         &self,
         _provider: &str,
@@ -2497,6 +2520,66 @@ impl SessionRegistry for InMemoryRegistry {
         native_pane_observations_locked(&state)
     }
 
+    async fn unbound_native_copilot_panes(
+        &self,
+        location: &SessionLocation,
+    ) -> Vec<NativeAgentObservation> {
+        if !matches!(location, SessionLocation::Wsl { .. }) {
+            return Vec::new();
+        }
+        let state = self.inner.lock().await;
+        state
+            .hook_pane_progress
+            .iter()
+            .filter(|(_, row)| {
+                row.provider_id == "copilot"
+                    && row.location.as_ref() == Some(location)
+                    && unbound_native_copilot_pane(&state, row)
+            })
+            .map(|(_, row)| row.clone())
+            .collect()
+    }
+
+    async fn correlate_native_copilot_leases(
+        &self,
+        admissions: &[NativeAgentObservation],
+        leases: &[(HistoryRowKey, uuid::Uuid)],
+    ) -> bool {
+        let mut state = self.inner.lock().await;
+        let mut changed = false;
+        for expected in admissions {
+            let pane = pane_key(&expected.pane_id);
+            let Some(current) = state.hook_pane_progress.get(&pane) else {
+                continue;
+            };
+            if current.mode_epoch != expected.mode_epoch
+                || current.receiver_generation != expected.receiver_generation
+                || current.window_id != expected.window_id
+                || current.tab_id != expected.tab_id
+                || current.provider_id != expected.provider_id
+                || current.location != expected.location
+                || !unbound_native_copilot_pane(&state, current)
+            {
+                continue;
+            }
+            let mut matching = leases.iter().filter(|(key, owner)| {
+                owner.to_string() == pane
+                    && native_copilot_lease_row(&state, current, key).is_some()
+            });
+            let key = matching.next().map(|(key, _)| key.clone());
+            let key = key.filter(|_| matching.next().is_none());
+            let Some(current) = state.hook_pane_progress.get_mut(&pane) else {
+                continue;
+            };
+            changed |= current.lease_correlation.as_ref().map(|value| &value.key) != key.as_ref();
+            current.lease_correlation = key.map(|key| NativeSessionLeaseCorrelation {
+                key,
+                observed_at_ms: now_ms(),
+            });
+        }
+        changed
+    }
+
     async fn pane_status_snapshot(&self) -> (Vec<PaneAgentStatus>, Vec<NativePaneObservation>) {
         let state = self.inner.lock().await;
         let native = native_pane_observations_locked(&state);
@@ -2528,6 +2611,35 @@ impl SessionRegistry for InMemoryRegistry {
                 )
             })
             .collect();
+        for observation in state.hook_pane_progress.values() {
+            let Some(correlation) = observation
+                .lease_correlation
+                .as_ref()
+                .filter(|value| now_ms().saturating_sub(value.observed_at_ms) <= 15_000)
+            else {
+                continue;
+            };
+            let Some(row) = native_copilot_lease_row(&state, observation, &correlation.key) else {
+                continue;
+            };
+            panes.insert(
+                pane_key(&observation.pane_id),
+                PaneAgentStatus {
+                    pane_id: pane_key(&observation.pane_id),
+                    provider_id: observation.provider_id.clone(),
+                    status: osc_activity(observation.current_progress_state)
+                        .unwrap_or(AgentStatus::Idle),
+                    agent_session_id: None,
+                    inferred_history_key: Some(correlation.key.clone()),
+                    last_activity_at_ms: row.last_activity_at_ms,
+                    cwd: Some(row.cwd.clone()),
+                    location: observation.location.clone(),
+                    mode_epoch: Some(observation.mode_epoch),
+                    window_id: Some(observation.window_id),
+                    tab_id: Some(observation.tab_id.clone()),
+                },
+            );
+        }
         let mut claims = HashMap::<String, usize>::new();
         for row in state
             .sessions
@@ -3115,6 +3227,44 @@ fn pane_status_cwd(
         return None;
     }
     cwd.filter(|cwd| !cwd.as_os_str().is_empty()).cloned()
+}
+
+fn unbound_native_copilot_pane(state: &RegistryState, row: &NativeAgentObservation) -> bool {
+    let pane = pane_key(&row.pane_id);
+    row.provider_id == "copilot"
+        && matches!(row.location, Some(SessionLocation::Wsl { .. }))
+        && row.agent_session_id.is_none()
+        && !state.active_by_pane.contains_key(&pane)
+        && !state.native_panes.contains_key(&pane)
+        && matches!(
+            state.pane_connections.get(&pane),
+            Some(PaneConnectionState::Connected)
+        )
+}
+
+fn native_copilot_lease_row<'a>(
+    state: &'a RegistryState,
+    observation: &NativeAgentObservation,
+    key: &HistoryRowKey,
+) -> Option<&'a SessionInfo> {
+    if !unbound_native_copilot_pane(state, observation)
+        || key.provider_id != "copilot"
+        || observation.location.as_ref() != Some(&key.location)
+        || key.session_universe.is_some()
+    {
+        return None;
+    }
+    let identity = SessionIdentity {
+        session_id: key.session_id.clone().into(),
+        history_key: Some(key.clone()),
+    };
+    state.sessions.get(&identity).filter(|row| {
+        row.origin != Some(SessionOrigin::AgentPane)
+            && row.cli_source == Some(CliSource::Copilot)
+            && row.pane_session_id.is_none()
+            && row.status == Some(AgentStatus::Historical)
+            && row.last_error.is_none()
+    })
 }
 
 fn effective_activity_locked(state: &RegistryState, row: &SessionInfo) -> Option<AgentStatus> {
@@ -5432,6 +5582,115 @@ mod tests {
             .unwrap()
             .extend(kind.as_object().unwrap().clone());
         serde_json::from_value(value).unwrap()
+    }
+
+    #[tokio::test]
+    async fn native_wsl_lease_candidates_require_unbound_connected_hook_tracking() {
+        let location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        for (tracking, provider, source, connected) in [
+            (true, "copilot", location.clone(), true),
+            (false, "copilot", location.clone(), true),
+            (true, "claude", location.clone(), true),
+            (true, "copilot", SessionLocation::Host, true),
+            (
+                true,
+                "copilot",
+                SessionLocation::Wsl {
+                    distro: "Debian".into(),
+                },
+                true,
+            ),
+            (true, "copilot", location.clone(), false),
+        ] {
+            let registry = InMemoryRegistry::new();
+            let mut event = native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":tracking, "location":source}),
+                1,
+            );
+            event.provider_id = provider.into();
+            assert!(registry.apply_native_observation(event).await);
+            if connected {
+                registry.record_pane_connected(NATIVE_PANE).await;
+            }
+            let eligible = tracking && provider == "copilot" && source == location && connected;
+            assert_eq!(
+                registry.unbound_native_copilot_panes(&location).await.len(),
+                usize::from(eligible)
+            );
+            if eligible {
+                let mut row = qualified_info("already-owned", "copilot", location.clone(), "owner");
+                row.status = Some(AgentStatus::Idle);
+                row.pane_session_id = Some(NATIVE_PANE.into());
+                row.origin = Some(SessionOrigin::Unknown);
+                registry.upsert(row).await;
+                assert!(registry
+                    .unbound_native_copilot_panes(&location)
+                    .await
+                    .is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn native_wsl_lease_projection_expires_without_binding_or_reviving_history() {
+        let registry = InMemoryRegistry::new();
+        let location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let admission = native_event(
+            serde_json::json!({"kind":"reset", "tracking_enabled":true, "location":location}),
+            1,
+        );
+        assert!(registry.apply_native_observation(admission).await);
+        registry.record_pane_connected(NATIVE_PANE).await;
+        let mut row = qualified_info(
+            &uuid::Uuid::new_v4().to_string(),
+            "copilot",
+            location.clone(),
+            "history",
+        );
+        row.cli_source = Some(CliSource::Copilot);
+        let original = row.clone();
+        let key = row.history_row_key().unwrap();
+        registry.upsert(row).await;
+        let pending = registry.unbound_native_copilot_panes(&location).await;
+        let leases = [(key.clone(), uuid::Uuid::parse_str(NATIVE_PANE).unwrap())];
+        assert!(
+            registry
+                .correlate_native_copilot_leases(&pending, &leases)
+                .await
+        );
+        let (panes, native) = registry.pane_status_snapshot().await;
+        assert!(
+            native.is_empty(),
+            "ON advisory metadata is not an OFF owner"
+        );
+        assert_eq!(panes[0].inferred_history_key.as_ref(), Some(&key));
+        assert!(panes[0].agent_session_id.is_none());
+        assert_eq!(registry.snapshot().await, vec![original.clone()]);
+        {
+            let mut state = registry.inner.lock().await;
+            state
+                .hook_pane_progress
+                .get_mut(NATIVE_PANE)
+                .unwrap()
+                .lease_correlation
+                .as_mut()
+                .unwrap()
+                .observed_at_ms = 0;
+        }
+        assert!(registry.pane_status_snapshot().await.0.is_empty());
+        registry
+            .correlate_native_copilot_leases(&pending, &leases)
+            .await;
+        assert_eq!(registry.pane_status_snapshot().await.0.len(), 1);
+        let mut ended = original;
+        ended.status = Some(AgentStatus::Ended);
+        registry.upsert(ended.clone()).await;
+        assert!(registry.pane_status_snapshot().await.0.is_empty());
+        assert_eq!(registry.snapshot().await, vec![ended]);
     }
 
     #[tokio::test]

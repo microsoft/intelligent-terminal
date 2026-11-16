@@ -13665,7 +13665,14 @@ namespace winrt::TerminalApp::implementation
         {
             return std::nullopt;
         }
-        if (!_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        const auto sessionsEnabled = _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
+        const auto candidate = _richTabAgentStatusByPaneId.find(*paneSessionId);
+        const auto currentBinding = _paneAgentSessions.find(*paneSessionId);
+        const auto advisory = sessionsEnabled && candidate != _richTabAgentStatusByPaneId.end() &&
+                              candidate->second.sessionId.empty() && candidate->second.inferredHistoryKey.isObject() &&
+                              (currentBinding == _paneAgentSessions.end() || currentBinding->second.sessionId.empty()) &&
+                              control.Connection() && control.Connection().State() == TerminalConnection::ConnectionState::Connected;
+        if (!sessionsEnabled || advisory)
         {
             const auto identity = winrt::get_self<ContentManager>(_manager)->NativeAgentObservationForContent(control.ContentId());
             if (identity)
@@ -13680,7 +13687,9 @@ namespace winrt::TerminalApp::implementation
                     info->second.modeEpoch == identity->modeEpoch &&
                     ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
                         winrt::to_hstring(info->second.providerId), identity->providerId) &&
-                    info->second.windowId == identity->windowId && info->second.tabId == identity->tabId)
+                    info->second.windowId == identity->windowId && info->second.tabId == identity->tabId &&
+                    (!advisory || (identity->agentSessionId.empty() && !identity->location.empty() &&
+                                   info->second.location == _NativeAgentObservationLocation(identity->location))))
                 {
                     if (!identity->agentSessionId.empty())
                     {
