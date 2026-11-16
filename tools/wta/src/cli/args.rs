@@ -501,6 +501,14 @@ pub(crate) enum Command {
     /// share WTA's executable resolution with the actual ACP spawn path.
     #[command(hide = true)]
     ProbeHostAgents,
+    /// Internal stdio host for a provider that opts into native console interruption.
+    #[command(hide = true)]
+    AcpConsoleHost {
+        #[arg(long)]
+        stop_event: String,
+        #[arg(last = true, required = true, num_args = 1..)]
+        arguments: Vec<String>,
+    },
     /// Discover installed Windows interactive agent CLIs (not ACP adapters).
     ProbeProfileAgents,
     /// Run a built-in agent's native interactive CLI in the current console.

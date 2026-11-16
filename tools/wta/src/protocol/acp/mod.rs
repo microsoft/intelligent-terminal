@@ -1,6 +1,7 @@
 pub(crate) mod authentication;
 pub mod client;
 pub mod conn;
+pub(crate) mod console_host;
 pub mod failure;
 pub mod model_select;
 pub mod native_yolo;

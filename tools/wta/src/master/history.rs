@@ -577,6 +577,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_native_history_teardown_forces_only_its_retained_process() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let directory = std::env::temp_dir()
+                    .join(format!("wta-history-cancel-{}", uuid::Uuid::new_v4()));
+                std::fs::create_dir(&directory).unwrap();
+                let marker = directory.join("native-cleanup");
+                let mut unrelated =
+                    crate::protocol::acp::process::tests::native_exit_test_process(
+                        "custom:history-cancel-control",
+                        &directory.join("unrelated-cleanup"),
+                        true,
+                    )
+                    .await;
+                let mut process = fixture_process();
+                process.child = Some(
+                    crate::protocol::acp::process::tests::native_exit_test_process(
+                        "antigravity",
+                        &marker,
+                        false,
+                    )
+                    .await,
+                );
+                let mut query = HistoryQuery {
+                    process: Some(process),
+                    ..Default::default()
+                };
+                assert!(tokio::time::timeout(Duration::from_millis(100), query.stop())
+                    .await
+                    .is_err());
+                assert!(query.recycling && query.process.is_some());
+                let reaped_while_retained = tokio::time::timeout(Duration::from_secs(2), async {
+                    let child = query.process.as_mut().unwrap().child.as_mut().unwrap();
+                    while child.try_wait().unwrap().is_none() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .is_ok();
+                let unrelated_alive = unrelated.try_wait().unwrap().is_none();
+
+                query.stop().await.unwrap();
+                unrelated.terminate().await.unwrap();
+                assert!(query.process.is_none() && !query.recycling);
+                assert!(!marker.exists(), "cancellation must not claim native cleanup");
+                std::fs::remove_dir(directory).unwrap();
+                assert!(unrelated_alive, "cancellation must affect only the owned history job");
+                assert!(
+                    reaped_while_retained,
+                    "cancelling native history teardown must force its retained job before later retries"
+                );
+            })
+            .await;
+    }
+
+    #[tokio::test]
     async fn receipt_cancellation_retains_child_until_confirmed_stop() {
         tokio::task::LocalSet::new()
             .run_until(async {

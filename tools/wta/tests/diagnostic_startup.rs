@@ -18,7 +18,7 @@ impl Drop for Scratch {
 
 const AGENT: &str = "pwsh.exe -NoLogo -NoProfile -NonInteractive -Command &$env:IT_DIAGNOSTIC_FIXTURE -LogPath $env:IT_DIAGNOSTIC_LOG -StartupControlPath $env:IT_DIAGNOSTIC_CONTROL";
 
-fn run_probe(root: &Path, scratch: &Path, verb: &str, retry: bool) -> Output {
+fn probe_command(root: &Path, scratch: &Path, verb: &str) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_wta"));
     command
         .args([verb, "--agent", AGENT])
@@ -31,10 +31,32 @@ fn run_probe(root: &Path, scratch: &Path, verb: &str, retry: bool) -> Output {
         )
         .env("IT_DIAGNOSTIC_LOG", scratch.join("requests.log"))
         .env("IT_DIAGNOSTIC_CONTROL", scratch.join("startup.json"));
+    command
+}
+
+fn run_probe(root: &Path, scratch: &Path, verb: &str, retry: bool) -> Output {
+    let mut command = probe_command(root, scratch, verb);
     if retry {
         command.arg("--retry-startup");
     }
     command.output().expect("run diagnostic CLI")
+}
+
+#[test]
+fn native_console_host_preserves_path_lookup_and_stdio() {
+    let (root, scratch) = fixture();
+    std::fs::write(scratch.0.join("startup.json"), r#"{"mode":"ready"}"#).unwrap();
+    let output = probe_command(&root, &scratch.0, "verify-acp")
+        .args(["--agent-id", "antigravity"])
+        .output()
+        .expect("run native-console diagnostic through the actual WTA binary");
+    assert!(output.status.success(), "{output:?}");
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["startup_verified"], true);
+    let requests = std::fs::read_to_string(scratch.0.join("requests.log")).unwrap();
+    assert!(requests.contains("|method|initialize"));
+    assert!(!requests.contains("|method|session/prompt"));
+    assert!(!requests.contains("|method|authenticate"));
 }
 
 fn starts(scratch: &Path) -> usize {

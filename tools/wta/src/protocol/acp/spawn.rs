@@ -357,7 +357,18 @@ fn spawn_host_agent_process(
     } else {
         resolved_program.as_str()
     };
-    let mut cmd = tokio::process::Command::new(program);
+    let grace = (!needs_cmd)
+        .then(|| {
+            crate::agent_lifecycle::providers::lookup(resolve_spawn_profile(agent_cmd, agent_id).id)
+        })
+        .flatten()
+        .and_then(|provider| provider.host_console_interrupt_grace());
+    let (mut cmd, graceful_shutdown) = if let Some(grace) = grace {
+        let (command, shutdown) = super::console_host::command(program, &args, grace)?;
+        (command, Some(shutdown))
+    } else {
+        (tokio::process::Command::new(program), None)
+    };
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
     }
@@ -451,13 +462,19 @@ fn spawn_host_agent_process(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    cmd.args(&args)
-        .stdin(std::process::Stdio::piped())
+    if graceful_shutdown.is_none() {
+        cmd.args(&args);
+    }
+    cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let child = super::process::AgentProcess::spawn(&mut cmd, None)
-        .with_context(|| format!("failed to spawn agent '{agent_cmd}'"))?;
+    let child = super::process::AgentProcess::spawn_with_graceful_shutdown(
+        &mut cmd,
+        None,
+        graceful_shutdown,
+    )
+    .with_context(|| format!("failed to spawn agent '{agent_cmd}'"))?;
 
     Ok(AgentSpawn {
         child,
