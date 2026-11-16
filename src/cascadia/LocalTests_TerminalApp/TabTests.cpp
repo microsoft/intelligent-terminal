@@ -84,6 +84,26 @@ namespace winrt
 
 namespace TerminalAppLocalTests
 {
+    static Profile AddNativeAgentIconProfile(const CascadiaSettings& settings, const winrt::hstring& providerId, const winrt::hstring& icon)
+    {
+        Profile profile{ ::Microsoft::Terminal::AgentProfiles::GeneratedGuid(std::wstring_view{ providerId }) };
+        profile.Source(winrt::hstring{ ::Microsoft::Terminal::AgentProfiles::Source });
+        profile.Name(providerId);
+        profile.AgentProfileId(providerId);
+        profile.Commandline(L"cmd.exe /d /k");
+        profile.Icon(MediaResourceHelper::FromString(icon));
+        settings.AllProfiles().Append(profile);
+        return profile;
+    }
+
+    static void AddNativeAgentIconProfiles(const CascadiaSettings& settings)
+    {
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinNativeProfileAgents)
+        {
+            AddNativeAgentIconProfile(settings, winrt::hstring{ agent.id }, winrt::hstring{ L"ms-appx:///AgentIcons/" } + winrt::hstring{ agent.id } + L".svg");
+        }
+    }
+
     class TestSettingsPaneContent :
         public winrt::implements<TestSettingsPaneContent, IPaneContent>,
         public winrt::TerminalApp::implementation::BasicPaneEvents
@@ -517,6 +537,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NewTabFlyoutAgentIconsAdaptToTheme);
         TEST_METHOD(SettingsProfileAgentIconAdaptsToTheme);
         TEST_METHOD(AgentProfileCommandlineCopies);
+        TEST_METHOD(AgentProfileResumeKeepsImmediateLaunchMetadata);
         TEST_METHOD(AgentProfileInvalidArgumentsDisplayStartupFailure);
         TEST_METHOD(ConptyStartupFailureDoesNotLaunchProcess);
         TEST_METHOD(AgentProfileSessionsAreNotPrebound);
@@ -524,6 +545,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ManagedProfileLaunchMetadataDoesNotWaitForHooks);
         TEST_METHOD(ManagedProfileLaunchMetadataSurvivesTrackingModeChanges);
         TEST_METHOD(ManagedProfileLaunchMetadataReceiptSurvivesWindowTransfer);
+        TEST_METHOD(DeletedManagedProfileCopyRetainsSavedResumeIdentity);
         TEST_METHOD(ManagedProfileRestartRetiresOldPaneAfterFailure);
         TEST_METHOD(ManagedProfileFreshRestartDoesNotReuseIdentity);
         TEST_METHOD(VerticalTabStripBindsBackground);
@@ -534,6 +556,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabStripPreservesClosePolicy);
         TEST_METHOD(VerticalTabStripCollapsedItemsPreserveSelection);
         TEST_METHOD(VerticalTabKeyboardFocusPreservesSelection);
+        TEST_METHOD(VerticalTabAutomationSelectionOwner);
+        TEST_METHOD(VerticalTabPaneAutomationNames);
         TEST_METHOD(VerticalTabStripHostsPaneGroups);
         TEST_METHOD(PaneContextMenuOmitsDirectClose);
         TEST_METHOD(VerticalTabPaneSelectionTracksSelectedTab);
@@ -572,7 +596,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabSelectionPreservesPresentation);
         TEST_METHOD(VerticalTabIconChangesUpdatePresentation);
         TEST_METHOD(SettingsTabIconFollowsContentAndTheme);
-        TEST_METHOD(RunningAgentIconOverridesProfileIcon);
+        TEST_METHOD(RunningAgentUsesCorrespondingProfileIcon);
+        TEST_METHOD(AgentProfileIconsFollowIdentityAndEdits);
         TEST_METHOD(AgentsOnlyPaneIconsFollowRowForeground);
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentCreationMetadataSurvivesAdmissionLifecycle);
@@ -580,6 +605,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
+        TEST_METHOD(CustomNativeAgentsUseHooklessStatusInBothModes);
+        TEST_METHOD(CustomAgentCatalogEditsPreserveExistingAgentPane);
         TEST_METHOD(NativeAgentProgressFollowsConfirmedOwner);
         TEST_METHOD(NativeAgentAcceptedOwnerSurvivesUnreadyReceiver);
         TEST_METHOD(NativeAgentSessionsOffObservesParsedSignals);
@@ -595,6 +622,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentSessionsOffDiscardsSignalsQueuedBeforeToggle);
         TEST_METHOD(NativeAgentResumeSeedsProviderBeforeContent);
         TEST_METHOD(NativeAgentResumeProviderOverridesProfileBeforeFirstFrame);
+        TEST_METHOD(NativeAgentResumeRejectsUncorrelatedLaunch);
+        TEST_METHOD(NativeAgentDirectResumeReturnsOwnedReceipt);
         TEST_METHOD(NativeAgentPreHookPersistenceRestoresTabAndSplit);
         TEST_METHOD(HorizontalNativeIconSelectionAppliesTemplateAgainWithReusableMasks);
         TEST_METHOD(VerticalTabThemeChangesDoNotReprojectPanes);
@@ -686,6 +715,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(VerticalTabHistoryKeepRunningBadgeFitsRow);
         TEST_METHOD(VerticalTabHistoryCurrentSessionColors);
         TEST_METHOD(VerticalTabHistoryAgentIcons);
+        TEST_METHOD(VerticalTabHistoryIconForegroundFollowsCurrentState);
         TEST_METHOD(VerticalTabHistoryEndedPresentation);
         TEST_METHOD(VerticalTabHistoryUnfinishedFirst);
         TEST_METHOD(VerticalTabHistoryStatusStyles);
@@ -824,6 +854,11 @@ namespace TerminalAppLocalTests
         TEST_METHOD(WindowSnapshotPrefersCurrentWindows);
         TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
         TEST_METHOD(KeepRunningStartupRestoresBatchAfterLayout);
+        TEST_METHOD(KeepRunningLaunchDimensionsIncludeHostedTitlebar);
+        TEST_METHOD(KeepRunningWindowCloseCapturesSharedGeometry);
+        TEST_METHOD(KeepRunningWindowRequestSelectsNewestValidGeometry);
+        TEST_METHOD(KeepRunningStartupRestoresPhysicalOrigin);
+        TEST_METHOD(KeepRunningWindowCloseRestoresSelection);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(ElevatedPersistedTabKeepsShellCommands);
@@ -3855,9 +3890,10 @@ namespace TerminalAppLocalTests
                 window->SetStartupKeptGroups(groups.GetView(), bounds);
                 VERIFY_ARE_EQUAL(bounds.Width, window->GetLaunchDimensions(96).Width);
                 VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
-                VERIFY_ARE_EQUAL(bounds.Height, window->GetLaunchDimensions(96).Height);
+                const auto titlebarHeight = fixture->source->_settings.GlobalSettings().ShowTabsInTitlebar() ? 40.0f : 0.0f;
+                VERIFY_ARE_EQUAL(bounds.Height + titlebarHeight, window->GetLaunchDimensions(96).Height);
                 VERIFY_ARE_EQUAL(bounds.Width * 1.5f, window->GetLaunchDimensions(144).Width);
-                VERIFY_ARE_EQUAL(bounds.Height * 1.5f, window->GetLaunchDimensions(144).Height);
+                VERIFY_ARE_EQUAL((bounds.Height + titlebarHeight) * 1.5f, window->GetLaunchDimensions(144).Height);
                 const auto restoredPosition = window->GetInitialPosition(123, 234);
                 VERIFY_ARE_EQUAL(position.X, restoredPosition.X);
                 VERIFY_ARE_EQUAL(position.Y, restoredPosition.Y);
@@ -3907,6 +3943,493 @@ namespace TerminalAppLocalTests
                 destination->_OnFirstLayout(nullptr, nullptr);
                 VERIFY_ARE_EQUAL(rejectFirst ? 1u : 2u, destination->_tabs.Size());
             });
+        }
+    }
+
+    void TabTests::KeepRunningLaunchDimensionsIncludeHostedTitlebar()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto settings = page->_settings;
+            const auto groups = winrt::single_threaded_vector<winrt::guid>({ winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1200}" } });
+            const winrt::Windows::Foundation::Rect bounds{ 0, 0, 900, 600 };
+            for (const auto hostedTitlebar : { false, true })
+            {
+                for (const auto mode : { LaunchMode::DefaultMode, LaunchMode::MaximizedMode, LaunchMode::FocusMode, LaunchMode::MaximizedFocusMode })
+                {
+                    settings.GlobalSettings().ShowTabsInTitlebar(hostedTitlebar);
+                    settings.GlobalSettings().AlwaysShowTabs(true);
+                    settings.GlobalSettings().LaunchMode(mode);
+                    const auto loaded = winrt::make<winrt::TerminalApp::implementation::SettingsLoadEventArgs>(
+                        false, S_OK, winrt::hstring{}, nullptr, settings);
+                    const auto window = winrt::make_self<winrt::TerminalApp::implementation::TerminalWindow>(loaded, page->_manager);
+                    window->SetStartupKeptGroups(groups.GetView(), bounds);
+                    const auto chromeHeight = hostedTitlebar && !WI_IsFlagSet(mode, LaunchMode::FocusMode) ? 40.0f : 0.0f;
+                    for (const auto dpi : { 96u, 144u })
+                    {
+                        const auto scale = static_cast<float>(dpi) / 96.0f;
+                        const auto size = window->GetLaunchDimensions(dpi);
+                        VERIFY_ARE_EQUAL(bounds.Width * scale, size.Width);
+                        VERIFY_ARE_EQUAL((bounds.Height + chromeHeight) * scale, size.Height);
+                        VERIFY_IS_FALSE(window->ShouldConstrainFreLaunchToWorkArea());
+                    }
+                    VERIFY_SUCCEEDED(window->Initialize(nullptr));
+                    for (const auto dpi : { 96u, 144u })
+                    {
+                        const auto scale = static_cast<float>(dpi) / 96.0f;
+                        const auto size = window->GetLaunchDimensions(dpi);
+                        VERIFY_ARE_EQUAL(bounds.Width * scale, size.Width);
+                        VERIFY_ARE_EQUAL(bounds.Height * scale, size.Height);
+                    }
+                }
+            }
+        });
+    }
+
+    void TabTests::KeepRunningWindowCloseCapturesSharedGeometry()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1201}" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1202}" }, State::Connected);
+        const auto page = _commonSetup(*first);
+        TestOnUIThread([&]() {
+            const auto cleanup = wil::scope_exit([&]() { page->_manager.DiscardAllKeptGroups(); });
+            page->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+            page->_settings.GlobalSettings().FirstWindowPreference(FirstWindowPreference::DefaultProfile);
+            const auto firstTab = page->_GetFocusedTabImpl();
+            page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second));
+            const auto secondTab = page->_GetFocusedTabImpl();
+            firstTab->KeepRunning(true);
+            secondTab->KeepRunning(true);
+            const winrt::guid firstGroup{ firstTab->StableId() };
+            const winrt::guid secondGroup{ secondTab->StableId() };
+            page->Width(900);
+            page->Height(600);
+            page->Measure({ 900, 600 });
+            page->Arrange({ 0, 0, 900, 600 });
+            VERIFY_ARE_EQUAL(900.0, page->ActualWidth());
+            VERIFY_ARE_EQUAL(600.0, page->ActualHeight());
+            uint32_t positionRequests{};
+            const auto positionToken = page->RequestLaunchPosition([&](auto&&, const auto& request) {
+                ++positionRequests;
+                request.Position({ 0, -120 });
+            });
+            const auto detachToken = page->_manager.KeptSessionsChanged([&](auto&&, auto&&) {
+                if (page->_manager.KeptGroups().Size() == 1)
+                {
+                    page->Width(800);
+                    page->Height(450);
+                    page->Measure({ 800, 450 });
+                    page->Arrange({ 0, 0, 800, 450 });
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() {
+                page->RequestLaunchPosition(positionToken);
+                page->_manager.KeptSessionsChanged(detachToken);
+            });
+            page->CloseWindow();
+            page->CloseWindow();
+            VERIFY_ARE_EQUAL(1u, positionRequests);
+            for (const auto& group : { firstGroup, secondGroup })
+            {
+                const auto groups = winrt::single_threaded_vector<winrt::guid>({ group });
+                const auto request = page->_manager.KeptWindowRequest(groups.GetView());
+                const auto bounds = request.InitialBounds().Value();
+                VERIFY_ARE_EQUAL(900.0f, bounds.Width);
+                VERIFY_ARE_EQUAL(600.0f, bounds.Height);
+                VERIFY_IS_NOT_NULL(request.KeptLaunchPosition());
+                const auto position = request.KeptLaunchPosition().Value();
+                VERIFY_ARE_EQUAL(0, position.X.Value());
+                VERIFY_ARE_EQUAL(-120, position.Y.Value());
+            }
+            VERIFY_ARE_EQUAL(0u, first->CloseCount());
+            VERIFY_ARE_EQUAL(0u, second->CloseCount());
+        });
+    }
+
+    void TabTests::KeepRunningWindowRequestSelectsNewestValidGeometry()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1203}" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1204}" }, State::Connected);
+        const auto third = winrt::make_self<TestConnection>(winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1205}" }, State::Connected);
+        const auto page = _commonSetup(*first);
+        TestOnUIThread([&]() {
+            const auto cleanup = wil::scope_exit([&]() { page->_manager.DiscardAllKeptGroups(); });
+            const auto firstTab = page->_GetFocusedTabImpl();
+            page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second));
+            const auto secondTab = page->_GetFocusedTabImpl();
+            page->_CreateNewTabFromPane(page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *third));
+            const auto thirdTab = page->_GetFocusedTabImpl();
+            const winrt::guid firstGroup{ firstTab->StableId() };
+            const winrt::guid secondGroup{ secondTab->StableId() };
+            const winrt::guid thirdGroup{ thirdTab->StableId() };
+            LaunchPosition position{ -800, 0 };
+            uint32_t captures{};
+            const auto token = page->RequestLaunchPosition([&](auto&&, const auto& request) {
+                ++captures;
+                request.Position(position);
+            });
+            const auto revoke = wil::scope_exit([&]() { page->RequestLaunchPosition(token); });
+            const auto detach = [&](const auto& tab, float width, float height) {
+                page->Width(width);
+                page->Height(height);
+                page->Measure({ width, height });
+                page->Arrange({ 0, 0, width, height });
+                tab->KeepRunning(true);
+                VERIFY_IS_TRUE(page->_KeepTabRunning(tab));
+            };
+            detach(firstTab, 1200, 500);
+            position = { 0, -80 };
+            detach(secondTab, 800, 700);
+            position = {};
+            detach(thirdTab, 900, 600);
+            VERIFY_ARE_EQUAL(3u, captures);
+            for (const auto reverse : { false, true })
+            {
+                const auto groups = winrt::single_threaded_vector<winrt::guid>(
+                    reverse ? std::vector<winrt::guid>{ thirdGroup, secondGroup, firstGroup } :
+                              std::vector<winrt::guid>{ firstGroup, secondGroup, thirdGroup });
+                const auto request = page->_manager.KeptWindowRequest(groups.GetView());
+                const auto bounds = request.InitialBounds().Value();
+                VERIFY_ARE_EQUAL(1200.0f, bounds.Width);
+                VERIFY_ARE_EQUAL(700.0f, bounds.Height);
+                VERIFY_ARE_EQUAL(3u, request.KeptGroupIds().Size());
+                VERIFY_IS_NOT_NULL(request.KeptLaunchPosition());
+                const auto restored = request.KeptLaunchPosition().Value();
+                VERIFY_ARE_EQUAL(0, restored.X.Value());
+                VERIFY_ARE_EQUAL(-80, restored.Y.Value());
+            }
+            const auto missing = winrt::single_threaded_vector<winrt::guid>({ thirdGroup });
+            VERIFY_IS_NULL(page->_manager.KeptWindowRequest(missing.GetView()).KeptLaunchPosition());
+            const auto original = winrt::single_threaded_vector<winrt::guid>({ firstGroup });
+            const auto originalPosition = page->_manager.KeptWindowRequest(original.GetView()).KeptLaunchPosition().Value();
+            VERIFY_ARE_EQUAL(-800, originalPosition.X.Value());
+            VERIFY_ARE_EQUAL(0, originalPosition.Y.Value());
+        });
+    }
+
+    void TabTests::KeepRunningStartupRestoresPhysicalOrigin()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto settings = page->_settings;
+            settings.GlobalSettings().CenterOnLaunch(true);
+            settings.GlobalSettings().InitialPosition({ 75, 85 });
+            const auto loaded = winrt::make<winrt::TerminalApp::implementation::SettingsLoadEventArgs>(
+                false, S_OK, winrt::hstring{}, nullptr, settings);
+            const auto window = winrt::make_self<winrt::TerminalApp::implementation::TerminalWindow>(loaded, page->_manager);
+            const auto command = winrt::make<winrt::TerminalApp::implementation::CommandlineArgs>();
+            command.Commandline({ L"wt.exe" });
+            VERIFY_ARE_EQUAL(0, window->SetStartupCommandline(command));
+            VERIFY_IS_TRUE(window->CenterOnLaunch());
+            const auto groups = winrt::single_threaded_vector<winrt::guid>({ winrt::guid{ L"{13f7aa41-8837-473e-92a3-f1e682ab1206}" } });
+            const winrt::Windows::Foundation::Rect bounds{ 0, 0, 900, 600 };
+            for (const LaunchPosition saved : { LaunchPosition{ 0, -120 }, LaunchPosition{ -1800, 0 }, LaunchPosition{ 0, 0 } })
+            {
+                window->SetStartupKeptGroups(groups.GetView(), bounds, saved);
+                VERIFY_IS_FALSE(window->CenterOnLaunch());
+                for (const auto dpi : { 96u, 144u })
+                {
+                    window->GetLaunchDimensions(dpi);
+                    const auto restored = window->GetInitialPosition(123, 234);
+                    VERIFY_ARE_EQUAL(static_cast<int64_t>(saved.X.Value()), restored.X);
+                    VERIFY_ARE_EQUAL(static_cast<int64_t>(saved.Y.Value()), restored.Y);
+                }
+            }
+            window->SetStartupKeptGroups(groups.GetView(), bounds, nullptr);
+            const auto fallback = window->GetInitialPosition(123, 234);
+            VERIFY_ARE_EQUAL(int64_t{ 75 }, fallback.X);
+            VERIFY_ARE_EQUAL(int64_t{ 85 }, fallback.Y);
+            VERIFY_IS_TRUE(window->CenterOnLaunch());
+        });
+    }
+
+    void TabTests::KeepRunningWindowCloseRestoresSelection()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Stage = winrt::TerminalApp::implementation::TerminalPage::ContentTransferStage;
+        const auto applicationState = ApplicationState::SharedInstance();
+        bool freCompleted{};
+        TestOnUIThread([&]() {
+            freCompleted = applicationState.AgentFreCompleted();
+            applicationState.AgentFreCompleted(true);
+        });
+        const auto restoreFre = wil::scope_exit([&]() {
+            TestOnUIThread([&]() { applicationState.AgentFreCompleted(freCompleted); });
+        });
+        enum class Outcome
+        {
+            Restore,
+            RejectPreferred,
+            DiscardPreferred,
+            NonKeptPreferred,
+            RejectAll,
+            ExplicitOther,
+            MultipleOwners,
+            RejectEarlierOwner,
+        };
+        struct Scenario
+        {
+            uint32_t selected{};
+            bool reversed{};
+            bool persisted{};
+            Outcome outcome{ Outcome::Restore };
+        };
+        std::vector<Scenario> scenarios;
+        for (const auto persisted : { false, true })
+        {
+            for (const auto reversed : { false, true })
+            {
+                for (uint32_t selected = 0; selected < 3; ++selected)
+                {
+                    scenarios.push_back({ selected, reversed, persisted });
+                }
+            }
+        }
+        for (const auto outcome : { Outcome::RejectPreferred, Outcome::DiscardPreferred, Outcome::NonKeptPreferred, Outcome::RejectAll, Outcome::ExplicitOther })
+        {
+            scenarios.push_back({ 0, false, false, outcome });
+            scenarios.push_back({ 1, true, true, outcome });
+        }
+        for (const auto outcome : { Outcome::MultipleOwners, Outcome::RejectEarlierOwner })
+        {
+            scenarios.push_back({ 0, false, false, outcome });
+            scenarios.push_back({ 2, true, false, outcome });
+        }
+        for (const auto& scenario : scenarios)
+        {
+            const auto hidden = scenario.selected != 2;
+            auto fixture = _createContentTransferFixture(false, hidden, true, false, 100);
+            ::details::Event completed;
+            ::details::Event nextTurn;
+            winrt::event_token initializedToken{};
+            winrt::event_token closeToken{};
+            winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> peer;
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    fixture->destination->Initialized(initializedToken);
+                    fixture->destination->CloseWindowRequested(closeToken);
+                    fixture->source->_manager.DiscardAllKeptGroups();
+                    if (peer)
+                    {
+                        peer->ShutdownPanes();
+                        peer = nullptr;
+                    }
+                    _closeContentTransferFixture(*fixture, false);
+                    fixture.reset();
+                });
+            });
+            std::vector<winrt::guid> groups;
+            std::vector<uint64_t> contentIds;
+            std::vector<std::shared_ptr<::details::Event>> ready;
+            TestOnUIThread([&]() {
+                const auto source = fixture->source;
+                groups.emplace_back(fixture->original.stableId);
+                contentIds.push_back(fixture->original.activePane->GetTerminalControl().ContentId());
+                for (uint32_t i = 1; i < 3; ++i)
+                {
+                    winrt::guid id;
+                    VERIFY_SUCCEEDED(CoCreateGuid(reinterpret_cast<GUID*>(&id)));
+                    const auto connection = winrt::make_self<TestConnection>(id, State::Connected);
+                    fixture->connections.push_back(connection);
+                    const auto pane = source->_MakePane(nullptr, nullptr, *connection);
+                    const auto initialized = std::make_shared<::details::Event>();
+                    pane->GetTerminalControl().Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
+                    ready.push_back(initialized);
+                    source->_CreateNewTabFromPane(pane);
+                    const auto tab = source->_GetFocusedTabImpl();
+                    tab->SuppressAgentPrewarm();
+                    groups.emplace_back(tab->StableId());
+                    contentIds.push_back(tab->GetActiveTerminalControl().ContentId());
+                }
+                fixture->host.UpdateLayout();
+            });
+            for (const auto& initialized : ready)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(initialized->m_handle, 10000));
+            }
+            std::vector<winrt::guid> restoreOrder = groups;
+            if (scenario.reversed)
+            {
+                std::ranges::reverse(restoreOrder);
+            }
+            const auto preferred = groups[scenario.selected];
+            std::vector<winrt::guid> expectedOrder;
+            winrt::guid expected{};
+            const auto verifySelection = [&]() {
+                const auto destination = fixture->destination;
+                VERIFY_ARE_EQUAL(expectedOrder.size(), static_cast<size_t>(destination->_tabs.Size()));
+                if (!expectedOrder.empty())
+                {
+                    const auto tab = destination->_GetFocusedTabImpl();
+                    VERIFY_IS_NOT_NULL(tab);
+                    VERIFY_ARE_EQUAL(winrt::to_hstring(expected), tab->StableId());
+                    const auto originalIndex = static_cast<size_t>(std::ranges::find(groups, expected) - groups.begin());
+                    VERIFY_ARE_EQUAL(contentIds[originalIndex], tab->GetActiveTerminalControl().ContentId());
+                    for (uint32_t i = 0; i < expectedOrder.size(); ++i)
+                    {
+                        VERIFY_ARE_EQUAL(winrt::to_hstring(expectedOrder[i]), destination->_GetTabImpl(destination->_tabs.GetAt(i))->StableId());
+                    }
+                }
+            };
+            TestOnUIThread([&]() {
+                const auto source = fixture->source;
+                source->_settings.GlobalSettings().ConfirmOnClose(ConfirmOnClose::Never);
+                source->_settings.GlobalSettings().FirstWindowPreference(
+                    scenario.persisted ? FirstWindowPreference::PersistedLayout : FirstWindowPreference::DefaultProfile);
+                for (uint32_t i = 0; i < groups.size(); ++i)
+                {
+                    source->_GetTabImpl(source->_tabs.GetAt(i))->KeepRunning(scenario.outcome != Outcome::NonKeptPreferred || i != scenario.selected);
+                }
+                const auto first = fixture->original.tab;
+                first->ToggleZoom();
+                VERIFY_IS_TRUE(source->_SelectTab(scenario.selected));
+                VERIFY_ARE_EQUAL(winrt::to_hstring(preferred), source->_GetFocusedTabImpl()->StableId());
+                source->CloseWindow();
+                VERIFY_IS_TRUE(source->_windowCloseAccepted);
+                VERIFY_ARE_EQUAL(scenario.outcome == Outcome::NonKeptPreferred ? 1u : 0u, source->_tabs.Size());
+                source->ShutdownPanes();
+                const auto destination = fixture->destination;
+                const auto multipleOwners = scenario.outcome == Outcome::MultipleOwners || scenario.outcome == Outcome::RejectEarlierOwner;
+                if (multipleOwners)
+                {
+                    peer = _createStartupRestorePeer(source);
+                    fixture->host.Children().Append(*peer);
+                    fixture->host.UpdateLayout();
+                    VERIFY_IS_TRUE(peer->RestoreKeptGroup(restoreOrder[1]));
+                    peer->CloseWindow();
+                    VERIFY_IS_TRUE(peer->_windowCloseAccepted);
+                    VERIFY_ARE_EQUAL(0u, peer->_tabs.Size());
+                }
+                if (scenario.outcome == Outcome::ExplicitOther)
+                {
+                    restoreOrder = { groups[(scenario.selected + 1) % groups.size()] };
+                }
+                for (const auto& id : restoreOrder)
+                {
+                    const auto missing = id == preferred &&
+                                         (scenario.outcome == Outcome::DiscardPreferred || scenario.outcome == Outcome::NonKeptPreferred);
+                    const auto rejected = scenario.outcome == Outcome::RejectAll ||
+                                          ((scenario.outcome == Outcome::RejectPreferred || scenario.outcome == Outcome::RejectEarlierOwner) && id == preferred);
+                    if (!missing && !rejected)
+                    {
+                        expectedOrder.push_back(id);
+                    }
+                }
+                if (!expectedOrder.empty())
+                {
+                    expected = scenario.outcome == Outcome::Restore ? preferred : expectedOrder.back();
+                    if (multipleOwners)
+                    {
+                        expected = scenario.outcome == Outcome::MultipleOwners ? preferred : restoreOrder[1];
+                    }
+                }
+                if (scenario.outcome == Outcome::RejectPreferred || scenario.outcome == Outcome::RejectAll || scenario.outcome == Outcome::RejectEarlierOwner)
+                {
+                    const auto preferredContent = contentIds[scenario.selected];
+                    destination->_contentTransferTestHook = [=](Stage stage, uint64_t contentId, uint32_t) {
+                        THROW_HR_IF(E_ABORT, stage == Stage::ControlAttached && (scenario.outcome == Outcome::RejectAll || contentId == preferredContent));
+                    };
+                }
+                initializedToken = destination->Initialized([&](auto&&, auto&&) {
+                    verifySelection();
+                    completed.Set();
+                    fixture->destination->Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low, [&]() {
+                        verifySelection();
+                        nextTurn.Set();
+                    });
+                });
+                closeToken = destination->CloseWindowRequested([&](auto&&, auto&&) {
+                    VERIFY_IS_TRUE(expectedOrder.empty());
+                    completed.Set();
+                });
+                destination->SetStartupKeptGroups(restoreOrder);
+                destination->_OnFirstLayout(nullptr, nullptr);
+                destination->ContentTransferReceiverReady();
+                destination->ContentTransferReceiverReady();
+                VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+                if (scenario.outcome == Outcome::DiscardPreferred)
+                {
+                    // The queued startup callback must tolerate a group disappearing.
+                    source->_manager.DiscardKeptGroup(preferred);
+                }
+            });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+            if (!expectedOrder.empty())
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+            }
+            TestOnUIThread([&]() {
+                const auto destination = fixture->destination;
+                verifySelection();
+                VERIFY_IS_FALSE(destination->_restoringStartupKeptGroups);
+                destination->ContentTransferReceiverReady();
+                destination->_OnFirstLayout(nullptr, nullptr);
+                verifySelection();
+                if (const auto first = destination->_FindTabByStableId(fixture->original.stableId))
+                {
+                    VERIFY_ARE_EQUAL(3, first->GetLeafPaneCount());
+                    VERIFY_ARE_EQUAL(hidden, first->HasStashedAgentPane());
+                    VERIFY_IS_TRUE(first->IsZoomed());
+                    VERIFY_ARE_EQUAL(contentIds[0], first->GetActiveTerminalControl().ContentId());
+                }
+                for (uint32_t i = 0; i < groups.size(); ++i)
+                {
+                    const auto intentionallyClosed = i == scenario.selected &&
+                                                     (scenario.outcome == Outcome::DiscardPreferred || scenario.outcome == Outcome::NonKeptPreferred);
+                    if (!intentionallyClosed)
+                    {
+                        const auto connectionIndex = i == 0 ? 0 : fixture->connections.size() - 3 + i;
+                        VERIFY_ARE_EQUAL(0u, fixture->connections[connectionIndex]->CloseCount());
+                    }
+                }
+                if (scenario.outcome == Outcome::RejectPreferred)
+                {
+                    VERIFY_IS_TRUE(fixture->source->_manager.KeptGroups().HasKey(preferred));
+                    destination->_contentTransferTestHook = {};
+                    const auto other = expectedOrder.back();
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(other))));
+                    expectedOrder.pop_back();
+                    expectedOrder.push_back(preferred);
+                    expectedOrder.push_back(other);
+                    expected = preferred;
+                    ResetEvent(completed.m_handle);
+                    ResetEvent(nextTurn.m_handle);
+                    destination->_startupState = winrt::TerminalApp::implementation::StartupState::NotInitialized;
+                    destination->SetStartupKeptGroups({ preferred, other });
+                    destination->_OnFirstLayout(nullptr, nullptr);
+                }
+                if (scenario.outcome == Outcome::ExplicitOther)
+                {
+                    VERIFY_IS_TRUE(destination->RestoreKeptGroup(preferred));
+                    const auto other = groups[(scenario.selected + 2) % groups.size()];
+                    VERIFY_IS_TRUE(destination->RestoreKeptGroup(other));
+                    VERIFY_ARE_EQUAL(winrt::to_hstring(other), destination->_GetFocusedTabImpl()->StableId());
+                }
+            });
+            if (scenario.outcome == Outcome::RejectPreferred)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+                TestOnUIThread([&]() {
+                    verifySelection();
+                    const auto destination = fixture->destination;
+                    const auto other = expectedOrder.back();
+                    // A consumed selection marker must not survive a fresh keep.
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(preferred))));
+                    VERIFY_IS_TRUE(destination->_KeepTabRunning(destination->_FindTabByStableId(winrt::to_hstring(other))));
+                    expected = other;
+                    ResetEvent(completed.m_handle);
+                    ResetEvent(nextTurn.m_handle);
+                    destination->_startupState = winrt::TerminalApp::implementation::StartupState::NotInitialized;
+                    destination->SetStartupKeptGroups({ preferred, other });
+                    destination->_OnFirstLayout(nullptr, nullptr);
+                });
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(completed.m_handle, 10000));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(nextTurn.m_handle, 10000));
+                TestOnUIThread([&]() { verifySelection(); });
+            }
         }
     }
 
@@ -8596,6 +9119,189 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::AgentProfileResumeKeepsImmediateLaunchMetadata()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
+        for (const auto enabled : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(enabled);
+                page->_SyncNativeAgentStatusMode();
+                const auto directory = wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%");
+                const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                for (const auto provider : { L"copilot", L"claude", L"gemini", L"codex", L"antigravity", L"opencode", L"custom:native" })
+                {
+                    profile.AgentProfileId(provider);
+                    if (std::wstring_view{ provider }.starts_with(L"custom:"))
+                    {
+                        profile.Commandline(L"\"C:\\Tools\\native.exe\"");
+                    }
+                    else
+                    {
+                        profile.ClearCommandline();
+                    }
+                    profile.AgentProfileModel(L"chosen");
+                    profile.AgentProfileArguments(L"--startup-option");
+                    profile.AgentProfileResumeArguments(L"--custom-resume");
+                    profile.StartingDirectory(winrt::hstring{ directory });
+                    std::optional<winrt::guid> previousPane;
+                    for (const auto resume : { false, true })
+                    {
+                        const winrt::guid paneId{ Utils::CreateGuid() };
+                        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                        NewTerminalArgs args;
+                        args.Profile(Utils::GuidToString(profile.Guid()));
+                        if (resume)
+                        {
+                            args.NativeAgentSessionId(L"known-session");
+                        }
+                        const auto pane = page->_MakePane(args, nullptr, *connection);
+                        const auto control = pane->GetTerminalControl();
+                        VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                        const auto metadata = Conpty{};
+                        metadata.Initialize(Conpty::CreateSettings(control.Settings().Commandline(), winrt::hstring{ directory }, L"", false, L"", nullptr, 30, 120, paneId, profile.Guid()));
+                        control.Connection(metadata);
+                        const auto restoreConnection = wil::scope_exit([&]() { control.Connection(*connection); metadata.Close(); });
+                        const auto settings = winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(control.Settings());
+                        VERIFY_IS_TRUE(settings->UsesManagedAgentCommand());
+                        VERIFY_ARE_EQUAL(resume, std::wstring_view{ settings->Commandline() }.find(L"--custom-resume") != std::wstring_view::npos);
+                        VERIFY_IS_TRUE(std::wstring_view{ settings->Commandline() }.find(L"--startup-option") != std::wstring_view::npos);
+                        const auto initial = page->_RichTabAgentInfoForControl(control);
+                        VERIFY_IS_TRUE(initial.has_value());
+                        VERIFY_IS_TRUE(initial->launchMetadata);
+                        VERIFY_ARE_EQUAL(std::string{ "Idle" }, initial->status);
+                        VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ provider }), initial->providerId);
+                        VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ directory }), initial->cwd.value());
+                        if (!resume)
+                        {
+                            VERIFY_IS_TRUE(initial->sessionId.empty());
+                            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                        }
+                        page->_agentSnapshotRefreshInFlight = true;
+                        if (resume && previousPane)
+                        {
+                            const auto other = _keepRunningHook(*previousPane, "agent.session.start", "different-pane-session", winrt::to_string(winrt::hstring{ provider }));
+                            page->_manager.OnPaneAgentSessionChanged(other);
+                            page->OnPaneAgentSessionChanged(other);
+                            VERIFY_ARE_EQUAL(winrt::hstring{ L"known-session" }, page->_paneAgentSessions.at(paneId).sessionId);
+                        }
+                        const auto expectedSession = resume ? L"known-session" : L"hook-confirmed";
+                        const auto hook = _keepRunningHook(paneId, "agent.session.start", winrt::to_string(winrt::hstring{ expectedSession }), winrt::to_string(winrt::hstring{ provider }));
+                        page->_manager.OnPaneAgentSessionChanged(hook);
+                        page->OnPaneAgentSessionChanged(hook);
+                        if (enabled || resume)
+                        {
+                            VERIFY_ARE_EQUAL(winrt::hstring{ expectedSession }, page->_paneAgentSessions.at(paneId).sessionId);
+                        }
+                        else
+                        {
+                            VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                        }
+                        VERIFY_ARE_EQUAL(initial->providerId, page->_RichTabAgentInfoForControl(control)->providerId);
+                        previousPane = paneId;
+                        // Shell overrides never acquire the profile-owned resume receipt.
+                        args.NativeAgentSessionId(L"");
+                        args.Commandline(L"cmd.exe");
+                        const auto overridden = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+                        VERIFY_IS_FALSE(overridden.DefaultSettings()->UsesManagedAgentCommand());
+                        if (resume)
+                        {
+                            args.Commandline(settings->Commandline());
+                            const auto forwarded = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+                            VERIFY_IS_FALSE(forwarded.DefaultSettings()->UsesManagedAgentCommand());
+                            VERIFY_IS_TRUE(forwarded.DefaultSettings()->NativeAgentSessionId().empty());
+                            args.Commandline(settings->Commandline() + L" && echo unrelated");
+                            const auto unrelated = winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args);
+                            VERIFY_IS_FALSE(unrelated.DefaultSettings()->UsesManagedAgentCommand());
+                            args.Commandline(L"");
+                            args.NativeAgentSessionId(L"known-session");
+                            args.NativeAgentProviderId(L"custom:other");
+                            VERIFY_THROWS(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithNewTerminalArgs(page->_settings, args), wil::ResultException);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    void TabTests::DeletedManagedProfileCopyRetainsSavedResumeIdentity()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto original = page->_settings.ActiveProfiles().GetAt(0);
+            original.AgentProfileId(L"copilot");
+            original.AgentProfileResumeArguments(L"--resume");
+            const auto copy = page->_settings.DuplicateProfile(original);
+            const auto profileId = copy.Guid();
+            page->_terminalSettingsCache->Reset(page->_settings);
+            const winrt::guid paneId{ Utils::CreateGuid() };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            NewTerminalArgs launch;
+            launch.Profile(Utils::GuidToString(profileId));
+            const auto pane = page->_MakePane(launch, nullptr, *connection);
+            const auto tab = page->_GetTabImpl(page->_CreateNewTabFromPane(pane));
+            VERIFY_IS_NOT_NULL(tab);
+            tab->SuppressAgentPrewarm();
+            const auto content = winrt::get_self<winrt::TerminalApp::implementation::TerminalPaneContent>(
+                pane->GetContent().as<winrt::TerminalApp::TerminalPaneContent>());
+            VERIFY_IS_TRUE(winrt::get_self<winrt::Microsoft::Terminal::Settings::TerminalSettings>(
+                               pane->GetTerminalControl().Settings())
+                               ->UsesManagedAgentCommand());
+
+            Json::Value binding;
+            binding["type"] = "event";
+            binding["method"] = "pane_agent_session_changed";
+            binding["params"]["pane_id"] = _formatPaneId(paneId);
+            binding["params"]["agent"] = "copilot";
+            binding["params"]["agent_session_id"] = "deleted-copy-session";
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, binding)));
+            VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+
+            // Model a settings reload after deleting only the user-created copy.
+            const auto reloaded = page->_settings.Copy();
+            const auto removed = reloaded.FindProfile(profileId);
+            for (const auto& profiles : { reloaded.AllProfiles(), reloaded.ActiveProfiles() })
+            {
+                uint32_t index{};
+                if (profiles.IndexOf(removed, index))
+                {
+                    profiles.RemoveAt(index);
+                }
+            }
+            VERIFY_IS_NULL(reloaded.FindProfile(profileId));
+            page->_settings = reloaded;
+            page->_terminalSettingsCache->Reset(reloaded);
+            content->UpdateSettings(reloaded);
+            VERIFY_ARE_EQUAL(profileId, content->GetProfile().Guid());
+
+            auto actions = page->_BuildPersistedTabActions(tab.get(), false);
+            VERIFY_IS_FALSE(actions.empty());
+            WindowLayout layout{};
+            layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+            const auto saved = WindowLayout::FromJson(WindowLayout::ToJson(layout)).TabLayout();
+            const auto args = _getTerminalArgs(saved.GetAt(0));
+            VERIFY_ARE_EQUAL(Utils::GuidToString(profileId), args.Profile());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, args.NativeAgentProviderId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"deleted-copy-session" }, args.NativeAgentSessionId());
+            VERIFY_IS_TRUE(args.Commandline().empty());
+            HRESULT restoreError = S_OK;
+            try
+            {
+                reloaded.GetProfileForArgs(args);
+            }
+            catch (const winrt::hresult_error& error)
+            {
+                restoreError = error.code();
+            }
+            VERIFY_ARE_EQUAL(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), restoreError);
+        });
+    }
+
     void TabTests::ManagedProfileLaunchMetadataDoesNotWaitForHooks()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
@@ -8826,7 +9532,7 @@ namespace TerminalAppLocalTests
         using Manager = winrt::TerminalApp::implementation::ContentManager;
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         using Conpty = winrt::Microsoft::Terminal::TerminalConnection::ConptyConnection;
-        for (const auto status : { "Idle", "Working" })
+        for (const auto& [status, resume] : { std::pair{ "Idle", false }, std::pair{ "Working", false }, std::pair{ "Idle", true }, std::pair{ "Working", true } })
         {
             auto source = _commonSetup(nullptr, nullptr, std::nullopt, true);
             winrt::com_ptr<Page> destination;
@@ -8858,10 +9564,15 @@ namespace TerminalAppLocalTests
                 source->_GetFocusedTabImpl()->SuppressAgentPrewarm();
                 const auto profile = source->_settings.ActiveProfiles().GetAt(0);
                 profile.AgentProfileId(L"copilot");
+                profile.AgentProfileResumeArguments(L"--resume");
                 profile.StartingDirectory(winrt::hstring{ directory });
                 profileId = profile.Guid();
                 NewTerminalArgs args;
                 args.Profile(Utils::GuidToString(profile.Guid()));
+                if (resume)
+                {
+                    args.NativeAgentSessionId(L"known-session");
+                }
                 const auto pane = source->_MakePane(args, nullptr, *connection);
                 control = pane->GetTerminalControl();
                 control.Initialized([initialized](auto&&, auto&&) { initialized->Set(); });
@@ -8904,6 +9615,9 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(moved.Connection() == *connection);
                 VERIFY_IS_TRUE(control.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Closed);
                 VERIFY_IS_TRUE(moved.TransferState() == winrt::Microsoft::Terminal::Control::ContentTransferState::Owned);
+                const auto movedContent = movedPane->GetContent().as<winrt::TerminalApp::TerminalPaneContent>();
+                VERIFY_ARE_EQUAL(resume ? winrt::hstring{ L"known-session" } : winrt::hstring{},
+                                 winrt::get_self<winrt::TerminalApp::implementation::TerminalPaneContent>(movedContent)->NativeAgentSessionId());
 
                 // Keep the mock transport for transfer, then supply ConPTY launch metadata for fallback lookup.
                 const auto metadata = Conpty{};
@@ -9097,7 +9811,7 @@ namespace TerminalAppLocalTests
                                   "source":"IntelligentTerminal.AgentProfiles","agentProfile.model":"chosen"}]})",
                 LR"({"profiles":[{"guid":"{00000000-0000-0000-0000-000000000001}","name":"Claude",
                                   "source":"IntelligentTerminal.AgentProfiles","agentProfile.id":"claude",
-                                  "agentProfile.permissionMode":"plan","agentProfile.arguments":"--continue",
+                                  "agentProfile.permissionMode":"plan","agentProfile.arguments":"--continue","agentProfile.resumeArguments":"--resume",
                                   "defaultSplitProfile":"Shell"}]})"
             };
             const auto profile = settings.ActiveProfiles().GetAt(0);
@@ -9107,6 +9821,7 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(profile.AgentProfileModel(), copy.AgentProfileModel());
             VERIFY_ARE_EQUAL(profile.AgentProfilePermissionMode(), copy.AgentProfilePermissionMode());
             VERIFY_ARE_EQUAL(profile.AgentProfileArguments(), copy.AgentProfileArguments());
+            VERIFY_ARE_EQUAL(profile.AgentProfileResumeArguments(), copy.AgentProfileResumeArguments());
             VERIFY_ARE_EQUAL(profile.DefaultSplitProfile(), copy.DefaultSplitProfile());
             VERIFY_IS_FALSE(copy.HasCommandline());
             VERIFY_IS_TRUE(winrt::Microsoft::Terminal::Settings::TerminalSettings::CreateWithProfile(settings, copy).DefaultSettings()->UsesManagedAgentCommand());
@@ -13075,6 +13790,7 @@ namespace TerminalAppLocalTests
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
         TestOnUIThread([&]() {
+            AddNativeAgentIconProfiles(page->_settings);
             page->_tabStrip.RichTabAgentStatusVisible(false);
             for (const auto launchProvider : { L"copilot", L"custom:fixture" })
             {
@@ -14906,32 +15622,210 @@ namespace TerminalAppLocalTests
             {
                 auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
                 item.AgentId(provider);
-                stripImpl->CommitHistorySnapshot({ item });
                 const auto iconId = std::wstring_view{ provider }.empty() || std::wstring_view{ provider }.starts_with(L"custom:") ?
                                         winrt::hstring{ L"generic" } :
                                         winrt::hstring{ provider };
-                const auto expected = strip.Resources().Lookup(winrt::box_value(L"AgentIcon." + iconId)).as<DataTemplate>();
-                VERIFY_IS_TRUE(item.IconTemplate() == expected);
-                const auto art = item.IconTemplate().LoadContent().as<Viewbox>();
-                const auto bitmap = art.Child().as<BitmapIcon>();
+                const auto model = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item);
+                model->SyncIcon(winrt::hstring{ L"ms-appx:///AgentIcons/" } + iconId + L".svg");
+                stripImpl->CommitHistorySnapshot({ item });
+                const auto bitmap = item.CreateIcon(item.IconSource()).as<BitmapIcon>();
                 VERIFY_IS_TRUE(bitmap.ShowAsMonochrome());
+                VERIFY_IS_TRUE(bitmap.ReadLocalValue(IconElement::ForegroundProperty()) == DependencyProperty::UnsetValue());
                 VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/" } + iconId + L".png", bitmap.UriSource().AbsoluteUri());
-                for (const auto size : { 14.0f, 16.0f })
-                {
-                    art.Measure({ size, size });
-                    art.Arrange({ 0, 0, size, size });
-                    art.UpdateLayout();
-                    VERIFY_ARE_EQUAL(static_cast<double>(size), art.ActualWidth());
-                    VERIFY_ARE_EQUAL(static_cast<double>(size), art.ActualHeight());
-                }
-                for (const auto color : { winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::White() })
-                {
-                    Media::SolidColorBrush foreground{ color };
-                    art.DataContext(foreground);
-                    VERIFY_IS_TRUE(bitmap.Foreground() == foreground);
-                }
+                VERIFY_ARE_EQUAL(16.0, bitmap.Width());
+                VERIFY_ARE_EQUAL(16.0, bitmap.Height());
+                VERIFY_IS_FALSE(bitmap == item.CreateIcon(item.IconSource()));
             }
+
+            auto custom = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            custom.AgentId(L"custom:fixture");
+            custom.SessionId(L"profile-icon");
+            const auto model = winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(custom);
+            uint32_t iconChanges = 0;
+            custom.PropertyChanged([&](auto&&, auto&& args) {
+                if (args.PropertyName() == L"IconSource")
+                {
+                    ++iconChanges;
+                }
+            });
+            model->SyncIcon(L"ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png");
+            stripImpl->CommitHistorySnapshot({ custom });
+            const auto bitmap = custom.CreateIcon(custom.IconSource()).as<BitmapIcon>();
+            VERIFY_IS_FALSE(bitmap.ShowAsMonochrome());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png" }, bitmap.UriSource().AbsoluteUri());
+            model->SyncIcon(L"\xE713");
+            VERIFY_ARE_EQUAL(2u, iconChanges);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE713" }, custom.CreateIcon(custom.IconSource()).as<FontIcon>().Glyph());
+
+            auto refreshed = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            refreshed.AgentId(custom.AgentId());
+            refreshed.SessionId(custom.SessionId());
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(refreshed)->SyncIcon(L"\xE756");
+            const auto displayed = strip.HistoryItems().GetAt(0);
+            stripImpl->CommitHistorySnapshot({ refreshed });
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == displayed);
+            VERIFY_ARE_EQUAL(3u, iconChanges);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE756" }, displayed.CreateIcon(displayed.IconSource()).as<FontIcon>().Glyph());
+            stripImpl->RefreshHistoryIcons([](const auto&) { return winrt::hstring{ L"\xE8A5" }; });
+            VERIFY_IS_TRUE(strip.HistoryItems().GetAt(0) == displayed);
+            VERIFY_ARE_EQUAL(4u, iconChanges);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, displayed.CreateIcon(displayed.IconSource()).as<FontIcon>().Glyph());
+            stripImpl->CommitHistorySnapshot({ refreshed });
+            const auto cached = strip.HistoryItems().GetAt(0);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, cached.CreateIcon(cached.IconSource()).as<FontIcon>().Glyph());
         });
+    }
+
+    void TabTests::VerticalTabHistoryIconForegroundFollowsCurrentState()
+    {
+        HistoryTestView view;
+        winrt::TerminalApp::TabStripHistoryItem item{ nullptr };
+        TestOnUIThread([&]() {
+            item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            item.SessionId(L"foreground-state");
+            item.AgentId(L"copilot");
+            item.Title(L"Foreground state");
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->SyncIcon(L"ms-appx:///AgentIcons/copilot.svg");
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip);
+            strip->CommitHistorySnapshot({ item }, true);
+            strip->SetHistoryExpanded(true);
+            view.strip.UpdateLayout();
+        });
+        _waitForContentTransferReviewUI([&]() {
+            view.strip.UpdateLayout();
+            return winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip)->ItemsList().ContainerFromItem(item) != nullptr;
+        });
+        TestOnUIThread([&]() {
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(view.strip);
+            const auto root = strip->ItemsList().ContainerFromItem(item).as<ListViewItem>().ContentTemplateRoot().as<FrameworkElement>();
+            const auto title = root.FindName(L"HistoryTitleText").as<Control>();
+            const auto provider = root.FindName(L"HistoryProviderIcon").as<ContentControl>();
+            const auto verifyIconBinding = [&]() {
+                const auto icon = provider.Content().as<IconElement>();
+                const auto binding = icon.GetBindingExpression(IconElement::ForegroundProperty());
+                VERIFY_IS_NOT_NULL(binding);
+                VERIFY_IS_TRUE(binding.ParentBinding().Source() == title);
+                VERIFY_IS_TRUE(icon.Foreground() == title.Foreground());
+            };
+            verifyIconBinding();
+            winrt::MUX::Controls::TabViewItem tab;
+            for (const auto color : { winrt::Windows::UI::Colors::White(), winrt::Windows::UI::Colors::Black(), winrt::Windows::UI::Colors::Blue() })
+            {
+                tab.Background(Media::SolidColorBrush{ color });
+                strip->SetCurrentHistoryItem(item, tab);
+                view.strip.UpdateLayout();
+                VERIFY_IS_TRUE(item.IsCurrent());
+                VERIFY_IS_NOT_NULL(item.CurrentForeground());
+                VERIFY_IS_TRUE(title.Foreground() == item.CurrentForeground());
+                VERIFY_IS_TRUE(provider.Foreground() == title.Foreground());
+                verifyIconBinding();
+            }
+            strip->SetCurrentHistoryItem(nullptr, nullptr);
+            VERIFY_IS_FALSE(item.IsCurrent());
+            VERIFY_IS_TRUE(provider.ReadLocalValue(Control::ForegroundProperty()) == DependencyProperty::UnsetValue());
+            verifyIconBinding();
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->SyncIcon(L"ms-appx:///AgentIcons/claude.svg");
+            view.strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/claude.png" }, provider.Content().as<BitmapIcon>().UriSource().AbsoluteUri());
+            verifyIconBinding();
+            auto refreshed = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+            refreshed.SessionId(item.SessionId());
+            refreshed.AgentId(item.AgentId());
+            refreshed.Title(item.Title());
+            winrt::get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(refreshed)->SyncIcon(L"ms-appx:///AgentIcons/copilot.svg");
+            strip->CommitHistorySnapshot({ refreshed }, true);
+            view.strip.UpdateLayout();
+            VERIFY_IS_TRUE(view.strip.HistoryItems().GetAt(0) == item);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/Masks/copilot.png" }, provider.Content().as<BitmapIcon>().UriSource().AbsoluteUri());
+            verifyIconBinding();
+            const auto originalIcon = provider.Content();
+            strip->RefreshHistoryIcons([](const auto&) { return winrt::hstring{ L"\xE713" }; });
+            view.strip.UpdateLayout();
+            VERIFY_IS_FALSE(provider.Content() == originalIcon);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE713" }, provider.Content().as<FontIcon>().Glyph());
+            verifyIconBinding();
+            strip->RefreshHistoryIcons([](const auto&) { return winrt::hstring{ L"ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png" }; });
+            view.strip.UpdateLayout();
+            const auto fullColor = provider.Content().as<BitmapIcon>();
+            VERIFY_IS_FALSE(fullColor.ShowAsMonochrome());
+            VERIFY_IS_NULL(fullColor.GetBindingExpression(IconElement::ForegroundProperty()));
+        });
+    }
+
+    void TabTests::AgentProfileIconsFollowIdentityAndEdits()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        for (const auto provider : { L"copilot", L"custom:qwen" })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            TestOnUIThread([&]() {
+                const auto profile = AddNativeAgentIconProfile(page->_settings, provider, L"\xE713");
+                profile.Name(L"Renamed agent profile");
+                const auto copy = page->_settings.DuplicateProfile(profile);
+                copy.Name(L"Different profile name");
+                copy.Icon(MediaResourceHelper::FromString(L"\xE756"));
+                VERIFY_ARE_EQUAL(profile.Guid(), page->_FindNativeAgentProfile(provider, {}).Guid());
+                VERIFY_ARE_EQUAL(copy.Guid(), page->_FindNativeAgentProfile(provider, {}, copy.Guid()).Guid());
+                VERIFY_IS_FALSE(profile.IsDeletable());
+                VERIFY_IS_TRUE(copy.IsDeletable());
+
+                NewTerminalArgs args;
+                args.Profile(Utils::GuidToString(profile.Guid()));
+                const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+                const auto pane = page->_MakePane(args, nullptr, *connection);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE713" }, page->_AgentIconForControl(pane->GetTerminalControl(), {}, profile));
+                NewTerminalArgs copyArgs;
+                copyArgs.Profile(Utils::GuidToString(copy.Guid()));
+                const auto copyConnection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+                const auto copyPane = page->_MakePane(copyArgs, nullptr, *copyConnection);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE756" }, page->_AgentIconForControl(copyPane->GetTerminalControl(), {}, copy));
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(copyPane));
+                page->_GetFocusedTabImpl()->SuppressAgentPrewarm();
+                auto& binding = page->_paneAgentSessions[copyConnection->SessionId()];
+                binding.sessionId = L"shared-conversation";
+                binding.agent = provider;
+                for (const auto backend : { L"wsl:Ubuntu:", L"remote:" })
+                {
+                    binding.backend = winrt::hstring{ std::wstring{ backend } + provider };
+                    VERIFY_ARE_EQUAL(profile.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId).Guid());
+                    VERIFY_ARE_EQUAL(copy.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId, copy.Guid()).Guid());
+                }
+                for (const auto backend : { L"", L"host:" })
+                {
+                    binding.backend = *backend ? winrt::hstring{ std::wstring{ backend } + provider } : winrt::hstring{};
+                    VERIFY_ARE_EQUAL(copy.Guid(), page->_FindNativeAgentProfile(provider, binding.sessionId).Guid());
+                }
+                page->_paneAgentSessions.clear();
+                VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                const auto tab = page->_GetFocusedTabImpl();
+                tab->SuppressAgentPrewarm();
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE713" }, tab->Icon());
+                profile.Icon(MediaResourceHelper::FromString(L"\xE8A5"));
+                page->_UpdateTabIcon(*tab);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, tab->Icon());
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, page->_AgentIconForControl(pane->GetTerminalControl(), pane->GetContent().Icon()));
+
+                page->_isVerticalRailVisible = true;
+                page->_isVerticalRailCollapsed = false;
+                page->_tabStrip.SidebarFilters().ShowRecentAgentSessions(true);
+                page->_historyRequestGeneration = 42;
+                auto item = winrt::make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                item.AgentId(provider);
+                item.SessionId(L"history-session");
+                Page::_SidebarHistorySnapshot snapshot;
+                snapshot.state = Page::_SidebarHistorySnapshot::State::Ready;
+                snapshot.items.emplace_back(item);
+                page->_CompleteSidebarHistoryRefresh(42, std::move(snapshot));
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE8A5" }, item.CreateIcon(item.IconSource()).as<FontIcon>().Glyph());
+                VERIFY_ARE_EQUAL(profile.Guid(), page->_FindNativeAgentProfile(provider, {}).Guid());
+                const auto displayed = page->_tabStrip.HistoryItems().GetAt(0);
+                profile.Icon(MediaResourceHelper::FromString(L"\xE713"));
+                page->_RefreshUIForSettingsReload();
+                VERIFY_IS_TRUE(page->_tabStrip.HistoryItems().GetAt(0) == displayed);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"\xE713" }, displayed.CreateIcon(displayed.IconSource()).as<FontIcon>().Glyph());
+            });
+        }
     }
 
     void TabTests::VerticalTabHistoryEndedPresentation()
@@ -20319,6 +21213,139 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::VerticalTabAutomationSelectionOwner()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            namespace Peers = Automation::Peers;
+            namespace Providers = Automation::Provider;
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem first, second;
+            first.Header(winrt::box_value(L"First"));
+            second.Header(winrt::box_value(L"Second"));
+            strip.TabItems().Append(first);
+            strip.TabItems().Append(second);
+            strip.SelectedItem(second);
+            strip.UpdateLayout();
+
+            const auto wrapper = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(strip);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Group, wrapper.GetAutomationControlType());
+            VERIFY_ARE_EQUAL(impl->VerticalTabsHeader().Text(), wrapper.GetName());
+            VERIFY_IS_NULL(wrapper.GetPattern(Peers::PatternInterface::Selection));
+            const auto tree = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(impl->ItemsList());
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::Tree, tree.GetAutomationControlType());
+            const auto selection = tree.GetPattern(Peers::PatternInterface::Selection).as<Providers::ISelectionProvider>();
+            VERIFY_IS_FALSE(selection.CanSelectMultiple());
+            // WinUI 2.8 TreeViewListAutomationPeer::GetSelection deliberately
+            // returns an empty array (virtualized/collapsed nodes). The native
+            // row providers and TreeView model are the selected-state contract.
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+
+            const auto firstRow = strip.ContainerFromIndex(0).as<Control>();
+            const auto secondRow = strip.ContainerFromIndex(1).as<Control>();
+            const auto firstPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(firstRow);
+            const auto secondPeer = Peers::FrameworkElementAutomationPeer::CreatePeerForElement(secondRow);
+            VERIFY_ARE_EQUAL(Peers::AutomationControlType::TreeItem, firstPeer.GetAutomationControlType());
+            const auto firstSelection = firstPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            const auto secondSelection = secondPeer.GetPattern(Peers::PatternInterface::SelectionItem).as<Providers::ISelectionItemProvider>();
+            VERIFY_IS_NOT_NULL(firstSelection.SelectionContainer());
+            VERIFY_IS_TRUE(firstSelection.SelectionContainer() == secondSelection.SelectionContainer());
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+
+            uint32_t changes = 0;
+            const auto changed = strip.SelectionChanged(winrt::auto_revoke, [&](auto&&, auto&&) { ++changes; });
+            VERIFY_IS_TRUE(firstRow.Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == second);
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(0u, changes);
+            firstSelection.Select();
+            VERIFY_IS_TRUE(strip.SelectedItem() == first);
+            VERIFY_IS_TRUE(firstSelection.IsSelected());
+            VERIFY_IS_FALSE(secondSelection.IsSelected());
+            VERIFY_ARE_EQUAL(1u, changes);
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(first));
+            strip.SelectedItem(second);
+            VERIFY_IS_FALSE(firstSelection.IsSelected());
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_ARE_EQUAL(2u, changes);
+
+            // A caller-supplied label still wins over the localized heading.
+            Automation::AutomationProperties::SetName(strip, L"Caller sidebar label");
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"Caller sidebar label" }, wrapper.GetName());
+            strip.TabItems().RemoveAt(0);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->SidebarTree().SelectedItem() == impl->DisplayItemForTab(second));
+            VERIFY_IS_TRUE(secondSelection.IsSelected());
+        });
+    }
+
+    void TabTests::VerticalTabPaneAutomationNames()
+    {
+        HistoryTestView view;
+        TestOnUIThread([&]() {
+            const auto strip = view.strip;
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+            winrt::MUX::Controls::TabViewItem tab;
+            tab.Header(winrt::box_value(L"Agent group"));
+            strip.TabItems().Append(tab);
+            strip.SelectedItem(tab);
+            const auto first = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 11, L"", L"GitHub Copilot", true);
+            const auto second = winrt::make<winrt::TerminalApp::implementation::TabStripPaneItem>(tab, 12, L"", L"GitHub Copilot", false);
+            const auto panes = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first, second });
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            const auto row = strip.ContainerFromIndex(0).as<ListViewItem>().ContentTemplateRoot().as<StackPanel>();
+            const auto paneList = row.Children().GetAt(1).as<ItemsControl>();
+            const auto buttonAt = [&](const uint32_t index) {
+                return Media::VisualTreeHelper::GetChild(paneList.ContainerFromIndex(index), 0).as<FrameworkElement>().FindName(L"PaneActivateButton").as<Button>();
+            };
+            const auto nameAt = [&](const uint32_t index) {
+                return Automation::Peers::FrameworkElementAutomationPeer::CreatePeerForElement(buttonAt(index)).GetName();
+            };
+            const auto position = [&](const uint32_t index, const uint32_t count) {
+                return winrt::hstring{ RS_fmt(L"SidebarPanePosition", index, count) };
+            };
+            VERIFY_IS_FALSE(position(1, 2).empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"GitHub Copilot, " } + position(2, 2), nameAt(1));
+            VERIFY_IS_FALSE(nameAt(0) == nameAt(1));
+
+            // Different session context and status survive in the actual peers.
+            first.AutomationName(L"GitHub Copilot, repository alpha, needs attention");
+            second.AutomationName(L"GitHub Copilot, repository beta, complete");
+            impl->SetPaneItems(tab, panes, true);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(1, 2), nameAt(0));
+            VERIFY_ARE_EQUAL(second.AutomationName() + L", " + position(2, 2), nameAt(1));
+            const auto retained = impl->DisplayItemForTab(tab).PaneItems().GetAt(0);
+
+            // The same bound row gets the new position after reconciliation.
+            const auto reordered = winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ second, first });
+            impl->SetPaneItems(tab, reordered, true);
+            strip.UpdateLayout();
+            VERIFY_IS_TRUE(impl->DisplayItemForTab(tab).PaneItems().GetAt(1) == retained);
+            VERIFY_ARE_EQUAL(first.AutomationName() + L", " + position(2, 2), nameAt(1));
+            VERIFY_IS_TRUE(buttonAt(1).Focus(FocusState::Keyboard));
+            VERIFY_IS_TRUE(strip.SelectedItem() == tab);
+
+            uint32_t activatedId = 0;
+            const auto activation = strip.PaneActivationRequested(winrt::auto_revoke, [&](auto&&, const auto& args) {
+                activatedId = args.ContentId();
+            });
+            impl->OnPaneActivateClick(buttonAt(1), RoutedEventArgs{});
+            VERIFY_ARE_EQUAL(11u, activatedId);
+
+            first.AutomationName(L"");
+            impl->SetPaneItems(tab, winrt::single_threaded_vector<winrt::TerminalApp::TabStripPaneItem>({ first }), false);
+            strip.UpdateLayout();
+            VERIFY_ARE_EQUAL(position(1, 1), nameAt(0));
+            VERIFY_IS_TRUE(first.AutomationName().empty());
+        });
+    }
+
     void TabTests::VerticalTabStripHostsPaneGroups()
     {
         winrt::TerminalApp::TabStrip strip;
@@ -25401,6 +26428,7 @@ namespace TerminalAppLocalTests
         TestOnUIThread([&]() {
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
             const auto sourceConnection = winrt::make_self<TestConnection>(winrt::guid{ L"{22911111-2222-3333-4444-555555555555}" }, State::Connected);
+            AddNativeAgentIconProfiles(page->_settings);
             NewTerminalArgs sourceArgs;
             sourceArgs.NativeAgentProviderId(L"copilot");
             const auto sourcePane = page->_MakePane(sourceArgs, nullptr, *sourceConnection);
@@ -25496,6 +26524,125 @@ namespace TerminalAppLocalTests
             snapshot.byPane.at(control.Connection().SessionId()));
         page->_PreserveNativeAgentIdentity(control);
         page->_agentSnapshotLoaded = true;
+    }
+
+    void TabTests::CustomNativeAgentsUseHooklessStatusInBothModes()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto enabled : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(enabled);
+                page->_SyncNativeAgentStatusMode();
+                const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+                std::vector<Json::Value> events;
+                const auto capture = [&](auto&&, const winrt::hstring& json) {
+                    Json::Value event;
+                    Json::CharReaderBuilder builder;
+                    std::istringstream stream{ winrt::to_string(json) };
+                    std::string errors;
+                    if (Json::parseFromStream(builder, stream, &event, &errors) &&
+                        event.get("method", "").asString() == "native_agent_observation")
+                    {
+                        events.push_back(event["params"]);
+                    }
+                };
+                const auto token = page->ProtocolVtSequenceReceived(capture);
+                const auto managerToken = manager->DetachedSessionEvent(capture);
+                const auto revoke = wil::scope_exit([&]() {
+                    page->ProtocolVtSequenceReceived(token);
+                    manager->DetachedSessionEvent(managerToken);
+                });
+                for (const auto provider : { L"custom:qwen", L"custom:kimi" })
+                {
+                    for (const auto managedProfile : { false, true })
+                    {
+                        const winrt::guid paneId{ Utils::CreateGuid() };
+                        const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+                        NewTerminalArgs args;
+                        const auto profile = page->_settings.ActiveProfiles().GetAt(0);
+                        const auto previousAgent = profile.AgentProfileId();
+                        const auto previousCommandline = profile.Commandline();
+                        const auto restoreProfile = wil::scope_exit([&]() {
+                            profile.AgentProfileId(previousAgent);
+                            profile.Commandline(previousCommandline);
+                        });
+                        if (managedProfile)
+                        {
+                            profile.AgentProfileId(provider);
+                            profile.Commandline(L"cmd.exe /d /k");
+                            args.Profile(Utils::GuidToString(profile.Guid()));
+                        }
+                        else
+                        {
+                            args.NativeAgentProviderId(provider);
+                        }
+                        const auto pane = page->_MakePane(args, nullptr, *connection);
+                        VERIFY_IS_NOT_NULL(page->_CreateNewTabFromPane(pane));
+                        const auto control = pane->GetTerminalControl();
+                        events.clear();
+                        page->_PublishNativeAgentObservation(control, "reset", true);
+                        VERIFY_IS_FALSE(events.empty());
+                        VERIFY_IS_FALSE(events.front()["tracking_enabled"].asBool());
+                        VERIFY_ARE_EQUAL(winrt::to_string(winrt::hstring{ provider }), events.front()["provider_id"].asString());
+                        events.clear();
+                        page->_PublishNativeAgentSignal(control, false, 3);
+                        page->_PublishNativeAgentSignal(control, true, 0);
+                        VERIFY_ARE_EQUAL(size_t{ 2 }, events.size());
+                        VERIFY_ARE_EQUAL(std::string{ "progress" }, events[0]["kind"].asString());
+                        VERIFY_ARE_EQUAL(std::string{ "bell" }, events[1]["kind"].asString());
+                        _applyNativeRegistrySnapshot(page, control, "Attention");
+                        const auto info = page->_RichTabAgentInfoForControl(control);
+                        VERIFY_IS_TRUE(info.has_value());
+                        VERIFY_ARE_EQUAL(std::string{ "Attention" }, info->status);
+                        const auto foreign = _keepRunningHook(paneId, "agent.session.start", "foreign", "copilot");
+                        page->_manager.OnPaneAgentSessionChanged(foreign);
+                        page->OnPaneAgentSessionChanged(foreign);
+                        VERIFY_IS_TRUE(manager->AgentSessionEvent(control.ContentId()).empty());
+                        VERIFY_IS_FALSE(page->_paneAgentSessions.contains(paneId));
+                        events.clear();
+                        control.Close();
+                        VERIFY_IS_FALSE(events.empty());
+                        VERIFY_ARE_EQUAL(std::string{ "removed" }, events.back()["kind"].asString());
+                    }
+                }
+            });
+        }
+    }
+
+    void TabTests::CustomAgentCatalogEditsPreserveExistingAgentPane()
+    {
+        auto page = _commonSetup();
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto globals = page->_settings.GlobalSettings();
+            const auto tab = page->_GetFocusedTabImpl();
+            auto pane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            pane->IsAgentPane(true);
+            page->_SplitPane(tab, SplitDirection::Left, 0.5f, pane);
+            const auto content = tab->FindAgentPaneContent();
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            impl->SetAgentSessionId(L"preserved-acp-session");
+            const auto transferId = impl->TransferId();
+            for (const auto selected : { L"copilot", L"custom:existing" })
+            {
+                globals.AcpAgent(selected);
+                globals.AcpCustomCommand(L"existing --acp");
+                page->_lastAgentSettings = page->_CaptureAgentSettingsSnapshot();
+                page->_agentSettingsSnapshotInitialized = true;
+                for (const auto command : { L"qwen --acp", L"qwen --acp --changed", L"" })
+                {
+                    globals.AcpCustomCommands(winrt::single_threaded_vector<winrt::hstring>({ command }));
+                    page->_ReconcileAgentSettings();
+                    VERIFY_IS_TRUE(tab->FindAgentPaneContent() == content);
+                    VERIFY_ARE_EQUAL(transferId, impl->TransferId());
+                    VERIFY_IS_TRUE(impl->AgentSessionId() == L"preserved-acp-session");
+                    VERIFY_IS_FALSE(page->_agentLifecycleOperationInProgress);
+                }
+            }
+        });
     }
 
     void TabTests::NativeAgentSessionsOnPublishesProgressForHookOwner()
@@ -25942,6 +27089,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(controls[0]).has_value());
             // State follows ContentId, not a replaced split Pane or TermControl.
             const auto transferredContentId = controls[1].ContentId();
+            AddNativeAgentIconProfiles(page->_settings);
             const auto unrelatedEpoch = manager->NativeAgentObservationForContent(controls[0].ContentId()).value().modeEpoch;
             page->_TryPublishInteractiveResumeBinding(
                 controls[1], _formatPaneId(ids[1]), {}, L"claude", L"11111111-2222-3333-4444-555555555555");
@@ -26405,6 +27553,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(page->_RichTabAgentInfoForControl(control).has_value());
             VERIFY_IS_FALSE(page->_BuildRichTabFirstPartyFields(control).contains("agentStatus"));
 
+            AddNativeAgentIconProfiles(page->_settings);
             for (const auto& [provider, icon] : {
                      std::pair{ L"copilot", L"ms-appx:///AgentIcons/copilot.svg" },
                      std::pair{ L"claude", L"ms-appx:///AgentIcons/claude.svg" } })
@@ -26950,6 +28099,152 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::NativeAgentResumeRejectsUncorrelatedLaunch()
+    {
+        for (const auto layoutTransition : { true, false })
+        {
+            auto page = _commonSetup(nullptr, nullptr, std::nullopt, true);
+            TestOnUIThread([&]() {
+                const auto tabCount = page->_tabs.Size();
+                winrt::Microsoft::Terminal::Settings::Model::Profile profile{ nullptr };
+                if (layoutTransition)
+                {
+                    VERIFY_IS_TRUE(page->_ApplyTabLayout(TabLayout::Horizontal));
+                    VERIFY_IS_TRUE(page->_changingTabLayout);
+                }
+                else
+                {
+                    VERIFY_IS_FALSE(page->IsRunningElevated());
+                    profile = AddNativeAgentIconProfile(page->_settings, L"copilot", L"\xE713");
+                    profile.Elevate(true);
+                }
+                const auto visualCount = page->_tabItems().Size();
+                const auto selectedTab = page->_GetFocusedTabImpl();
+                std::vector<Json::Value> receipts;
+                const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+                    if (event["method"] == "native_profile_resume_result")
+                    {
+                        receipts.push_back(event["params"]);
+                    }
+                });
+                const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+                Json::Value request;
+                request["params"]["request_id"] = "guarded-native-resume";
+                request["params"]["resume_target"] = "native";
+                request["params"]["agent_id"] = "copilot";
+                request["params"]["agent_source"] = "host";
+                request["params"]["session_id"] = "11111111-2222-3333-4444-555555555555";
+                request["params"]["window_id"] = std::to_string(page->_WindowProperties.WindowId());
+                if (profile)
+                {
+                    request["params"]["profile_id"] = winrt::to_string(Utils::GuidToString(profile.Guid()));
+                }
+                page->OnResumeInNewAgentTabRequested(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, request)));
+                VERIFY_ARE_EQUAL(size_t{ 1 }, receipts.size());
+                VERIFY_ARE_EQUAL(std::string{ "guarded-native-resume" }, receipts[0]["request_id"].asString());
+                VERIFY_IS_FALSE(receipts[0]["success"].asBool());
+                const auto expected = HRESULT_FROM_WIN32(layoutTransition ? ERROR_RETRY : ERROR_ELEVATION_REQUIRED);
+                VERIFY_ARE_EQUAL(winrt::to_string(winrt::hresult_error{ expected }.message()), receipts[0]["error"].asString());
+                VERIFY_ARE_EQUAL(tabCount, page->_tabs.Size());
+                VERIFY_ARE_EQUAL(visualCount, page->_tabItems().Size());
+                VERIFY_IS_TRUE(page->_GetFocusedTabImpl() == selectedTab);
+                if (layoutTransition)
+                {
+                    page->_CompleteTabLayoutChange(page->_tabLayoutGeneration);
+                    VERIFY_IS_FALSE(page->_changingTabLayout);
+                    VERIFY_ARE_EQUAL(tabCount, page->_tabs.Size());
+                    VERIFY_ARE_EQUAL(tabCount, page->_tabItems().Size());
+                }
+            });
+        }
+    }
+
+    void TabTests::NativeAgentDirectResumeReturnsOwnedReceipt()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(Utils::CreateGuid(), State::Connected);
+        auto page = _commonSetup(*connection);
+        winrt::TerminalApp::TerminalPage projectedPage{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                projectedPage = nullptr;
+                page = nullptr;
+            });
+        });
+        Json::Value request;
+        uint32_t originalTabCount{};
+        winrt::guid profileGuid{};
+        TestOnUIThread([&]() {
+            projectedPage = *page;
+            originalTabCount = page->_tabs.Size();
+            const auto profile = AddNativeAgentIconProfile(page->_settings, L"custom:fixture", L"\xE713");
+            profile.Commandline(L"cmd.exe /d /c exit 0");
+            profile.CloseOnExit(CloseOnExitMode::Never);
+            profileGuid = profile.Guid();
+            request["params"]["request_id"] = "direct-native-resume";
+            request["params"]["resume_target"] = "native";
+            request["params"]["agent_source"] = "host";
+            request["params"]["agent_id"] = "custom:fixture";
+            request["params"]["session_id"] = "11111111-2222-3333-4444-555555555555";
+            request["params"]["window_id"] = std::to_string(page->_WindowProperties.WindowId());
+            request["params"]["profile_id"] = winrt::to_string(Utils::GuidToString(profileGuid));
+        });
+
+        const auto invoke = [&]() {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> operation{ nullptr };
+            TestOnUIThread([&]() {
+                operation = projectedPage.CreateNativeProfileResumeTab(
+                    winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, request)));
+            });
+            Json::Value receipt;
+            Json::CharReaderBuilder reader;
+            std::istringstream input{ winrt::to_string(operation.get()) };
+            std::string errors;
+            VERIFY_IS_TRUE(Json::parseFromStream(reader, input, &receipt, &errors));
+            VERIFY_ARE_EQUAL(std::string{ "direct-native-resume" }, receipt["request_id"].asString());
+            return receipt;
+        };
+
+        // No ProtocolVtSequenceReceived subscriber: the public operation owns its result.
+        const auto receipt = invoke();
+        VERIFY_IS_TRUE(receipt["success"].asBool());
+        const winrt::guid resumedPaneId{ Utils::GuidFromPlainString(
+            winrt::to_hstring(receipt["result"]["session_id"].asString()).c_str()) };
+        VERIFY_ARE_NOT_EQUAL(winrt::guid{}, resumedPaneId);
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(originalTabCount + 1, page->_tabs.Size());
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_ARE_EQUAL(1, tab->GetLeafPaneCount());
+            VERIFY_ARE_EQUAL(winrt::to_string(tab->StableId()), receipt["result"]["tab_id"].asString());
+            VERIFY_ARE_EQUAL(_formatPaneId(tab->GetActiveTerminalControl().Connection().SessionId()),
+                             receipt["result"]["session_id"].asString());
+            VERIFY_ARE_EQUAL(profileGuid, tab->GetActivePane()->GetProfile().Guid());
+        });
+
+        for (const auto profileId : { "not-a-guid", "{11111111-2222-3333-4444-555555555555}" })
+        {
+            request["params"]["profile_id"] = profileId;
+            const auto rejected = invoke();
+            VERIFY_IS_FALSE(rejected["success"].asBool());
+            VERIFY_ARE_EQUAL(
+                std::string{ std::string_view{ profileId } == "not-a-guid" ?
+                                 "The requested native agent profile_id is not a valid GUID." :
+                                 "No corresponding native agent profile was found. Check the selected profile and its agentProfile.id." },
+                rejected["error"].asString());
+            VERIFY_IS_FALSE(rejected.isMember("result"));
+            TestOnUIThread([&]() {
+                VERIFY_ARE_EQUAL(originalTabCount + 1, page->_tabs.Size());
+                VERIFY_ARE_EQUAL(profileGuid, page->_GetFocusedTabImpl()->GetActivePane()->GetProfile().Guid());
+                VERIFY_ARE_EQUAL(resumedPaneId, page->_GetFocusedTabImpl()->GetActiveTerminalControl().Connection().SessionId());
+            });
+        }
+    }
+
     void TabTests::NativeAgentResumeSeedsProviderBeforeContent()
     {
         auto page = _commonSetup();
@@ -26983,6 +28278,7 @@ namespace TerminalAppLocalTests
         {
             auto page = _commonSetup(nullptr, nullptr, std::nullopt, verticalLayout);
             TestOnUIThread([&]() {
+                AddNativeAgentIconProfiles(page->_settings);
                 const auto profile = page->_settings.ActiveProfiles().GetAt(1);
                 profile.AgentProfileId(L"copilot");
                 profile.Icon(MediaResourceHelper::FromString(L"ms-appx:///AgentIcons/copilot.svg"));
@@ -27162,6 +28458,7 @@ namespace TerminalAppLocalTests
         const auto baseline = winrt::make_self<TestConnection>(winrt::guid{ L"{44911111-2222-3333-4444-555555555555}" }, State::Connected);
         auto page = _commonSetup(*baseline);
         TestOnUIThread([&]() {
+            AddNativeAgentIconProfiles(page->_settings);
             const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
             for (const auto provider : { L"copilot", L"claude", L"codex", L"gemini", L"opencode", L"antigravity", L"custom:fixture" })
             {
@@ -27440,7 +28737,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::RunningAgentIconOverridesProfileIcon()
+    void TabTests::RunningAgentUsesCorrespondingProfileIcon()
     {
         using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
         const auto connection = winrt::make_self<TestConnection>(winrt::guid{ L"{436c8552-a3b3-4141-9b6c-c57b3251936e}" }, State::Connected);
@@ -27473,6 +28770,7 @@ namespace TerminalAppLocalTests
                    winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->HeaderForTab(focused->TabViewItem()) != nullptr;
         });
         TestOnUIThread([&]() {
+            AddNativeAgentIconProfiles(page->_settings);
             page->Width(1200);
             page->Height(600);
             page->UpdateLayout();

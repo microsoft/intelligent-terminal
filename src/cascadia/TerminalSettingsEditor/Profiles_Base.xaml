@@ -42,6 +42,9 @@
                    Visibility="{x:Bind Profile.IsBaseLayer}" />
         <StackPanel Grid.Row="1"
                     Style="{StaticResource SettingsStackStyle}">
+            <TextBlock x:Uid="Profile_AgentIndicator"
+                       Style="{StaticResource DisclaimerStyle}"
+                       Visibility="{x:Bind Profile.IsAgentProfile, Mode=OneWay}" />
 
             <!--  Name  -->
             <!--
@@ -101,6 +104,18 @@
                 <TextBox IsSpellCheckEnabled="False"
                          Style="{StaticResource TextBoxSettingStyle}"
                          Text="{x:Bind Profile.AgentProfileArguments, Mode=TwoWay}" />
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Uid="Profile_AgentResumeArguments"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentProfileResumeArguments}"
+                                    CurrentValue="{x:Bind Profile.AgentProfileResumeArguments, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentProfileResumeArguments, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentProfileResumeArgumentsOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}"
+                                    Visibility="{x:Bind Profile.IsAgentProfile, Mode=OneWay}">
+                <TextBox IsSpellCheckEnabled="False"
+                         Style="{StaticResource TextBoxSettingStyle}"
+                         Text="{x:Bind Profile.AgentProfileResumeArguments, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  Starting Directory  -->
@@ -260,8 +275,9 @@
             <Border MaxWidth="{StaticResource StandardControlMaxWidth}">
                 <Button x:Name="DeleteButton"
                         Margin="{StaticResource StandardControlMargin}"
+                        IsEnabled="{x:Bind Profile.CanDeleteProfile, Mode=OneWay}"
                         Style="{StaticResource DeleteButtonStyle}"
-                        Visibility="{x:Bind Profile.CanDeleteProfile}">
+                        Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(Profile.IsBaseLayer)}">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal">
                             <FontIcon FontSize="{StaticResource StandardIconSize}"

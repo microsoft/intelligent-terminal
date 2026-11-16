@@ -821,4 +821,7 @@
     <value>Агенттеріңіздің әрекетін бір қарағанда көру үшін тік қойындыларға ауысыңыз. Қойындыны тінтуірдің оң жақ түймешігімен басып, {0} пәрменін таңдаңыз.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
   </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>Панель {0}, барлығы {1}</value>
+  </data>
 </root>

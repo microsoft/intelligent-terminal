@@ -28,6 +28,7 @@
             <local:SettingContainer.Content>
                 <Button x:Name="DeleteButton"
                         Click="DeleteConfirmation_Click"
+                        IsEnabled="{x:Bind Profile.CanDeleteProfile, Mode=OneWay}"
                         Style="{StaticResource DeleteButtonStyle}">
                     <Button.Content>
                         <StackPanel Orientation="Horizontal">

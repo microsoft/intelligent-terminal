@@ -93,12 +93,14 @@ namespace winrt::Microsoft::Terminal::Settings
         SIMPLE_OVERRIDABLE_SETTING(IEnvironmentVariableMapView, EnvironmentVariables, nullptr);
         SIMPLE_OVERRIDABLE_SETTING(bool, ReloadEnvironmentVariables, true);
         SIMPLE_OVERRIDABLE_SETTING(bool, UsesManagedAgentCommand, false);
+        SIMPLE_OVERRIDABLE_SETTING(hstring, NativeAgentSessionId, L"");
 
     public:
         // TerminalApp overrides these when duplicating a session
         void StartingDirectory(const hstring& startingDirectory) { _StartingDirectory = startingDirectory; }
         void Commandline(const hstring& commandline) { _Commandline = commandline; }
         void UsesManagedAgentCommand(const bool value) { _UsesManagedAgentCommand = value; }
+        void NativeAgentSessionId(const hstring& value) { _NativeAgentSessionId = value; }
 
     private:
         std::optional<std::array<Microsoft::Terminal::Core::Color, COLOR_TABLE_SIZE>> _ColorTable;

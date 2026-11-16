@@ -876,6 +876,24 @@ function Invoke-ItOwnedHover {
     $peers = @($root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
         $_.Current.ProcessId -eq $App.Pid -and -not $_.Current.IsOffscreen -and $_.Current.IsEnabled
     })
+    if ($peers.Count -eq 0) {
+        # Decorative icon wrappers can be absent from FindAll's projected view.
+        $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+        $pending = [Collections.Generic.Stack[Windows.Automation.AutomationElement]]::new()
+        $pending.Push($root)
+        while ($pending.Count) {
+            $child = $walker.GetFirstChild($pending.Pop())
+            while ($child) {
+                $info = $child.Current
+                if (($info.AutomationId -ceq $Selector -or $info.Name -ceq $Selector) -and
+                    $info.ProcessId -eq $App.Pid -and -not $info.IsOffscreen -and $info.IsEnabled) {
+                    $peers += $child
+                }
+                $pending.Push($child)
+                $child = $walker.GetNextSibling($child)
+            }
+        }
+    }
     if ($peers.Count -ne 1) { throw 'Hover requires one exact visible owned UIA peer; opaque selector fallback refused.' }
     $bounds = $peers[0].Current.BoundingRectangle
     $x = [int]($bounds.Left + $bounds.Width / 2); $y = [int]($bounds.Top + $bounds.Height / 2)

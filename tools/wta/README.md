@@ -379,6 +379,13 @@ after resume without treating a busy master as stopped; final failures preserve
 the underlying Windows error. This retries connection establishment only; it never
 sends an activation request again.
 
+Native profile resume returns the exact created pane and tab in the initiating
+`wtcli` COM operation, correlated by request ID. It does not wait for the
+background event listener: unavailable subscriptions, reconnects, and exhausted
+listener retries cannot discard a successful creation receipt or trigger a
+second tab creation. A missing, mismatched, or incomplete result is reported as
+an unknown creation outcome, never replaced with the focused/default pane.
+
 The initial
 discovery stays `loading` until all eligible host providers finish. Providers that
 do not support listing are skipped, while initialization or listing failures

@@ -116,6 +116,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     // BuildShellIntegrationBlock — pure generator.
     TEST_METHOD(BuildBlock_ContainsMarkersAndScriptFilename);
     TEST_METHOD(BuildBlock_HonoursEolParameter);
+    TEST_METHOD(PowerShell_OnlyInstallsInsideIntelligentTerminal);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_DriveSwitchErrors_PreserveHandledSuccess);
@@ -124,7 +125,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
     TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
     TEST_METHOD(PowerShell_ScriptContent_RestoresStatusSignalBeforeDelegating);
-    TEST_METHOD(PowerShell_ScriptContent_GuardsAgainstChainingPromptModules);
+    TEST_METHOD(PowerShell_PromptLifecycle_RestoresSavedWrappers);
+    TEST_METHOD(PowerShell_PromptLifecycle_RestrictedAndExistingSessions);
     TEST_METHOD(PowerShell_ScriptContent_RendersFailSafe);
 
     // Install scenarios.
@@ -700,8 +702,8 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
     const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
     const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
     const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
-    const auto originalPrompt = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", combinedCheck);
-    const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Error[0]", originalPrompt);
+    const auto originalPrompt = script.find("$originalOutput = & $__ShellInteg_OriginalPrompt", combinedCheck);
+    const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Global:Error[0]", originalPrompt);
     const auto consumeLine = script.find("$Global:__ShellInteg_LastSubmittedLine = $null", consumeError);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
@@ -725,11 +727,78 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
                    L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
 }
 
+void ShellIntegrationTests::PowerShell_OnlyInstallsInsideIntelligentTerminal()
+{
+    const auto integration = _scratchDir / ShellIntegrationScriptFileName();
+    _WriteFile(integration, std::string{ "\xef\xbb\xbf" } + ShellIntegrationScriptContent());
+    const auto runner = _scratchDir / L"host-marker-test.ps1";
+    _WriteFile(runner, R"PS($ErrorActionPreference = 'Stop'
+function Global:prompt { 'original> ' }
+function Global:PSConsoleHostReadLine { 'original input' }
+$originalPrompt = $function:prompt
+$originalReadLine = $function:PSConsoleHostReadLine
+$integration = Join-Path $PSScriptRoot ')PS" +
+                           til::u16u8(ShellIntegrationScriptFileName()) +
+                           R"PS('
+foreach ($marker in @($null, '0', 'true')) {
+    $env:INTELLIGENT_TERMINAL = $marker
+    . $integration
+    if ($function:prompt -ne $originalPrompt) { throw 'Changed prompt outside Intelligent Terminal' }
+    if ($function:PSConsoleHostReadLine -ne $originalReadLine) { throw 'Changed ReadLine outside Intelligent Terminal' }
+    if (Get-Variable -Name '__ShellInteg_*' -Scope Global -ErrorAction Ignore) {
+        throw 'Created integration state outside Intelligent Terminal'
+    }
+    if (Test-Path Function:\__ShellInteg_Rearm) { throw 'Installed rearm outside Intelligent Terminal' }
+    if ((prompt) -cne 'original> ') { throw 'Changed prompt output outside Intelligent Terminal' }
+}
+$env:INTELLIGENT_TERMINAL = '1'
+. $integration
+if (-not $Global:__ShellInteg_Installed) { throw 'Did not install inside Intelligent Terminal' }
+if ($function:prompt -eq $originalPrompt) { throw 'Did not wrap prompt inside Intelligent Terminal' }
+if ($function:PSConsoleHostReadLine -eq $originalReadLine) { throw 'Did not wrap ReadLine inside Intelligent Terminal' }
+$rendered = prompt
+if ($rendered -notmatch '\x1b]133;A\x07' -or
+    $rendered -notmatch 'original> \x1b]133;B\x07') {
+    throw 'Missing integrated prompt output'
+}
+$wrapper = $function:prompt
+$readLineWrapper = $function:PSConsoleHostReadLine
+. $integration
+if ($function:prompt -ne $wrapper -or $function:PSConsoleHostReadLine -ne $readLineWrapper) {
+    throw 'Repeated sourcing replaced integration wrappers'
+}
+'passed'
+)PS");
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
 void ShellIntegrationTests::PowerShell_ResumeCommand_EmitsOscBeforeExecution()
 {
     const auto runner = _scratchDir / L"resume-test.ps1";
     const auto script = std::string{ "\xef\xbb\xbf" } +
                         R"($ErrorActionPreference = 'Stop'
+$env:INTELLIGENT_TERMINAL = '1'
 function Global:PSConsoleHostReadLine { return $Global:__ResumeTestLine }
 )" +
                         ShellIntegrationScriptContent() +
@@ -856,6 +925,7 @@ void ShellIntegrationTests::PowerShell_DriveSwitchErrors_PreserveHandledSuccess(
     const auto runner = _scratchDir / L"drive-switch-test.ps1";
     const auto script = std::string{ "\xef\xbb\xbf" } +
                         R"($ErrorActionPreference = 'Continue'
+$env:INTELLIGENT_TERMINAL = '1'
 $Global:__DriveTestHistoryId = 0
 function Global:Get-History { param($Count) [pscustomobject]@{ Id = $Global:__DriveTestHistoryId } }
 function Global:PSConsoleHostReadLine { return $Global:__DriveTestLine }
@@ -1020,18 +1090,13 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary(
     const auto rearmCall = script.find("__ShellInteg_Rearm", readLineWrapper);
     const auto promptStart = script.find("function prompt");
 
-    // Detection is by object identity against our own scriptblock — never by
-    // text matching, which a renderer could accidentally satisfy.
+    // Detection includes restored older wrappers, using weak-key identity.
     const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
     VERIFY_ARE_NOT_EQUAL(std::string::npos, rearmFunc,
                          L"__ShellInteg_Rearm must exist");
-    // -eq, NOT a static reference-equality method: re-arm runs at script load and
-    // from the readline boundary, and a static method call under Constrained
-    // Language Mode aborts the enclosing script even from inside try/catch.
-    const auto identityCheck = script.find("if ($current -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
-    const auto noStaticCall = script.substr(rearmFunc).find("[object]::ReferenceEquals");
-    const auto adopt = script.find("$Global:__ShellInteg_OriginalPrompt = $current", identityCheck);
-    const auto reinstall = script.find("Set-Item Function:\\global:prompt $Global:__ShellInteg_Wrapper", adopt);
+    const auto identityCheck = script.find("$Global:__ShellInteg_Wrappers.TryGetValue($current, [ref]$known)", rearmFunc);
+    const auto adopt = script.find("$wrapper = __ShellInteg_NewWrapper $current", identityCheck);
+    const auto reinstall = script.find("Set-Item Function:\\global:prompt $wrapper", adopt);
 
     // The wrapper identity is captured once, after prompt is defined.
     const auto wrapperCapture = script.find("$Global:__ShellInteg_Wrapper = $function:prompt");
@@ -1044,9 +1109,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary(
     VERIFY_IS_TRUE(promptStart < wrapperCapture,
                    L"The wrapper scriptblock must be captured after prompt is defined");
     VERIFY_IS_TRUE(rearmFunc < identityCheck && identityCheck < adopt && adopt < reinstall,
-                   L"Re-arm must detect replacement by object identity, adopt the newcomer, then reinstall the wrapper");
-    VERIFY_ARE_EQUAL(std::string::npos, noStaticCall,
-                     L"Re-arm must not invoke static methods - blocked in Constrained Language Mode, and the failure aborts the script even from inside try/catch");
+                   L"Re-arm must recognize existing wrappers before creating a new wrapper with its own delegate");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper()
@@ -1054,21 +1117,19 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWi
     const auto script = ShellIntegrationScriptContent();
     const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
 
-    // Guard 1: when an OLDER version of this script already owns the session,
-    // __ShellInteg_Installed is set, so our wrapper was never created. Re-arming
-    // then would install $null over prompt AND adopt the older wrapper as the
-    // prompt to wrap, making it delegate to itself (call depth overflow).
-    const auto nullWrapperGuard = script.find("if ($null -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
+    // Sessions owned by older versions have no registry variable.
+    const auto registryGuard = script.find("if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }", rearmFunc);
+    const auto nullWrapperGuard = script.find("if ($null -eq $Global:__ShellInteg_Wrapper) { return }", registryGuard);
 
     // Guard 2: re-arm runs from PSConsoleHostReadLine and at script load, so it
     // must never throw. `prompt` can be ReadOnly/Constant in a hardened profile,
     // which makes Set-Item raise SessionStateUnauthorizedAccessException.
     const auto tryStart = script.find("try {", nullWrapperGuard);
-    const auto guardedSetItem = script.find("Set-Item Function:\\global:prompt $Global:__ShellInteg_Wrapper -ErrorAction Stop", tryStart);
+    const auto guardedSetItem = script.find("Set-Item Function:\\global:prompt $wrapper -ErrorAction Stop", tryStart);
     const auto catchAll = script.find("catch {", guardedSetItem);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, catchAll);
-    VERIFY_IS_TRUE(rearmFunc < nullWrapperGuard,
+    VERIFY_IS_TRUE(rearmFunc < registryGuard && registryGuard < nullWrapperGuard,
                    L"Re-arm must no-op when no wrapper of our own exists");
     VERIFY_IS_TRUE(nullWrapperGuard < tryStart &&
                        tryStart < guardedSetItem &&
@@ -1088,7 +1149,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RestoresStatusSignalBeforeD
     // the delegation, or the intervening statements clobber it again.
     const auto successCase = script.find("if ($gle -eq 0) { $null = $true }", promptStart);
     const auto failureCase = script.find("Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction Ignore", successCase);
-    const auto delegation = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", failureCase);
+    const auto delegation = script.find("$originalOutput = & $__ShellInteg_OriginalPrompt", failureCase);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, delegation);
     VERIFY_IS_TRUE(successCase < failureCase && failureCase < delegation,
@@ -1101,35 +1162,287 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RestoresStatusSignalBeforeD
                    L"Forcing $? false must not pollute $Error");
 }
 
-void ShellIntegrationTests::PowerShell_ScriptContent_GuardsAgainstChainingPromptModules()
+void ShellIntegrationTests::PowerShell_PromptLifecycle_RestoresSavedWrappers()
 {
-    const auto script = ShellIntegrationScriptContent();
-    const auto promptStart = script.find("function prompt");
+    const auto integration = _scratchDir / ShellIntegrationScriptFileName();
+    _WriteFile(integration, std::string{ "\xef\xbb\xbf" } + ShellIntegrationScriptContent());
+    const auto runner = _scratchDir / L"prompt-lifecycle-test.ps1";
+    _WriteFile(runner, R"PS(param([string]$IntegrationPath)
+$ErrorActionPreference = 'Stop'
+$env:INTELLIGENT_TERMINAL = '1'
+function Global:prompt { 'BASE> ' }
+function Global:PSConsoleHostReadLine { 'input' }
+. $IntegrationPath
+$initial = $function:prompt
 
-    // A module may CHAIN rather than replace: capture the current prompt (ours)
-    // and call it from inside its own. Once adopted, delegating calls back into
-    // us — an unbounded mutual-delegation cycle without this guard.
-    const auto reentryGuard = script.find("if ($Global:__ShellInteg_Rendering)", promptStart);
-    const auto servePrev = script.find("return (& $Global:__ShellInteg_PrevPrompt)", reentryGuard);
-    // With nothing displaced left to serve, contribute an empty string — never
-    // fabricated prompt text. The chaining module renders its own text around
-    // whatever we return.
-    const auto emptyWhenExhausted = script.find("return ''", servePrev);
-    const auto setFlag = script.find("$Global:__ShellInteg_Rendering = $true", emptyWhenExhausted);
-    const auto delegation = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", setFlag);
-    const auto clearFlag = script.find("finally { $Global:__ShellInteg_Rendering = $false }", delegation);
+function Assert-Prompt {
+    param([string]$Expected)
+    $errorsBefore = $Error.Count
+    $rendered = (prompt *>&1 | Out-String)
+    $visible = ([regex]::Replace($rendered, '\x1b\][^\x07]*\x07', '') -replace '\r?\n', '').Trim()
+    if ($visible -cne $Expected) { throw "Expected '$Expected', got '$visible'" }
+    foreach ($pattern in @('\x1b]133;A\x07', '\x1b]133;B\x07', '\x1b]9;9;', '\x1b]9001;ShellType;')) {
+        if ([regex]::Matches($rendered, $pattern).Count -ne 1) { throw "Missing or duplicate marker: $pattern" }
+    }
+    if ($Error.Count -ne $errorsBefore) { throw 'Prompt rendering introduced an error' }
+    if ($Global:__ShellInteg_Rendering) { throw 'Rendering flag remained set' }
+}
 
-    // The displaced renderer is retained so the chained module still has real
-    // prompt text to wrap.
-    const auto retainPrev = script.find("$Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt");
+function Assert-RearmPreservesPrompt {
+    $before = $function:prompt
+    if ((PSConsoleHostReadLine) -cne 'input') { throw 'ReadLine changed the input' }
+    if ($function:prompt -ne $before) { throw 'Rearm wrapped a restored IT wrapper again' }
+}
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, clearFlag);
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, retainPrev);
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, emptyWhenExhausted);
-    VERIFY_IS_TRUE(promptStart < reentryGuard && reentryGuard < servePrev && servePrev < emptyWhenExhausted,
-                   L"reentry must be detected before any rendering work, serve the displaced prompt, then contribute nothing rather than fabricating text");
-    VERIFY_IS_TRUE(setFlag < delegation && delegation < clearFlag,
-                   L"The reentrancy flag must be set around the delegation and cleared in finally");
+Assert-Prompt 'BASE>'
+. $IntegrationPath
+if ($function:prompt -ne $initial) { throw 'Repeated sourcing replaced the wrapper' }
+
+# Exercise the venv save/call/restore/delete lifecycle without requiring Python.
+foreach ($cycle in 1..3) {
+    Copy-Item Function:\prompt Function:\global:_OLD_VIRTUAL_PROMPT
+    New-Variable -Name _PYTHON_VENV_PROMPT_PREFIX -Scope Global -Option ReadOnly -Value 'test-venv'
+    function Global:prompt {
+        Write-Host -NoNewline "($_PYTHON_VENV_PROMPT_PREFIX) "
+        _OLD_VIRTUAL_PROMPT
+    }
+    Assert-Prompt '(test-venv) BASE>'
+    $null = PSConsoleHostReadLine
+    if ($cycle -ne 1) { Assert-Prompt '(test-venv) BASE>' }
+    Copy-Item Function:\_OLD_VIRTUAL_PROMPT Function:\global:prompt
+    Remove-Item Function:\_OLD_VIRTUAL_PROMPT
+    Remove-Variable _PYTHON_VENV_PROMPT_PREFIX -Scope Global -Force
+    Assert-Prompt 'BASE>'
+    Assert-RearmPreservesPrompt
+    if ($function:prompt -ne $initial) { throw 'Did not restore the initial wrapper' }
+}
+
+function Global:prompt { 'THEME> ' }
+$null = PSConsoleHostReadLine
+Assert-Prompt 'THEME>'
+Set-Item Function:\global:prompt $initial
+Assert-Prompt 'BASE>'
+Assert-RearmPreservesPrompt
+
+$Global:SavedPromptA = $function:prompt
+$Global:PromptDepth = 0
+function Global:prompt {
+    $Global:PromptDepth++
+    try {
+        if ($Global:PromptDepth -gt 8) { throw 'Unexpected recursion' }
+        'A[' + (& $Global:SavedPromptA) + ']'
+    }
+    finally { $Global:PromptDepth-- }
+}
+$null = PSConsoleHostReadLine
+Assert-Prompt 'A[BASE> ]'
+$Global:SavedPromptB = $function:prompt
+function Global:prompt {
+    $Global:PromptDepth++
+    try {
+        if ($Global:PromptDepth -gt 8) { throw 'Unexpected recursion' }
+        'B[' + (& $Global:SavedPromptB) + ']'
+    }
+    finally { $Global:PromptDepth-- }
+}
+$null = PSConsoleHostReadLine
+Assert-Prompt 'B[A[BASE> ]]'
+Set-Item Function:\global:prompt $Global:SavedPromptB
+Remove-Variable SavedPromptB -Scope Global
+Assert-Prompt 'A[BASE> ]'
+Assert-RearmPreservesPrompt
+Set-Item Function:\global:prompt $Global:SavedPromptA
+Remove-Variable SavedPromptA -Scope Global
+Assert-Prompt 'BASE>'
+Assert-RearmPreservesPrompt
+
+$module = New-Module -ScriptBlock {
+    $script:Label = 'MODULE> '
+    function Get-TestPrompt { $script:Label }
+    Export-ModuleMember -Function Get-TestPrompt
+}
+Set-Item Function:\global:prompt $module.ExportedFunctions['Get-TestPrompt'].ScriptBlock
+$null = PSConsoleHostReadLine
+Assert-Prompt 'MODULE>'
+
+function Global:prompt { "STATUS:$?" }
+$null = PSConsoleHostReadLine
+$Global:SavedStatusPrompt = $function:prompt
+function Global:prompt { & $Global:SavedStatusPrompt }
+$null = PSConsoleHostReadLine
+$errorsBefore = $Error.Count
+Get-Variable '__MissingStatusTestVariable__' -ErrorAction Ignore
+$rendered = prompt
+if ($rendered -notmatch 'STATUS:False') { throw 'Nested wrapper lost the failure status' }
+if ($Error.Count -ne $errorsBefore) { throw 'Status restoration polluted errors' }
+$null = $true
+$rendered = prompt
+if ($rendered -notmatch 'STATUS:True') { throw 'Nested wrapper lost the success status' }
+
+$Global:PromptCalls = 0
+function Global:prompt {
+    $Global:PromptCalls++
+    throw 'Expected prompt failure'
+}
+$null = PSConsoleHostReadLine
+$null = prompt
+if ($Global:PromptCalls -ne 1 -or $Global:__ShellInteg_Rendering) {
+    throw 'Throwing delegate was repeated or left the rendering flag set'
+}
+Set-Item Function:\global:prompt $initial
+Assert-Prompt 'BASE>'
+Assert-RearmPreservesPrompt
+
+function Global:Get-History { param($Count) throw 'Expected history failure' }
+try {
+    $rendered = prompt
+    if ($rendered -cne 'BASE> ' -or $Global:__ShellInteg_Rendering) { throw 'Fallback rendering failed' }
+}
+finally { Remove-Item Function:\Get-History }
+Assert-Prompt 'BASE>'
+
+Set-Item Function:\global:prompt { 'LOCKED> ' } -Options ReadOnly
+try {
+    $null = PSConsoleHostReadLine
+    if ((prompt) -cne 'LOCKED> ') { throw 'Read-only prompt was changed' }
+}
+finally { Set-Item Function:\global:prompt $initial -Options None -Force }
+Assert-RearmPreservesPrompt
+'passed'
+)PS");
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        const auto result = Powershell::details::RunPowerShellCommand(
+            host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\" -IntegrationPath \"" + integration.wstring() + L"\"");
+        VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+        VERIFY_IS_TRUE(result.launched);
+        VERIFY_IS_FALSE(result.timedOut);
+        if (result.exitCode != 0)
+        {
+            Log::Comment(result.output.c_str());
+        }
+        VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+        VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+    }
+}
+
+void ShellIntegrationTests::PowerShell_PromptLifecycle_RestrictedAndExistingSessions()
+{
+    const auto integration = _scratchDir / ShellIntegrationScriptFileName();
+    _WriteFile(integration, std::string{ "\xef\xbb\xbf" } + ShellIntegrationScriptContent());
+    const auto runner = _scratchDir / L"restricted-prompt-test.ps1";
+    _WriteFile(runner, R"PS(param([string]$IntegrationPath, [switch]$Existing, [switch]$Strict)
+$ErrorActionPreference = 'Stop'
+$env:INTELLIGENT_TERMINAL = '1'
+function Global:prompt { 'BASE> ' }
+function Global:PSConsoleHostReadLine { 'input' }
+function Assert-RestrictedPrompt {
+    param([string]$Expected)
+    $rendered = prompt
+    if (($rendered -replace '\x1b\][^\x07]*\x07', '') -cne $Expected) {
+        throw "Unexpected restricted-language prompt: $rendered"
+    }
+    foreach ($pattern in @('\x1b]133;A\x07', '\x1b]133;B\x07', '\x1b]9;9;', '\x1b]9001;ShellType;')) {
+        if (($rendered -split $pattern).Count -ne 2) { throw "Missing or duplicate marker: $pattern" }
+    }
+    if ($Global:__ShellInteg_Rendering) { throw 'Rendering flag remained set' }
+}
+$original = $function:prompt
+if ($Existing) {
+    $Global:__ShellInteg_Installed = $true
+    $Global:__ShellInteg_Wrapper = $original
+    function Global:__ShellInteg_Rearm {}
+    function Global:PSConsoleHostReadLine { __ShellInteg_Rearm; 'input' }
+}
+$readLine = $function:PSConsoleHostReadLine
+if ($Strict) {
+    Set-StrictMode -Version Latest
+} else {
+    $ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'
+}
+. $IntegrationPath
+$rendered = prompt
+if ($Existing) {
+    if ($function:prompt -ne $original -or $rendered -cne 'BASE> ') { throw 'Changed an older integration' }
+} else {
+    if ($rendered -notmatch '\x1b]133;A\x07' -or
+        $rendered -notmatch 'BASE> \x1b]133;B\x07') { throw 'Lost restricted-language prompt marks' }
+}
+if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Changed existing ReadLine' }
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after sourcing' }
+function Global:prompt { 'REPLACED> ' }
+$replacement = $function:prompt
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine changed the input' }
+if ($function:prompt -ne $replacement) { throw 'Unexpected automatic rearm' }
+. $IntegrationPath
+__ShellInteg_Rearm
+if ($Existing) {
+    if ($function:prompt -ne $replacement) { throw 'Rearmed an older session' }
+} else {
+    if ($function:prompt -eq $replacement) { throw 'Manual rearm did not wrap the replacement' }
+    Assert-RestrictedPrompt 'REPLACED> '
+    $sharedWrapper = $function:prompt
+    . $IntegrationPath
+    if ($function:prompt -ne $sharedWrapper) { throw 'Repeated sourcing changed the shared wrapper' }
+    Assert-RestrictedPrompt 'REPLACED> '
+
+    $Global:RestrictedSavedPrompt = $function:prompt
+    $Global:RestrictedPromptDepth = 0
+    $Global:RestrictedPromptCalls = 0
+    function Global:prompt {
+        $Global:RestrictedPromptDepth++
+        $Global:RestrictedPromptCalls++
+        try {
+            if ($Global:RestrictedPromptDepth -gt 8) { throw 'Unexpected prompt recursion' }
+            'CHAIN[' + (& $Global:RestrictedSavedPrompt) + ']'
+        }
+        finally { $Global:RestrictedPromptDepth-- }
+    }
+    . $IntegrationPath
+    Assert-RestrictedPrompt 'CHAIN[REPLACED> ]'
+    if ($Global:RestrictedPromptCalls -ne 1) { throw 'Chained prompt was called more than once' }
+    . $IntegrationPath
+    Assert-RestrictedPrompt 'CHAIN[REPLACED> ]'
+    if ($Global:RestrictedPromptCalls -ne 2) { throw 'Repeated sourcing changed the chained delegate' }
+}
+if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Re-sourcing replaced the input function' }
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after repeated sourcing' }
+if ($Error.Count -ne 0) { throw 'Loading introduced errors' }
+'passed'
+)PS");
+
+    std::vector<std::wstring> hosts{
+        wil::ExpandEnvironmentStringsW<std::wstring>(L"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    };
+    if (auto pwsh = Powershell::details::ResolvePwshExecutableFromExplicitPath(); !pwsh.empty())
+    {
+        hosts.emplace_back(std::move(pwsh));
+    }
+    for (const auto& host : hosts)
+    {
+        for (const auto arguments : { L"", L" -Existing", L" -Existing -Strict" })
+        {
+            const auto result = Powershell::details::RunPowerShellCommand(
+                host.c_str(), L"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + runner.wstring() + L"\" -IntegrationPath \"" + integration.wstring() + L"\"" + arguments);
+            VERIFY_ARE_EQUAL(DWORD{ ERROR_SUCCESS }, result.error);
+            VERIFY_IS_TRUE(result.launched);
+            VERIFY_IS_FALSE(result.timedOut);
+            if (result.exitCode != 0)
+            {
+                Log::Comment(result.output.c_str());
+            }
+            VERIFY_ARE_EQUAL(DWORD{ 0 }, result.exitCode);
+            VERIFY_ARE_EQUAL(std::wstring{ L"passed" }, result.output);
+        }
+    }
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
@@ -1144,7 +1457,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
     const auto normalReturn = script.find("return \"${prefix}${originalOutput}${suffix}\"", renderTry);
     const auto renderCatch = script.find("catch {", normalReturn);
     const auto failSafeFlag = script.find("$Global:__ShellInteg_Rendering = $true", renderCatch);
-    const auto degradeToPrompt = script.find("try { return (& $Global:__ShellInteg_OriginalPrompt) }", failSafeFlag);
+    const auto degradeToPrompt = script.find("try { return (& $__ShellInteg_OriginalPrompt) }", failSafeFlag);
     const auto lastResort = script.find("return ''", degradeToPrompt);
     const auto failSafeClear = script.find("finally { $Global:__ShellInteg_Rendering = $false }", lastResort);
 
@@ -1155,7 +1468,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
                        failSafeFlag < degradeToPrompt &&
                        degradeToPrompt < lastResort &&
                        lastResort < failSafeClear,
-                   L"The fail-safe must hold the reentrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
+                   L"The fail-safe must hold the rendering flag so nested wrappers do not emit marks");
 
     // This wrapper must never invent visible prompt text. When the wrapped
     // prompt itself throws there is nothing to show, so it returns an empty
@@ -1170,7 +1483,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
     // caught at the delegation itself, so it cannot escape to the outer catch
     // and be run a second time — which would duplicate any side effects the
     // user's prompt has (git calls, logging, its own error reporting).
-    const auto delegation = script.find("try     { $originalOutput = & $Global:__ShellInteg_OriginalPrompt }", promptStart);
+    const auto delegation = script.find("try     { $originalOutput = & $__ShellInteg_OriginalPrompt }", promptStart);
     const auto delegationCatch = script.find("catch   { $originalOutput = '' }", delegation);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, delegationCatch,
