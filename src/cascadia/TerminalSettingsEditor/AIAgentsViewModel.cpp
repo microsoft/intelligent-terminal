@@ -1997,6 +1997,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return {};
         }
 
+        const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(acpAgent, _GlobalSettings.AcpAgentSource());
+        if (!backend)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Invalid ACP agent source");
+            return {};
+        }
+
         if (winrt::to_string(acpAgent).starts_with("custom:"))
         {
             const auto customCmd = _GlobalSettings.AcpCustomCommand();
@@ -2007,12 +2014,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         const auto acpModel = _GlobalSettings.AcpModel();
-        const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(acpAgent, _GlobalSettings.AcpAgentSource());
-        if (!backend)
-        {
-            LOG_HR_MSG(E_INVALIDARG, "Invalid ACP agent source");
-            return {};
-        }
         return ::Microsoft::Terminal::AcpModels::BuildProbeCommandLine(
             std::wstring_view{ acpAgent },
             std::wstring_view{ acpModel },

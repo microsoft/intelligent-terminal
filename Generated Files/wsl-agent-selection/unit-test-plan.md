@@ -58,6 +58,7 @@ listing a case here does not claim that its code exists or passed.
 | B13 | Existing Windows agent behavior | Native model hot update, provider rebind, custom editing, YOLO policy, hooks/session availability unchanged. |
 | B14 | WSL native model A to B while host BYOK remains saved | Snapshot retains the WSL native model; source-qualified model update reaches only followers. |
 | B15 | Explicit `/agent` WSL request from PowerShell/cmd or another distro | Existing window/tab ownership and policy checks hold; no obsolete same-shell restriction. |
+| B16 | Saved custom ACP command with WSL, unknown, or malformed source; valid host controls | Reject unsupported sources before returning a custom probe command: no Windows process or model-cache publication. Empty/explicit host sources retain the configured custom command; valid built-in WSL probing retains its distro. |
 
 ## Rust decisions and protocol boundaries
 
