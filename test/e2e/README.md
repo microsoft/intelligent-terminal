@@ -19,6 +19,51 @@ The live smoke proved separate hosts, package-local CLIs, and sidebar search
 invoke/filter/clear. It did not validate concurrent full suites or mark release
 checklist items complete.
 
+### Non-live PowerShell prompt lifecycle
+
+`tests\Source.PowerShellPromptLifecycle.Tests.ps1` (`Source` tag) extracts the
+canonical `PowerShellShellIntegration.h::ScriptContent` raw literals and runs
+them in separate `pwsh.exe` 7+ and `powershell.exe` 5.1 children using the shared
+`Invoke-Native` timeout/capture helper. Both hosts are required, not silently
+skipped. Generic save/chain/restore fixtures cover repeated environment
+activation, switching and deactivation, old-wrapper restoration, repeated
+dot-sourcing, late renderer takeover (including StrictMode 2.0/Latest), nested failure status,
+ordinary work-changing chains compared with a no-integration control, once-only calls,
+OSC ordering, first-prompt suppression, v14 shared-state wrapper upgrades
+(including a chain adopted before migration and StrictMode 2.0 enabled before
+upgrade, restoring the saved legacy wrapper with its normal initially null fallback),
+older installed state with no fallback variable,
+later real-module readline wrappers chaining the modeled v14 reader (active owner
+and original core preserved, one pre/core/post call, unchanged submitted line,
+prompt takeover/rearm and two repeat sources),
+noninteractive StrictMode 2.0 initialization with only the Installed guard
+explicitly false and legacy globals absent, both without readline and with
+an existing readline driver (including once-only delegation and driver preservation
+across repeated sourcing)
+(not fully unset fresh StrictMode initialization),
+throwing/empty-renderer and integration
+fail-safe recovery, and the
+existing ConstrainedLanguage manual-recovery baseline. No Python installation
+or product-specific environment heuristic is involved.
+Extraction checks preserve payload bytes across adjacent-comment and structural
+whitespace changes and reject malformed function/initializer/literal boundaries.
+The suite contains 35 cases: seven extraction checks and fourteen lifecycle scenarios
+on each of the two required hosts.
+
+```powershell
+Invoke-Pester test\e2e\tests\Source.PowerShellPromptLifecycle.Tests.ps1
+```
+
+Optional Pester container data `HeaderPath` permits an immutable baseline header
+for negative controls; `ArtifactRoot` selects the output directory (default
+`Generated Files\ItE2E\PowerShellPromptLifecycle`). Each run retains the extracted
+script, source/script hashes and child stdout/stderr/exit receipts. The suite
+does not launch Terminal, deploy, load user profiles, or change settings or
+persistent policies. Child-only `-ExecutionPolicy Bypass` and simulated
+ConstrainedLanguage do not validate enterprise-enforced policy. This is
+source/process regression coverage, not live ConPTY/Terminal acceptance, and
+does not mark the deployed-shell release checklist complete.
+
 ### Native Copilot missing-start recovery
 
 `Feature.CopilotHookRecovery.Tests.ps1` requires an inactive explicit private PFN,
