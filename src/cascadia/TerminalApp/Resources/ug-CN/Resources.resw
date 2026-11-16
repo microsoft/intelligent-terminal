@@ -700,7 +700,7 @@
     <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
   </data>
   <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
-    <value>ئىكرامىيەت كۈتۈلۈۋاتىدۇ...</value>
+    <value>ھوقۇق بېرىلىشى كۈتۈلۈۋاتىدۇ...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
   <data name="SidebarPanePosition" xml:space="preserve">
