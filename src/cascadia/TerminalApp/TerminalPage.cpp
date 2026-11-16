@@ -14319,17 +14319,13 @@ namespace winrt::TerminalApp::implementation
                                     control.ContentId(), *info->paneSessionId, info->sessionId, info->providerId, info->status, focused);
                             }
                             const auto snapshot = _ReadProgramStatus(control);
-                            if (const auto connection = control.Connection();
-                                connection && snapshot.get("working", 0).asUInt() == 0 && snapshot.get("blocked", 0).asUInt() == 0)
+                            if (const auto connection = control.Connection())
                             {
                                 const std::string_view status = snapshot.get("unseen_error", 0).asUInt() != 0 ? "Attention" :
                                                                 snapshot.get("unseen_done", 0).asUInt() != 0  ? "Idle" :
                                                                                                               "";
-                                if (!status.empty())
-                                {
-                                    manager->UpdateAgentCompletionFromProgramStatus(
-                                        control.ContentId(), connection.SessionId(), status, focused);
-                                }
+                                manager->UpdateAgentCompletionFromProgramStatus(
+                                    control.ContentId(), connection.SessionId(), status, focused);
                             }
                         }
                         return false;

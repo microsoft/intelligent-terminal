@@ -2045,7 +2045,7 @@ pub trait SessionRegistry: Send + Sync {
 
     async fn pane_status_snapshot_with_hook_owners(
         &self,
-        _hook_owners: &HashSet<acp::schema::v1::SessionId>,
+        _hook_owners: &HashSet<SessionIdentity>,
     ) -> (Vec<PaneAgentStatus>, Vec<NativePaneObservation>) {
         self.pane_status_snapshot().await
     }
@@ -2720,7 +2720,7 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn pane_status_snapshot_with_hook_owners(
         &self,
-        hook_owners: &HashSet<acp::schema::v1::SessionId>,
+        hook_owners: &HashSet<SessionIdentity>,
     ) -> (Vec<PaneAgentStatus>, Vec<NativePaneObservation>) {
         let state = self.inner.lock().await;
         let native = native_pane_observations_locked(&state);
@@ -4111,10 +4111,11 @@ fn session_input_required(info: &SessionInfo) -> bool {
 
 fn session_canonical_working(
     info: &SessionInfo,
-    hook_owners: &HashSet<acp::schema::v1::SessionId>,
+    hook_owners: &HashSet<SessionIdentity>,
 ) -> bool {
     info.status == Some(AgentStatus::Working)
-        && (info.origin == Some(SessionOrigin::AgentPane) || hook_owners.contains(&info.session_id))
+        && (info.origin == Some(SessionOrigin::AgentPane)
+            || hook_owners.contains(&SessionIdentity::from_info(info)))
 }
 
 fn source_pane_session_identity(info: &SessionInfo) -> bool {
@@ -5918,7 +5919,12 @@ mod tests {
                     assert!(registry.apply_native_observation(program).await);
                     registry.apply_event(hook).await;
                 }
-                let owners = HashSet::from([acp::schema::v1::SessionId::new("real-session")]);
+                let owners = HashSet::from([SessionIdentity::from_info(
+                    &registry
+                        .lookup(&acp::schema::v1::SessionId::new("real-session"))
+                        .await
+                        .expect("real session"),
+                )]);
                 let panes = registry
                     .pane_status_snapshot_with_hook_owners(&owners)
                     .await

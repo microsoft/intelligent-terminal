@@ -425,7 +425,7 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            changed = completion.Update(paneId, completion.sessionId, completion.providerId, status, focused);
+            changed = completion.UpdateProgramStatus(status, focused);
         }
         if (changed)
         {
@@ -449,7 +449,7 @@ namespace winrt::TerminalApp::implementation
     {
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId);
-            it != _content.end() && it->second.completion.unread)
+            it != _content.end() && it->second.completion.HasUnread())
         {
             const auto& completion = it->second.completion;
             const auto connection = it->second.core.Core().Connection();
@@ -468,7 +468,7 @@ namespace winrt::TerminalApp::implementation
         for (const auto& [id, content] : _content)
         {
             const auto& completion = content.completion;
-            if (completion.unread && completion.paneId == paneId &&
+            if (completion.HasUnread() && completion.paneId == paneId &&
                 completion.sessionId == sessionId && completion.providerId == providerId)
             {
                 const auto connection = content.core.Core().Connection();
@@ -484,9 +484,12 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> changed;
         {
             std::lock_guard lock{ _mutex };
-            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.unread)
+            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.HasUnread())
             {
                 it->second.completion.unread = false;
+                it->second.completion.wasAttention = false;
+                it->second.completion.programUnread = false;
+                it->second.completion.programAttention = false;
                 changed = it->second.completion.paneId;
             }
         }

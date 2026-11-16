@@ -757,7 +757,7 @@ struct MasterStateInner {
     /// Grow-only for the master's lifetime: a dead session id costs a few bytes
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
     /// touched only on the session_hook ingest path and the watcher apply path.
-    hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    hook_owned: Mutex<HashSet<crate::session_registry::SessionIdentity>>,
     /// Sessions loaded on a shared agent CLI whose owning helper has
     /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
     /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
@@ -8886,7 +8886,7 @@ async fn execute_session_activation(
                                 && current.pane_session_id.is_none()
                         })
                     {
-                        state.hook_owned.lock().await.remove(&row.session_id);
+                        state.hook_owned.lock().await.remove(&parsed.identity);
                         state.born_bound.lock().await.remove(&row.session_id);
                         drop(lifecycle_guard);
                         tracing::warn!(
@@ -8942,7 +8942,7 @@ async fn execute_session_activation(
                                     == parsed.identity
                             })
                     {
-                        state.hook_owned.lock().await.remove(&row.session_id);
+                        state.hook_owned.lock().await.remove(&parsed.identity);
                         state.born_bound.lock().await.insert(row.session_id.clone());
                     }
                     drop(lifecycle_guard);
@@ -9116,17 +9116,13 @@ async fn apply_master_session_event(
         if applied
             && state
                 .registry
-                .lookup(&identity.session_id)
+                .lookup_identity(&identity)
                 .await
                 .is_some_and(|row| {
                     crate::session_registry::SessionIdentity::from_info(&row) == identity
                 })
         {
-            state
-                .hook_owned
-                .lock()
-                .await
-                .insert(identity.session_id.clone());
+            state.hook_owned.lock().await.insert(identity.clone());
             state.born_bound.lock().await.remove(&identity.session_id);
         }
         return (applied, None);
@@ -9168,24 +9164,14 @@ async fn apply_master_session_event(
         if matches!(
             resume,
             crate::agent_sessions::QualifiedResumeEvent::Dispatched
-        ) && state.hook_owned.lock().await.contains(&identity.session_id)
+        ) && state.hook_owned.lock().await.contains(&identity)
             && state.registry.has_in_use_hook_pane_owner(&identity).await
         {
             return (false, None);
         }
         let applied = state.registry.apply_event(event).await;
-        // Legacy watcher ownership is raw-keyed. Never change it on behalf of
-        // an ambiguous row or a different provider/backend with the same ID.
-        if applied
-            && state
-                .registry
-                .lookup(&identity.session_id)
-                .await
-                .is_some_and(|row| {
-                    crate::session_registry::SessionIdentity::from_info(&row) == identity
-                })
-        {
-            state.hook_owned.lock().await.remove(&identity.session_id);
+        if applied && state.registry.lookup_identity(&identity).await.is_some() {
+            state.hook_owned.lock().await.remove(&identity);
             if failed {
                 state.born_bound.lock().await.remove(&identity.session_id);
             } else {
@@ -9240,7 +9226,11 @@ async fn apply_master_session_event(
         let _gate_guard = gate.lock().await;
         let applied = state.registry.apply_event(event).await;
         if applied {
-            state.hook_owned.lock().await.remove(&sid);
+            state
+                .hook_owned
+                .lock()
+                .await
+                .retain(|identity| identity.session_id != sid);
             state.born_bound.lock().await.remove(&sid);
         }
         return (applied, refresh_key);
@@ -9276,6 +9266,7 @@ async fn apply_master_session_event(
             // Do not demote that live generation to watcher-owned or replace
             // its title/cwd with the persisted layout's older metadata.
             let mut preserve_live_binding = false;
+            let mut preserved_hook_identity = None;
             if is_born_bound {
                 if let crate::agent_sessions::SessionEvent::SessionStarted {
                     pane_session_id, ..
@@ -9292,10 +9283,16 @@ async fn apply_master_session_event(
                                     | crate::agent_sessions::AgentStatus::Working
                                     | crate::agent_sessions::AgentStatus::Attention
                             )
-                        ) && (state.hook_owned.lock().await.contains(&sid)
+                        ) && (state
+                            .hook_owned
+                            .lock()
+                            .await
+                            .contains(&crate::session_registry::SessionIdentity::from_info(&row))
                             || state.born_bound.lock().await.contains(&sid))
                         {
                             preserve_live_binding = true;
+                            preserved_hook_identity =
+                                Some(crate::session_registry::SessionIdentity::from_info(&row));
                         }
                     }
                 }
@@ -9324,12 +9321,27 @@ async fn apply_master_session_event(
                 (state.registry.apply_event(event).await, false)
             };
             if preserve_live_binding {
+                if let (Some(previous), Some(row)) =
+                    (preserved_hook_identity, state.registry.lookup(&sid).await)
+                {
+                    let current = crate::session_registry::SessionIdentity::from_info(&row);
+                    if previous != current {
+                        let mut hook_owned = state.hook_owned.lock().await;
+                        if hook_owned.remove(&previous) {
+                            hook_owned.insert(current);
+                        }
+                    }
+                }
                 return (applied, None);
             }
             if applied || (starts_new_generation && !native_pane_owned) {
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
-                state.hook_owned.lock().await.remove(&sid);
+                state
+                    .hook_owned
+                    .lock()
+                    .await
+                    .retain(|identity| identity.session_id != sid);
                 state.born_bound.lock().await.insert(sid.clone());
             }
             return (
@@ -9341,9 +9353,9 @@ async fn apply_master_session_event(
                 },
             );
         } else {
-            // Real hooks are authoritative for binding and activity. Claim
-            // ownership before the reducer so a concurrent watcher cannot slip
-            // between the state transition and the suppression marker.
+            // Real hooks are authoritative for binding and activity. The
+            // lifecycle gate keeps the reducer and exact ownership install
+            // atomic with respect to the watcher.
             //
             // `SessionStopped` deliberately cannot materialize an unseen row
             // (the cwd-basename ghost fix), so do not leave an ownership claim
@@ -9354,11 +9366,23 @@ async fn apply_master_session_event(
                     | crate::agent_sessions::SessionEvent::SessionStoppedIfOwner { .. }
                     | crate::agent_sessions::SessionEvent::SessionUnbound { .. }
             ) && state.registry.lookup(&sid).await.is_none();
-            if !unseen_terminal {
-                state.hook_owned.lock().await.insert(sid.clone());
-                state.born_bound.lock().await.remove(&sid);
-            }
             let applied = state.registry.apply_event(event).await;
+            if !unseen_terminal {
+                if let Some(row) = state.registry.lookup(&sid).await {
+                    state
+                        .hook_owned
+                        .lock()
+                        .await
+                        .insert(crate::session_registry::SessionIdentity::from_info(&row));
+                    state.born_bound.lock().await.remove(&sid);
+                } else {
+                    state
+                        .hook_owned
+                        .lock()
+                        .await
+                        .insert(crate::session_registry::SessionIdentity::legacy(sid.clone()));
+                }
+            }
             return (applied, refresh_key);
         }
     }
@@ -9458,9 +9482,7 @@ async fn apply_watcher_event(
         // real hooks, so a watcher cannot overwrite a hook that just took over.
         let gate = session_lifecycle_gate(state, &sid).await;
         let _guard = gate.lock().await;
-        if state.hook_owned.lock().await.contains(&sid)
-            || !state.born_bound.lock().await.contains(&sid)
-        {
+        if !state.born_bound.lock().await.contains(&sid) {
             return;
         }
 
@@ -9469,6 +9491,14 @@ async fn apply_watcher_event(
         let Some(row) = state.registry.lookup(&sid).await else {
             return;
         };
+        if state
+            .hook_owned
+            .lock()
+            .await
+            .contains(&crate::session_registry::SessionIdentity::from_info(&row))
+        {
+            return;
+        }
         if row.location != crate::agent_sessions::SessionLocation::Host
             || row.session_universe.is_some()
             || row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane)
@@ -11164,7 +11194,11 @@ where
     {
         return false;
     }
-    state.hook_owned.lock().await.insert(row.session_id.clone());
+    state
+        .hook_owned
+        .lock()
+        .await
+        .insert(crate::session_registry::SessionIdentity::from_info(&row));
     state.born_bound.lock().await.remove(&row.session_id);
     tracing::info!(
         target: "master_wt_event",
@@ -11283,7 +11317,7 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
                     .hook_owned
                     .lock()
                     .await
-                    .contains(&acp::schema::v1::SessionId::new(key.clone())) =>
+                    .contains(&crate::session_registry::SessionIdentity::from_info(&row)) =>
             {
                 String::new()
             }
@@ -11704,7 +11738,7 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                     )
                     .await;
                 if applied {
-                    let hook_owned = state.hook_owned.lock().await.contains(&sid);
+                    let hook_owned = state.hook_owned.lock().await.contains(&identity);
                     if !hook_owned {
                         state.born_bound.lock().await.insert(sid);
                     }
@@ -11778,7 +11812,9 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                             return;
                         }
                         event.canonical_owned =
-                            state.hook_owned.lock().await.contains(&owner.session_id);
+                            state.hook_owned.lock().await.contains(
+                                &crate::session_registry::SessionIdentity::from_info(&owner),
+                            );
                         state.registry.apply_native_observation(event).await
                     } else {
                         state.registry.apply_native_observation(event).await
