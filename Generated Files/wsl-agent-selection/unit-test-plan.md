@@ -60,6 +60,7 @@ listing a case here does not claim that its code exists or passed.
 | B14 | WSL native model A to B while host BYOK remains saved | Snapshot retains the WSL native model; source-qualified model update reaches only followers. |
 | B15 | Explicit `/agent` WSL request from PowerShell/cmd or another distro | Existing window/tab ownership and policy checks hold; no obsolete same-shell restriction. |
 | B16 | Saved custom ACP command with WSL, unknown, or malformed source; valid host controls | Reject unsupported sources before returning a custom probe command: no Windows process or model-cache publication. Empty/explicit host sources retain the configured custom command; valid built-in WSL probing retains its distro. |
+| B17 | Select the same custom ACP provider's Windows entry after loading an unsupported saved source, versus selecting it again from empty/explicit host | The source recovery follows the normal selection path: refresh command, clear the stale native model, request a model probe, and notify model/selection properties. Equivalent host reselection remains a no-op; provider changes retain existing behavior. |
 
 ## Rust decisions and protocol boundaries
 
