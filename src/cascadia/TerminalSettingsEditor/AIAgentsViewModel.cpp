@@ -1409,12 +1409,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"AgentPaneYoloModeVisibility", L"ShowGeminiYoloInfo");
             return;
         }
+        const auto currentBackend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::FromSettings(
+            _GlobalSettings.AcpAgent(), _GlobalSettings.AcpAgentSource());
         auto idStr = winrt::to_string(value.Id());
         if (idStr.starts_with("custom:"))
         {
-            const bool agentChanged = _GlobalSettings.AcpAgent() != value.Id() ||
-                                      !::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SourceEquals(
-                                          L"host", _GlobalSettings.AcpAgentSource());
+            const bool agentChanged = !currentBackend ||
+                                      currentBackend->agentId != std::wstring_view{ value.Id() } ||
+                                      currentBackend->source != ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Host;
             _GlobalSettings.AcpAgentSource(L"host");
             if (!agentChanged)
             {
@@ -1469,9 +1471,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             LOG_HR_MSG(E_INVALIDARG, "Invalid ACP agent selection");
             return;
         }
-        if (backend->agentId == std::wstring_view{ _GlobalSettings.AcpAgent() } &&
+        if (currentBackend && backend->agentId == currentBackend->agentId &&
             ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::SourceEquals(
-                backend->SettingsSource(), _GlobalSettings.AcpAgentSource()))
+                backend->SettingsSource(), currentBackend->SettingsSource()))
         {
             if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
             {
