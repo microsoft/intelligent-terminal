@@ -1117,8 +1117,9 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWi
     const auto script = ShellIntegrationScriptContent();
     const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
 
-    // Restricted language and sessions owned by older versions have no registry.
-    const auto nullWrapperGuard = script.find("if ($null -eq $Global:__ShellInteg_Wrappers) { return }", rearmFunc);
+    // Sessions owned by older versions have no registry variable.
+    const auto registryGuard = script.find("if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }", rearmFunc);
+    const auto nullWrapperGuard = script.find("if ($null -eq $Global:__ShellInteg_Wrapper) { return }", registryGuard);
 
     // Guard 2: re-arm runs from PSConsoleHostReadLine and at script load, so it
     // must never throw. `prompt` can be ReadOnly/Constant in a hardened profile,
@@ -1128,7 +1129,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWi
     const auto catchAll = script.find("catch {", guardedSetItem);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, catchAll);
-    VERIFY_IS_TRUE(rearmFunc < nullWrapperGuard,
+    VERIFY_IS_TRUE(rearmFunc < registryGuard && registryGuard < nullWrapperGuard,
                    L"Re-arm must no-op when no wrapper of our own exists");
     VERIFY_IS_TRUE(nullWrapperGuard < tryStart &&
                        tryStart < guardedSetItem &&
@@ -1343,6 +1344,17 @@ $ErrorActionPreference = 'Stop'
 $env:INTELLIGENT_TERMINAL = '1'
 function Global:prompt { 'BASE> ' }
 function Global:PSConsoleHostReadLine { 'input' }
+function Assert-RestrictedPrompt {
+    param([string]$Expected)
+    $rendered = prompt
+    if (($rendered -replace '\x1b\][^\x07]*\x07', '') -cne $Expected) {
+        throw "Unexpected restricted-language prompt: $rendered"
+    }
+    foreach ($pattern in @('\x1b]133;A\x07', '\x1b]133;B\x07', '\x1b]9;9;', '\x1b]9001;ShellType;')) {
+        if (($rendered -split $pattern).Count -ne 2) { throw "Missing or duplicate marker: $pattern" }
+    }
+    if ($Global:__ShellInteg_Rendering) { throw 'Rendering flag remained set' }
+}
 $original = $function:prompt
 if ($Existing) {
     $Global:__ShellInteg_Installed = $true
@@ -1368,9 +1380,40 @@ if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Changed existing Rea
 if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after sourcing' }
 function Global:prompt { 'REPLACED> ' }
 $replacement = $function:prompt
+if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine changed the input' }
+if ($function:prompt -ne $replacement) { throw 'Unexpected automatic rearm' }
 . $IntegrationPath
 __ShellInteg_Rearm
-if ($function:prompt -ne $replacement) { throw 'Rearmed a restricted or older session' }
+if ($Existing) {
+    if ($function:prompt -ne $replacement) { throw 'Rearmed an older session' }
+} else {
+    if ($function:prompt -eq $replacement) { throw 'Manual rearm did not wrap the replacement' }
+    Assert-RestrictedPrompt 'REPLACED> '
+    $sharedWrapper = $function:prompt
+    . $IntegrationPath
+    if ($function:prompt -ne $sharedWrapper) { throw 'Repeated sourcing changed the shared wrapper' }
+    Assert-RestrictedPrompt 'REPLACED> '
+
+    $Global:RestrictedSavedPrompt = $function:prompt
+    $Global:RestrictedPromptDepth = 0
+    $Global:RestrictedPromptCalls = 0
+    function Global:prompt {
+        $Global:RestrictedPromptDepth++
+        $Global:RestrictedPromptCalls++
+        try {
+            if ($Global:RestrictedPromptDepth -gt 8) { throw 'Unexpected prompt recursion' }
+            'CHAIN[' + (& $Global:RestrictedSavedPrompt) + ']'
+        }
+        finally { $Global:RestrictedPromptDepth-- }
+    }
+    . $IntegrationPath
+    Assert-RestrictedPrompt 'CHAIN[REPLACED> ]'
+    if ($Global:RestrictedPromptCalls -ne 1) { throw 'Chained prompt was called more than once' }
+    . $IntegrationPath
+    Assert-RestrictedPrompt 'CHAIN[REPLACED> ]'
+    if ($Global:RestrictedPromptCalls -ne 2) { throw 'Repeated sourcing changed the chained delegate' }
+}
+if ($function:PSConsoleHostReadLine -ne $readLine) { throw 'Re-sourcing replaced the input function' }
 if ((PSConsoleHostReadLine) -cne 'input') { throw 'Existing ReadLine failed after repeated sourcing' }
 if ($Error.Count -ne 0) { throw 'Loading introduced errors' }
 'passed'

@@ -979,8 +979,9 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // v14: limit shell integration to Intelligent Terminal using its host marker.
     // v15: keep per-wrapper prompt delegates stable across renderer restoration.
     // v16: safely leave older sessions untouched when strict mode is enabled.
+    // v17: retain manual prompt rearming in constrained language.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 16;
+    inline constexpr int kVersion = 17;
 
     inline std::wstring ScriptFileName()
     {
@@ -1042,6 +1043,7 @@ if (-not $Global:__ShellInteg_Installed) {
     $Global:__ShellInteg_LastErrorRecord = $Error[0]
     $Global:__ShellInteg_LastSubmittedLine = $null
     $Global:__ShellInteg_Wrappers = $null
+    $Global:__ShellInteg_PrevPrompt = $null
     $Global:__ShellInteg_Rendering = $false
     $Global:__ShellInteg_CanInspectErrors =
         $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
@@ -1194,6 +1196,13 @@ if (-not $Global:__ShellInteg_Installed) {
         # A chaining renderer can call an older wrapper. Each wrapper keeps
         # its own delegate; only the outermost wrapper emits command marks.
         if ($Global:__ShellInteg_Rendering) {
+            # ConstrainedLanguage retains the shared wrapper's chaining fallback.
+            if (-not $Global:__ShellInteg_CanInspectErrors) {
+                if ($Global:__ShellInteg_PrevPrompt) {
+                    return (& $Global:__ShellInteg_PrevPrompt)
+                }
+                return ''
+            }
             if ($gle -eq 0) { $null = $true }
             else { Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction Ignore }
             return (& $__ShellInteg_OriginalPrompt)
@@ -1316,7 +1325,7 @@ if (-not $Global:__ShellInteg_Installed) {
         }
     }
 
-    # Restricted language keeps the initial wrapper and does not re-arm.
+    # Restricted language keeps the shared wrapper for manual rearming.
     # FullLanguage wrappers capture a private delegate instead of changing
     # the global fallback when an external renderer takes over prompt.
     $Global:__ShellInteg_Wrapper = $function:prompt
@@ -1336,12 +1345,13 @@ if (-not $Global:__ShellInteg_Installed) {
 # Recognize restored wrappers as well as the most recent one. Weak keys avoid
 # retaining every transient renderer for the lifetime of an interactive shell.
 function Global:__ShellInteg_Rearm {
-    # No registry in restricted language or when an older integration already
-    # owns the session. Leave its prompt untouched until the next shell.
+    # Older integrations never initialized this variable. Leave those sessions
+    # untouched; a null value in this version instead means restricted language.
     if (-not (Get-Variable -Name __ShellInteg_Wrappers -Scope Global -ErrorAction Ignore)) { return }
-    if ($null -eq $Global:__ShellInteg_Wrappers) { return }
+    if ($null -eq $Global:__ShellInteg_Wrapper) { return }
     $current = $function:prompt
     if ($null -eq $current) { return }
+    if ($current -eq $Global:__ShellInteg_Wrapper) { return }
 
     # Best-effort. This runs from PSConsoleHostReadLine, so a throw here would
     # break the input path, and at script load, where it would break profile
@@ -1349,6 +1359,16 @@ function Global:__ShellInteg_Rearm {
     # profile, which makes Set-Item raise SessionStateUnauthorizedAccessException.
     # Shell integration is a convenience; never let it take the shell down.
     try {
+        # No automatic readline hook in ConstrainedLanguage, but re-sourcing
+        # the integration still restores the original shared-state wrapper.
+        if (-not $Global:__ShellInteg_CanInspectErrors) {
+            if ($current -ne $Global:__ShellInteg_OriginalPrompt) {
+                $Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt
+                $Global:__ShellInteg_OriginalPrompt = $current
+            }
+            Set-Item Function:\global:prompt $Global:__ShellInteg_Wrapper -ErrorAction Stop
+            return
+        }
         $known = $null
         if ($Global:__ShellInteg_Wrappers.TryGetValue($current, [ref]$known)) {
             $Global:__ShellInteg_Wrapper = $current
