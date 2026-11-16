@@ -18,11 +18,15 @@ const WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES: u32 = 8;
 const WTCLI_LISTENER_STABLE_UPTIME: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
-enum WtcliOneShotError {
+pub(crate) enum WtcliOneShotError {
     Spawn(std::io::Error),
     Wait(std::io::Error),
     ReadStdout(std::io::Error),
     ReadStderr(std::io::Error),
+    UncorrelatedNativeResumeExit {
+        status: std::process::ExitStatus,
+        stderr: String,
+    },
     TimedOut {
         timeout: Duration,
         kill_error: Option<std::io::Error>,
@@ -38,6 +42,10 @@ impl std::fmt::Display for WtcliOneShotError {
             Self::Wait(error) => write!(f, "failed to wait for wtcli: {error}"),
             Self::ReadStdout(error) => write!(f, "failed to read wtcli stdout: {error}"),
             Self::ReadStderr(error) => write!(f, "failed to read wtcli stderr: {error}"),
+            Self::UncorrelatedNativeResumeExit { status, stderr } => write!(
+                f,
+                "native profile resume outcome unknown after wtcli exited with {status}: {stderr}"
+            ),
             Self::TimedOut {
                 timeout,
                 kill_error,
@@ -67,16 +75,61 @@ impl std::error::Error for WtcliOneShotError {
             | Self::Wait(error)
             | Self::ReadStdout(error)
             | Self::ReadStderr(error) => Some(error),
-            Self::TimedOut { .. } => None,
+            Self::TimedOut { .. } | Self::UncorrelatedNativeResumeExit { .. } => None,
         }
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct InvalidNativeResumeReceipt(pub(crate) &'static str);
+
+impl std::fmt::Display for InvalidNativeResumeReceipt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid native profile resume receipt: {}", self.0)
+    }
+}
+
+impl std::error::Error for InvalidNativeResumeReceipt {}
 
 pub(crate) fn request_outcome_unknown(error: &anyhow::Error) -> bool {
     error
         .downcast_ref::<WtcliOneShotError>()
         .is_some_and(|error| !matches!(error, WtcliOneShotError::Spawn(_)))
         || error.downcast_ref::<serde_json::Error>().is_some()
+        || error.downcast_ref::<InvalidNativeResumeReceipt>().is_some()
+}
+
+pub(crate) fn classify_wtcli_output(
+    output: std::process::Output,
+    native_resume_request_id: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if let Some(request_id) = native_resume_request_id {
+            // COM may have created the pane before receipt allocation,
+            // marshalling, or CLI parsing failed. Only a correlated receipt
+            // can distinguish rejection from an unacknowledged creation.
+            if let Ok(reply) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+                if reply["request_id"].as_str() == Some(request_id) && reply["success"].is_boolean()
+                {
+                    return Ok(reply);
+                }
+            }
+            return Err(WtcliOneShotError::UncorrelatedNativeResumeExit {
+                status: output.status,
+                stderr: stderr.trim().to_owned(),
+            }
+            .into());
+        }
+        bail!("wtcli failed: {}", stderr.trim());
+    }
+
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")
 }
 
 async fn read_pipe<R>(pipe: Option<R>) -> std::io::Result<Vec<u8>>
@@ -215,6 +268,64 @@ fn json_id_as_str(v: &serde_json::Value) -> Option<String> {
 fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
     value.get("_wtcli").and_then(|value| value.as_str()) == Some("listener_ready")
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
+}
+
+fn native_profile_resume_event(params: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"event", "method":"resume_in_new_agent_tab", "params":params})
+}
+
+async fn native_profile_resume_request<F, R>(
+    params: serde_json::Value,
+    send: F,
+) -> anyhow::Result<serde_json::Value>
+where
+    F: FnOnce(serde_json::Value) -> R,
+    R: Future<Output = anyhow::Result<serde_json::Value>>,
+{
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let mut event = params["native_profile_resume"].clone();
+    event["request_id"] = serde_json::json!(request_id);
+    event["resume_target"] = serde_json::json!("native");
+    event["agent_source"] = serde_json::json!("host");
+    event["window_id"] = serde_json::json!(params["window_id"].to_string().trim_matches('"'));
+    for key in ["cwd", "title"] {
+        if let Some(value) = params.get(key) {
+            event[key] = value.clone();
+        }
+    }
+    if let Some(profile) = params.get("profile") {
+        event["profile_id"] = profile.clone();
+    }
+    // Exactly one request owns creation and its result; never retry a mutation
+    // because an unrelated background event listener disconnected.
+    let reply = send(native_profile_resume_event(event)).await?;
+    native_profile_resume_result(&request_id, reply)
+}
+
+pub(crate) fn native_profile_resume_result(
+    request_id: &str,
+    reply: serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    if reply["request_id"].as_str() != Some(request_id) {
+        return Err(InvalidNativeResumeReceipt("request ID mismatch or missing receipt").into());
+    }
+    match reply["success"].as_bool() {
+        Some(false) => bail!("Native profile resume failed: {}", reply["error"]),
+        Some(true) => {}
+        None => return Err(InvalidNativeResumeReceipt("missing success status").into()),
+    }
+    if !reply["result"]["session_id"]
+        .as_str()
+        .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok_and(|id| !id.is_nil()))
+        || !reply["result"]["tab_id"]
+            .as_str()
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok_and(|id| !id.is_nil()))
+    {
+        return Err(
+            InvalidNativeResumeReceipt("missing exact created pane or tab identity").into(),
+        );
+    }
+    Ok(reply["result"].clone())
 }
 
 fn managed_listener_args<'a>(parent_pid: &'a str, ready_token: &'a str) -> [&'a str; 7] {
@@ -781,6 +892,10 @@ impl CliChannel {
                                             tracing::debug!(target: "wtcli", "ignored externally supplied listener readiness event");
                                             continue;
                                         }
+                                        if val["method"] == "native_profile_resume_result" {
+                                            // Legacy receipts are not creation request results.
+                                            continue;
+                                        }
                                         let tx = this.event_tx.lock().unwrap();
                                         if let Some(tx) = tx.as_ref() {
                                             let _ = tx.send(val);
@@ -927,6 +1042,14 @@ impl CliChannel {
     /// Run a wtcli subcommand and return the parsed JSON output.
     /// wtcli inherits WT_COM_CLSID from this process's env.
     async fn run_wtcli(&self, args: &[&str]) -> anyhow::Result<serde_json::Value> {
+        self.run_wtcli_with_native_resume_id(args, None).await
+    }
+
+    async fn run_wtcli_with_native_resume_id(
+        &self,
+        args: &[&str],
+        native_resume_request_id: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
         let args: Vec<String> = std::iter::once("--json".to_string())
             .chain(args.iter().map(|arg| (*arg).to_string()))
             .collect();
@@ -935,19 +1058,7 @@ impl CliChannel {
                 .await
                 .context("Failed to run wtcli")?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("wtcli failed: {}", stderr.trim());
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() {
-            return Ok(serde_json::Value::Null);
-        }
-        let val: serde_json::Value =
-            serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
-        Ok(val)
+        classify_wtcli_output(output, native_resume_request_id)
     }
 }
 
@@ -1079,6 +1190,24 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "create_tab" => {
+                if params["native_profile_resume"].is_object() {
+                    return native_profile_resume_request(params, |event| async move {
+                        let window_id = event["params"]["window_id"]
+                            .as_str()
+                            .context("Native profile resume requires a window ID")?;
+                        self.run_wtcli_with_native_resume_id(
+                            &[
+                                "native-profile-resume",
+                                "--window-id",
+                                window_id,
+                                &event.to_string(),
+                            ],
+                            event["params"]["request_id"].as_str(),
+                        )
+                        .await
+                    })
+                    .await;
+                }
                 let mut args = vec!["new-tab"];
                 if let Some(provider) = params
                     .get("native_agent_provider_id")
@@ -1516,6 +1645,182 @@ mod tests {
             }
             other => panic!("expected timeout, got {other}"),
         }
+    }
+
+    #[test]
+    fn native_profile_resume_sends_an_internal_request_not_a_legacy_hook_event() {
+        let event = native_profile_resume_event(
+            serde_json::json!({"session_id":"known","request_id":"owned"}),
+        );
+        assert_eq!(event["method"], "resume_in_new_agent_tab");
+        assert_eq!(event["params"]["session_id"], "known");
+        assert!(event["params"].get("event").is_none());
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_process_exit_without_receipt_is_uncertain() {
+        let args = vec![
+            "/D".to_string(),
+            "/S".to_string(),
+            "/C".to_string(),
+            "(echo CallJson failed 1>&2) & exit /b 1".to_string(),
+        ];
+        let output = run_wtcli_one_shot("cmd.exe", &args, true, true, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(!output.status.success());
+        let ordinary_error = classify_wtcli_output(output.clone(), None).unwrap_err();
+        assert!(!request_outcome_unknown(&ordinary_error));
+        let native_error = classify_wtcli_output(output, Some("owned")).unwrap_err();
+        assert!(request_outcome_unknown(&native_error));
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_receipt_survives_listener_loss_without_recreating_tab() {
+        let created_pane = "8cf9d04a-c16d-42be-9e78-982a5ecb4549";
+        let created_tab = "046ca37b-72b3-429b-a7d3-67402f41e332";
+        for listener_state in ["unavailable", "reconnecting", "exhausted"] {
+            let channel = CliChannel::with_test_executable("unused".into());
+            let (events, receiver) = mpsc::unbounded_channel();
+            if listener_state != "unavailable" {
+                *channel.event_tx.lock().unwrap() = Some(events);
+            }
+            if listener_state == "exhausted" {
+                let mut retry = ListenerRetryState::new();
+                for _ in 0..WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
+                    retry.after_failure(None);
+                }
+                assert_eq!(retry.after_failure(None), None);
+                channel.available.store(false, Ordering::Relaxed);
+            }
+            let mut creations = 0;
+            let result = native_profile_resume_request(
+                serde_json::json!({
+                    "window_id": "42",
+                    "profile": "requested-profile",
+                    "cwd": "C:\\workspace",
+                    "native_profile_resume": {
+                        "session_id": "external-session",
+                        "agent_id": "custom:hookless",
+                        "tab_id": "source-tab"
+                    }
+                }),
+                |event| {
+                    creations += 1;
+                    assert_eq!(event["params"]["session_id"], "external-session");
+                    assert_eq!(event["params"]["profile_id"], "requested-profile");
+                    assert_eq!(event["params"]["window_id"], "42");
+                    assert_eq!(event["params"]["cwd"], "C:\\workspace");
+                    // Lose the background subscription at successful creation.
+                    drop(receiver);
+                    channel.available.store(false, Ordering::Relaxed);
+                    async move {
+                        Ok(serde_json::json!({
+                            "request_id": event["params"]["request_id"],
+                            "success": true,
+                            "result": {"session_id": created_pane, "tab_id": created_tab}
+                        }))
+                    }
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(result["session_id"], created_pane, "{listener_state}");
+            assert_eq!(result["tab_id"], created_tab, "{listener_state}");
+            assert_eq!(creations, 1, "listener retries must not recreate the tab");
+        }
+    }
+
+    #[test]
+    fn native_profile_resume_rejects_missing_foreign_or_inexact_receipts() {
+        for receipt in [
+            serde_json::Value::Null,
+            serde_json::json!({"request_id": "other", "success": true}),
+            serde_json::json!({"request_id": "owned", "success": true}),
+            serde_json::json!({"request_id": "owned", "success": true,
+                "result": {"session_id": "", "tab_id": "046ca37b-72b3-429b-a7d3-67402f41e332"}}),
+            serde_json::json!({"request_id": "owned", "success": true,
+                "result": {"session_id": "00000000-0000-0000-0000-000000000000", "tab_id": "046ca37b-72b3-429b-a7d3-67402f41e332"}}),
+        ] {
+            let error = native_profile_resume_result("owned", receipt).unwrap_err();
+            assert!(request_outcome_unknown(&error));
+        }
+        let error = native_profile_resume_result(
+            "owned",
+            serde_json::json!({
+                "request_id": "owned", "success": false,
+                "error": "The native agent provider is blocked by policy."
+            }),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("blocked by policy"));
+        assert!(!request_outcome_unknown(&error));
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_does_not_retry_an_uncertain_creation() {
+        let mut creations = 0;
+        let error = native_profile_resume_request(
+            serde_json::json!({"window_id": "42", "native_profile_resume": {}}),
+            |_| {
+                creations += 1;
+                async { Ok(serde_json::Value::Null) }
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(creations, 1);
+        assert!(request_outcome_unknown(&error));
+    }
+
+    #[tokio::test]
+    async fn native_profile_resume_requires_exact_tab_uuid_without_retry() {
+        for tab_id in [
+            None,
+            Some(""),
+            Some(" \t"),
+            Some("created-tab"),
+            Some("00000000-0000-0000-0000-000000000000"),
+        ] {
+            let mut creations = 0;
+            let error = native_profile_resume_request(
+                serde_json::json!({"window_id": "42", "native_profile_resume": {}}),
+                |event| {
+                    creations += 1;
+                    async move {
+                        let mut reply = serde_json::json!({
+                            "request_id": event["params"]["request_id"],
+                            "success": true,
+                            "result": {"session_id": "8cf9d04a-c16d-42be-9e78-982a5ecb4549"}
+                        });
+                        if let Some(tab_id) = tab_id {
+                            reply["result"]["tab_id"] = serde_json::json!(tab_id);
+                        }
+                        Ok(reply)
+                    }
+                },
+            )
+            .await
+            .unwrap_err();
+            assert!(request_outcome_unknown(&error), "{tab_id:?}");
+            assert_eq!(creations, 1, "{tab_id:?} must not retry creation");
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_native_profile_resume_drops_its_owned_operation() {
+        let (started, waiting) = oneshot::channel::<()>();
+        let operation = native_profile_resume_request(
+            serde_json::json!({"window_id": "42", "native_profile_resume": {}}),
+            |_| async move {
+                let _owned = started;
+                std::future::pending().await
+            },
+        );
+        let mut operation = Box::pin(operation);
+        assert!(futures::poll!(&mut operation).is_pending());
+        drop(operation);
+        assert!(waiting.await.is_err());
     }
 
     #[test]

@@ -3007,7 +3007,7 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Geben Sie eine Modell-ID ein, die dieser Agent unterstützt. Lassen Sie das Feld leer, um die eigene Konfiguration des Agenten zu verwenden. Gilt für neue Sitzungen.</value>
+    <value>Geben Sie eine Modell-ID ein, die dieser Agent unterstützt. Lassen Sie das Feld leer, um die eigene Konfiguration des Agenten zu verwenden.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3077,5 +3077,17 @@ Alt+Shift+/ einen Prompt eingeben; Alt+Shift+B ohne anfänglichen Prompt starten
   <data name="AgentProfilesIntroductionDescription.Text" xml:space="preserve">
     <value>Terminal fügt Ihre installierten Agenten-CLIs automatisch als Profile hinzu. Öffnen Sie zum Einstieg eines davon über das Menü für neue Registerkarten.</value>
     <comment>Explains automatically generated profiles for installed AI command-line tools. The new tab menu is the dropdown beside the new tab button. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>Agentenprofil</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>Argumente zum Fortsetzen</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>Werden nur beim Fortsetzen einer Sitzung nach den normalen Startargumenten hinzugefügt. Die Sitzungs-ID wird automatisch angehängt.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

@@ -597,6 +597,7 @@ try
         "create_tab",
         "split_pane",
         "create_agent_cli_tab",
+        "create_native_profile_resume_tab",
         "split_agent_cli_pane",
         "close_pane",
         "send_input",
@@ -988,6 +989,30 @@ STDMETHODIMP TerminalProtocolComServer::CreateAgentCliTab(unsigned __int64 windo
 try
 {
     return _CreateTab(windowId, profile, commandline, title, startingDirectory, suppressAppTitle, background, _CanonicalNativeAgentProviderId(_hstr(providerId)), json);
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::CreateNativeProfileResumeTab(unsigned __int64 windowId, BSTR eventJson, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    RETURN_HR_IF(E_INVALIDARG, windowId == 0);
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto logic = host->Logic();
+        if (logic && logic.WindowProperties().WindowId() == windowId)
+        {
+            const auto page = _getPage(host.get());
+            RETURN_HR_IF(E_FAIL, !page);
+            const auto receipt = page.CreateNativeProfileResumeTab(_hstr(eventJson)).get();
+            *json = SysAllocStringLen(receipt.c_str(), receipt.size());
+            RETURN_HR_IF_NULL(E_OUTOFMEMORY, *json);
+            return S_OK;
+        }
+    }
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

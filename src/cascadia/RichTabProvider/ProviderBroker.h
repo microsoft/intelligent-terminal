@@ -35,11 +35,21 @@ namespace Microsoft::Terminal::RichTab::Provider
             bool operator==(const TextRange&) const = default;
         };
 
+        struct FieldRange
+        {
+            std::string field;
+            size_t start;
+            size_t length;
+
+            bool operator==(const FieldRange&) const = default;
+        };
+
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
         std::vector<TextRange> agentStatusRanges;
         std::string agentStatus;
+        std::vector<FieldRange> fieldRanges;
 
         bool operator==(const Presentation&) const = default;
     };

@@ -331,8 +331,7 @@
                                     VerticalContentAlignment="Stretch"
                                     AutomationProperties.AccessibilityView="Raw"
                                     AutomationProperties.Name="{x:Bind ProviderDisplayName}"
-                                    Content="{Binding Foreground, ElementName=HistoryTitleText}"
-                                    ContentTemplate="{x:Bind IconTemplate}"
+                                    Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
                                     IsTabStop="False" />
                     <Grid x:Name="HistoryTitleGroup"
                           Grid.Column="1"
@@ -1181,11 +1180,13 @@
                                                                                           ColorHighlight="{x:Bind MetadataHighlightColor, Mode=OneWay}"
                                                                                           ColorHighlightRanges="{x:Bind MetadataHighlightRanges, Mode=OneWay}"
                                                                                           CriticalHighlightBrush="{ThemeResource SystemFillColorCriticalBrush}"
+                                                                                          EllipsisRanges="{x:Bind MetadataEllipsisRanges, Mode=OneWay}"
                                                                                           SearchText="{x:Bind HighlightQuery, Mode=OneWay}"
                                                                                           Style="{StaticResource SidebarCaptionControlStyle}"
                                                                                           SuccessHighlightBrush="{ThemeResource SystemFillColorSuccessBrush}"
                                                                                           Text="{x:Bind MetadataText, Mode=OneWay}"
                                                                                           TextBlockStyle="{StaticResource SidebarMetadataTextStyle}"
+                                                                                          UsePathEllipsis="True"
                                                                                           Visibility="{x:Bind MetadataVisibility, Mode=OneWay}" />
                                                         </Grid>
                                                     </Button>

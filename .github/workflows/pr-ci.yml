@@ -1,8 +1,24 @@
-name: PR build and security analysis
+name: PR CI
 
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'installer/**'
+      - 'build/**'
+      - 'dep/**'
+      - 'oss/**'
+      - 'res/**'
+      - '.cargo/**'
+      - '.github/workflows/pr-ci.yml'
+      - '*.props'
+      - '*.targets'
+      - '*.sln*'
+      - 'NuGet.Config'
+      - 'vcpkg.json'
+      - 'dirs'
   push:
     branches: [main]
   workflow_dispatch:

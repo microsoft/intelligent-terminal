@@ -5,14 +5,63 @@
 
 #include "AgentPaneRestore.h"
 #include "AgentRegistry.h"
+#include "DynamicProfileIdentity.h"
+#include "../../types/inc/utils.hpp"
 #include <filesystem>
 #include <map>
 #include <shellapi.h>
+#include <span>
 #include <til/env.h>
 
 namespace Microsoft::Terminal::AgentProfiles
 {
     inline constexpr std::wstring_view Source{ L"IntelligentTerminal.AgentProfiles" };
+
+    inline std::wstring GeneratedIdentity(const std::wstring_view providerId)
+    {
+        return std::wstring{ Source } + L":" + std::wstring{ providerId };
+    }
+
+    inline winrt::guid GeneratedGuid(const std::wstring_view providerId)
+    {
+        const auto identity = GeneratedIdentity(providerId);
+        return winrt::guid{ ::Microsoft::Console::Utils::CreateV5Uuid(TERMINAL_PROFILE_NAMESPACE_GUID, std::as_bytes(std::span{ identity })) };
+    }
+
+    template<typename Profiles>
+    auto FindOriginal(const Profiles& profiles, const std::wstring_view providerId)
+    {
+        using Profile = decltype(profiles.GetAt(0));
+        Profile original{ nullptr };
+        if (Settings::Model::AgentRegistry::CanonicalNativeAgentProviderId(providerId).empty())
+        {
+            return original;
+        }
+        for (const auto& profile : profiles)
+        {
+            const auto id = profile.AgentProfileId();
+            const auto inherited = profile.AgentProfileIdOverrideSource();
+            // A saved case-only override does not change the generated parent's identity.
+            const auto originalId = inherited && inherited.Source() == Source && inherited.Guid() == profile.Guid() &&
+                                            (inherited.Origin() == winrt::Microsoft::Terminal::Settings::Model::OriginTag::Generated ||
+                                             inherited.Origin() == winrt::Microsoft::Terminal::Settings::Model::OriginTag::InBox) &&
+                                            Settings::Model::AgentRegistry::AgentIdEquals(inherited.AgentProfileId(), id) ?
+                                        inherited.AgentProfileId() :
+                                        id;
+            if (profile.Source() == Source &&
+                Settings::Model::AgentRegistry::AgentIdEquals(id, providerId) &&
+                profile.Guid() == GeneratedGuid(originalId))
+            {
+                // Case-distinct generated identities must not select an arbitrary original.
+                if (original)
+                {
+                    return Profile{ nullptr };
+                }
+                original = profile;
+            }
+        }
+        return original;
+    }
 
     inline std::wstring NativePath()
     {
@@ -172,6 +221,13 @@ namespace Microsoft::Terminal::AgentProfiles
     template<typename Profile>
     bool IsManaged(Profile&& profile)
     {
+        // Custom providers have no discoverable native CLI contract. Their
+        // profile command is explicitly configured independently of ACP.
+        // Per-launch shell overrides still revoke the receipt in the adapter.
+        if (std::wstring_view{ profile.AgentProfileId() }.starts_with(L"custom:"))
+        {
+            return Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() });
+        }
         if (!Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }) || profile.HasCommandline())
         {
             return false;
@@ -184,6 +240,30 @@ namespace Microsoft::Terminal::AgentProfiles
     std::wstring Command(const Profile& profile, const bool requireExecutable = false, const std::wstring_view path = NativePath())
     {
         THROW_HR_IF(E_INVALIDARG, !Settings::Model::AgentRegistry::SupportsNativeProfile(std::wstring_view{ profile.AgentProfileId() }));
+        if (std::wstring_view{ profile.AgentProfileId() }.starts_with(L"custom:"))
+        {
+            const auto values = ParseArguments(profile.Commandline());
+            if (values.empty())
+            {
+                THROW_HR_IF_MSG(E_INVALIDARG, requireExecutable, "Configure the native interactive command for this custom agent profile.");
+                return {};
+            }
+            std::wstring arguments;
+            for (size_t i = 1; i < values.size(); ++i)
+            {
+                AgentPaneRestore::AppendQuoted(arguments, values[i]);
+                arguments.push_back(L' ');
+            }
+            if (!profile.AgentProfileModel().empty())
+            {
+                AgentPaneRestore::AppendQuoted(arguments, L"--model");
+                arguments.push_back(L' ');
+                AgentPaneRestore::AppendQuoted(arguments, profile.AgentProfileModel());
+                arguments.push_back(L' ');
+            }
+            arguments.append(profile.AgentProfileArguments());
+            return BuildCommand(values.front(), profile.AgentProfileId(), {}, {}, arguments, requireExecutable);
+        }
         std::filesystem::path executable;
         try
         {
@@ -204,5 +284,49 @@ namespace Microsoft::Terminal::AgentProfiles
             executable = std::wstring{ Settings::Model::AgentRegistry::CliExecutable(std::wstring_view{ profile.AgentProfileId() }) } + L".exe";
         }
         return BuildCommand(executable.native(), profile.AgentProfileId(), profile.AgentProfileModel(), profile.AgentProfilePermissionMode(), profile.AgentProfileArguments(), requireExecutable);
+    }
+
+    // The profile owns both launch and resume options. The conversation ID is
+    // data, not a user-entered placeholder or a shell command.
+    template<typename Profile>
+    std::wstring ResumeCommand(Profile&& profile, const std::wstring_view sessionId, const bool requireExecutable = false)
+    {
+        THROW_HR_IF(E_INVALIDARG, !AgentSessionId::IsSafeForCliResume(sessionId));
+        const auto arguments = ParseArguments(profile.AgentProfileResumeArguments());
+        auto command = IsManaged(profile) ? Command(profile, requireExecutable) : std::wstring{ profile.Commandline() };
+        THROW_HR_IF(E_INVALIDARG, command.empty());
+        const auto batch = command.find(L" /d /s /v:off /c \"") != std::wstring::npos;
+        if (batch)
+        {
+            const auto safe = [](const std::wstring_view value) { return value.find_first_of(L"%!\"\r\n^") == std::wstring_view::npos; };
+            THROW_HR_IF(E_INVALIDARG, !safe(sessionId) || !std::ranges::all_of(arguments, safe));
+            THROW_HR_IF(E_INVALIDARG, command.back() != L'"');
+            command.pop_back();
+        }
+        for (const auto& argument : arguments)
+        {
+            command.push_back(L' ');
+            AgentPaneRestore::AppendQuoted(command, argument);
+        }
+        command.push_back(L' ');
+        AgentPaneRestore::AppendQuoted(command, sessionId);
+        if (batch)
+        {
+            command.push_back(L'"');
+        }
+        return command;
+    }
+
+    template<typename Profile>
+    bool IsProtected(Profile&& profile)
+    {
+        const auto provider = profile.AgentProfileId();
+        const auto id = std::wstring_view{ provider };
+        return profile.Guid() == winrt::guid{ L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}" } ||
+               (profile.Source() == Source &&
+                (!profile.Orphaned() ||
+                 (id.empty() && std::ranges::any_of(Settings::Model::AgentRegistry::BuiltinNativeProfileAgents,
+                                                    [&](const auto& agent) { return profile.Guid() == GeneratedGuid(agent.id); })) ||
+                 (!id.starts_with(L"custom:") && Settings::Model::AgentRegistry::SupportsNativeProfile(id))));
     }
 }

@@ -8,6 +8,7 @@
 //! returns them, so we subtract them here.
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
+use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -23,18 +24,13 @@ pub(crate) fn acp_session_to_agent_session(
         .as_deref()
         .and_then(parse_iso_to_system_time)
         .unwrap_or(SystemTime::UNIX_EPOCH);
-    let title = info
-        .title
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| short_id(&key, cli_label(cli)));
     AgentSession {
         key,
         cli_source: cli.clone(),
         pane_session_id: None,
         window_id: None,
         tab_id: None,
-        title,
+        title: info.title.clone().unwrap_or_default(),
         cwd: info.cwd.clone(),
         started_at: last,
         last_activity_at: last,
@@ -76,6 +72,18 @@ pub(crate) fn classify_and_map(
         .collect()
 }
 
+pub(crate) fn retain_titled_history(
+    rows: &mut Vec<AgentSession>,
+    sessions: &[agent_client_protocol::schema::v1::SessionInfo],
+) {
+    let titled_ids: HashSet<&str> = sessions
+        .iter()
+        .filter(|s| s.title.as_deref().is_some_and(|title| !title.is_empty()))
+        .map(|s| s.session_id.0.as_ref())
+        .collect();
+    rows.retain(|row| titled_ids.contains(row.key.as_str()));
+}
+
 pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
     match cli {
         CliSource::Copilot => "copilot",
@@ -112,13 +120,6 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds, parsed.nanosecond()))
 }
 
-/// Fallback display label for a session the agent listed without a title:
-/// the CLI name plus the first 8 characters of its session id.
-pub(crate) fn short_id(id: &str, cli: &str) -> String {
-    let head: String = id.chars().take(8).collect();
-    format!("{} {}", cli, head)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,10 +128,53 @@ mod tests {
     use std::path::PathBuf;
 
     fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
-        acp::schema::v1::SessionInfo::new(
+        let mut session = acp::schema::v1::SessionInfo::new(
             acp::schema::v1::SessionId::new(id.to_string()),
             PathBuf::from(cwd),
-        )
+        );
+        session.title = Some(id.to_string());
+        session
+    }
+
+    #[test]
+    fn history_requires_a_provider_title_across_agents_and_locations() {
+        let mut untitled = info("untitled", "C:\\project");
+        untitled.title = None;
+        let mut empty = info("empty", "C:\\project");
+        empty.title = Some(String::new());
+        let named = info("named", "C:\\project");
+        let rows = [untitled, empty, named];
+        let index = crate::agent_pane_origin::OriginIndex::default();
+        for cli in [
+            CliSource::Copilot,
+            CliSource::Claude,
+            CliSource::Codex,
+            CliSource::Gemini,
+            CliSource::OpenCode,
+            CliSource::Antigravity,
+            CliSource::Unknown("custom:agent".into()),
+        ] {
+            for location in [
+                SessionLocation::Host,
+                SessionLocation::Wsl {
+                    distro: "Ubuntu".into(),
+                },
+                SessionLocation::Unknown,
+            ] {
+                let mut result = classify_and_map(&rows, &index, location.clone(), &cli);
+                assert_eq!(
+                    result.len(),
+                    3,
+                    "the inference inventory keeps untitled rows"
+                );
+                assert!(result[0].title.is_empty());
+                assert!(result[1].title.is_empty());
+                retain_titled_history(&mut result, &rows);
+                assert_eq!(result.len(), 1, "{cli:?} {location:?}");
+                assert_eq!(result[0].key, "named");
+                assert_eq!(result[0].title, "named");
+            }
+        }
     }
 
     #[test]
