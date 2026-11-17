@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <iterator>
+#include <stdexcept>
 #include <thread>
 
 namespace Microsoft::Terminal::RichTab::Provider
@@ -1404,6 +1405,77 @@ namespace Microsoft::Terminal::RichTab::Provider
             std::move(diagnostics),
             cwdToken
         };
+    }
+
+    std::optional<Presentation> ProviderBroker::OverlayAgentStatus(
+        const std::optional<Presentation>& presentation,
+        const std::wstring_view text,
+        const std::string_view status)
+    {
+        auto result = presentation.value_or(Presentation{});
+        const auto defaultTooltip = result.tooltip.empty() || result.tooltip == result.text;
+        for (auto range = result.agentStatusRanges.rbegin(); range != result.agentStatusRanges.rend(); ++range)
+        {
+            if (range->length == 0 || range->start >= result.text.size() ||
+                range->length > result.text.size() - range->start)
+            {
+                throw std::invalid_argument{ "Invalid agent status text range" };
+            }
+            auto start = range->start;
+            auto length = range->length;
+            if (start + length < result.text.size() && result.text[start + length] == L'\n')
+            {
+                ++length;
+            }
+            else if (start != 0 && result.text[start - 1] == L'\n')
+            {
+                --start;
+                ++length;
+            }
+            const auto end = start + length;
+            for (auto field = result.fieldRanges.begin(); field != result.fieldRanges.end();)
+            {
+                if (field->start >= end)
+                {
+                    field->start -= length;
+                    ++field;
+                }
+                else if (field->start <= start && field->length <= start - field->start)
+                {
+                    ++field;
+                }
+                else
+                {
+                    field = result.fieldRanges.erase(field);
+                }
+            }
+            result.text.erase(start, length);
+        }
+        result.agentStatusRanges.clear();
+        result.agentStatus.clear();
+        if (!text.empty())
+        {
+            const auto prefixLength = text.size() + (result.text.empty() ? 0 : 1);
+            for (auto& field : result.fieldRanges)
+            {
+                field.start += prefixLength;
+            }
+            if (!result.text.empty())
+            {
+                result.text.insert(0, L"\n");
+            }
+            result.text.insert(0, text);
+            result.agentStatusRanges.push_back({ 0, text.size() });
+            result.agentStatus = status;
+            result.fieldRanges.insert(result.fieldRanges.begin(), { "agentStatus", 0, text.size() });
+        }
+        if (result.text.empty())
+        {
+            return std::nullopt;
+        }
+        result.accessibilityText = result.text;
+        result.tooltip = defaultTooltip ? result.text : result.text + L"\n" + result.tooltip;
+        return result;
     }
 
     std::optional<Presentation> ProviderBroker::ComposePresentation(

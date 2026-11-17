@@ -39,7 +39,7 @@ setup.error.install_detection_timed_out: "ئورنىتىش تاماملاندى�
 auth.agent_selected: "AI ئاگېنتى %{name} تاللاندى"
 auth.agent_selected_with_status: "AI ئاگېنتى %{name} — "
 auth.checking_authentication: "  %{spinner} تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
-auth.waiting_for_authorization: "  %{spinner} ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
+auth.waiting_for_authorization: "  %{spinner} ھوقۇق بېرىلىشى كۈتۈلۈۋاتىدۇ..."
 auth.code_copied_hint: "  كود چاپلىغەن — توركۆرۈڭۈزگە چاپلاڭ."
 auth.device_code_prompt: "%{url} نى زىيارەت قىلىپ، كودنى كىرگۈزۈڭ: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  AI ئاگېنتى ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{name} نى باغلاڭ"
@@ -157,6 +157,8 @@ agents.status.waiting_for_input: "كىرگۈزۈش كۈتۈلۈۋاتىدۇ"
 agents.status.error: "خاتالىق"
 # Status badge when agent session has no active work
 agents.status.idle: "بوش"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "تاماملاندى"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "ئىشلىتىلىۋاتىدۇ"
 

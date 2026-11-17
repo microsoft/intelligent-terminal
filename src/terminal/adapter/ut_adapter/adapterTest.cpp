@@ -226,6 +226,11 @@ public:
         Log::Comment(L"NotifyShellIntegrationMark MOCK called...");
     }
 
+    void ProgramStatusPromptStarted()
+    {
+        ++_programStatusPromptStarted;
+    }
+
     void InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength) override
     {
         Log::Comment(L"InvokeCompletions MOCK called...");
@@ -415,6 +420,7 @@ public:
 
     std::wstring _expectedMenuJson{};
     unsigned int _expectedReplaceLength = 0;
+    size_t _programStatusPromptStarted = 0;
 
 private:
     HANDLE _hCon;
@@ -457,6 +463,28 @@ public:
         _pDispatch = nullptr;
         _testGetSet = nullptr;
         return true;
+    }
+
+    TEST_METHOD(ProgramStatusUnsupportedEndpoint)
+    {
+        // The default host capability must not advertise a consumer merely
+        // because the shared dispatch recognizes the OSC number.
+        _testGetSet->_returnResponseResult = true;
+        VERIFY_IS_FALSE(_testGetSet->SupportsProgramStatus());
+        _stateMachine->ProcessString(L"\x1b]7501;?\x1b\\");
+        _stateMachine->ProcessString(L"\x1b]7501;state=working:id=build\a");
+        VERIFY_IS_TRUE(_testGetSet->_response.empty());
+    }
+
+    TEST_METHOD(ProgramStatusPromptStartedDispatch)
+    {
+        _testGetSet->PrepData();
+        _stateMachine->ProcessString(L"\x1b]133;D;0\a");
+        _stateMachine->ProcessString(L"\x1b]133;B\a");
+        _stateMachine->ProcessString(L"\x1b]133;C\a");
+        VERIFY_ARE_EQUAL(size_t{ 0 }, _testGetSet->_programStatusPromptStarted);
+        _stateMachine->ProcessString(L"\x1b]133;A\a");
+        VERIFY_ARE_EQUAL(size_t{ 1 }, _testGetSet->_programStatusPromptStarted);
     }
 
     TEST_METHOD(CursorMovementTest)

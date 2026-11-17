@@ -225,5 +225,8 @@ namespace Microsoft.Terminal.Control
 
         event Windows.Foundation.TypedEventHandler<Object, CompletionsChangedEventArgs> CompletionsChanged;
 
+        String ProgramStatusJson();
+        void AcknowledgeProgramStatus(UInt64 revision);
+        event Windows.Foundation.TypedEventHandler<Object, Object> ProgramStatusChanged;
     };
 }

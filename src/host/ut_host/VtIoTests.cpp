@@ -270,6 +270,26 @@ class ::Microsoft::Console::VirtualTerminal::VtIoTests
         VERIFY_ARE_EQUAL(expected, actual);
     }
 
+    TEST_METHOD(ProgramStatusOrderedRelay)
+    {
+        const auto initialMode = screenInfo->OutputMode;
+        const auto cleanup = wil::scope_exit([&]() {
+            screenInfo->OutputMode = initialMode;
+        });
+        screenInfo->OutputMode = ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+        readOutput();
+        size_t written = 0;
+        // Exercise the actual host WriteConsole/ordered writer path, not an
+        // adapter pass-through callback. This is still not a live ConPTY test.
+        for (const auto fragment : { L"\x1b]75", L"01;?\x1b", L"\\\x1b[c", L"\x1b]7501;state=working:id=build\a" })
+        {
+            THROW_IF_FAILED(routines.WriteConsoleWImpl(*screenInfo, fragment, written, nullptr));
+        }
+        const auto actual = readOutput();
+        VERIFY_ARE_EQUAL("\x1b]7501;?\x1b\\\x1b[c\x1b]7501;state=working:id=build\a", actual);
+        VERIFY_IS_TRUE(readOutput().empty());
+    }
+
     TEST_METHOD(WriteConsoleOutputW)
     {
         resetContents();
