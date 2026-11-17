@@ -826,6 +826,23 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn opencode_host_command_fixture() {
+        if std::env::var_os("WTA_OPENCODE_SPAWN_FIXTURE_EXE").is_none() {
+            return;
+        }
+        println!(
+            "OPENCODE_SPAWN_FIXTURE:{}",
+            serde_json::json!({
+                "argv": std::env::args()
+                    .skip_while(|arg| arg != "--")
+                    .skip(1)
+                    .collect::<Vec<_>>(),
+                "cwd": std::env::current_dir().unwrap(),
+            })
+        );
+    }
+
     #[tokio::test]
     async fn opencode_host_command_runs_the_pinned_shim_with_atomic_arguments() {
         struct Fixture(PathBuf);
@@ -834,9 +851,10 @@ mod tests {
                 std::fs::remove_dir_all(&self.0).unwrap();
             }
         }
-        let fixture = Fixture(
-            std::env::temp_dir().join(format!("wta-opencode-spawn-{}", uuid::Uuid::new_v4())),
-        );
+        let fixture = Fixture(std::env::temp_dir().join(format!(
+            "wta-opencode-spawn-\u{65e5}\u{672c}\u{8a9e}-{}",
+            uuid::Uuid::new_v4()
+        )));
         let early = fixture.0.join("early & npm");
         let late = fixture.0.join("old exe");
         let child_cwd = fixture.0.join("pane & work");
@@ -846,7 +864,7 @@ mod tests {
         let shim = early.join("opencode.cmd");
         std::fs::write(
             &shim,
-            "@echo off\r\necho path=\"%~f0\"\r\necho arg1=\"%~1\"\r\necho arg2=\"%~2\"\r\necho cwd=\"%CD%\"\r\n",
+            "@echo off\r\n\"%WTA_OPENCODE_SPAWN_FIXTURE_EXE%\" --exact protocol::acp::spawn::tests::opencode_host_command_fixture --nocapture -- \"%~f0\" %*\r\n",
         )
         .unwrap();
         std::fs::write(late.join("opencode.exe"), "not the selected executable").unwrap();
@@ -862,7 +880,11 @@ mod tests {
         let output = tokio::time::timeout(
             Duration::from_secs(10),
             command
-                .args(["acp", "literal & value"])
+                .args(["acp", "literal & value", "\u{4e2d}\u{6587}"])
+                .env(
+                    "WTA_OPENCODE_SPAWN_FIXTURE_EXE",
+                    std::env::current_exe().unwrap(),
+                )
                 .current_dir(&child_cwd)
                 .output(),
         )
@@ -875,17 +897,16 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let stdout = String::from_utf8(output.stdout).unwrap();
-        for expected in [
-            format!("path=\"{}\"", shim.display()),
-            "arg1=\"acp\"".to_string(),
-            "arg2=\"literal & value\"".to_string(),
-            format!("cwd=\"{}\"", child_cwd.display()),
-        ] {
-            assert!(
-                stdout.contains(&expected),
-                "{stdout:?} missing {expected:?}"
-            );
-        }
+        let payload = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("OPENCODE_SPAWN_FIXTURE:"))
+            .unwrap_or_else(|| panic!("missing fixture output: {stdout}"));
+        let value: serde_json::Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(
+            value["argv"],
+            serde_json::json!([shim, "acp", "literal & value", "\u{4e2d}\u{6587}"])
+        );
+        assert_eq!(value["cwd"], serde_json::json!(child_cwd));
         std::fs::write(early.join("opencode.exe"), "same-directory native exe").unwrap();
         let (command, resolved) = host_agent_command(
             "opencode",
