@@ -125,6 +125,15 @@ log in, download anything, or write provider configuration. The native CLI may
 perform its own normal authentication, networking and configuration behavior.
 Native hooks already installed by the user continue to work normally.
 
+For default Windows OpenCode discovery, hook version checks, and managed launches,
+PATH directories take priority over file extensions: an earlier `opencode.cmd`
+wins over a later `opencode.exe`; within one directory, `.exe` wins over `.cmd`.
+The effective PATH keeps fresh registry entries before inherited process entries,
+and the selected absolute path is retained for launch. Hook reconciliation can
+therefore repair a current-version plugin installed for the wrong OpenCode API.
+Other providers, explicit/custom commands, WSL, shell aliases, and delegation are
+unchanged. Concurrent OpenCode majors sharing one plugin directory are not supported.
+
 The exact contract is:
 
 ```text

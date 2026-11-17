@@ -27,13 +27,19 @@ fn profile(id: &str) -> Result<&'static AgentProfile> {
 }
 
 /// Unlike ACP resolution, interactive Claude accepts its npm shim and no
-/// provider needs npx or an adapter package. Preserve the registry's extension
-/// priority across PATH directories, including runtime-only PATH entries.
+/// provider needs npx or an adapter package. OpenCode follows PATH directory
+/// order; other providers retain the registry's cross-directory extension priority.
 fn find_in_path(
     profile: &AgentProfile,
     path: &OsStr,
     is_file: impl Fn(&Path) -> std::io::Result<bool>,
 ) -> Result<Option<PathBuf>> {
+    if profile.id == crate::agent_registry::OPENCODE_AGENT_ID {
+        let cwd =
+            std::env::current_dir().context("cannot capture native agent resolution directory")?;
+        return crate::agent_check::find_opencode_in_path(path, &cwd, is_file)
+            .context("cannot inspect native agent executable");
+    }
     for extension in profile.exe_search_order {
         for directory in
             std::env::split_paths(path).filter(|directory| !directory.as_os_str().is_empty())
