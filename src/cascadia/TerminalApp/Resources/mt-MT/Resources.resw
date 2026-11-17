@@ -403,9 +403,9 @@
     <value>Metadata tat-tab</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Status ta&apos; aġent</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>Status</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>Direttorju tax-xogħol kurrenti</value>

@@ -520,9 +520,9 @@
     <value>ଟ୍ୟାବ୍ ମେଟାଡାଟା</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>ଏଜେଣ୍ଟ ସ୍ଥିତି</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>ସ୍ଥିତି</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟ ଡିରେକ୍ଟୋରୀ</value>

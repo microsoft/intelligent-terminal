@@ -730,7 +730,7 @@
                                         IsEnabled="False"
                                         Style="{StaticResource RichTabMetadataSectionStyle}" />
                         <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
-                                              x:Uid="VerticalTabsMetadataAgentStatus"
+                                              x:Uid="VerticalTabsMetadataStatus"
                                               Click="OnRichTabAgentStatusVisibleClick"
                                               IsChecked="True" />
                         <ToggleMenuFlyoutItem x:Name="RichTabWorkingDirectoryVisibleItem"

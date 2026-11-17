@@ -242,9 +242,9 @@
     <value>탭 메타데이터</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>에이전트 상태</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>상태</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>현재 작업 디렉터리</value>

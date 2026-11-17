@@ -403,9 +403,9 @@
     <value>Metadata tab</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Inbhe àidseant</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>Inbhe</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>Leabhar-seòlaidh obrach làithreach</value>

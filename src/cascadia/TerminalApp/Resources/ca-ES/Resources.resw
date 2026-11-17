@@ -334,9 +334,9 @@
     <value>Metadades de la pestanya</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>Estat d&apos;agent</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>Estat</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>Directori de treball actual</value>

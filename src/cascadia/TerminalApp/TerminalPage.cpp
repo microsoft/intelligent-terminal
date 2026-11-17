@@ -938,7 +938,7 @@ namespace winrt::TerminalApp::implementation
             richTabBroker.SetFieldDisplayNames(
                 gitStatusProviderId,
                 {
-                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataAgentStatus/Text")) },
+                    { "agentStatus", winrt::to_string(RS_(L"VerticalTabsMetadataStatus/Text")) },
                     { "workingDirectory", winrt::to_string(RS_(L"VerticalTabsMetadataWorkingDirectory/Text")) },
                     { "repository", winrt::to_string(RS_(L"VerticalTabsMetadataRepository/Text")) },
                     { "branch", winrt::to_string(RS_(L"VerticalTabsMetadataBranch/Text")) },
