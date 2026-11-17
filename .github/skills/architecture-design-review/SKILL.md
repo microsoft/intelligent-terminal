@@ -44,8 +44,8 @@ inspection on the paths that could materially change the recommendation.
 Follow a concrete risk hypothesis through actual owners and consumers, then
 seek evidence that could refute it. Stop expanding that trace when the evidence
 supports a decision; investigate further only when it could change the
-consequence, confidence or proposed alternative. Use the lenses below where
-relevant, not as a checklist to exhaust for every file.
+consequence, confidence or proposed alternative. Apply relevant design principles,
+not a checklist to exhaust for every file.
 
 Use the available execution budget deliberately. If a consequential uncertainty
 cannot be resolved, name the missing evidence and next focused investigation
@@ -55,18 +55,28 @@ with cosmetic suggestions or a file-by-file inventory.
 
 ## Design judgment
 
-| Lens | Source-backed question | Preserve intentional cases |
-| --- | --- | --- |
-| Responsibilities and layering | Which owner changes for which requirement? Does a new dependency reverse an established boundary or couple unrelated consumers? | Cohesive domain owners and documented composition roots. |
-| KISS | Which demonstrated requirement needs the new abstraction or orchestration? Is there a simpler equivalent that preserves ordering, lifetime and compatibility? | Necessary platform boundaries, concurrency and bounded extension points. |
-| SOLID | Do consumers now depend on unrelated responsibilities, break substitutability, or require coordinated changes across a stable boundary? | Concrete types where interfaces add no value; deliberate closed contracts. |
-| DRY | Are two owners implementing the same policy or invariant, so one consumer can diverge when it changes? Trace both implementations and their callers. | Similar-looking code with different permissions, lifetime or customization contracts. |
-| MVVM | Trace state owner, command, binding and notification to the consumer. Does the change create competing state owners or move domain decisions into a view? | View-owned focus/chrome/thread affinity, model-owned persistence and required notifications. |
+Use established KISS, DRY, SOLID and applicable architectural patterns without
+restating their definitions. Justify judgments through the reviewed requirements,
+actual ownership/dependencies and consumers, not resemblance to a textbook example.
 
 Compare with the baseline. Existing debt and moved code are not introduced
 defects unless the change demonstrably worsens their consequences. A principle
 name, file count, missing interface or preference for a pattern is not a finding.
 Apply MVVM only where the application actually uses it, not to all code.
+
+## On-demand architecture references
+
+Start with repository evidence. Consult only the relevant reference when a
+question about responsibilities, dependency boundaries or state ownership could
+change the architectural judgment. Do not preload references or expand the
+review into API usage, control samples or notification mechanics. Check that
+the architectural guidance applies to the target application; it is not a
+mandatory redesign or dependency. If retrieval is unavailable, state that
+evidence gap rather than assuming the reference confirms the claim.
+
+| Question to resolve | Reference | Applicability and limits |
+| --- | --- | --- |
+| Windows XAML view/model responsibilities | [Data binding and MVVM](https://learn.microsoft.com/en-us/windows/apps/develop/data-binding/data-binding-and-mvvm) | Windows-app guidance; verify the actual application's ownership and editing contract. |
 
 ## Findings and counter-evidence
 
