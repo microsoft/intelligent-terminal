@@ -221,6 +221,42 @@ fn native_resolution_prefers_exe_and_accepts_claude_cmd_without_npx() {
 }
 
 #[test]
+fn opencode_native_resolution_keeps_the_first_directory_and_full_path() {
+    let opencode = profile("opencode").unwrap();
+    let path = OsStr::new(r"C:\fresh registry & npm;C:\inherited old");
+    let shim = Path::new(r"C:\fresh registry & npm\opencode.cmd");
+    let legacy = Path::new(r"C:\inherited old\opencode.exe");
+    assert_eq!(
+        find_in_path(opencode, path, |candidate| Ok(
+            candidate == shim || candidate == legacy
+        ))
+        .unwrap()
+        .as_deref(),
+        Some(shim)
+    );
+    let same_directory_exe = shim.with_extension("exe");
+    assert_eq!(
+        find_in_path(opencode, path, |candidate| Ok(
+            candidate == shim || candidate == same_directory_exe
+        ))
+        .unwrap(),
+        Some(same_directory_exe)
+    );
+    assert!(find_in_path(opencode, path, |_| Ok(false))
+        .unwrap()
+        .is_none());
+    assert!(find_in_path(opencode, OsStr::new(";;"), |_| {
+        panic!("empty PATH entries must not search the current directory")
+    })
+    .unwrap()
+    .is_none());
+    assert!(find_in_path(opencode, path, |_| Err(
+        std::io::ErrorKind::PermissionDenied.into()
+    ))
+    .is_err());
+}
+
+#[test]
 fn antigravity_profiles_resolve_only_the_native_agy_executable() {
     let path = OsStr::new(r"C:\early;C:\late");
     let antigravity = profile("antigravity").unwrap();
