@@ -668,6 +668,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(SessionCompletionUnreadFollowsTabFocus);
         TEST_METHOD(SessionCompletionClearsWhenActivePaneRegainsFocus);
         TEST_METHOD(SessionCompletionSnapshotsPreserveReadState);
+        TEST_METHOD(PureOscFocusedActivePaneDoesNotProjectUnread);
+        TEST_METHOD(PureOscNonActivePaneProjectsUnread);
         TEST_METHOD(PureOscBackgroundPaneProjectsUnreadWithoutAgentIdentity);
         TEST_METHOD(ProgramStatusRefreshPreservesUnreadCompletionAcrossSnapshotGap);
         TEST_METHOD(SessionCompletionHistoryPreservesCanonicalStatusAndRows);
@@ -13847,6 +13849,129 @@ namespace TerminalAppLocalTests
             std::istringstream stream{ winrt::to_string(control.ProgramStatusJson()) };
             VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, stream, &snapshot, &errors));
             VERIFY_ARE_EQUAL(0u, snapshot["unseen_done"].asUInt());
+        });
+    }
+
+    void TabTests::PureOscFocusedActivePaneDoesNotProjectUnread()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"64e11111-2222-3333-4444-555555555555" }, State::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> owner;
+        winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                control = nullptr;
+                owner = nullptr;
+                page = nullptr;
+            });
+        });
+
+        const auto snapshot = [&]() {
+            Json::Value value;
+            std::string errors;
+            std::istringstream stream{ winrt::to_string(control.ProgramStatusJson()) };
+            VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, stream, &value, &errors));
+            return value;
+        };
+        const auto emit = [&](const std::u16string_view sequence) {
+            TestOnUIThread([&]() {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ sequence.data(), sequence.data() + sequence.size() });
+            });
+        };
+        const auto waitForWorking = [&]() {
+            _waitForContentTransferReviewUI([&]() {
+                const auto value = snapshot();
+                return value.get("state", "").asString() == "working";
+            });
+            uint64_t revision = 0;
+            TestOnUIThread([&]() {
+                revision = snapshot()["revision"].asUInt64();
+            });
+            return revision;
+        };
+        const auto waitForAcknowledgedResult = [&](const uint64_t previousRevision, const char* unseen) {
+            _waitForContentTransferReviewUI([&]() {
+                const auto value = snapshot();
+                return value["revision"].asUInt64() > previousRevision &&
+                       value.get(unseen, 0).asUInt() == 0;
+            });
+            TestOnUIThread([&]() {
+                VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+                bool needsAttention = true;
+                VERIFY_IS_FALSE(page->_HasUnreadAgentActivity(control, &needsAttention));
+                VERIFY_IS_FALSE(needsAttention);
+            });
+        };
+
+        TestOnUIThread([&]() {
+            owner = page->_GetFocusedTabImpl();
+            owner->SuppressAgentPrewarm();
+            control = owner->GetActiveTerminalControl();
+            VERIFY_IS_TRUE(owner->IsFocused());
+            VERIFY_IS_TRUE(owner->GetActiveTerminalControl() == control);
+        });
+
+        emit(u"\x1b]7501;state=working\x1b\\");
+        const auto doneBaseline = waitForWorking();
+        emit(u"\x1b]7501;state=done\x1b\\\x1b]7501;state=idle\x1b\\");
+        waitForAcknowledgedResult(doneBaseline, "unseen_done");
+
+        emit(u"\x1b]7501;state=working\x1b\\");
+        const auto errorBaseline = waitForWorking();
+        emit(u"\x1b]7501;state=error\x1b\\\x1b]7501;state=idle\x1b\\");
+        waitForAcknowledgedResult(errorBaseline, "unseen_error");
+    }
+
+    void TabTests::PureOscNonActivePaneProjectsUnread()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(
+            winrt::guid{ L"64f11111-2222-3333-4444-555555555555" }, State::Connected);
+        const auto second = winrt::make_self<TestConnection>(
+            winrt::guid{ L"65011111-2222-3333-4444-555555555555" }, State::Connected);
+        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        winrt::com_ptr<winrt::TerminalApp::implementation::Tab> owner;
+        winrt::Microsoft::Terminal::Control::TermControl firstControl{ nullptr };
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                firstControl = nullptr;
+                owner = nullptr;
+                page = nullptr;
+            });
+        });
+
+        TestOnUIThread([&]() {
+            owner = page->_GetFocusedTabImpl();
+            owner->SuppressAgentPrewarm();
+            firstControl = owner->GetActiveTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(owner, SplitDirection::Right, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *second)));
+            VERIFY_IS_TRUE(owner->IsFocused());
+            VERIFY_IS_TRUE(owner->GetActiveTerminalControl() != firstControl);
+        });
+
+        const std::u16string completed{ u"\x1b]7501;state=done\x1b\\\x1b]7501;state=idle\x1b\\" };
+        TestOnUIThread([&]() {
+            first->TerminalOutput.raise(winrt::array_view<const char16_t>{ completed.data(), completed.data() + completed.size() });
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_headerControl.Presentation().HasUnreadActivity();
+        });
+
+        TestOnUIThread([&]() {
+            Json::Value snapshot;
+            std::string errors;
+            std::istringstream stream{ winrt::to_string(firstControl.ProgramStatusJson()) };
+            VERIFY_IS_TRUE(Json::parseFromStream(Json::CharReaderBuilder{}, stream, &snapshot, &errors));
+            VERIFY_ARE_EQUAL(1u, snapshot["unseen_done"].asUInt());
+
+            const auto pane = owner->GetRootPane()->FindPaneBySessionId(first->SessionId());
+            VERIFY_IS_NOT_NULL(pane);
+            VERIFY_IS_TRUE(owner->FocusPane(pane->Id().value()));
+        });
+        _waitForContentTransferReviewUI([&]() {
+            return !owner->_headerControl.Presentation().HasUnreadActivity();
         });
     }
 

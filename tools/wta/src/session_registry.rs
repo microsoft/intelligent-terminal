@@ -1341,8 +1341,8 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
     }
 }
 
-/// Wire payload for [`INTELLTERM_METHOD_SESSION_HOOK`]. Mirrors every current
-/// [`crate::agent_sessions::SessionEvent`] variant.
+/// Wire payload for [`INTELLTERM_METHOD_SESSION_HOOK`]. Interaction candidates
+/// reuse the existing Notification shape with defaulted fields for compatibility.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
@@ -1389,6 +1389,10 @@ pub enum SessionHookParams {
         message: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timestamp_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "crate::agent_sessions::is_false")]
+        interaction_candidate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        interaction_epoch: Option<u64>,
     },
     SessionStopped {
         key: crate::agent_sessions::AgentKey,
@@ -1488,6 +1492,20 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
                 key: key.clone(),
                 message: message.clone(),
                 timestamp_ms: *timestamp_ms,
+                interaction_candidate: false,
+                interaction_epoch: None,
+            },
+            SessionEvent::InteractionNotification {
+                key,
+                message,
+                timestamp_ms,
+                interaction_epoch,
+            } => Self::Notification {
+                key: key.clone(),
+                message: message.clone(),
+                timestamp_ms: *timestamp_ms,
+                interaction_candidate: true,
+                interaction_epoch: *interaction_epoch,
             },
             SessionEvent::SessionStopped { key, reason } => Self::SessionStopped {
                 key: key.clone(),
@@ -1592,11 +1610,24 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
                 key,
                 message,
                 timestamp_ms,
-            } => Self::Notification {
-                key,
-                message,
-                timestamp_ms,
-            },
+                interaction_candidate,
+                interaction_epoch,
+            } => {
+                if interaction_candidate {
+                    Self::InteractionNotification {
+                        key,
+                        message,
+                        timestamp_ms,
+                        interaction_epoch,
+                    }
+                } else {
+                    Self::Notification {
+                        key,
+                        message,
+                        timestamp_ms,
+                    }
+                }
+            }
             SessionHookParams::SessionStopped { key, reason } => {
                 Self::SessionStopped { key, reason }
             }
@@ -2134,6 +2165,17 @@ pub trait SessionRegistry: Send + Sync {
 
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
+
+    /// Clear interaction-owned Attention only when the exact master epoch still owns it.
+    async fn finish_interaction_attention(&self, _identity: &SessionIdentity, _epoch: u64) -> bool {
+        false
+    }
+
+    /// Bind an already-visible interaction candidate when its request arrives later.
+    async fn bind_interaction_attention(&self, _identity: &SessionIdentity, _epoch: u64) -> bool {
+        false
+    }
+
     /// Recover only unchanged history on a connected, unowned native pane.
     /// The caller must first verify that the pane root holds this Copilot lease.
     async fn recover_copilot_prompt(
@@ -2268,12 +2310,20 @@ enum PaneConnectionState {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AttentionOwner {
+    Interaction(u64),
+    InteractionCandidate,
+    HookOnly,
+}
+
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
 /// existing master state; the critical sections are all sync HashMap ops
 /// so a future sync-lock conversion is a mechanical swap.
 #[derive(Default)]
 struct RegistryState {
     sessions: HashMap<SessionIdentity, SessionInfo>,
+    attention_owners: HashMap<SessionIdentity, AttentionOwner>,
     identities_by_raw: HashMap<acp::schema::v1::SessionId, HashSet<SessionIdentity>>,
     active_by_pane: HashMap<String, SessionIdentity>,
     // Startup failures can arrive before create_tab returns the pane to bind.
@@ -2693,7 +2743,8 @@ impl SessionRegistry for InMemoryRegistry {
         let event_key = match &event {
             SessionEvent::ToolStarting { key, .. }
             | SessionEvent::ToolCompleted { key }
-            | SessionEvent::Notification { key, .. } => key,
+            | SessionEvent::Notification { key, .. }
+            | SessionEvent::InteractionNotification { key, .. } => key,
             _ => return Some(false),
         };
         if event_key != key {
@@ -2969,6 +3020,16 @@ impl SessionRegistry for InMemoryRegistry {
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
         apply_event_locked(&mut guard, ev, None)
+    }
+
+    async fn finish_interaction_attention(&self, identity: &SessionIdentity, epoch: u64) -> bool {
+        let mut guard = self.inner.lock().await;
+        finish_interaction_attention_locked(&mut guard, identity, epoch, now_ms())
+    }
+
+    async fn bind_interaction_attention(&self, identity: &SessionIdentity, epoch: u64) -> bool {
+        let mut guard = self.inner.lock().await;
+        bind_interaction_attention_locked(&mut guard, identity, epoch)
     }
 
     async fn recover_copilot_prompt(
@@ -4119,10 +4180,7 @@ fn session_input_required(info: &SessionInfo) -> bool {
                 .is_some_and(crate::agent_sessions::is_user_input_tool))
 }
 
-fn session_canonical_working(
-    info: &SessionInfo,
-    hook_owners: &HashSet<SessionIdentity>,
-) -> bool {
+fn session_canonical_working(info: &SessionInfo, hook_owners: &HashSet<SessionIdentity>) -> bool {
     info.status == Some(AgentStatus::Working)
         && (info.origin == Some(SessionOrigin::AgentPane)
             || hook_owners.contains(&SessionIdentity::from_info(info)))
@@ -4190,6 +4248,7 @@ fn remove_identity_locked(
     state: &mut RegistryState,
     identity: &SessionIdentity,
 ) -> Option<SessionInfo> {
+    state.attention_owners.remove(identity);
     let removed = state.sessions.remove(identity);
     if let Some(info) = &removed {
         if let Some(pane) = info.pane_session_id.as_deref() {
@@ -4492,6 +4551,102 @@ fn apply_event_locked(
     apply_event_qualified_at_ms(state, ev, qualified_activity, now_ms())
 }
 
+fn finish_interaction_attention_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    epoch: u64,
+    now: u64,
+) -> bool {
+    if state.attention_owners.get(identity) != Some(&AttentionOwner::Interaction(epoch)) {
+        return false;
+    }
+    let Some(entry) = state.sessions.get_mut(identity) else {
+        state.attention_owners.remove(identity);
+        return false;
+    };
+    if entry.status != Some(AgentStatus::Attention) {
+        state.attention_owners.remove(identity);
+        return false;
+    }
+    let completed_user_input = entry
+        .current_tool
+        .as_deref()
+        .is_some_and(crate::agent_sessions::is_user_input_tool);
+    if completed_user_input {
+        entry.current_tool = None;
+    }
+    entry.status = Some(if completed_user_input || entry.current_tool.is_some() {
+        AgentStatus::Working
+    } else {
+        AgentStatus::Idle
+    });
+    entry.attention_reason = None;
+    entry.attention_timestamp_ms = None;
+    entry.attention_cooldown_until_ms = None;
+    entry.last_activity_at_ms = Some(now);
+    state.attention_owners.remove(identity);
+    true
+}
+
+fn bind_interaction_attention_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    epoch: u64,
+) -> bool {
+    if state
+        .sessions
+        .get(identity)
+        .is_some_and(|row| row.status == Some(AgentStatus::Attention))
+        && state.attention_owners.get(identity) == Some(&AttentionOwner::InteractionCandidate)
+    {
+        state
+            .attention_owners
+            .insert(identity.clone(), AttentionOwner::Interaction(epoch));
+        true
+    } else {
+        false
+    }
+}
+
+fn apply_attention_event_locked(
+    state: &mut RegistryState,
+    qualified_activity: Option<&SessionIdentity>,
+    key: String,
+    message: String,
+    timestamp_ms: Option<u64>,
+    owner: AttentionOwner,
+    now: u64,
+) -> bool {
+    let sid = acp::schema::v1::SessionId::new(key);
+    let Some(identity) = qualified_activity
+        .cloned()
+        .or_else(|| unique_identity_for_raw(state, &sid))
+    else {
+        return false;
+    };
+    let Some(entry) = state.sessions.get_mut(&identity) else {
+        return false;
+    };
+    if matches!(
+        entry.status,
+        Some(AgentStatus::Ended | AgentStatus::Historical)
+    ) {
+        return false;
+    }
+    entry.attention_timestamp_ms = if entry.status == Some(AgentStatus::Attention) {
+        entry.attention_timestamp_ms.max(timestamp_ms)
+    } else {
+        timestamp_ms
+    };
+    entry.status = Some(AgentStatus::Attention);
+    entry.attention_cooldown_until_ms = (entry.cli_source == Some(CliSource::Copilot))
+        .then_some(now.saturating_add(crate::agent_sessions::COPILOT_ATTENTION_COOLDOWN_MS));
+    entry.attention_reason = Some(message);
+    entry.last_activity_at_ms = Some(now);
+    state.attention_owners.insert(identity, owner);
+    true
+}
+
 #[cfg(test)]
 fn apply_event_at_ms(state: &mut RegistryState, ev: SessionEvent, now: u64) -> bool {
     apply_event_qualified_at_ms(state, ev, None, now)
@@ -4535,6 +4690,7 @@ fn apply_event_qualified_at_ms(
         | SessionEvent::ToolReturned { key, .. }
         | SessionEvent::ToolCompleted { key }
         | SessionEvent::Notification { key, .. }
+        | SessionEvent::InteractionNotification { key, .. }
             if qualified_activity.is_none() =>
         {
             Some(key)
@@ -4940,6 +5096,7 @@ fn apply_event_qualified_at_ms(
             else {
                 return false;
             };
+            state.attention_owners.remove(&identity);
             let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
@@ -4973,10 +5130,12 @@ fn apply_event_qualified_at_ms(
             else {
                 return false;
             };
+            let interaction_candidate = state.attention_owners.get(&identity)
+                == Some(&AttentionOwner::InteractionCandidate);
             let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
-            if entry.cli_source != Some(CliSource::Copilot)
+            if entry.cli_source != Some(CliSource::Copilot) && !interaction_candidate
                 || !matches!(
                     entry.status,
                     Some(AgentStatus::Working | AgentStatus::Attention)
@@ -4985,6 +5144,7 @@ fn apply_event_qualified_at_ms(
                 return false;
             }
             if entry.status == Some(AgentStatus::Attention)
+                && !interaction_candidate
                 && entry
                     .attention_cooldown_until_ms
                     .is_some_and(|until| now < until)
@@ -5006,6 +5166,7 @@ fn apply_event_qualified_at_ms(
             entry.attention_timestamp_ms = None;
             entry.attention_cooldown_until_ms = None;
             entry.last_activity_at_ms = Some(now);
+            state.attention_owners.remove(&identity);
             true
         }
         SessionEvent::ToolCompleted { key } => {
@@ -5016,6 +5177,7 @@ fn apply_event_qualified_at_ms(
             else {
                 return false;
             };
+            state.attention_owners.remove(&identity);
             let Some(entry) = state.sessions.get_mut(&identity) else {
                 return false;
             };
@@ -5046,41 +5208,31 @@ fn apply_event_qualified_at_ms(
             key,
             message,
             timestamp_ms,
-        } => {
-            let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = qualified_activity
-                .cloned()
-                .or_else(|| unique_identity_for_raw(state, &sid))
-            else {
-                return false;
-            };
-            let Some(entry) = state.sessions.get_mut(&identity) else {
-                return false;
-            };
-            // Same resurrection guard — a stale Notification on an
-            // Ended row would flip it to Attention and surface a
-            // spurious "agent needs input" prompt for a session that
-            // has already been ended.
-            if matches!(
-                entry.status,
-                Some(AgentStatus::Ended | AgentStatus::Historical)
-            ) {
-                return false;
-            }
-            entry.attention_timestamp_ms = if entry.status == Some(AgentStatus::Attention) {
-                entry.attention_timestamp_ms.max(timestamp_ms)
-            } else {
-                timestamp_ms
-            };
-            entry.status = Some(AgentStatus::Attention);
-            entry.attention_cooldown_until_ms = (entry.cli_source == Some(CliSource::Copilot))
-                .then_some(
-                    now.saturating_add(crate::agent_sessions::COPILOT_ATTENTION_COOLDOWN_MS),
-                );
-            entry.attention_reason = Some(message);
-            entry.last_activity_at_ms = Some(now);
-            true
-        }
+        } => apply_attention_event_locked(
+            state,
+            qualified_activity,
+            key,
+            message,
+            timestamp_ms,
+            AttentionOwner::HookOnly,
+            now,
+        ),
+        SessionEvent::InteractionNotification {
+            key,
+            message,
+            timestamp_ms,
+            interaction_epoch,
+        } => apply_attention_event_locked(
+            state,
+            qualified_activity,
+            key,
+            message,
+            timestamp_ms,
+            interaction_epoch
+                .map(AttentionOwner::Interaction)
+                .unwrap_or(AttentionOwner::InteractionCandidate),
+            now,
+        ),
         SessionEvent::SessionUnbound {
             key,
             pane_session_id,
@@ -5484,6 +5636,68 @@ mod tests {
     }
 
     #[test]
+    fn interaction_tool_return_is_provider_neutral_but_rejects_stale_evidence() {
+        for source in [
+            CliSource::Copilot,
+            CliSource::Codex,
+            CliSource::Claude,
+            CliSource::Gemini,
+            CliSource::OpenCode,
+            CliSource::Antigravity,
+            CliSource::Unknown("custom".into()),
+        ] {
+            let mut state = cooldown_state();
+            state.sessions.values_mut().next().unwrap().cli_source = Some(source);
+            assert!(apply_event_at_ms(
+                &mut state,
+                SessionEvent::InteractionNotification {
+                    key: "cooldown".into(),
+                    message: "Information requested".into(),
+                    timestamp_ms: Some(100),
+                    interaction_epoch: None,
+                },
+                10_000,
+            ));
+            assert!(apply_event_at_ms(
+                &mut state,
+                SessionEvent::ToolReturned {
+                    key: "cooldown".into(),
+                    timestamp_ms: Some(200),
+                },
+                10_001,
+            ));
+            let recovered = state.sessions.values().next().unwrap();
+            assert_eq!(recovered.status, Some(AgentStatus::Working));
+            assert!(recovered.attention_reason.is_none());
+            assert!(recovered.attention_cooldown_until_ms.is_none());
+        }
+
+        let mut stale = cooldown_state();
+        assert!(apply_event_at_ms(
+            &mut stale,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "Newer question".into(),
+                timestamp_ms: Some(200),
+                interaction_epoch: None,
+            },
+            20_000,
+        ));
+        assert!(!apply_event_at_ms(
+            &mut stale,
+            SessionEvent::ToolReturned {
+                key: "cooldown".into(),
+                timestamp_ms: Some(100),
+            },
+            20_001,
+        ));
+        assert_eq!(
+            stale.sessions.values().next().unwrap().status,
+            Some(AgentStatus::Attention)
+        );
+    }
+
+    #[test]
     fn copilot_attention_cooldown_resets_without_delaying_master_stop_or_prompt() {
         let mut state = cooldown_state();
         for (received, source) in [(10_000, Some(100)), (40_000, Some(90))] {
@@ -5581,6 +5795,146 @@ mod tests {
             state.sessions.values().next().unwrap().status,
             Some(AgentStatus::Error)
         );
+    }
+
+    #[test]
+    fn interaction_attention_clears_on_matching_epoch_finish() {
+        let mut state = cooldown_state();
+        let identity = state.sessions.keys().next().unwrap().clone();
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "Which folder?".into(),
+                timestamp_ms: None,
+                interaction_epoch: Some(7),
+            },
+            10_000,
+        ));
+        assert_eq!(
+            state.sessions.get(&identity).unwrap().status,
+            Some(AgentStatus::Attention)
+        );
+
+        assert!(finish_interaction_attention_locked(
+            &mut state, &identity, 7, 10_001
+        ));
+        let row = state.sessions.get(&identity).unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Working));
+        assert!(row.attention_reason.is_none());
+        assert!(row.attention_cooldown_until_ms.is_none());
+    }
+
+    #[test]
+    fn legacy_notification_wire_defaults_to_hook_only() {
+        let params: SessionHookParams = serde_json::from_value(serde_json::json!({
+            "kind": "Notification",
+            "key": "legacy",
+            "message": "approve",
+            "timestamp_ms": 10
+        }))
+        .unwrap();
+        assert!(matches!(
+            SessionEvent::from(params),
+            SessionEvent::Notification {
+                key,
+                message,
+                timestamp_ms: Some(10)
+            } if key == "legacy" && message == "approve"
+        ));
+    }
+
+    #[test]
+    fn interaction_candidate_can_bind_when_begin_arrives_after_hook() {
+        let mut state = cooldown_state();
+        let identity = state.sessions.keys().next().unwrap().clone();
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "Which folder?".into(),
+                timestamp_ms: None,
+                interaction_epoch: None,
+            },
+            10_000,
+        ));
+        assert!(bind_interaction_attention_locked(&mut state, &identity, 7));
+        assert!(finish_interaction_attention_locked(
+            &mut state, &identity, 7, 10_001
+        ));
+        assert_eq!(
+            state.sessions.get(&identity).unwrap().status,
+            Some(AgentStatus::Working)
+        );
+    }
+
+    #[test]
+    fn hook_only_attention_prevents_interaction_finish_from_clearing() {
+        let mut state = cooldown_state();
+        let identity = state.sessions.keys().next().unwrap().clone();
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "Which folder?".into(),
+                timestamp_ms: None,
+                interaction_epoch: Some(7),
+            },
+            10_000,
+        ));
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::Notification {
+                key: "cooldown".into(),
+                message: "approve another operation".into(),
+                timestamp_ms: None,
+            },
+            10_001,
+        ));
+        assert!(!bind_interaction_attention_locked(&mut state, &identity, 8));
+
+        assert!(!finish_interaction_attention_locked(
+            &mut state, &identity, 7, 10_002
+        ));
+        let row = state.sessions.get(&identity).unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Attention));
+        assert_eq!(
+            row.attention_reason.as_deref(),
+            Some("approve another operation")
+        );
+    }
+
+    #[test]
+    fn stale_interaction_epoch_cannot_clear_newer_attention() {
+        let mut state = cooldown_state();
+        let identity = state.sessions.keys().next().unwrap().clone();
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "First question".into(),
+                timestamp_ms: None,
+                interaction_epoch: Some(7),
+            },
+            10_000,
+        ));
+        assert!(apply_event_at_ms(
+            &mut state,
+            SessionEvent::InteractionNotification {
+                key: "cooldown".into(),
+                message: "Second question".into(),
+                timestamp_ms: None,
+                interaction_epoch: Some(8),
+            },
+            10_001,
+        ));
+
+        assert!(!finish_interaction_attention_locked(
+            &mut state, &identity, 7, 10_002
+        ));
+        assert!(finish_interaction_attention_locked(
+            &mut state, &identity, 8, 10_003
+        ));
     }
 
     const NATIVE_PANE: &str = "00112233-4455-6677-8899-aabbccddeeff";

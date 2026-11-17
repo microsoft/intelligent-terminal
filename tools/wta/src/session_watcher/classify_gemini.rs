@@ -68,6 +68,7 @@ pub fn classify_record(record: &serde_json::Value, key: &AgentKey) -> Vec<Sessio
     match record.get("type").and_then(|v| v.as_str()).unwrap_or("") {
         "gemini" => {
             let mut input_tool: Option<String> = None;
+            let mut completed_input = false;
             if let Some(calls) = record.get("toolCalls").and_then(|c| c.as_array()) {
                 for call in calls {
                     let tool = call
@@ -76,9 +77,18 @@ pub fn classify_record(record: &serde_json::Value, key: &AgentKey) -> Vec<Sessio
                         .unwrap_or("")
                         .to_string();
                     if is_user_input_tool(&tool) {
-                        // Remember it; emit Attention last so it wins over any
-                        // sibling tool in the same record.
-                        input_tool = Some(tool);
+                        let completed = call.get("result").is_some()
+                            || matches!(
+                                call.get("status").and_then(|value| value.as_str()),
+                                Some("success" | "error" | "cancelled")
+                            );
+                        if completed {
+                            completed_input = true;
+                        } else {
+                            // Emit pending Attention last so it wins over any
+                            // sibling tool in the same record.
+                            input_tool = Some(tool);
+                        }
                     } else {
                         out.push(SessionEvent::ToolStarting {
                             key: key.clone(),
@@ -88,9 +98,15 @@ pub fn classify_record(record: &serde_json::Value, key: &AgentKey) -> Vec<Sessio
                 }
             }
             if let Some(tool) = input_tool {
-                out.push(SessionEvent::Notification {
+                out.push(SessionEvent::InteractionNotification {
                     key: key.clone(),
                     message: tool,
+                    timestamp_ms: None,
+                    interaction_epoch: None,
+                });
+            } else if completed_input {
+                out.push(SessionEvent::ToolReturned {
+                    key: key.clone(),
                     timestamp_ms: None,
                 });
             } else if out.is_empty() {
@@ -192,24 +208,44 @@ mod tests {
     }
 
     #[test]
-    fn gemini_ask_user_is_attention() {
+    fn gemini_completed_ask_user_returns_activity() {
         let r = rec(r#"{"type":"gemini","toolCalls":[
             {"name":"ask_user","status":"success","result":[{"functionResponse":{}}]}
         ]}"#);
         assert_eq!(
             classify_record(&r, &"k".to_string()),
-            vec![SessionEvent::Notification {
+            vec![SessionEvent::ToolReturned {
                 key: "k".to_string(),
-                message: "ask_user".to_string(),
                 timestamp_ms: None,
             }]
         );
     }
 
     #[test]
-    fn gemini_mixed_tools_attention_wins() {
-        // A record carrying both a normal tool and ask_user → Attention is
-        // emitted last so it wins in the reducer.
+    fn gemini_pending_ask_user_attention_wins() {
+        let r = rec(r#"{"type":"gemini","toolCalls":[
+            {"name":"glob","status":"success"},
+            {"name":"ask_user","status":"pending"}
+        ]}"#);
+        assert_eq!(
+            classify_record(&r, &"k".to_string()),
+            vec![
+                SessionEvent::ToolStarting {
+                    key: "k".to_string(),
+                    tool_name: "glob".to_string()
+                },
+                SessionEvent::InteractionNotification {
+                    key: "k".to_string(),
+                    message: "ask_user".to_string(),
+                    timestamp_ms: None,
+                    interaction_epoch: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn gemini_mixed_completed_tools_return_activity() {
         let r = rec(r#"{"type":"gemini","toolCalls":[
             {"name":"glob","status":"success"},
             {"name":"ask_user","status":"success"}
@@ -221,9 +257,8 @@ mod tests {
                     key: "k".to_string(),
                     tool_name: "glob".to_string()
                 },
-                SessionEvent::Notification {
+                SessionEvent::ToolReturned {
                     key: "k".to_string(),
-                    message: "ask_user".to_string(),
                     timestamp_ms: None,
                 },
             ]

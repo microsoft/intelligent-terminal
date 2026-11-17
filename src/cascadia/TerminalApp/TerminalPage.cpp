@@ -15120,18 +15120,36 @@ namespace winrt::TerminalApp::implementation
                             {
                                 return;
                             }
-                            page->_PublishNativeAgentObservation(control, "program_status");
                             const auto tabId = page->_FindTabIdForControl(control);
+                            winrt::com_ptr<Tab> ownerTab;
                             for (const auto& projected : page->_tabs)
                             {
                                 const auto tab = page->_GetTabImpl(projected);
                                 if (tab && winrt::to_string(tab->StableId()) == tabId)
                                 {
-                                    page->_UpdateProgramStatusForTab(*tab);
-                                    page->_UpdateAgentCompletions();
-                                    page->_ApplyTabListProjection(*tab);
+                                    ownerTab = tab;
                                     break;
                                 }
+                            }
+                            if (ownerTab &&
+                                ownerTab->IsFocused() &&
+                                control.TransferState() == Microsoft::Terminal::Control::ContentTransferState::Owned &&
+                                ownerTab->GetActiveTerminalControl() == control)
+                            {
+                                const auto snapshot = _ReadProgramStatus(control);
+                                if (snapshot["revision"].isUInt64() &&
+                                    (snapshot.get("unseen_done", 0).asUInt() != 0 ||
+                                     snapshot.get("unseen_error", 0).asUInt() != 0))
+                                {
+                                    control.AcknowledgeProgramStatus(snapshot["revision"].asUInt64());
+                                }
+                            }
+                            page->_PublishNativeAgentObservation(control, "program_status");
+                            if (ownerTab)
+                            {
+                                page->_UpdateProgramStatusForTab(*ownerTab);
+                                page->_UpdateAgentCompletions();
+                                page->_ApplyTabListProjection(*ownerTab);
                             }
                             auto snapshot = _ReadProgramStatus(control);
                             if (snapshot.isObject())

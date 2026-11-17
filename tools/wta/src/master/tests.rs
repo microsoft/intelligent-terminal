@@ -2196,6 +2196,134 @@ fn make_state() -> Arc<MasterStateInner> {
     make_state_with_retirement_pending_timeout(SESSION_CLOSE_TIMEOUT)
 }
 
+#[test]
+fn interaction_ledger_tracks_exact_tokens_and_finishes_epoch_once() {
+    let ledger = Arc::new(std::sync::Mutex::new(InteractionLedger::default()));
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new("interaction-session"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            "interaction-session",
+            None,
+        ),
+    };
+    let route = InteractionRouteKey {
+        identity: identity.clone(),
+        agent_instance_id: uuid::Uuid::new_v4(),
+    };
+    let first = InteractionLease::begin(Arc::clone(&ledger), route.clone(), "request:first".into());
+    let second = InteractionLease::begin(Arc::clone(&ledger), route, "request:second".into());
+    assert_eq!(first.epoch(), second.epoch());
+    assert_eq!(
+        ledger.lock().unwrap().active_epoch_for(&identity),
+        Some(first.epoch())
+    );
+    let mut candidate = crate::agent_sessions::SessionEvent::QualifiedHook {
+        identity: identity.clone(),
+        pane_session_id: "pane".into(),
+        event: crate::agent_sessions::QualifiedHookActivity::Notification {
+            message: "Approve?".into(),
+            timestamp_ms: None,
+            interaction_candidate: true,
+            interaction_epoch: None,
+        },
+    };
+    bind_interaction_epoch(&ledger, &mut candidate);
+    assert!(matches!(
+        candidate,
+        crate::agent_sessions::SessionEvent::QualifiedHook {
+            event: crate::agent_sessions::QualifiedHookActivity::Notification {
+                interaction_candidate: true,
+                interaction_epoch: Some(epoch),
+                ..
+            },
+            ..
+        } if epoch == first.epoch()
+    ));
+
+    assert!(!first.finish().epoch_empty);
+    assert!(second.finish().epoch_empty);
+    assert_eq!(ledger.lock().unwrap().active_epoch_for(&identity), None);
+}
+
+#[test]
+fn interaction_ledger_drop_removes_only_its_exact_token() {
+    let ledger = Arc::new(std::sync::Mutex::new(InteractionLedger::default()));
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new("interaction-session"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            "interaction-session",
+            None,
+        ),
+    };
+    let route = InteractionRouteKey {
+        identity: identity.clone(),
+        agent_instance_id: uuid::Uuid::new_v4(),
+    };
+    let kept = InteractionLease::begin(Arc::clone(&ledger), route.clone(), "request:kept".into());
+    let dropped = InteractionLease::begin(Arc::clone(&ledger), route, "request:dropped".into());
+    let epoch = kept.epoch();
+    drop(dropped);
+
+    assert_eq!(
+        ledger.lock().unwrap().active_epoch_for(&identity),
+        Some(epoch)
+    );
+    assert!(kept.finish().epoch_empty);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn interaction_begin_after_candidate_still_clears_matching_attention() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let agent = unbound_test_agent("interaction-agent");
+            add_test_agent_to_pool(&state, &agent).await;
+            let sid = acp::schema::v1::SessionId::new("interaction-session");
+            let mut row = SessionInfo::new(sid.clone(), std::path::PathBuf::from(r"C:\repo"));
+            row.provider_id = Some("copilot".into());
+            row.location = SessionLocation::Host;
+            row.cli_source = Some(CliSource::Copilot);
+            row.status = Some(AgentStatus::Working);
+            row.current_tool = Some("ask_user".into());
+            state.registry.upsert(row).await;
+
+            assert!(
+                state
+                    .registry
+                    .apply_event(
+                        crate::agent_sessions::SessionEvent::InteractionNotification {
+                            key: sid.to_string(),
+                            message: "Which folder?".into(),
+                            timestamp_ms: None,
+                            interaction_epoch: None,
+                        }
+                    )
+                    .await
+            );
+            let lease = begin_interaction(
+                &state,
+                &LiveRouteKey::new(agent.instance_id, sid.clone()),
+                "session-mcp:request".into(),
+            )
+            .await
+            .expect("exact agent route should register an interaction");
+            finish_interaction(&state, Some(lease)).await;
+
+            let row = state.registry.lookup(&sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Working));
+            assert!(row.current_tool.is_none());
+            assert!(row.attention_reason.is_none());
+        })
+        .await;
+}
+
 async fn current_session_is_hook_owned(
     state: &Arc<MasterStateInner>,
     sid: &acp::schema::v1::SessionId,
@@ -3158,6 +3286,7 @@ fn make_state_with_retirement_pending_timeout(
         session_to_helper: Mutex::new(LiveRouteTable::default()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
+        interactions: Arc::new(std::sync::Mutex::new(InteractionLedger::default())),
         pending_usage: Mutex::new(PendingUsageTable::default()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -14709,6 +14838,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         session_to_helper: Mutex::new(LiveRouteTable::default()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
+        interactions: Arc::new(std::sync::Mutex::new(InteractionLedger::default())),
         pending_usage: Mutex::new(PendingUsageTable::default()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -21068,13 +21198,6 @@ async fn copilot_completion_hooks_resume_activity_without_file_events() {
             Some(AgentStatus::Attention)
         );
         crate::wt_protocol_events::take_test_published_events();
-        let before = state.registry.lookup(&sid).await.unwrap();
-        handle_master_wt_event(&state, hook("agent.tool.finished")).await;
-        assert_eq!(state.registry.lookup(&sid).await.unwrap(), before);
-        assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
-        let mut expired = before;
-        expired.attention_cooldown_until_ms = Some(0);
-        state.registry.upsert(expired).await;
         handle_master_wt_event(&state, hook("agent.tool.finished")).await;
         let row = state.registry.lookup(&sid).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Working));
@@ -22042,13 +22165,9 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
     handle_session_hook(&state, earlier, false)
         .await
         .expect("real hook accepted");
-    assert!(state
-        .hook_owned
-        .lock()
-        .await
-        .contains(&crate::session_registry::SessionIdentity::legacy(
-            sid.clone()
-        )));
+    assert!(state.hook_owned.lock().await.contains(
+        &crate::session_registry::SessionIdentity::legacy(sid.clone())
+    ));
 
     let born = crate::agent_sessions::SessionEvent::SessionStarted {
         key: "sid-delegate".to_string(),

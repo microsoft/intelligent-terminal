@@ -2088,11 +2088,12 @@ fn claude_permission_prompt_notification_still_sets_attention() {
             "notification_type": "permission_prompt"
         }
     });
+    let mut published = Vec::new();
     route_agent_event_to_registry_with_hook_sink(
         &mut reg,
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         &params,
-        |_| {},
+        |event| published.push(event),
     );
 
     let s = reg.get(&"claude-sid".to_string()).unwrap();
@@ -2101,6 +2102,52 @@ fn claude_permission_prompt_notification_still_sets_attention() {
         s.attention_reason.as_deref(),
         Some("Claude needs your permission to use Bash"),
     );
+    assert!(published.iter().any(|event| matches!(
+        event,
+        SessionEvent::InteractionNotification {
+            interaction_epoch: None,
+            ..
+        } | SessionEvent::QualifiedHook {
+            event: crate::agent_sessions::QualifiedHookActivity::Notification {
+                interaction_candidate: true,
+                interaction_epoch: None,
+                ..
+            },
+            ..
+        }
+    )));
+}
+
+#[test]
+fn user_input_tool_notification_is_an_interaction_candidate() {
+    use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+    let mut reg = AgentSessionRegistry::new();
+    let params = json!({
+        "event": "agent.tool.starting",
+        "cli_source": "copilot",
+        "agent_session_id": "copilot-sid",
+        "payload": {
+            "tool_name": "ask_user",
+            "tool_input": { "question": "Which folder?" }
+        }
+    });
+    let mut published = Vec::new();
+    route_agent_event_to_registry_with_hook_sink(
+        &mut reg,
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        &params,
+        |event| published.push(event),
+    );
+
+    assert!(published.iter().any(|event| matches!(
+        event,
+        SessionEvent::InteractionNotification {
+            message,
+            interaction_epoch: None,
+            ..
+        } if message == "Which folder?"
+    )));
 }
 
 #[test]
@@ -2212,11 +2259,12 @@ fn copilot_actionable_notifications_still_set_attention() {
                 "agent_session_id": "copilot-sid",
                 "payload": payload,
             });
+            let mut published = Vec::new();
             route_agent_event_to_registry_with_hook_sink(
                 &mut reg,
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 &params,
-                |_| {},
+                |event| published.push(event),
             );
 
             let session = reg.get(&"copilot-sid".to_string()).unwrap();
@@ -2225,6 +2273,13 @@ fn copilot_actionable_notifications_still_set_attention() {
                 session.attention_reason.as_deref(),
                 Some("User action needed")
             );
+            assert!(published.iter().any(|event| matches!(
+                event,
+                crate::agent_sessions::SessionEvent::InteractionNotification {
+                    interaction_epoch: None,
+                    ..
+                }
+            )));
         }
     }
 }

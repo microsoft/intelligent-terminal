@@ -469,6 +469,14 @@ pub enum SessionEvent {
         message: String,
         timestamp_ms: Option<u64>,
     },
+    /// A notification emitted while an authoritative user interaction may be pending.
+    /// Helpers leave `interaction_epoch` empty; master binds it to its exact ledger.
+    InteractionNotification {
+        key: AgentKey,
+        message: String,
+        timestamp_ms: Option<u64>,
+        interaction_epoch: Option<u64>,
+    },
     SessionStopped {
         key: AgentKey,
         reason: String,
@@ -537,7 +545,15 @@ pub enum QualifiedHookActivity {
     Notification {
         message: String,
         timestamp_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        interaction_candidate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        interaction_epoch: Option<u64>,
     },
+}
+
+pub(crate) fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl QualifiedHookActivity {
@@ -549,11 +565,24 @@ impl QualifiedHookActivity {
             Self::Notification {
                 message,
                 timestamp_ms,
-            } => SessionEvent::Notification {
-                key,
-                message,
-                timestamp_ms,
-            },
+                interaction_candidate,
+                interaction_epoch,
+            } => {
+                if interaction_candidate {
+                    SessionEvent::InteractionNotification {
+                        key,
+                        message,
+                        timestamp_ms,
+                        interaction_epoch,
+                    }
+                } else {
+                    SessionEvent::Notification {
+                        key,
+                        message,
+                        timestamp_ms,
+                    }
+                }
+            }
         }
     }
 }
@@ -579,6 +608,19 @@ impl SessionEvent {
             } => QualifiedHookActivity::Notification {
                 message,
                 timestamp_ms,
+                interaction_candidate: false,
+                interaction_epoch: None,
+            },
+            Self::InteractionNotification {
+                message,
+                timestamp_ms,
+                interaction_epoch,
+                ..
+            } => QualifiedHookActivity::Notification {
+                message,
+                timestamp_ms,
+                interaction_candidate: true,
+                interaction_epoch,
             },
             other => return other,
         };
@@ -1172,6 +1214,12 @@ impl AgentSessionRegistry {
                 key,
                 message,
                 timestamp_ms,
+            }
+            | SessionEvent::InteractionNotification {
+                key,
+                message,
+                timestamp_ms,
+                ..
             } => {
                 if let Some(entry) = self.sessions.get_mut(&key) {
                     entry.attention_timestamp_ms = if entry.status == AgentStatus::Attention {
