@@ -19,6 +19,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ReadingAndRepeatedIdleDoNotRearmCompletion);
         TEST_METHOD(NewActivityAndIdentityResetCompletion);
         TEST_METHOD(AttentionRearmsAfterStateTransition);
+        TEST_METHOD(ReadingAttentionPreservesTransitionDetector);
         TEST_METHOD(UnreadKindTracksCompletionClassification);
         TEST_METHOD(ReadingOnePanePreservesOtherPaneActivity);
     };
@@ -78,6 +79,18 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(state.unread);
         VERIFY_IS_TRUE(state.Update(pane, "replacement", "copilot", "Attention", false));
         VERIFY_IS_TRUE(state.unread);
+    }
+
+    void AgentCompletionTests::ReadingAttentionPreservesTransitionDetector()
+    {
+        const winrt::guid pane{ L"64791111-2222-3333-4444-555555555555" };
+        CompletionState state;
+        state.Update(pane, "session", "copilot", "Attention", false);
+        VERIFY_IS_TRUE(state.unread);
+        state.MarkRead();
+        VERIFY_IS_FALSE(state.unread);
+        VERIFY_IS_FALSE(state.Update(pane, "session", "copilot", "Attention", false));
+        VERIFY_IS_FALSE(state.unread);
     }
 
     void AgentCompletionTests::ReadingOnePanePreservesOtherPaneActivity()

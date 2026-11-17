@@ -470,8 +470,7 @@ namespace winrt::TerminalApp::implementation
             std::lock_guard lock{ _mutex };
             if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.HasUnread())
             {
-                it->second.completion.unread = false;
-                it->second.completion.wasAttention = false;
+                it->second.completion.MarkRead();
                 changed = it->second.completion.paneId;
             }
         }

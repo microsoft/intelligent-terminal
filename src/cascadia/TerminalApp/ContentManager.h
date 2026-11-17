@@ -119,6 +119,10 @@ namespace winrt::TerminalApp::implementation
             {
                 return unread;
             }
+            void MarkRead() noexcept
+            {
+                unread = false;
+            }
             UnreadAgentCompletionKind UnreadKind() const noexcept
             {
                 return !HasUnread() ? UnreadAgentCompletionKind::None :
