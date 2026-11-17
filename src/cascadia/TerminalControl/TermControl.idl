@@ -34,6 +34,13 @@ namespace Microsoft.Terminal.Control
         Closed
     };
 
+    struct TerminalTextMatch
+    {
+        UInt64 Id;
+        String Text;
+        String AnchorText;
+    };
+
     [default_interface] runtimeclass TermControl : Windows.UI.Xaml.Controls.UserControl,
                                                    IDirectKeyListener,
                                                    IMouseWheelListener,
@@ -189,5 +196,12 @@ namespace Microsoft.Terminal.Control
         void Detach();
         void EnableAgentMouseWheelZoom(Boolean enabled);
         void EnableAgentRightClickContextMenu(Boolean enabled);
+
+        Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVectorView<TerminalTextMatch> > FindTextMatchesAsync(Windows.Foundation.Collections.IVectorView<String> queries);
+        Windows.Foundation.IAsyncOperation<Boolean> PrepareTextMatchAsync(UInt64 id);
+        Boolean RevealTextMatch(UInt64 id);
+        Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVectorView<TerminalTextMatch> > FindTextMatchesWithContextAsync(Windows.Foundation.Collections.IVectorView<String> queries, UInt32 recentContextRows);
+        // Foreground, background, selection, cursor, then the 16 indexed colors.
+        Microsoft.Terminal.Core.Color[] CurrentColorScheme();
     }
 }

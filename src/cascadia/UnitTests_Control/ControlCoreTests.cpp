@@ -7,6 +7,7 @@
 #include "MockControlSettings.h"
 #include "MockConnection.h"
 #include "../../inc/TestUtils.h"
+#include "../inc/OmniDirectoryUtils.h"
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -28,6 +29,7 @@ namespace ControlUnitTests
         TEST_METHOD(InstantiateCore);
         TEST_METHOD(TestInitialize);
         TEST_METHOD(TestAdjustAcrylic);
+        TEST_METHOD(OmniCurrentColorsReadRendererOverrides);
 
         TEST_METHOD(TestFreeAfterClose);
 
@@ -38,6 +40,20 @@ namespace ControlUnitTests
         TEST_METHOD(TestClearAll);
         TEST_METHOD(TestReadEntireBuffer);
         TEST_METHOD(TestReadBufferTail);
+        TEST_METHOD(TestNavigateBufferMatch);
+        TEST_METHOD(TestNavigateBufferMatchAfterReflow);
+        TEST_METHOD(TestNavigateBufferMatchAfterRotation);
+        TEST_METHOD(TestNavigateBufferMatchDuringOutput);
+        TEST_METHOD(TestNavigateBufferMatchDirectoryMetadata);
+        TEST_METHOD(TestNavigateBufferMatchResizeMatrix);
+        TEST_METHOD(TestNavigateBufferMatchChunkBoundary);
+        TEST_METHOD(TestNavigateBufferMatchAtRightEdge);
+        TEST_METHOD(TestNavigateMetadataConversationWithoutLiteral);
+        TEST_METHOD(TestNavigateMetadataConversationExpansion);
+        TEST_METHOD(TestNavigateMetadataPrioritizesDistinctContext);
+        TEST_METHOD(TestNavigateBufferMatchOutputInterleavings);
+        TEST_METHOD(TestNavigateBufferMatchCancellationAndBufferReturn);
+        TEST_METHOD(TestNavigateBufferMatchRejectsExpiredAndAmbiguous);
         TEST_METHOD(TestReadLastPromptBoundedNoOutput);
         TEST_METHOD(TestReadLastPromptBoundedSkipsUnfinished);
         TEST_METHOD(TestReadLastPromptBoundedWrapAndLimits);
@@ -100,6 +116,14 @@ namespace ControlUnitTests
             VERIFY_IS_TRUE(core->_initializedTerminal);
             VERIFY_ARE_EQUAL(20, core->_terminal->GetViewport().Height());
         }
+
+        std::wstring _selectedText(const winrt::com_ptr<Control::implementation::ControlCore>& core)
+        {
+            const auto lock = core->_terminal->LockForReading();
+            const auto& buffer = core->_terminal->GetTextBuffer();
+            return buffer.GetPlainText(TextBuffer::CopyRequest{
+                buffer, core->_terminal->GetSelectionAnchor(), core->_terminal->GetSelectionEnd(), false, false, false, false, true });
+        }
     };
 
     void ControlCoreTests::ComPtrSettings()
@@ -109,6 +133,25 @@ namespace ControlUnitTests
 
         Log::Comment(L"Verify literally any setting, it doesn't matter");
         VERIFY_ARE_EQUAL(DEFAULT_FOREGROUND, settings->DefaultForeground());
+    }
+
+    void ControlCoreTests::OmniCurrentColorsReadRendererOverrides()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        const auto before = core->CurrentColorScheme();
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b]10;#123456\x07\x1b]11;#234567\x07\x1b]4;1;#345678\x07"));
+        const auto actual = core->CurrentColorScheme();
+        VERIFY_ARE_EQUAL(20u, actual.size());
+        VERIFY_IS_TRUE((actual[0] == til::color{ 0x12, 0x34, 0x56 }));
+        VERIFY_IS_TRUE((actual[1] == til::color{ 0x23, 0x45, 0x67 }));
+        VERIFY_IS_TRUE((actual[5] == til::color{ 0x34, 0x56, 0x78 }));
+        VERIFY_IS_TRUE(actual[4] == before[4]);
+        core->SetOverrideColorScheme(settings.as<Core::ICoreScheme>());
+        const auto reset = core->CurrentColorScheme();
+        for (uint32_t i = 0; i < before.size(); ++i)
+            VERIFY_IS_TRUE(before[i] == reset[i]);
     }
 
     void ControlCoreTests::InstantiateCore()
@@ -418,6 +461,316 @@ namespace ControlUnitTests
         VERIFY_ARE_EQUAL(L"\U0001F366B\r\n", unicodeCore->ReadBufferTail(1, 4));
     }
 
+    void ControlCoreTests::TestNavigateBufferMatch()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        VERIFY_IS_TRUE(core->FindTextMatches({ L"acrylic" }, [] { return false; }).empty());
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"Discussing acrylic settings\r\n"));
+        for (auto i = 0; i < 60; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"unrelated output\r\n"));
+        const auto matches = core->FindTextMatches({ L"ACRYLIC" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        VERIFY_ARE_EQUAL(L"Discussing acrylic settings", matches[0].AnchorText);
+        VERIFY_IS_FALSE(core->_terminal->IsSelectionActive());
+        VERIFY_IS_TRUE(core->_terminal->GetViewport().Top() > 0);
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_IS_TRUE(core->_terminal->IsSelectionActive());
+        VERIFY_ARE_EQUAL(0, core->_terminal->GetViewport().Top());
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id + 1));
+        VERIFY_IS_TRUE(core->FindTextMatches({ L"acrylic" }, [] { return true; }).empty());
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchAfterReflow()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"12345678901234567890123456789\U0001F600 discussing acrylic settings across wrapped rows.\r\n"));
+        const auto matches = core->FindTextMatches({ L"acrylic settings" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        core->SizeChanged(450, 380);
+        conn->WriteInput(winrt_wstring_to_array_view(L"more output\r\n"));
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        core->SizeChanged(270, 380);
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        conn->WriteInput(winrt_wstring_to_array_view(L"unrelated output after preparation\r\n"));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchRejectsExpiredAndAmbiguous()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"acrylic discussion\r\n"));
+        auto matches = core->FindTextMatches({ L"acrylic" }, [] { return false; });
+        conn->WriteInput(winrt_wstring_to_array_view(L"acrylic discussion\r\n"));
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_ARE_EQUAL(0, core->_terminal->GetSelectionAnchor().y);
+        matches = core->FindTextMatches({ L"acrylic" }, [] { return false; });
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[?1049h"));
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[?1049l"));
+        core->ClearBuffer(Control::ClearBufferType::All);
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchAfterRotation()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(40);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        for (auto i = 0; i < 40; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"earlier output\r\n"));
+        conn->WriteInput(winrt_wstring_to_array_view(L"\u8ba8\u8bba acrylic \U0001F600\r\n"));
+        const auto matches = core->FindTextMatches({ L"\u8ba8\u8bba" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        for (auto i = 0; i < 50; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"later output\r\n"));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_IS_TRUE(core->_terminal->GetSelectionAnchor().y < 40);
+        VERIFY_ARE_EQUAL(L"\u8ba8\u8bba acrylic \U0001F600", matches[0].AnchorText);
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchDuringOutput()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(40);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"acrylic acrylic discussion\r\nacrylic acrylic discussion\r\n"));
+        auto matches = core->FindTextMatches({ L"acrylic" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        core->SizeChanged(450, 380);
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        conn->WriteInput(winrt_wstring_to_array_view(L"unrelated output\r\n"));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_ARE_EQUAL(1, core->_terminal->GetSelectionAnchor().y);
+        VERIFY_ARE_EQUAL(8, core->_terminal->GetSelectionAnchor().x);
+        // Recycling the original occurrence must not select a new identical line.
+        for (auto i = 0; i < 100; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"acrylic acrylic discussion\r\n"));
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+        matches = core->FindTextMatches({ L"acrylic" }, [] { return false; });
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        // A newer search retires IDs from an earlier request.
+        core->FindTextMatches({ L"unrelated" }, [] { return false; });
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchDirectoryMetadata()
+    {
+        using namespace ::Microsoft::Terminal::Omni;
+        VERIFY_IS_TRUE(DirectoryMatches(L"C:\\Users\\test\\hello_world", L"hello_world"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"C:\\Users\\test\\hello_world", L"c:/users/test/HELLO_WORLD/"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\Users\\test\\hello_world2", L"hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\Users\\test\\hello_world", L"test\\hello_world"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"/home/test/hello_world/", L"hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"/home/test/Hello_World", L"hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"/home/test/hello_world", L"C:\\home\\test\\hello_world"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"\\\\server\\share\\hello_world", L"//server/share/hello_world"));
+        VERIFY_IS_TRUE(DirectorySelectorInPrompt(L"go to pane in hello_world folder", L"hello_world"));
+        VERIFY_IS_FALSE(DirectorySelectorInPrompt(L"go to pane in hello_world folder", L"C:\\work\\hello_world"));
+        VERIFY_IS_TRUE(DirectorySelectorInPrompt(L"go to C:/work/hello_world/", L"C:\\work\\hello_world"));
+        VERIFY_IS_FALSE(DirectorySelectorInPrompt(L"go to Hello_World", L"hello_world", true));
+        // Two windows/WSL paths with the same leaf remain two candidates.
+        size_t matches{};
+        for (const auto path : { L"C:\\work\\hello_world", L"/home/test/hello_world" })
+            matches += DirectoryMatches(path, L"hello_world") ? 1 : 0;
+        VERIFY_ARE_EQUAL(size_t{ 2 }, matches);
+        VERIFY_IS_TRUE(DirectoryMatches(L"C:\\", L"c:/"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"D:\\", L"C:\\"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"/", L"/"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"\\\\server\\share\\project space\\", L"project space"));
+        VERIFY_IS_TRUE(DirectoryMatches(L"C:\\work\\\u9879\u76ee", L"\u9879\u76ee"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\work\\not_hello_world", L"hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\work\\hello_world", L"C:\\other\\hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\work\\hello_world", L"%USERPROFILE%\\hello_world"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\work\\hello_world", L"work"));
+        VERIFY_IS_FALSE(DirectoryMatches(L"C:\\work\\hello_world", L".."));
+        VERIFY_IS_TRUE(DirectorySelectorInPrompt(L"go to \"C:\\work\\project space\"", L"C:\\work\\project space"));
+        VERIFY_IS_FALSE(DirectorySelectorInPrompt(L"go to missing_folder", L"hello_world"));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchResizeMatrix()
+    {
+        const std::wstring query = L"target \u754c\U0001F600";
+        for (const auto prefix : { 0, 7, 29 })
+        {
+            auto [settings, conn] = _createSettingsAndConnection();
+            auto core = createCore(*settings, *conn);
+            _standardInit(core);
+            conn->WriteInput(winrt_wstring_to_array_view(std::wstring(prefix, L'x') + query + L" stable suffix\r\n"));
+            const auto matches = core->FindTextMatches({ hstring{ query } }, [] { return false; });
+            VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+            for (const auto width : { 9, 19, 47, 12, 31, 30 })
+            {
+                core->SizeChanged(static_cast<float>(width * 9), 380.f);
+                VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+                conn->WriteInput(winrt_wstring_to_array_view(L"unrelated\r\n"));
+                VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+                VERIFY_ARE_EQUAL(query, _selectedText(core));
+            }
+        }
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchChunkBoundary()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(512);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        for (auto i = 0; i < 275; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"filler\r\n"));
+        conn->WriteInput(winrt_wstring_to_array_view(std::wstring(25, L'x') + L"needle[1].* suffix\r\n"));
+        for (auto i = 0; i < 40; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"needle11anything\r\n"));
+        VERIFY_IS_TRUE(core->FindTextMatches({ L"needle[2].*" }, [] { return false; }).empty());
+        const auto matches = core->FindTextMatches({ L"needle[1].*" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_ARE_EQUAL(275, core->_terminal->GetSelectionAnchor().y);
+        VERIFY_ARE_EQUAL(L"needle[1].*", _selectedText(core));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchOutputInterleavings()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(200);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"original target discussion\r\n"));
+        const auto matches = core->FindTextMatches({ L"target" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        for (auto i = 0; i < 80; ++i)
+        {
+            conn->WriteInput(winrt_wstring_to_array_view(L"building unrelated file\r\n"));
+            VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+            conn->WriteInput(winrt_wstring_to_array_view(L"original target discussion\r\n"));
+            VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+            VERIFY_ARE_EQUAL(0, core->_terminal->GetSelectionAnchor().y);
+            VERIFY_ARE_EQUAL(L"target", _selectedText(core));
+        }
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[3J"));
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+    }
+
+    void ControlCoreTests::TestNavigateMetadataConversationWithoutLiteral()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"user: what does this program do?\r\nassistant: It watches files and rebuilds.\r\nPS> "));
+        VERIFY_IS_TRUE(core->FindTextMatches({ L"Rust app" }, [] { return false; }).empty());
+        const auto matches = core->FindTextMatches({ L"Rust app" }, [] { return false; }, 128);
+        const auto match = std::find_if(matches.begin(), matches.end(), [](const auto& value) {
+            return std::wstring_view{ value.AnchorText }.find(L"what does this program do?") != std::wstring_view::npos;
+        });
+        VERIFY_IS_TRUE(match != matches.end());
+        VERIFY_IS_TRUE(std::wstring_view{ match->Text }.find(L"watches files") != std::wstring_view::npos);
+        core->SizeChanged(450.f, 380.f);
+        VERIFY_IS_TRUE(core->PrepareTextMatch(match->Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(match->Id));
+        VERIFY_ARE_EQUAL(0, core->_terminal->GetSelectionAnchor().y);
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[Hdifferent question"));
+        VERIFY_IS_FALSE(core->PrepareTextMatch(match->Id, [] { return false; }));
+    }
+
+    void ControlCoreTests::TestNavigateMetadataConversationExpansion()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(512);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"user: what does it do?\r\nassistant: It watches files.\r\n"));
+        for (auto i = 0; i < 200; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(L"unrelated build progress\r\n"));
+        const auto first = core->FindTextMatches({ L"Rust app" }, [] { return false; }, 128);
+        VERIFY_IS_TRUE(std::none_of(first.begin(), first.end(), [](const auto& value) {
+            return std::wstring_view{ value.Text }.find(L"watches files") != std::wstring_view::npos;
+        }));
+        const auto expanded = core->FindTextMatches({ L"Rust app" }, [] { return false; }, 512);
+        const auto match = std::find_if(expanded.begin(), expanded.end(), [](const auto& value) {
+            return std::wstring_view{ value.Text }.find(L"watches files") != std::wstring_view::npos;
+        });
+        VERIFY_IS_TRUE(match != expanded.end());
+        VERIFY_IS_TRUE(core->PrepareTextMatch(match->Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(match->Id));
+        VERIFY_ARE_EQUAL(0, core->_terminal->GetViewport().Top());
+        if (!first.empty())
+            VERIFY_IS_FALSE(core->RevealTextMatch(first[0].Id));
+    }
+    void ControlCoreTests::TestNavigateMetadataPrioritizesDistinctContext()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->HistorySize(200);
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"user: why is revenue wrong?\r\nassistant: Acme rows must be added.\r\n"));
+        for (auto i = 0; i < 48; ++i)
+            conn->WriteInput(winrt_wstring_to_array_view(fmt::format(L"review note {}: saved\r\n", i)));
+        conn->WriteInput(winrt_wstring_to_array_view(L"PS> "));
+        const auto matches = core->FindTextMatches({ L"MyRustApp" }, [] { return false; }, 128);
+        const auto end = matches.begin() + std::min(size_t{ 4 }, matches.size());
+        const auto match = std::find_if(matches.begin(), end, [](const auto& value) {
+            return std::wstring_view{ value.Text }.find(L"Acme rows must be added") != std::wstring_view::npos;
+        });
+        VERIFY_IS_TRUE(match != end);
+        VERIFY_IS_TRUE(core->PrepareTextMatch(match->Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(match->Id));
+        VERIFY_ARE_EQUAL(0, core->_terminal->GetViewport().Top());
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchAtRightEdge()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(std::wstring(24, L'x') + L"target\r\n"));
+        const auto matches = core->FindTextMatches({ L"target" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        conn->WriteInput(winrt_wstring_to_array_view(L"unrelated next logical line\r\n"));
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_ARE_EQUAL(til::point(24, 0), core->_terminal->GetSelectionAnchor());
+        VERIFY_ARE_EQUAL(til::point(30, 0), core->_terminal->GetSelectionEnd());
+        VERIFY_ARE_EQUAL(L"target", _selectedText(core));
+    }
+
+    void ControlCoreTests::TestNavigateBufferMatchCancellationAndBufferReturn()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        conn->WriteInput(winrt_wstring_to_array_view(L"main target discussion\r\n"));
+        const auto matches = core->FindTextMatches({ L"target" }, [] { return false; });
+        VERIFY_ARE_EQUAL(size_t{ 1 }, matches.size());
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return true; }));
+        VERIFY_IS_FALSE(core->_terminal->IsSelectionActive());
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[?1049hmain target discussion\r\n"));
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+        conn->WriteInput(winrt_wstring_to_array_view(L"\x1b[?1049l"));
+        VERIFY_IS_TRUE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_TRUE(core->RevealTextMatch(matches[0].Id));
+        VERIFY_ARE_EQUAL(L"target", _selectedText(core));
+        core->FindTextMatches({ L"absent" }, [] { return false; });
+        VERIFY_IS_FALSE(core->PrepareTextMatch(matches[0].Id, [] { return false; }));
+        VERIFY_IS_FALSE(core->RevealTextMatch(matches[0].Id));
+    }
+
     static void _writePrompt(const winrt::com_ptr<MockConnection>& conn, const std::wstring_view& path, const std::optional<int32_t> exitCode = std::nullopt)
     {
         conn->WriteInput(winrt_wstring_to_array_view(exitCode ? fmt::format(L"\x1b]133;D;{}\x7", *exitCode) : L"\x1b]133;D\x7"));
@@ -498,7 +851,9 @@ namespace ControlUnitTests
         const auto secondLine = L"out" + std::wstring(27, L' ');
         VERIFY_ARE_EQUAL(hstring{ firstLine }, core->ReadLastPromptBounded(1, 1000));
         VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" + secondLine }, core->ReadLastPromptBounded(2, 1000));
-        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" + secondLine + L"\n" L"end" }, core->ReadLastPromptBounded(3, 1000));
+        VERIFY_ARE_EQUAL(hstring{ firstLine + L"\n" + secondLine + L"\n"
+                                                                   L"end" },
+                         core->ReadLastPromptBounded(3, 1000));
 
         VERIFY_ARE_EQUAL(hstring{ std::wstring(23, L'C') }, core->ReadLastPromptBounded(3, 23));
         VERIFY_ARE_EQUAL(hstring{ std::wstring(24, L'C') }, core->ReadLastPromptBounded(3, 24));

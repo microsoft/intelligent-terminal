@@ -509,6 +509,14 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 5. Delegate agent and command palette shortcuts
 
+- [ ] `C502` `[new]` `[E2E]` **Omni tool results return to the dedicated agent without exposing shell tools:** The deployed WTA bridge verifies its exact SDK tool inventory, forwards a native-host callback and consumes its result across two isolated requests. Synthetic host receipts; native UI execution is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C503` `[new]` `[E2E]` **Omni cancelled close receipts finish without a second mutation:** A synthetic native cancellation reaches the real dedicated agent and ends the run without another host mutation. Native confirmation-dialog interaction is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C504` `[new]` `[E2E]` **Omni foreign tool receipts terminate the isolated run:** A host result for another run is rejected before the dedicated agent can consume it. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C505` `[new]` `[E2E]` **Omni runtime appearance and split requests use dedicated tools:** The real dedicated agent preserves unspecified appearance fields and resolves the requested split direction/profile through typed calls. Synthetic host receipts; actual native mutation is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C506` `[new]` `[E2E]` **Omni metadata clues drive buffer search and reveal tool calls:** Directory metadata nominates a pane whose question/answer lacks literal project keywords, and the real agent selects its returned anchor instead of a bare shell prompt. Synthetic bounded buffer results; native scroll/focus is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C507` `[new]` `[E2E]` **Omni appearance uses refreshed context without retargeting the request:** The real dedicated agent uses refreshed opacity rather than stale initial state and keeps pane scope when the active tab changes. Synthetic native context; actual native appearance is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+- [ ] `C508` `[new]` `[E2E]` **Omni partial failure receipts finish without another mutation:** An observed appearance mismatch and possible partial effect reach the real dedicated agent, which reports the native reason and ends without retrying. Synthetic native receipt; native readback is separate acceptance. _(E2E: `Feature.OmniTools`.)_
+
 **Feature definition:** Delegate mode launches a separate agent task from the current terminal context/cwd, without using the interactive agent pane chat.
 
 - [ ] `C135` `[UT✓]` `[E2E]` **`Alt+Shift+B` launches background delegate:** Shortcut opens a new delegate agent/task. _(UT: `DefaultAgentKeybindings` binding; launch E2E.)_

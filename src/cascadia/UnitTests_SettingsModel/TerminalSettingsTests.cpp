@@ -5,10 +5,12 @@
 
 #include <til/rand.h>
 #include <pcg_random.hpp>
+#include <limits>
 
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/ModelSerializationHelpers.h"
 #include "../inc/AgentProfileUtils.h"
+#include "../inc/OmniToolDefinitions.h"
 #include "../TerminalSettingsModel/DynamicProfileUtils.h"
 #include "TestUtils.h"
 
@@ -54,6 +56,9 @@ namespace SettingsModelUnitTests
         TEST_METHOD(MakeSettingsForProfile);
         TEST_METHOD(AcrylicSettingsReachTerminal);
         TEST_METHOD(RuntimeAppearancePreservesInheritanceAndSource);
+        TEST_METHOD(RuntimeAppearancePartialUpdatesAndInvalidNumbers);
+        TEST_METHOD(OmniToolContractPreservesDefaultsAndRejectsExtraArguments);
+        TEST_METHOD(OmniToolContractBindsTargetsAndBoundsQueries);
         TEST_METHOD(MakeSettingsForDefaultProfileThatDoesntExist);
         TEST_METHOD(TestLayerProfileOnColorScheme);
         TEST_METHOD(TestCommandlineToTitlePromotion);
@@ -64,6 +69,50 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentProfileAppendPreservesRawCommandline);
         TEST_METHOD(AgentProfileManagedLayoutOrphan);
     };
+
+    void TerminalSettingsTests::OmniToolContractPreservesDefaultsAndRejectsExtraArguments()
+    {
+        Json::Value context;
+        context["default_profile_id"] = "profile-one";
+        context["profiles"][0]["id"] = "profile-one";
+        const auto tools = ::Microsoft::Terminal::Omni::ToolDefinitions(context);
+        Json::Value args;
+        args["acrylic"] = true;
+        const auto appearance = ::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_appearance", args);
+        VERIFY_ARE_EQUAL(std::string{ "pane" }, appearance["scope"].asString());
+        VERIFY_IS_FALSE(appearance.isMember("opacity"));
+        VERIFY_IS_FALSE(appearance.isMember("font_size"));
+        args = Json::Value{ Json::objectValue };
+        const auto split = ::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_split", args);
+        VERIFY_ARE_EQUAL(std::string{ "profile-one" }, split["profile_id"].asString());
+        VERIFY_ARE_EQUAL(std::string{ "auto" }, split["direction"].asString());
+        args["commandline"] = "not-allowed";
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_split", args), wil::ResultException);
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "shell", Json::Value{ Json::objectValue }), wil::ResultException);
+    }
+
+    void TerminalSettingsTests::OmniToolContractBindsTargetsAndBoundsQueries()
+    {
+        Json::Value context;
+        context["panes"][0]["content_id"] = Json::UInt64{ 7 };
+        const auto tools = ::Microsoft::Terminal::Omni::ToolDefinitions(context);
+        Json::Value args;
+        args["content_id"] = 7;
+        VERIFY_ARE_EQUAL(7u, ::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_close_pane", args)["content_id"].asUInt());
+        args["content_id"] = 8;
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_close_pane", args), wil::ResultException);
+        args["content_id"] = "7";
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_close_pane", args), wil::ResultException);
+        args = Json::Value{ Json::objectValue };
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_close_pane", args), wil::ResultException);
+        args["queries"] = Json::Value{ Json::arrayValue };
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_find_content", args), wil::ResultException);
+        args["queries"].append("rust");
+        VERIFY_ARE_EQUAL(1u, ::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_find_content", args)["queries"].size());
+        for (int i = 0; i < 3; ++i)
+            args["queries"].append("extra");
+        VERIFY_THROWS(::Microsoft::Terminal::Omni::ToolPlan(tools, "terminal_find_content", args), wil::ResultException);
+    }
 
     void TerminalSettingsTests::AcrylicSettingsReachTerminal()
     {
@@ -117,6 +166,56 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(layered->UseAcrylic());
         appearance.opacity = 2.f;
         VERIFY_THROWS_SPECIFIC(TerminalSettings::WithRuntimeAppearance(base.DefaultSettings(), appearance), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_INVALIDARG; });
+    }
+
+    void TerminalSettingsTests::RuntimeAppearancePartialUpdatesAndInvalidNumbers()
+    {
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(std::string_view{ R"({
+            "profiles": [{"name":"Runtime", "useAcrylic":false, "opacity":100, "font":{"size":18}}]
+        })" });
+        const auto profile = settings->GetProfileByName(L"Runtime");
+        const auto base = TerminalSettings::CreateWithProfile(*settings, profile).DefaultSettings();
+        RuntimeAppearance acrylic;
+        acrylic.acrylic = true;
+        const auto enabled = TerminalSettings::WithRuntimeAppearance(base, acrylic);
+        VERIFY_IS_TRUE(enabled->UseAcrylic());
+        VERIFY_ARE_EQUAL(1.f, enabled->Opacity());
+        VERIFY_ARE_EQUAL(18.f, enabled->FontSize());
+        VERIFY_IS_FALSE(base->UseAcrylic());
+        for (const auto opacity : { 0.f, 0.5f, 1.f })
+        {
+            RuntimeAppearance change;
+            change.opacity = opacity;
+            const auto actual = TerminalSettings::WithRuntimeAppearance(enabled, change);
+            VERIFY_ARE_EQUAL(opacity, actual->Opacity());
+            VERIFY_IS_TRUE(actual->UseAcrylic());
+            VERIFY_ARE_EQUAL(18.f, actual->FontSize());
+            VERIFY_ARE_EQUAL(1.f, enabled->Opacity());
+        }
+        for (const auto font : { 1.f, 128.f })
+        {
+            RuntimeAppearance change;
+            change.fontSize = font;
+            const auto actual = TerminalSettings::WithRuntimeAppearance(enabled, change);
+            VERIFY_ARE_EQUAL(font, actual->FontSize());
+            VERIFY_ARE_EQUAL(1.f, actual->Opacity());
+            VERIFY_IS_TRUE(actual->UseAcrylic());
+        }
+        for (const auto invalid : { -1.f, 2.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+        {
+            RuntimeAppearance change;
+            change.opacity = invalid;
+            VERIFY_THROWS_SPECIFIC(TerminalSettings::WithRuntimeAppearance(enabled, change), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_INVALIDARG; });
+        }
+        for (const auto invalid : { 0.f, 129.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+        {
+            RuntimeAppearance change;
+            change.fontSize = invalid;
+            VERIFY_THROWS_SPECIFIC(TerminalSettings::WithRuntimeAppearance(enabled, change), wil::ResultException, [](const auto& error) { return error.GetErrorCode() == E_INVALIDARG; });
+        }
+        VERIFY_ARE_EQUAL(1.f, base->Opacity());
+        VERIFY_ARE_EQUAL(18.f, base->FontSize());
+        VERIFY_IS_FALSE(base->UseAcrylic());
     }
 
     void TerminalSettingsTests::AgentProfileDirectCommandPrecedence()
@@ -213,7 +312,8 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(custom->UsesManagedAgentCommand());
         VERIFY_ARE_EQUAL(edited, custom->Commandline());
         const auto reloaded = winrt::make<implementation::CascadiaSettings>(Json::writeString(
-            Json::StreamWriterBuilder{}, winrt::get_self<implementation::CascadiaSettings>(settings)->ToJson()), generated);
+                                                                                Json::StreamWriterBuilder{}, winrt::get_self<implementation::CascadiaSettings>(settings)->ToJson()),
+                                                                            generated);
         VERIFY_ARE_EQUAL(edited, TerminalSettings::CreateWithProfile(reloaded, reloaded.FindProfile(profile.Guid())).DefaultSettings()->Commandline());
         profile.ClearCommandline();
         VERIFY_IS_TRUE(TerminalSettings::CreateWithProfile(settings, profile).DefaultSettings()->UsesManagedAgentCommand());

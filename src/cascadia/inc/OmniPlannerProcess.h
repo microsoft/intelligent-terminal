@@ -25,7 +25,28 @@ namespace Microsoft::Terminal::WtaProcess
         bool BeginWarmup() noexcept { return !_warming.exchange(true); }
         void EndWarmup() noexcept { _warming.store(false); }
 
-        CaptureResult Exchange(const std::wstring& path, std::string_view request, const std::atomic<bool>* cancellation = nullptr)
+        bool IsToolRunCurrent(const std::string_view runId)
+        {
+            std::unique_lock lock{ _mutex, std::try_to_lock };
+            return lock.owns_lock() && _activeRun == runId && _process && WaitForSingleObject(_process.get(), 0) == WAIT_TIMEOUT;
+        }
+
+        void FinishToolRun(const std::string_view runId, const bool completed)
+        {
+            // A superseding exchange can already own the transport. Never wait
+            // for its model response on the UI thread while abandoning an old run.
+            std::unique_lock lock{ _mutex, std::try_to_lock };
+            if (!lock.owns_lock())
+                return;
+            if (_activeRun == runId)
+            {
+                if (!completed)
+                    _Reset();
+                _activeRun.clear();
+            }
+        }
+
+        CaptureResult Exchange(const std::wstring& path, std::string_view request, const std::atomic<bool>* cancellation = nullptr, const std::string_view runId = {})
         {
             CaptureResult result;
             const auto started = GetTickCount64();
@@ -44,6 +65,20 @@ namespace Microsoft::Terminal::WtaProcess
             try
             {
                 THROW_HR_IF(E_INVALIDARG, request.size() > 24 * 1024 || request.find('\n') != std::string_view::npos);
+                if (runId.empty() && !_activeRun.empty())
+                {
+                    THROW_HR_IF(E_CHANGED_STATE, request != "null");
+                    result.completed = true;
+                    result.exitCode = 0;
+                    result.output = "{\"ready\":true}";
+                    return result;
+                }
+                if (!runId.empty() && _activeRun != runId)
+                {
+                    if (!_activeRun.empty())
+                        _Reset();
+                    _activeRun = runId;
+                }
                 if (cancelled() || expired())
                 {
                     result.cancelled = cancelled();
@@ -54,6 +89,7 @@ namespace Microsoft::Terminal::WtaProcess
                 {
                     _Reset();
                     _Start(path);
+                    _activeRun = runId;
                 }
                 auto frame = std::string{ request } + '\n';
                 DWORD written{};
@@ -107,6 +143,7 @@ namespace Microsoft::Terminal::WtaProcess
     private:
         void _Reset() noexcept
         {
+            _activeRun.clear();
             _job.reset();
             if (_process && WaitForSingleObject(_process.get(), 0) == WAIT_TIMEOUT)
             {
@@ -162,6 +199,7 @@ namespace Microsoft::Terminal::WtaProcess
 
         std::timed_mutex _mutex;
         std::atomic<bool> _warming{ false };
+        std::string _activeRun;
         wil::unique_handle _job;
         wil::unique_handle _process;
         wil::unique_handle _input;

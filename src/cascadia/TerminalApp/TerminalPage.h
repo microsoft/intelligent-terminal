@@ -1525,13 +1525,17 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring tabId;
             winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings settings{ nullptr };
             uint32_t sourceContentId{};
+            std::string sourceKind{ "none" };
             std::vector<winrt::hstring> tabIds;
             std::vector<std::pair<winrt::Microsoft::Terminal::Control::TermControl,
                                   winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection>>
                 panes;
         };
         OmniTarget _CaptureOmniTarget() const;
-        Json::Value _ExecuteOmniOperation(const Json::Value& plan, const OmniTarget& target);
+        Json::Value _RefreshOmniContext(const Json::Value& captured, const OmniTarget& target);
+        Json::Value _ExecuteOmniOperation(const Json::Value& plan, const OmniTarget& target, Json::Value* receipt = nullptr);
+        Windows::Foundation::IAsyncAction _WaitForOmniIdle(std::function<void()> validateRequest);
+        Windows::Foundation::IAsyncAction _ApplyOmniTabLayout(Microsoft::Terminal::Settings::Model::TabLayout layout, std::function<void()> validateRequest, Json::Value* receipt = nullptr);
 
         // Agent pane helpers
         winrt::hstring _DetectAgentCli() const;

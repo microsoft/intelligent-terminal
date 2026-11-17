@@ -372,6 +372,8 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPaneContent::SetPaneRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
     {
+        if (!CanApplyRuntimeAppearance())
+            throw winrt::hresult_error(E_CHANGED_STATE, L"profile_settings_unavailable");
         const auto opacity = _control.BackgroundOpacity();
         _paneRuntimeAppearance.Merge(appearance);
         if (appearance.fontSize)
@@ -385,17 +387,33 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPaneContent::SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
+    void TerminalPaneContent::SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance,
+                                                      const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& overwrite)
     {
-        if (_tabRuntimeAppearance == appearance)
+        if (_tabRuntimeAppearance == appearance && overwrite.Empty())
         {
             return;
         }
+        if (!CanApplyRuntimeAppearance())
+        {
+            if (!overwrite.Empty())
+                throw winrt::hresult_error(E_CHANGED_STATE, L"profile_settings_unavailable");
+            _tabRuntimeAppearance = appearance;
+            return;
+        }
+        if (overwrite.opacity)
+            _paneRuntimeAppearance.opacity.reset();
+        if (overwrite.acrylic)
+            _paneRuntimeAppearance.acrylic.reset();
+        if (overwrite.fontSize)
+            _paneRuntimeAppearance.fontSize.reset();
+        if (overwrite.scheme)
+            _paneRuntimeAppearance.scheme = nullptr;
         if (_tabRuntimeAppearance.fontSize != appearance.fontSize && !_paneRuntimeAppearance.fontSize)
         {
             _control.ResetFontSize();
         }
-        const auto preserveOpacity = _tabRuntimeAppearance.opacity == appearance.opacity || _paneRuntimeAppearance.opacity.has_value();
+        const auto preserveOpacity = !overwrite.opacity && (_tabRuntimeAppearance.opacity == appearance.opacity || _paneRuntimeAppearance.opacity.has_value());
         const auto opacity = _control.BackgroundOpacity();
         _tabRuntimeAppearance = appearance;
         _ApplyRuntimeAppearance();
@@ -405,12 +423,9 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    bool TerminalPaneContent::ConflictsWithTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance) const
+    bool TerminalPaneContent::CanApplyRuntimeAppearance() const
     {
-        return (appearance.opacity && _paneRuntimeAppearance.opacity && appearance.opacity != _paneRuntimeAppearance.opacity) ||
-               (appearance.acrylic && _paneRuntimeAppearance.acrylic && appearance.acrylic != _paneRuntimeAppearance.acrylic) ||
-               (appearance.fontSize && _paneRuntimeAppearance.fontSize && appearance.fontSize != _paneRuntimeAppearance.fontSize) ||
-               (appearance.scheme && _paneRuntimeAppearance.scheme && appearance.scheme.Name() != _paneRuntimeAppearance.scheme.Name());
+        return _cache->TryLookup(_profile).has_value();
     }
 
     // Method Description:

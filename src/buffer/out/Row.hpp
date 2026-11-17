@@ -169,6 +169,7 @@ public:
     std::wstring_view GlyphAt(til::CoordType column) const noexcept;
     DbcsAttribute DbcsAttrAt(til::CoordType column) const noexcept;
     std::wstring_view GetText() const noexcept;
+    uint64_t GetNavigationId() const noexcept { return _navigationId; }
     std::wstring_view GetText(til::CoordType columnBegin, til::CoordType columnEnd) const noexcept;
     til::CoordType GetLeadingColumnAtCharOffset(ptrdiff_t offset) const noexcept;
     til::CoordType GetTrailingColumnAtCharOffset(ptrdiff_t offset) const noexcept;
@@ -189,6 +190,10 @@ public:
 #endif
 
 private:
+    friend class TextBuffer;
+    // Reflow preserves the first row's identity across a logical line.
+    uint64_t _navigationId{};
+
     // WriteHelper exists because other forms of abstracting this functionality away (like templates with lambdas)
     // where only very poorly optimized by MSVC as it failed to inline the templates.
     struct WriteHelper

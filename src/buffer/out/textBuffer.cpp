@@ -241,8 +241,9 @@ const ROW& TextBuffer::GetRowByOffset(const til::CoordType index) const
 // (what corresponds to the top row of the screen buffer).
 ROW& TextBuffer::GetMutableRowByOffset(const til::CoordType index)
 {
-    _lastMutationId++;
-    return _getRow(index);
+    auto& row = _getRow(index);
+    row._navigationId = ++_lastMutationId;
+    return row;
 }
 
 // Returns a row filled with whitespace and the current attributes, for you to freely use.
@@ -2746,11 +2747,16 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
     const auto oldHeight = std::max(lastRowWithText, oldCursorPos.y) + 1;
     const auto newHeight = newBuffer.GetSize().Height();
     const auto newWidthU16 = gsl::narrow_cast<uint16_t>(newWidth);
+    uint64_t navigationId{};
 
     // Copy oldBuffer into newBuffer until oldBuffer has been fully consumed.
     for (; oldY < oldHeight && newY < newYLimit; ++oldY)
     {
         const auto& oldRow = oldBuffer.GetRowByOffset(oldY);
+        if (oldY == 0 || !oldBuffer.GetRowByOffset(oldY - 1).WasWrapForced())
+        {
+            navigationId = oldRow.GetNavigationId();
+        }
 
         // A pair of double height rows should optimally wrap as a union (i.e. after wrapping there should be 4 lines).
         // But for this initial implementation I chose the alternative approach: Just truncate them.
@@ -2775,6 +2781,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
 
             newRow.CopyFrom(oldRow);
             newRow.SetWrapForced(false);
+            newRow._navigationId = navigationId;
 
             if (oldY == oldCursorPos.y)
             {
@@ -2834,6 +2841,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
             if (newX >= newWidth)
             {
                 newBuffer.GetMutableRowByOffset(newY).SetWrapForced(true);
+                newBuffer._getRow(newY)._navigationId = navigationId;
                 newX = 0;
                 newY++;
             }
@@ -2862,6 +2870,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
                 .sourceColumnLimit = oldRowLimit,
             };
             newRow.CopyTextFrom(state);
+            newRow._navigationId = navigationId;
 
             // If we're at the start of the old row, copy its image content.
             if (oldX == 0)
@@ -3070,7 +3079,7 @@ std::optional<std::vector<til::point_span>> TextBuffer::SearchText(const std::ws
 }
 
 // Searches through the given rows [rowBeg,rowEnd) for `needle` and returns the coordinates in absolute coordinates.
-// While the end coordinates of the returned ranges are considered inclusive, the [rowBeg,rowEnd) range is half-open.
+// Both the returned match ranges and the [rowBeg,rowEnd) range are half-open.
 // Returns nullopt if the parameters were invalid (e.g. regex search was requested with an invalid regex)
 std::optional<std::vector<til::point_span>> TextBuffer::SearchText(const std::wstring_view& needle, SearchFlag flags, til::CoordType rowBeg, til::CoordType rowEnd) const
 {

@@ -604,8 +604,7 @@ namespace
 
 extern "C" HRESULT __declspec(dllexport) __cdecl ReflowTestDataSource(IDataSource** ppDataSource, void*)
 {
-    auto source{ Microsoft::WRL::Make<ArrayIndexTaefAdapterSource>() };
-    return source.CopyTo(ppDataSource);
+    return Microsoft::WRL::MakeAndInitialize<ArrayIndexTaefAdapterSource>(ppDataSource, std::size(testCases));
 }
 
 class ReflowTests

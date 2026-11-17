@@ -161,7 +161,7 @@ impl Runtime {
         }
     }
 
-    async fn prepare(&mut self) -> Result<()> {
+    async fn prepare(&mut self, tools: &[Value]) -> Result<()> {
         if self.session.is_some() {
             return Ok(());
         }
@@ -172,8 +172,12 @@ impl Runtime {
                 json!({
                     "clientName":"intelligent-terminal-omni",
                     "workingDirectory":cwd,
-                    "availableTools":["__intelligent_terminal_omni_no_tools__"],
-                    "tools":[], "mcpServers":{},
+                    "availableTools": if tools.is_empty() {
+                        vec![json!("__intelligent_terminal_omni_no_tools__")]
+                    } else {
+                        tools.iter().map(|tool| tool["name"].clone()).collect()
+                    },
+                    "tools":tools, "mcpServers":{},
                     "enableConfigDiscovery":false, "enableFileHooks":false,
                     "enableHostGitOperations":false, "enableSkills":false,
                     "enableSessionStore":false, "enableManagedSettings":true,
@@ -194,10 +198,10 @@ impl Runtime {
             None,
         )
         .await?;
-        self.verify_inventory(&id).await
+        self.verify_inventory(&id, tools).await
     }
 
-    async fn verify_inventory(&mut self, id: &str) -> Result<()> {
+    async fn verify_inventory(&mut self, id: &str, tools: &[Value]) -> Result<()> {
         let inventory = self
             .request(
                 "session.tools.getCurrentMetadata",
@@ -205,11 +209,7 @@ impl Runtime {
                 None,
             )
             .await?;
-        ensure!(
-            inventory["tools"].as_array().is_some_and(Vec::is_empty),
-            "Omni tool isolation unavailable"
-        );
-        Ok(())
+        super::tools::verify_inventory(&inventory, tools)
     }
 
     async fn plan(&mut self, request: &str) -> Result<Value> {
@@ -229,8 +229,161 @@ impl Runtime {
         while !turn.idle {
             self.receive(Some(&mut turn)).await?;
         }
-        self.verify_inventory(&id).await?;
+        self.verify_inventory(&id, &[]).await?;
         Ok(serde_json::to_value(turn.output.finish(&context)?)?)
+    }
+
+    async fn plan_with_tools(
+        &mut self,
+        context: &Value,
+        host_input: &mut (impl AsyncBufRead + Unpin),
+        host_output: &mut (impl AsyncWrite + Unpin),
+    ) -> Result<Value> {
+        let run_id = context["run_id"]
+            .as_str()
+            .context("missing native run ID")?;
+        ensure!(!run_id.is_empty() && run_id.len() <= 128, "invalid run ID");
+        let tools = super::tools::definitions(context)?;
+        self.release_session().await?;
+        self.prepare(&tools).await?;
+        let session_id = self.session.clone().context("missing tool session")?;
+        let mut calls = super::tools::Calls::default();
+        let mut requests = std::collections::HashMap::new();
+        let mut pending = std::collections::HashSet::new();
+        let mut answer = String::new();
+        self.next_id += 1;
+        pending.insert(self.next_id);
+        write_frame(
+            &mut self.input,
+            &json!({"jsonrpc":"2.0","id":self.next_id,"method":"session.send",
+                "params":{"sessionId":session_id,"prompt":super::tools::prompt(context)?}}),
+        )
+        .await?;
+        loop {
+            let message =
+                tokio::time::timeout(Duration::from_secs(90), read_frame(&mut self.output))
+                    .await
+                    .context("Omni model response timed out")??;
+            if message.get("id").is_some() {
+                ensure!(
+                    message.get("method").is_none(),
+                    "unexpected SDK host request"
+                );
+                let id = message["id"].as_u64().context("invalid SDK response ID")?;
+                ensure!(pending.remove(&id), "unexpected SDK response");
+                ensure!(message.get("error").is_none(), "SDK tool response failed");
+                continue;
+            }
+            if message["method"] != "session.event" || message["params"]["sessionId"] != session_id
+            {
+                continue;
+            }
+            let event = &message["params"]["event"];
+            match event["type"].as_str() {
+                Some("session.error" | "abort" | "permission.requested") => {
+                    bail!("Omni tool session requested an unavailable capability")
+                }
+                Some("tool.execution_start") => {
+                    ensure!(
+                        tools
+                            .iter()
+                            .any(|tool| tool["name"] == event["data"]["toolName"]),
+                        "Omni attempted an unregistered tool"
+                    );
+                }
+                Some("external_tool.requested") => {
+                    let data = &event["data"];
+                    ensure!(data["sessionId"] == session_id, "foreign tool callback");
+                    let call_id = data["requestId"]
+                        .as_str()
+                        .context("missing tool request ID")?;
+                    let name = data["toolName"].as_str().context("missing tool name")?;
+                    let result = if let Some(result) = calls.completed.get(call_id) {
+                        ensure!(requests.get(call_id) == Some(data), "tool replay changed");
+                        result.clone()
+                    } else {
+                        ensure!(
+                            calls.completed.len() < super::tools::MAX_CALLS,
+                            "tool call limit reached"
+                        );
+                        ensure!(
+                            !call_id.is_empty() && call_id.len() <= 256,
+                            "invalid tool request ID"
+                        );
+                        let tool_call_id = data["toolCallId"]
+                            .as_str()
+                            .context("missing tool call ID")?;
+                        requests.insert(call_id.to_owned(), data.clone());
+                        let authorized = calls.authorize(&tools, tool_call_id, name);
+                        let result = if let Err(error) = authorized {
+                            json!({"textResultForLlm":error.to_string(),"resultType":"denied"})
+                        } else {
+                            crate::cli::native_agent::check_omni_policy()?;
+                            let call = json!({"kind":"tool_call","run_id":run_id,"call_id":call_id,
+                                "name":name,"arguments":data["arguments"]});
+                            let bytes = serde_json::to_vec(&call)?;
+                            ensure!(bytes.len() <= 64 * 1024, "tool call exceeds native limit");
+                            host_output.write_all(&bytes).await?;
+                            host_output.write_all(b"\n").await?;
+                            host_output.flush().await?;
+                            // Native dialogs own the decision; their wait is separate from model time.
+                            let reply = tokio::time::timeout(
+                                Duration::from_secs(600),
+                                read_line(host_input, MAX_REQUEST + 1),
+                            )
+                            .await
+                            .context("native tool decision timed out")??;
+                            ensure!(!reply.is_empty(), "native tool host disconnected");
+                            super::tools::tool_result(
+                                &serde_json::from_slice(&reply)?,
+                                run_id,
+                                call_id,
+                            )?
+                        };
+                        calls.completed.insert(call_id.to_owned(), result.clone());
+                        result
+                    };
+                    self.next_id += 1;
+                    pending.insert(self.next_id);
+                    write_frame(
+                        &mut self.input,
+                        &json!({"jsonrpc":"2.0","id":self.next_id,
+                            "method":"session.tools.handlePendingToolCall",
+                            "params":{"sessionId":session_id,"requestId":call_id,"result":result}}),
+                    )
+                    .await?;
+                }
+                Some("assistant.message") => {
+                    if let Some(content) = event["data"]["content"].as_str() {
+                        ensure!(content.len() <= 16 * 1024, "Omni answer exceeds limit");
+                        if !content.is_empty() {
+                            answer = content.to_owned();
+                        }
+                    }
+                }
+                Some("session.idle") => break,
+                _ => {}
+            }
+        }
+        // Drain acknowledgements before issuing the final inventory query.
+        while !pending.is_empty() {
+            let message =
+                tokio::time::timeout(Duration::from_secs(10), read_frame(&mut self.output))
+                    .await
+                    .context("SDK acknowledgement timed out")??;
+            if let Some(id) = message["id"].as_u64() {
+                ensure!(
+                    message.get("method").is_none()
+                        && pending.remove(&id)
+                        && message.get("error").is_none(),
+                    "invalid SDK acknowledgement"
+                );
+            } else {
+                ensure!(message.get("id").is_none(), "unexpected host callback");
+            }
+        }
+        self.verify_inventory(&session_id, &tools).await?;
+        super::tools::completion(&answer, run_id, &calls.completed)
     }
 
     async fn release_session(&mut self) -> Result<()> {
@@ -253,23 +406,33 @@ pub(in crate::cli) async fn serve() -> Result<()> {
         }
         let request = std::str::from_utf8(&line)?.trim_end();
         let warmup = request == "null";
+        let context: Value = serde_json::from_str(request)?;
+        let tool_mode = context["tool_protocol"] == 1;
         let started = Instant::now();
-        let result = tokio::time::timeout(Duration::from_secs(90), async {
-            crate::cli::native_agent::check_omni_policy()?;
-            if !warmup {
-                super::planning_prompt(request)?;
-            }
-            if runtime.is_none() {
-                runtime = Some(Runtime::start().await?);
-            }
-            let coordinator = runtime.as_mut().context("Omni runtime unavailable")?;
-            coordinator.prepare().await?;
-            if warmup {
-                Ok(json!({"ready":true}))
-            } else {
-                coordinator.plan(request).await
-            }
-        })
+        let result = tokio::time::timeout(
+            Duration::from_secs(if tool_mode { 900 } else { 90 }),
+            async {
+                crate::cli::native_agent::check_omni_policy()?;
+                if !warmup {
+                    super::planning_prompt(request)?;
+                }
+                if runtime.is_none() {
+                    runtime = Some(Runtime::start().await?);
+                }
+                let coordinator = runtime.as_mut().context("Omni runtime unavailable")?;
+                if tool_mode {
+                    return coordinator
+                        .plan_with_tools(&context, &mut input, &mut output)
+                        .await;
+                }
+                coordinator.prepare(&[]).await?;
+                if warmup {
+                    Ok(json!({"ready":true}))
+                } else {
+                    coordinator.plan(request).await
+                }
+            },
+        )
         .await
         .context("Omni planning timed out")
         .and_then(|result| result);

@@ -1108,6 +1108,22 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _renderer->TriggerRedrawAll(true);
     }
 
+    winrt::com_array<Core::Color> ControlCore::CurrentColorScheme() const
+    {
+        const auto lock = _terminal->LockForReading();
+        const auto& settings = _terminal->GetRenderSettings();
+        winrt::com_array<Core::Color> colors(20);
+        colors[0] = til::color{ settings.GetColorAlias(ColorAlias::DefaultForeground) };
+        colors[1] = til::color{ settings.GetColorAlias(ColorAlias::DefaultBackground) };
+        colors[2] = til::color{ settings.GetColorTableEntry(TextColor::SELECTION_BACKGROUND) };
+        colors[3] = til::color{ settings.GetColorTableEntry(TextColor::CURSOR_COLOR) };
+        for (uint32_t i = 0; i < 16; ++i)
+        {
+            colors[i + 4] = til::color{ settings.GetColorTableEntry(i) };
+        }
+        return colors;
+    }
+
     void ControlCore::_updateAntiAliasingMode()
     {
         D2D1_TEXT_ANTIALIAS_MODE mode;
@@ -2447,6 +2463,292 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 conpty.ClearBuffer(true);
             }
         }
+    }
+
+    namespace
+    {
+        // Logical-line anchors survive reflow, unlike buffer row coordinates.
+        std::wstring navigationLine(const TextBuffer& buffer, const til::point_span span, uint64_t* identity = nullptr, size_t* queryOffset = nullptr)
+        {
+            const auto size = buffer.GetSize();
+            auto inclusiveEnd = span.end;
+            if (!size.IsInBounds(span.start) || span.end <= span.start || !size.DecrementInBounds(inclusiveEnd))
+                return {};
+            auto first = span.start.y;
+            auto last = inclusiveEnd.y;
+            while (first > 0 && buffer.GetRowByOffset(first - 1).WasWrapForced())
+            {
+                if (span.start.y - --first >= 64)
+                    return {};
+            }
+            while (last + 1 < buffer.GetSize().Height() && buffer.GetRowByOffset(last).WasWrapForced())
+            {
+                if (++last - first >= 64)
+                    return {};
+            }
+            if (last - first >= 64)
+                return {};
+            std::wstring text;
+            for (auto row = first; row <= last; ++row)
+            {
+                if (queryOffset && row == span.start.y)
+                    *queryOffset = text.size() + buffer.GetRowByOffset(row).GetCharOffset(span.start.x);
+                const auto value = buffer.GetRowByOffset(row).GetText();
+                if (text.size() + value.size() > 4096)
+                    return {};
+                text.append(value);
+            }
+            const auto end = text.find_last_not_of(L' ');
+            text.resize(end == std::wstring::npos ? 0 : end + 1);
+            if (identity)
+                *identity = buffer.GetRowByOffset(first).GetNavigationId();
+            return text;
+        }
+
+        std::wstring navigationContext(const TextBuffer& buffer, const til::point_span span)
+        {
+            std::wstring before;
+            std::wstring after;
+            const auto appendRow = [&](std::wstring& text, const int row, const size_t limit) {
+                auto value = buffer.GetRowByOffset(row).GetText();
+                if (!buffer.GetRowByOffset(row).WasWrapForced())
+                {
+                    const auto end = value.find_last_not_of(L' ');
+                    value = value.substr(0, end == std::wstring_view::npos ? 0 : end + 1);
+                }
+                auto count = std::min(value.size(), limit - text.size());
+                if (count && value[count - 1] >= 0xd800 && value[count - 1] <= 0xdbff)
+                    --count;
+                text.append(value.substr(0, count));
+                if (text.size() < limit && !buffer.GetRowByOffset(row).WasWrapForced())
+                    text.push_back(L'\n');
+            };
+            for (auto row = span.start.y - 1; row >= std::max(0, span.start.y - 8) && before.size() < 512; --row)
+            {
+                std::wstring line;
+                appendRow(line, row, 512 - before.size());
+                before.insert(0, line);
+            }
+            for (auto row = span.start.y; row < std::min(buffer.GetSize().Height(), span.start.y + 16) && after.size() < 1536; ++row)
+                appendRow(after, row, 1536);
+            return before + after;
+        }
+    }
+
+    bool ControlCore::_RelocateNavigationMatch(NavigationMatch& match) const
+    {
+        const auto& buffer = _terminal->GetTextBuffer();
+        if (_terminal->GetBufferAndViewport().isMainBuffer != match.mainBuffer || buffer.GetSize().Width() != match.width)
+            return false;
+        const auto shift = (buffer.GetFirstRowIndex() - match.firstRow + buffer.GetSize().Height()) % buffer.GetSize().Height();
+        auto span = match.span;
+        span.start.y -= shift;
+        span.end.y -= shift;
+        uint64_t identity{};
+        size_t offset{};
+        if (navigationLine(buffer, span, &identity, &offset) != match.text || !identity || identity != match.lineId || offset != match.queryOffset)
+            return false;
+        match.span = span;
+        match.firstRow = buffer.GetFirstRowIndex();
+        return true;
+    }
+
+    std::vector<Control::TerminalTextMatch> ControlCore::FindTextMatches(const std::vector<hstring>& queries, const std::function<bool()>& cancelled, const uint32_t recentContextRows)
+    {
+        THROW_HR_IF(E_INVALIDARG, queries.empty() || queries.size() > 3 || recentContextRows > 512);
+        for (const auto& query : queries)
+        {
+            THROW_HR_IF(E_INVALIDARG, query.empty() || query.size() > 128 || std::any_of(query.begin(), query.end(), [](const auto ch) { return ch < 0x20 || (ch >= 0x7f && ch <= 0x9f); }));
+        }
+        uint64_t generation;
+        bool mainBuffer;
+        {
+            const auto lock = _terminal->LockForWriting();
+            if (_closing || !_initializedTerminal.load(std::memory_order_relaxed) || cancelled())
+                return {};
+            generation = ++_navigationSearchGeneration;
+            _navigationMatches.clear();
+            mainBuffer = _terminal->GetBufferAndViewport().isMainBuffer;
+        }
+        std::vector<NavigationMatch> found;
+        for (const auto& query : queries)
+        {
+            int end;
+            {
+                const auto lock = _terminal->LockForReading();
+                if (_closing || !_initializedTerminal.load(std::memory_order_relaxed) || cancelled())
+                    return {};
+                end = _terminal->GetTextBuffer().GetSize().Height();
+            }
+            size_t count = 0;
+            while (end > 0 && count < 3)
+            {
+                // Release the buffer lock between chunks so output can continue.
+                const auto lock = _terminal->LockForReading();
+                if (_closing || cancelled() || generation != _navigationSearchGeneration || _terminal->GetBufferAndViewport().isMainBuffer != mainBuffer)
+                    return {};
+                const auto& buffer = _terminal->GetTextBuffer();
+                end = std::min(end, buffer.GetSize().Height());
+                const auto begin = std::max(0, end - 256);
+                const auto matches = buffer.SearchText(query, SearchFlag::CaseInsensitive, begin, std::min(end + 128, buffer.GetSize().Height()));
+                if (matches)
+                {
+                    for (auto it = matches->rbegin(); it != matches->rend() && count < 3; ++it)
+                    {
+                        if (it->start.y >= end)
+                            continue;
+                        uint64_t identity{};
+                        size_t offset{};
+                        auto text = navigationLine(buffer, *it, &identity, &offset);
+                        if (text.empty() || std::any_of(found.begin(), found.end(), [&](const auto& previous) { return previous.text == text; }))
+                            continue;
+                        found.push_back({ 0, mainBuffer, *it, std::wstring{ query }, std::move(text), identity, offset, buffer.GetFirstRowIndex(), buffer.GetSize().Width() });
+                        ++count;
+                    }
+                }
+                end = begin;
+            }
+        }
+        if (recentContextRows)
+        {
+            int last;
+            {
+                const auto lock = _terminal->LockForReading();
+                if (_closing || cancelled() || generation != _navigationSearchGeneration || _terminal->GetBufferAndViewport().isMainBuffer != mainBuffer)
+                    return {};
+                last = _terminal->GetTextBuffer().GetLastNonSpaceCharacter().y;
+            }
+            // Sample bounded, overlapping context windows; keep real row identities
+            // even when the user's topic appears only in pane metadata.
+            const auto step = std::max(1, gsl::narrow_cast<int>(recentContextRows / 16));
+            for (auto row = last; row >= std::max(0, last - gsl::narrow_cast<int>(recentContextRows) + 1); row -= (last - row < 8 ? 1 : step))
+            {
+                const auto lock = _terminal->LockForReading();
+                if (_closing || cancelled() || generation != _navigationSearchGeneration || _terminal->GetBufferAndViewport().isMainBuffer != mainBuffer)
+                    return {};
+                const auto& buffer = _terminal->GetTextBuffer();
+                if (row >= buffer.GetSize().Height())
+                    continue;
+                auto anchorRow = row;
+                while (anchorRow > 0 && row - anchorRow < 64 && buffer.GetRowByOffset(anchorRow - 1).WasWrapForced())
+                    --anchorRow;
+                const auto& line = buffer.GetRowByOffset(anchorRow);
+                const auto value = line.GetText();
+                const auto start = value.find_first_not_of(L' ');
+                if (start == std::wstring_view::npos)
+                    continue;
+                auto end = std::min(value.size(), start + 64);
+                if (end > start && value[end - 1] >= 0xd800 && value[end - 1] <= 0xdbff)
+                    --end;
+                const til::point_span span{
+                    { line.GetLeadingColumnAtCharOffset(start), anchorRow },
+                    { line.GetLeadingColumnAtCharOffset(end), anchorRow }
+                };
+                uint64_t identity{};
+                size_t offset{};
+                auto text = navigationLine(buffer, span, &identity, &offset);
+                if (text.empty() || std::any_of(found.begin(), found.end(), [&](const auto& previous) { return previous.lineId == identity; }))
+                    continue;
+                found.push_back({ 0, mainBuffer, span, std::wstring{ value.substr(start, end - start) }, std::move(text), identity, offset, buffer.GetFirstRowIndex(), buffer.GetSize().Width() });
+            }
+        }
+        std::stable_sort(found.begin(), found.end(), [](const auto& left, const auto& right) { return left.span.start.y > right.span.start.y; });
+        const auto lock = _terminal->LockForWriting();
+        if (_closing || cancelled() || generation != _navigationSearchGeneration || _terminal->GetBufferAndViewport().isMainBuffer != mainBuffer)
+            return {};
+        std::vector<Control::TerminalTextMatch> result;
+        std::vector<Control::TerminalTextMatch> overlapping;
+        int previousContextRow{};
+        for (auto& match : found)
+        {
+            if (!_RelocateNavigationMatch(match))
+                continue;
+            match.id = ++_nextNavigationMatchId;
+            Control::TerminalTextMatch passage{ match.id, hstring{ navigationContext(_terminal->GetTextBuffer(), match.span) }, hstring{ match.text } };
+            // Spend the bounded caller budget on distinct windows before near-duplicates.
+            if (recentContextRows && !result.empty() && previousContextRow - match.span.start.y < 16)
+            {
+                overlapping.emplace_back(std::move(passage));
+            }
+            else
+            {
+                result.emplace_back(std::move(passage));
+                previousContextRow = match.span.start.y;
+            }
+        }
+        result.insert(result.end(), std::make_move_iterator(overlapping.begin()), std::make_move_iterator(overlapping.end()));
+        std::erase_if(found, [](const auto& match) { return match.id == 0; });
+        _navigationMatches = std::move(found);
+        return result;
+    }
+
+    bool ControlCore::PrepareTextMatch(const uint64_t id, const std::function<bool()>& cancelled)
+    {
+        NavigationMatch saved;
+        int end;
+        {
+            const auto lock = _terminal->LockForReading();
+            const auto it = std::find_if(_navigationMatches.begin(), _navigationMatches.end(), [&](const auto& match) { return match.id == id; });
+            if (_closing || cancelled() || it == _navigationMatches.end())
+                return false;
+            saved = *it;
+            const auto& buffer = _terminal->GetTextBuffer();
+            if (_terminal->GetBufferAndViewport().isMainBuffer != saved.mainBuffer)
+                return false;
+            end = buffer.GetSize().Height();
+        }
+        std::optional<NavigationMatch> resolved;
+        {
+            const auto lock = _terminal->LockForReading();
+            if (_closing || cancelled())
+                return false;
+            if (_RelocateNavigationMatch(saved))
+                resolved = saved;
+        }
+        while (!resolved && end > 0)
+        {
+            const auto lock = _terminal->LockForReading();
+            const auto& buffer = _terminal->GetTextBuffer();
+            if (_closing || cancelled() || _terminal->GetBufferAndViewport().isMainBuffer != saved.mainBuffer)
+                return false;
+            end = std::min(end, buffer.GetSize().Height());
+            const auto begin = std::max(0, end - 256);
+            const auto matches = buffer.SearchText(saved.query, SearchFlag::CaseInsensitive, begin, std::min(end + 128, buffer.GetSize().Height()));
+            if (matches)
+            {
+                for (const auto& span : *matches)
+                {
+                    uint64_t identity{};
+                    size_t offset{};
+                    if (span.start.y >= end || navigationLine(buffer, span, &identity, &offset) != saved.text ||
+                        !identity || identity != saved.lineId || offset != saved.queryOffset)
+                        continue;
+                    // The reflow-preserved line identity and character offset name
+                    // this occurrence, even when identical prompts exist elsewhere.
+                    resolved = NavigationMatch{ id, saved.mainBuffer, span, saved.query, saved.text, identity, offset, buffer.GetFirstRowIndex(), buffer.GetSize().Width() };
+                    break;
+                }
+            }
+            end = begin;
+        }
+        const auto lock = _terminal->LockForWriting();
+        const auto it = std::find_if(_navigationMatches.begin(), _navigationMatches.end(), [&](const auto& match) { return match.id == id; });
+        if (!resolved || _closing || cancelled() || it == _navigationMatches.end() ||
+            !_RelocateNavigationMatch(*resolved))
+            return false;
+        *it = std::move(*resolved);
+        return true;
+    }
+
+    bool ControlCore::RevealTextMatch(const uint64_t id)
+    {
+        const auto lock = _terminal->LockForWriting();
+        const auto it = std::find_if(_navigationMatches.begin(), _navigationMatches.end(), [&](const auto& match) { return match.id == id; });
+        if (_closing || it == _navigationMatches.end() || !_RelocateNavigationMatch(*it))
+            return false;
+        _terminal->UserScrollViewport(std::max(0, it->span.start.y - 8));
+        _selectSpan(it->span);
+        return true;
     }
 
     hstring ControlCore::ReadEntireBuffer() const

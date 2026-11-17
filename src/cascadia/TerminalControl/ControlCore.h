@@ -122,6 +122,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void ApplyPreviewColorScheme(const Core::ICoreScheme&);
         void ResetPreviewColorScheme();
         void SetOverrideColorScheme(const Core::ICoreScheme&);
+        winrt::com_array<Core::Color> CurrentColorScheme() const;
 
         ::Microsoft::Console::Render::Renderer* GetRenderer() const noexcept;
         uint64_t SwapChainHandle() const;
@@ -251,6 +252,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         SearchResults Search(const SearchRequest& request);
         const std::vector<til::point_span>& SearchResultRows() const noexcept;
         void ClearSearch();
+
+        std::vector<Control::TerminalTextMatch> FindTextMatches(const std::vector<hstring>& queries, const std::function<bool()>& cancelled, uint32_t recentContextRows = 0);
+        bool PrepareTextMatch(uint64_t id, const std::function<bool()>& cancelled);
+        bool RevealTextMatch(uint64_t id);
 
         void LeftClickOnTerminal(const til::point terminalPosition,
                                  const int numberOfClicks,
@@ -448,6 +453,23 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         til::point _contextMenuBufferPosition{ 0, 0 };
         Windows::Foundation::Collections::IVector<hstring> _cachedQuickFixes{ nullptr };
         ::Search _searcher;
+
+        struct NavigationMatch
+        {
+            uint64_t id;
+            bool mainBuffer;
+            til::point_span span;
+            std::wstring query;
+            std::wstring text;
+            uint64_t lineId{};
+            size_t queryOffset{};
+            int firstRow{};
+            int width{};
+        };
+        bool _RelocateNavigationMatch(NavigationMatch& match) const;
+        std::vector<NavigationMatch> _navigationMatches;
+        uint64_t _nextNavigationMatchId{ 0 };
+        uint64_t _navigationSearchGeneration{ 0 };
         std::optional<interval_tree::IntervalTree<til::point, size_t>::interval> _lastHoveredInterval;
         std::optional<wchar_t> _leadingSurrogate;
         std::optional<til::point> _lastHoveredCell;

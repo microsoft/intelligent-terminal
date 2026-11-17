@@ -7,6 +7,88 @@ Customization:
 
 ## Quick Start
 
+### Omni dedicated tools
+
+Omni uses a resident Copilot SDK process with a fresh isolated session per user
+request. `src/cascadia/inc/OmniToolDefinitions.h` owns the tool catalog and argument
+schemas; native execution validates the same contract. The SDK inventory must
+match exactly before and after each turn. Built-in shell tools, MCP servers,
+repository instructions, hooks, skills and session memory remain unavailable.
+The legacy one-shot `omni-plan --request` interface remains tool-free.
+
+The initial catalog provides live bounded context queries, runtime appearance,
+split/new-tab creation, tab-strip layout, tab/pane focus, directory navigation,
+buffer search/reveal and pane closing. It does **not** expose all palette actions
+or arbitrary wtcli command strings. Persistent settings, cross-window actions,
+custom split size/cwd/title/background creation and multi-mutation workflows
+remain unsupported. Context queries refresh state for request-bound targets and
+include the last mutation receipt; they do not expand registered target choices.
+The actual source-pane kind is explicit: an agent pane is never silently replaced
+by an ordinary pane. Scheme metadata includes foreground/background colors.
+
+Each request permits at most 12 tool calls, two content searches and one mutation.
+Run/request identities bind native receipts to the pending SDK callback. Duplicate
+callbacks cannot execute twice; mismatched receipts, unknown capabilities and
+unexpected callbacks terminate or reject the operation. Native checks are scoped
+to each operation: unrelated settings replacement does not invalidate a request,
+while closing and content anchors still verify connection identity.
+Closing uses native close-confirmation
+policy and read-only dialogs, revalidates after each dialog, and verifies removal.
+Cancellation never authorizes another mutation. Verified native results remain
+authoritative even if the final model acknowledgement fails.
+
+Explicit whole-tab appearance overwrites requested fields on every ordinary
+terminal pane, preserving other pane-specific overrides. Missing profile settings
+fail before applying changes. Color-scheme success compares the renderer's actual
+palette, not the requested name. Receipts distinguish `not_applied`, `applied`,
+and `partial_or_unknown`; failures after focus retain the observed focus fields.
+These runtime changes do not write settings.
+
+Tab-strip layout is window-scoped: changes to the captured source pane, connection
+or settings object do not invalidate it. Mutations wait up to three seconds for layout,
+drag or transfer activity to settle, rechecking request ownership before execution.
+Cancelled or superseded requests are never left in the native pending-layout slot.
+Success requires reading back the completed layout; failures identify the blocking
+state or a superseding transition.
+
+Directory requests such as “go to pane in hello_world
+folder” use cwd metadata from existing panes across the current window, not
+printed terminal output. Shell-reported and live agent cwd take precedence;
+ordinary shells may use the shared launch-directory fallback. Missing agent cwd
+is not replaced with stale shell metadata. Full paths or final folder names must
+identify one pane; ambiguous or incomplete directory context fails safely.
+Windows and POSIX paths remain distinct. Navigation focuses the existing pane
+without running `cd`, opening tabs, or scrolling its buffer.
+
+Content requests combine literal search with metadata-guided retrieval. Pane/tab
+titles, cwd and its provenance, profile, launch executable (not its arguments),
+and available agent/session/activity metadata are clues, not proof of a discussion.
+The agent can nominate up to eight existing panes for bounded recent-context
+sampling even when their conversation does not repeat the project name. For
+example, a `MyRustApp` pane's answer to "what does this program do?" can support
+"find the discussion of my Rust app".
+
+Candidates include nearby terminal text (up to 2,048 UTF-16 units) and a separate
+native anchor. Selection combines that context with metadata; bare prompts and
+unrelated conversations still do not qualify. At most 24 passages and 20 KiB of
+selection data are sent per round. If more evidence is needed,
+one bounded retry samples older context in metadata-nominated panes
+(128 recent buffer rows initially, up to 512 on retry), omitting already presented
+anchor/context pairs. Every search retires the previous search's exposed match IDs.
+The dedicated agent receives search results as a real tool response and calls
+reveal separately; there is no nested planner process or shared-pipe exchange.
+This is not a full conversation-history or filesystem search.
+
+Native revalidation tracks logical-line identity and the occurrence's
+character offset through reflow and rotation: unrelated output and identical
+prompts elsewhere do not invalidate a retained occurrence. Recycled or changed
+anchors, retired search IDs and the wrong buffer are rejected. The final
+locked check examines only the bounded anchor, not the full scrollback.
+
+`terminal-agent-pane.log` includes Omni request IDs, retrieval-round counts,
+failure stages/reasons and target content/match IDs. These diagnostics do not include prompts, paths or
+buffer text.
+
 ### Build
 
 From the repository root:

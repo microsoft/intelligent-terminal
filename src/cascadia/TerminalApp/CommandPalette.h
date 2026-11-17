@@ -55,6 +55,9 @@ namespace winrt::TerminalApp::implementation
         bool IsOmniMode() const noexcept { return _currentMode == CommandPaletteMode::OmniMode; }
         std::shared_ptr<std::atomic<bool>> OmniCancellation() const { return _omniCancellation; }
         void CompleteOmniRequest(const std::shared_ptr<std::atomic<bool>>& cancellation, const winrt::hstring& result, bool clearPrompt = true);
+        void OmniAsyncOperation(const Windows::Foundation::IAsyncInfo& operation) { _omniAsyncOperation = operation; }
+        void CompleteOmniNavigation(const std::shared_ptr<std::atomic<bool>>& cancellation);
+        void OmniHostOperation(const std::shared_ptr<std::atomic<bool>>& cancellation, bool active);
 
         til::property_changed_event PropertyChanged;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::TerminalApp::Tab> SwitchToTabRequested;
@@ -96,7 +99,9 @@ namespace winrt::TerminalApp::implementation
         bool _dismissedByFocusLoss{ false };
         bool _omniBusy{ false };
         std::shared_ptr<std::atomic<bool>> _omniCancellation;
-        void _cancelOmniRequest();
+        std::shared_ptr<std::atomic<bool>> _omniHostOperation;
+        Windows::Foundation::IAsyncInfo _omniAsyncOperation{ nullptr };
+        void _cancelOmniRequest(std::string_view reason);
 
         void _populateCommands();
 
@@ -104,6 +109,7 @@ namespace winrt::TerminalApp::implementation
                                 const Windows::UI::Xaml::RoutedEventArgs& args);
         void _previewKeyDownHandler(const Windows::Foundation::IInspectable& sender,
                                     const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);
+        bool _handleBackspace();
 
         void _keyUpHandler(const Windows::Foundation::IInspectable& sender,
                            const Windows::UI::Xaml::Input::KeyRoutedEventArgs& e);

@@ -185,6 +185,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         static Windows::UI::Xaml::Thickness ParseThicknessFromPadding(const hstring padding);
 
         hstring ReadEntireBuffer() const;
+        Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVectorView<Control::TerminalTextMatch>> FindTextMatchesAsync(Windows::Foundation::Collections::IVectorView<hstring> queries);
+        Windows::Foundation::IAsyncOperation<bool> PrepareTextMatchAsync(uint64_t id);
+        bool RevealTextMatch(uint64_t id);
+        Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVectorView<Control::TerminalTextMatch>> FindTextMatchesWithContextAsync(Windows::Foundation::Collections::IVectorView<hstring> queries, uint32_t recentContextRows);
         hstring ReadBufferTail(int32_t maxLogicalLines, int32_t maxCharacters) const;
         hstring ReadLastPrompt() const;
         hstring ReadLastPromptBounded(int32_t maxLogicalLines, int32_t maxCharacters) const;
@@ -214,6 +218,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void ApplyPreviewColorScheme(const Core::ICoreScheme& scheme) { _core.ApplyPreviewColorScheme(scheme); }
         void ResetPreviewColorScheme() { _core.ResetPreviewColorScheme(); }
         void SetOverrideColorScheme(const Core::ICoreScheme& scheme) { _core.SetOverrideColorScheme(scheme); }
+        winrt::com_array<Core::Color> CurrentColorScheme();
 
         // -------------------------------- WinRT Events ---------------------------------
         // clang-format off

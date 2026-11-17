@@ -49,8 +49,9 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void SetPaneRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance);
-        void SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance);
-        bool ConflictsWithTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance) const;
+        void SetTabRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance,
+                                     const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& overwrite = {});
+        bool CanApplyRuntimeAppearance() const;
 
         void MarkAsDefterm();
 

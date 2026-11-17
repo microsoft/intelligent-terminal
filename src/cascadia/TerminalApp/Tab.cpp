@@ -509,23 +509,23 @@ namespace winrt::TerminalApp::implementation
     bool Tab::ApplyRuntimeAppearance(const winrt::Microsoft::Terminal::Settings::RuntimeAppearance& appearance)
     {
         std::vector<winrt::com_ptr<TerminalPaneContent>> contents;
-        bool conflict = false;
+        bool unavailable = false;
         _rootPane->WalkTree([&](const auto& pane) {
             if (const auto content = pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
             {
                 auto impl = winrt::get_self<TerminalPaneContent>(content)->get_strong();
-                conflict = conflict || impl->ConflictsWithTabRuntimeAppearance(appearance);
+                unavailable = unavailable || !impl->CanApplyRuntimeAppearance();
                 contents.emplace_back(std::move(impl));
             }
         });
-        if (conflict || contents.empty())
+        if (unavailable || contents.empty())
         {
             return false;
         }
         _runtimeAppearance.Merge(appearance);
         for (const auto& content : contents)
         {
-            content->SetTabRuntimeAppearance(_runtimeAppearance);
+            content->SetTabRuntimeAppearance(_runtimeAppearance, appearance);
             if (appearance.opacity)
             {
                 content->GetTermControl().AdjustOpacity(*appearance.opacity, false);

@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "CommandPalette.h"
 #include "CommandPaletteItems.h"
+#include "AgentPaneLog.h"
 #include "../../types/inc/utils.hpp"
 
 #include "CommandPalette.g.cpp"
@@ -353,16 +354,8 @@ namespace winrt::TerminalApp::implementation
 
             e.Handled(true);
         }
-        else if (key == VirtualKey::Back && _searchBox().Text().empty() && _lastFilterTextWasEmpty &&
-                 (_currentMode == CommandPaletteMode::ActionMode ||
-                  _currentMode == CommandPaletteMode::AgentForegroundMode ||
-                  _currentMode == CommandPaletteMode::AgentBackgroundMode ||
-                  _currentMode == CommandPaletteMode::OmniMode))
+        else if (key == VirtualKey::Back && _handleBackspace())
         {
-            // If the last filter text was empty, and we're backspacing from
-            // that state, then the user "backspaced" the virtual prefix we're
-            // using as the mode indicator. Switch into commandline mode.
-            _switchToMode(CommandPaletteMode::CommandlineMode);
             e.Handled(true);
         }
         else if ((key == VirtualKey::C || key == VirtualKey::Insert) && ctrlDown)
@@ -474,6 +467,10 @@ namespace winrt::TerminalApp::implementation
     void CommandPalette::_lostFocusHandler(const Windows::Foundation::IInspectable& /*sender*/,
                                            const Windows::UI::Xaml::RoutedEventArgs& /*args*/)
     {
+        if (_omniBusy && _omniHostOperation && _omniHostOperation == _omniCancellation && !_omniCancellation->load())
+        {
+            return;
+        }
         const auto flyout = _searchBox().ContextFlyout();
         if (flyout && flyout.IsOpen())
         {
@@ -504,6 +501,8 @@ namespace winrt::TerminalApp::implementation
         if (Visibility() == Visibility::Visible)
         {
             _dismissedByFocusLoss = true;
+            if (_omniCancellation)
+                _agentPaneLog("omni_dismissed reason=focus_lost");
         }
         _dismissPalette();
     }
@@ -776,7 +775,7 @@ namespace winrt::TerminalApp::implementation
             const auto prompt = winrt::hstring{ _getTrimmedInput() };
             if (!_omniBusy && !prompt.empty())
             {
-                _cancelOmniRequest();
+                _cancelOmniRequest("new_request");
                 _omniCancellation = std::make_shared<std::atomic<bool>>(false);
                 _omniBusy = true;
                 ParsedCommandLineText(RS_(L"VerticalTabsHistoryStatusWorking"));
@@ -1001,7 +1000,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (_currentMode == CommandPaletteMode::OmniMode && _omniBusy)
         {
-            _cancelOmniRequest();
+            _cancelOmniRequest("prompt_edited");
             ParsedCommandLineText(L"");
         }
         // GH#18737: Only respond to this change if we are visible:
@@ -1095,6 +1094,30 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         }
+    }
+
+    bool CommandPalette::_handleBackspace()
+    {
+        if (!_searchBox().Text().empty() || !_lastFilterTextWasEmpty)
+        {
+            return false;
+        }
+
+        // Clearing Omni input must not turn the next natural-language prompt into a command line.
+        if (_currentMode == CommandPaletteMode::OmniMode)
+        {
+            return true;
+        }
+
+        if (_currentMode == CommandPaletteMode::ActionMode ||
+            _currentMode == CommandPaletteMode::AgentForegroundMode ||
+            _currentMode == CommandPaletteMode::AgentBackgroundMode)
+        {
+            _switchToMode(CommandPaletteMode::CommandlineMode);
+            return true;
+        }
+
+        return false;
     }
 
     void CommandPalette::_evaluatePrefix()
@@ -1218,7 +1241,7 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::_switchToMode(CommandPaletteMode mode)
     {
-        _cancelOmniRequest();
+        _cancelOmniRequest("mode_changed");
         _currentMode = mode;
 
         const auto currentlyVisible{ Visibility() == Visibility::Visible };
@@ -1441,7 +1464,7 @@ namespace winrt::TerminalApp::implementation
 
     void CommandPalette::_close()
     {
-        _cancelOmniRequest();
+        _cancelOmniRequest("palette_closed");
         Visibility(Visibility::Collapsed);
 
         // Reset visibility in case anchor mode tab switcher just finished.
@@ -1460,14 +1483,45 @@ namespace winrt::TerminalApp::implementation
         PreviewAction.raise(*this, nullptr);
     }
 
-    void CommandPalette::_cancelOmniRequest()
+    void CommandPalette::_cancelOmniRequest(const std::string_view reason)
     {
+        if (_omniCancellation)
+            _agentPaneLog("omni_cancelled reason=" + std::string{ reason });
+        _omniHostOperation.reset();
+        if (_omniAsyncOperation)
+        {
+            _omniAsyncOperation.Cancel();
+            _omniAsyncOperation = nullptr;
+        }
         if (_omniCancellation)
         {
             _omniCancellation->store(true);
             _omniCancellation.reset();
         }
         _omniBusy = false;
+    }
+
+    void CommandPalette::CompleteOmniNavigation(const std::shared_ptr<std::atomic<bool>>& cancellation)
+    {
+        if (_omniCancellation == cancellation && !cancellation->load() && IsOmniMode())
+        {
+            CompleteOmniRequest(cancellation, RS_(L"FreOverlay_ProgressCompleted"), false);
+            _close();
+        }
+    }
+
+    void CommandPalette::OmniHostOperation(const std::shared_ptr<std::atomic<bool>>& cancellation, const bool active)
+    {
+        if (active && cancellation && _omniCancellation == cancellation && !cancellation->load())
+        {
+            _omniHostOperation = cancellation;
+        }
+        else if (!active && _omniHostOperation == cancellation)
+        {
+            _omniHostOperation.reset();
+            if (_omniCancellation == cancellation && !cancellation->load() && Visibility() == Visibility::Visible)
+                _searchBox().Focus(FocusState::Programmatic);
+        }
     }
 
     void CommandPalette::CompleteOmniRequest(const std::shared_ptr<std::atomic<bool>>& cancellation, const winrt::hstring& result, const bool clearPrompt)
@@ -1477,6 +1531,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         _omniBusy = false;
+        _omniAsyncOperation = nullptr;
+        OmniHostOperation(cancellation, false);
         if (clearPrompt)
         {
             _searchBox().Text(L"");

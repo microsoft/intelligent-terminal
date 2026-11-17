@@ -902,6 +902,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         this->Focus(FocusState::Programmatic);
     }
 
+    winrt::com_array<Core::Color> TermControl::CurrentColorScheme()
+    {
+        return get_self<ControlCore>(_core)->CurrentColorScheme();
+    }
+
     void TermControl::UpdateControlSettings(IControlSettings settings)
     {
         UpdateControlSettings(settings, _core.UnfocusedAppearance());
@@ -3927,6 +3932,39 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     hstring TermControl::ReadEntireBuffer() const
     {
         return _core.ReadEntireBuffer();
+    }
+
+    Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVectorView<Control::TerminalTextMatch>> TermControl::FindTextMatchesAsync(Windows::Foundation::Collections::IVectorView<hstring> queries)
+    {
+        const auto core = _core;
+        const std::vector<hstring> copy{ queries.begin(), queries.end() };
+        const auto cancellation = co_await winrt::get_cancellation_token();
+        co_await winrt::resume_background();
+        auto matches = get_self<ControlCore>(core)->FindTextMatches(copy, [&]() { return cancellation(); });
+        co_return winrt::single_threaded_vector<Control::TerminalTextMatch>(std::move(matches)).GetView();
+    }
+
+    Windows::Foundation::IAsyncOperation<bool> TermControl::PrepareTextMatchAsync(const uint64_t id)
+    {
+        const auto core = _core;
+        const auto cancellation = co_await winrt::get_cancellation_token();
+        co_await winrt::resume_background();
+        co_return get_self<ControlCore>(core)->PrepareTextMatch(id, [&]() { return cancellation(); });
+    }
+
+    Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVectorView<Control::TerminalTextMatch>> TermControl::FindTextMatchesWithContextAsync(Windows::Foundation::Collections::IVectorView<hstring> queries, const uint32_t recentContextRows)
+    {
+        const auto core = _core;
+        const std::vector<hstring> copy{ queries.begin(), queries.end() };
+        const auto cancellation = co_await winrt::get_cancellation_token();
+        co_await winrt::resume_background();
+        auto matches = get_self<ControlCore>(core)->FindTextMatches(copy, [&]() { return cancellation(); }, recentContextRows);
+        co_return winrt::single_threaded_vector<Control::TerminalTextMatch>(std::move(matches)).GetView();
+    }
+
+    bool TermControl::RevealTextMatch(const uint64_t id)
+    {
+        return get_self<ControlCore>(_core)->RevealTextMatch(id);
     }
     hstring TermControl::ReadBufferTail(const int32_t maxLogicalLines, const int32_t maxCharacters) const
     {
