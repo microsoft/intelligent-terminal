@@ -78,6 +78,14 @@ jobs:
   activation:
     needs: [prepare]
     if: needs.prepare.outputs.admitted == 'true'
+    pre-steps:
+      - name: Bind admitted comparison base for prompt rendering
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          COMPARISON_BASE: ${{ needs.prepare.outputs.comparison_base }}
+        with:
+          script: |
+            core.exportVariable('GH_AW_NEEDS_PREPARE_OUTPUTS_COMPARISON_BASE', process.env.COMPARISON_BASE);
 
   agent:
     needs: [prepare]

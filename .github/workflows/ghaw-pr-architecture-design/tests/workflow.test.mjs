@@ -44,6 +44,28 @@ test('compiled dependency graph gates inference and detection before publication
     }
 });
 
+test('activation renders the admitted comparison base into the imported prompt', async () => {
+    const needs = { prepare: { outputs: { comparison_base: 'c'.repeat(40) } } };
+    const steps = job(compiled, 'activation').split(/^      - /m);
+    const binding = steps.findIndex(step => step.startsWith('name: Bind admitted comparison base'));
+    const rendering = steps.findIndex(step => step.startsWith('name: Interpolate variables'));
+    assert.ok(binding > 0 && binding < rendering);
+    const expression = steps[binding].match(/COMPARISON_BASE: \$\{\{ (needs\.[\w.]+) \}\}/)?.[1];
+    assert.ok(expression);
+    const value = expression.split('.').slice(1).reduce((object, key) => object[key], needs);
+    const script = steps[binding].match(/script: \|\r?\n([\s\S]*)/)[1];
+    const environment = {};
+    await new AsyncFunction('core', 'process', script)(
+        { exportVariable: (name, value) => { environment[name] = value; } },
+        { env: { COMPARISON_BASE: value } });
+    const prompt = source.slice(source.lastIndexOf('\n---') + 4)
+        .replace(/\$\{\{\s*(needs\.[\w.]+)\s*\}\}/g, (original, expression) =>
+            environment[`GH_AW_${expression.replaceAll('.', '_').toUpperCase()}`] ?? original);
+    assert.ok(prompt.includes(`comparison base \`${needs.prepare.outputs.comparison_base}\``),
+        'The imported prompt must contain the admitted SHA, not an unresolved needs expression.');
+    assert.doesNotMatch(prompt, /\$\{\{\s*needs\./);
+});
+
 test('trusted checkout never activates candidate configuration or adds a repair path', () => {
     assert.match(source, /pull_request_target:/);
     assert.match(source, /roles: \[admin, maintainer, write\]/);
