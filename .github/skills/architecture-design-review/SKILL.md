@@ -6,11 +6,33 @@ license: Complete terms in LICENSE.txt
 
 # Architecture and design review
 
-Assess design changes against demonstrated requirements and actual consumers.
-This method is reusable for local and hosted read-only reviews; the caller
-supplies the snapshot, authority and delivery mechanism.
+## Goal
 
-## Evidence and scope
+Help the change owner decide whether the proposed architecture satisfies its
+requirements without unnecessary coupling, competing ownership or unjustified
+complexity. Surface the consequential design decisions and their tradeoffs,
+with source-backed recommendations that preserve behavior, compatibility and
+reliability. The deliverable is decision support, not a pattern score, exhaustive
+code audit, implementation or approval.
+
+## Input and delivery contract
+
+Use the caller's target repository, comparison base/head, requirements,
+constraints, permitted evidence tools, execution budget and result destination.
+Resolve missing snapshot identities through authorized read-only tools before
+reviewing; if they cannot be established, report the blocker rather than review
+an assumed branch. Distinguish documented requirements from inferred intent.
+
+Default to returning the Markdown report in the calling conversation. Write a
+file or submit a PR comment only when the caller explicitly authorizes that
+destination and a permitted output tool is available; otherwise return the
+report and state the delivery limitation. Do not invent a report path, expand
+permissions or publish merely because the input includes a PR URL.
+In hosted use, the trusted workflow supplies the publication tool, target,
+snapshot-label requirements and limits. Follow that delivery policy rather
+than creating another publication mechanism. Report delivery failures explicitly.
+
+## Research approach
 
 Record the comparison base and reviewed head before inspecting the patch.
 Derive conventions from the reviewed repository's source and documented
@@ -19,17 +41,28 @@ the caller's trusted role. Use additions, removals and renames to identify
 affected callers, tests and declarative contracts. Do not treat a path
 classifier or a successful build as proof of architectural coverage.
 
-For selected risks, trace changed ownership and dependencies through their real
-consumers. Prefer available code intelligence and source inspection. Project
-references and Cargo metadata can support build-dependency claims, but do not establish
-runtime relationships or MVVM data flow. If inspection leaves a material
-relationship uncertain, report the specific missing evidence.
+Build a working map of the affected responsibilities and contracts from the
+baseline and proposed change. For each consequential uncertainty, frame a
+concrete question: which owner or dependency changed, which consumer relies on
+it, and what evidence would justify or refute that decision?
+
+Follow that question through actual callers, state owners and downstream
+consumers using available code intelligence and immutable source reads. Inspect
+relevant design records and tests for intended contracts; tests alone are not
+proof that the design preserves them. Read the actual framework/dependency
+consumer when a claim depends on its behavior. Build metadata can establish a
+build dependency, not a runtime relationship or MVVM ownership boundary.
+
+Compare the proposed design with the baseline and a feasible simpler alternative,
+including the cost or requirement that might justify keeping the proposal.
+Use authoritative external architecture references only for a specific unresolved
+question, through permitted tools. If a necessary relationship or source is
+unavailable, record the missing evidence and its effect on the decision.
 
 ## Review depth and priorities
 
-Understand the intended change, constraints and existing design before judging
-it. Map the change into responsibilities, contracts and affected consumer
-paths; do not turn the changed-file inventory into an equal-depth work list.
+Use the responsibility/consumer map to choose depth; do not turn the changed-file
+inventory into an equal-depth work list.
 
 Choose investigation depth by architectural consequence, boundary reach and
 uncertainty, not line or file count. A small contract or ownership change can

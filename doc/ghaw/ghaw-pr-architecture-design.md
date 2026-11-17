@@ -1,131 +1,89 @@
 # Architecture and design PR review
 
-`ghaw-pr-architecture-design.md` provides a read-only review of material
-same-repository PR changes. It uses trusted `pull_request_target` workflow code,
-the existing gh-aw actor authorization (`admin`, `maintainer`, `write`),
-immutable Git inspection and built-in comment publication with threat detection.
-Forks and drafts are not admitted. Candidate source is fetched but never checked
-out or executed. Candidate workflow/agent/skill documents remain review data,
-not active instructions.
+The workflow reviews material same-repository PRs using the architecture
+reviewer/skill, native read-only GitHub tools and native gh-aw comment
+publication with threat detection. It provides advice, not approval or repairs.
+Trusted `pull_request_target` code authorizes `admin`, `maintainer` and `write`
+actors. Fork PRs and drafts are excluded.
 
 ## Admission before inference
 
-The deterministic `prepare` job verifies live PR identity, fetches the exact
-head and observed base, resolves their merge base and reads Git numstat metadata.
-No model runs unless **relevant added+deleted lines >= 100 OR relevant changed
-files >= 5**. Equality passes; either threshold suffices independently.
-Tune only the two constants in
-`.github/workflows/ghaw-pr-architecture-design/scripts/architecture-design-review.mjs`.
+One small helper reads GitHub's paginated PR changed-files API and admits
+**100 relevant added+deleted lines OR five relevant files**, inclusively.
+Only the two constants in
+`.github/workflows/ghaw-pr-architecture-design/scripts/architecture-design-review.mjs`
+define those thresholds. These are cost controls, not architectural-risk scores.
 
-These are provisional effort/cost defaults, not an architectural-risk score:
-100 lines admits a material single-owner change; five files admits a
-distributed contract change even with small per-file edits. Small architectural
-changes can matter; request a local review when they fall below this cost gate.
-
-Counts include source, tests, settings, project manifests, workflow sources,
-agents, skills, instructions and Markdown. The narrow excluded set is:
+The counting exclusions are:
 
 - Root `dep`, `oss`, `vendor`, `node_modules` and `Generated Files` trees.
-- Dependency lock basenames `Cargo.lock`, `package-lock.json`,
-  `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `packages.lock.json`.
-- Compiler-owned `.github/workflows/*.lock.yml` (not their Markdown sources).
+- Dependency locks: `Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`,
+  `yarn.lock`, `pnpm-lock.yaml` and `packages.lock.json`.
+- Compiler-owned `.github/workflows/*.lock.yml`, not workflow Markdown.
 
-All other paths count, including unknown or generated-looking source; a naming
-heuristic must not conceal substantive contracts. Exclusions affect admission
-only: relevant supporting changes remain inspectable during review.
-Deletions contribute deleted lines and one file. Git's explicit 50% rename
-detection counts a detected rename once, including either relevant path; a
-pure rename contributes zero lines. A rewrite below Git's rename similarity
-threshold counts as separate deletion/addition. Binary changes contribute one
-file and zero lines because no textual count exists. Invalid, duplicate,
-overflowed, incomplete or oversized metadata fails the job, never a clean
-assessment. Git output is bounded to 16 MiB and 10,000 change records.
+Other source, tests, settings, project files, agents, skills and documentation
+count. Exclusions affect counting only, never research scope. A reported rename
+counts once and remains relevant if either path is not excluded. Deletions
+contribute their deleted lines; binary files contribute a file and GitHub's
+reported line counts.
 
-Below-threshold changes produce only a run summary explaining that review and
-publication were skipped, not an approving/no-findings PR comment.
+The helper checks the returned file count against PR metadata and rejects
+incomplete results, invalid counts and API errors. GitHub caps this endpoint at
+3,000 files; larger PRs fail explicitly rather than receive a partial or clean
+assessment. This is an API limitation, not an architectural review-depth policy.
+The comparison merge base comes from GitHub's commit comparison API.
 
-## Responsibility and evidence
+Both activation and review depend on admission. Below threshold, the run summary
+explains that inference and publication were skipped; no clean-assessment
+comment is posted.
 
-`Architecture and Design Reviewer` is a thin, repository-agnostic read-only
-role. `architecture-design-review/SKILL.md` is the single methodology/report
-owner, reusable for local or hosted review. The workflow owns admission,
-immutable context and delivery; the script owns deterministic metadata logic.
-No custom model driver, dependency graph job, repair path or configuration
-framework is needed. Available code intelligence, Git/source inspection and
-project metadata suffice; build graphs alone would not prove runtime ownership
-or MVVM state flow.
+## Research and delivery
 
-Hosted evidence uses one `read-architecture-evidence` MCP script and a small
-trusted helper from the `github.workflow_sha` checkout. Its scope comes only
-from the fixed run directory prepared by trusted code. No model-facing Git
-shell wildcard is permitted: `git diff/show --output` can write files and
-`git grep --open-files-in-pager` can execute commands despite `edit: false`.
-The tool exposes only diff, source, literal search and paged tree operations,
-with base/head selectors resolved from scope, canonical paths, 400-line source
-ranges (64 KiB), 256-byte queries and 200-entry pages. Git output is capped at
-1 MiB; overflow, missing blobs and invalid text are explicit coverage gaps.
-Binary search exclusions and binary diff hunks are reported. Supporting paths
-excluded from admission remain readable. Fixed argv uses no shell, external
-diff, textconv, hooks or pagers; inherited Git environment overrides, global
-configuration and replace objects are disabled.
+The agent defines the architect role; the skill owns the goal, source-led
+research method and report contract. The workflow supplies the PR, revisions,
+tools and authorized result destination. Local invocation returns Markdown
+unless the caller authorizes another destination.
 
-Unlike the existing repair workflows, this source-only advisory workflow does
-not require native PR CI. `pr-ci.yml` does not trigger for general `.github`
-or documentation changes; requiring it would prevent reviewing declarative
-architecture. The workflow neither executes candidate code nor claims
-build/test success, and does not alter native CI or its gates.
+Hosted research uses gh-aw's existing GitHub tools: `pull_request_read`,
+`get_file_contents` and `search_code`. There is no custom evidence server,
+Git-fetch preparation, scope file, model-facing shell or candidate checkout.
+Only trusted instructions are checked out at `github.workflow_sha`.
 
-Preparation revalidates the PR before and after fetching, and again before
-inference. After detection and artifact setup, the trusted safe-output steps
-check live head/base, refs, repositories, open state and draft status before
-the built-in handler publishes one non-blocking comment. Check or detection
-failure prevents publication. Every report
-identifies its exact comparison base/head and immutable citations. GitHub
-comment creation has no atomic head-SHA precondition: an update after the final
-freshness check can still leave a clearly snapshot-labeled historical report.
-No source approval or absolute regression guarantee is implied.
+Source reads must specify the exact comparison-base or reviewed-head commit.
+Live PR diff/file reads require matching event head/base metadata. Search is
+for navigation: cited source must be reread at the reviewed revision, since
+code search is not commit-pinned. Missing/truncated patches, rate limits and
+unavailable source are explicit coverage gaps, not evidence that the design
+is clean. Candidate agents, skills, hooks and configuration remain data, never
+active instructions. The workflow does not execute candidate code or run builds.
 
-At commit `789552eb4574c0922ab234605935c28e3ed983c1`, PR #1399 shares
-the per-PR `PR CI-<number>` concurrency group between native CI and the
-security worker, with `cancel-in-progress: false` and `queue: max`.
-Its controller starts the worker after successful CI completion. This advisory
-workflow has no detached worker or CI-event controller: its own PR-number
-concurrency cancels an older run directly on
-`synchronize`, even when the new head is below threshold. Freshness checks
-prevent stale publication. It therefore does not depend on #1399 or on a
-native CI trigger to review declarative changes.
+The helper verifies live PR state, repositories, refs and revisions around
+admission. After detection and artifact setup, the same validator checks again
+immediately before native publication. Validation or detection failure prevents
+the comment. PR-number concurrency cancels older runs on `synchronize`,
+independently of the replacement's size.
+
+The workflow requests one snapshot-labelled Markdown comment with immutable
+source citations. GitHub offers no atomic head-SHA precondition for comment
+creation: a change after the final check can still leave a clearly labelled
+historical report. No absolute freshness or regression guarantee is implied.
+Hosted authorization, tool startup, inference, detection and publication still
+require end-to-end execution evidence; compilation and local tests are not that.
 
 ## Local validation
 
-From the repository root:
-
 ```powershell
 node --test .github\workflows\ghaw-pr-architecture-design\tests\*.test.mjs
-gh aw compile ghaw-pr-architecture-design --no-check-update --actionlint
+gh aw compile ghaw-pr-architecture-design --no-check-update
 markdownlint -c .github\linters\.markdown-lint.yml .github\agents\architecture-design-reviewer.agent.md .github\skills\architecture-design-review\SKILL.md doc\ghaw\ghaw-pr-architecture-design.md
-```
-
-The tests cover boundaries, generated-only churn, declarative changes,
-renames/deletions/binaries, invalid metadata and immutable identity. Contract
-evaluation must distinguish fixture/static inspection from actual model
-execution; neither substitutes for hosted authorization, detection and
-publication E2E. Generated locks are emitted only by `gh aw compile`.
-
-With compiler v0.87.10, compilation warns generically about the target-event
-checkout: inspect the generated lock to confirm every workspace checkout uses
-the trusted workflow revision and there is no PR checkout. Newer reference
-documentation describes checkout options that this installed version rejects;
-they are not used here. Native actionlint v1.7.12 does not yet recognize
-`copilot-requests` or the compiler-owned concurrency `queue` key. Lint the lock
-with only these two exact diagnostics ignored:
-
-```powershell
 actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-requests"' -ignore 'unexpected key "queue" for "concurrency" section' .github\workflows\ghaw-pr-architecture-design.lock.yml
 ```
 
-This command checks workflow structure, expressions and scripts but does not
-run external shellcheck/pyflakes. It does not suppress other lint failures.
+Compiler v0.87.10 emits the lock; never hand-edit it. Its generic
+`pull_request_target` checkout warning must be checked against the trusted refs
+actually emitted. Native actionlint v1.7.12 needs only the two exact extension
+exceptions above; shellcheck and pyflakes are not run by that command.
 
-Official references: [triggers](https://github.github.com/gh-aw/reference/triggers/),
-[checkout](https://github.github.com/gh-aw/reference/checkout/),
-[safe outputs](https://github.github.com/gh-aw/reference/safe-outputs/).
+References: [GitHub tools](https://github.github.com/gh-aw/reference/github-tools/),
+[safe outputs](https://github.github.com/gh-aw/reference/safe-outputs/),
+[changed-file API limits](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files).

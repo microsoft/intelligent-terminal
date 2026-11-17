@@ -58,13 +58,13 @@ test('trusted checkout never activates candidate configuration or adds a repair 
     assert.doesNotMatch(job(source, 'prepare'), /copilot-requests|engine:/);
 });
 
-test('hosted evidence has no Git shell wildcards and imports only fixed trusted readers and scope', () => {
+test('hosted research reuses only native read-only GitHub tools without custom readers or shell', () => {
     assert.match(source, /bash: false/);
-    assert.doesNotMatch(source, /git (diff|grep|show|ls-tree):\*/);
-    assert.match(source, /Allowed enum: diff, source, search, tree/);
-    assert.match(source, /Allowed enum: base, head/);
-    assert.match(compiled, /evidence-reader\.mjs/);
-    assert.match(compiled, /ARCHITECTURE_RUN_DIR.*|scope\.json/);
+    assert.match(source, /read-only: true/);
+    assert.doesNotMatch(source, /mcp-scripts:|pre-agent-steps:|scope\.json|read-architecture-evidence/);
+    assert.match(source, /get_file_contents.*`ref`/);
+    assert.match(source, /Code search is a navigation aid, not commit-pinned evidence/);
+    assert.match(compiled, /"GITHUB_READ_ONLY": "1"/);
 });
 
 test('selected reviewer exposes the compiled evidence and report MCP tools', () => {
@@ -75,7 +75,7 @@ test('selected reviewer exposes the compiled evidence and report MCP tools', () 
     const profile = fs.readFileSync(new URL(`../../../agents/${selected}.agent.md`, import.meta.url), 'utf8');
     const tools = JSON.parse(profile.match(/^tools: (\[.+\])$/m)[1].replaceAll("'", '"'));
     const manifest = JSON.parse(compiled.match(/^# gh-aw-manifest: (.+)$/m)[1]);
-    for (const name of ['read-architecture-evidence', 'add_comment']) {
+    for (const name of ['get_file_contents', 'pull_request_read', 'search_code', 'add_comment']) {
         const server = manifest.mcp_servers.find(server => server.tools.includes(name));
         assert.ok(server, `Missing compiled tool ${name}`);
         assert.ok(tools.includes(`${server.name}/${name}`), `Selected profile excludes ${server.name}/${name}`);
