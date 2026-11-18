@@ -8,12 +8,11 @@ license: Complete terms in LICENSE.txt
 
 ## Goal
 
-Help the change owner decide whether the proposed architecture satisfies its
-requirements without unnecessary coupling, competing ownership or unjustified
-complexity. Surface the consequential design decisions and their tradeoffs,
-with source-backed recommendations that preserve behavior, compatibility and
-reliability. The deliverable is decision support, not a pattern score, exhaustive
-code audit, implementation or approval.
+Enable a human to decide what needs changing and why it matters: who is affected,
+under which current scenario, and what behavior or engineering work becomes
+worse. Ground that consequence in the actual design and recommend the smallest
+correction that preserves requirements. This is decision support, not a pattern
+score, exhaustive code audit, implementation or approval.
 
 ## Input and delivery contract
 
@@ -113,12 +112,11 @@ evidence gap rather than assuming the reference confirms the claim.
 
 ## Findings and counter-evidence
 
-Each finding needs a changed location, source-backed causal trace to affected
-consumers, concrete maintainability/extensibility/reasoning cost, and the
-smallest justified alternative. Name behavioral, ABI, ownership and reliability
-tradeoffs; do not prescribe a blanket refactor. Check nearby patterns and
-counter-evidence before retaining a finding. Collapse multiple principle
-labels for the same root cause.
+Retain a finding only when changed source and actual consumers establish why a
+person should care now. For maintenance findings, identify the existing task
+and owners made harder to change or reason about; hypothetical future features
+and principle violations alone are insufficient. Check counter-evidence and the
+smallest feasible correction, including its tradeoffs. Count one root cause once.
 
 For mutable-state invariants, trace when validation occurs through the actual
 consumer, including intervening asynchronous work and invalidation events.
@@ -138,19 +136,22 @@ with the evidence needed to resolve them, not in speculative finding rows.
 
 ## Report
 
-Return Markdown with an outcome, exact snapshot, findings, accepted tradeoffs
-and coverage gaps. Lead with the most consequential risks and decisions.
-Briefly explain the review focus and why it deserved deeper inspection;
-distinguish traced paths, representative sampling and uninspected areas.
-If missing evidence prevents a consequential assessment, lead with that
-unresolved risk rather than a no-findings headline.
-With no supported findings say "No actionable design findings in the inspected
-scope"; do not imply approval or complete coverage.
+Return concise Markdown with the exact snapshot and consequential findings first.
+Each finding needs an impact-led title and severity, the impacted scenario, the
+applicable principle and how this design violates it, the concrete adverse
+consequence in the current code, and a fix grounded in its existing requirements,
+owners and consumers. Explain the fix's tradeoff, not a generic ideal redesign.
+Include changed and consumer path:line citations plus justified confidence.
+Name the principle explicitly, but establish the violation through source
+evidence; the label alone does not justify a finding.
 
-For each finding include **severity**, **changed path:line**, **affected
-consumer evidence (path:line at its revision)**, **consequence**, **simpler
-alternative and tradeoffs**, and **confidence with justification**. Cite
-immutable source links when a repository URL is available, including the base
-revision for deleted code. Accepted abstractions need their actual requirement
-and consumer evidence. State what was inspected and what remains unverified;
-distinguish source review, fixture evaluation and executed validation.
+Link an authoritative reference for principle details when available; do not
+repeat its tutorial or invent a link. The finding must still make sense without
+opening that link. Cite immutable source at the reviewed revisions, including
+the base for deleted code. Separate observed outcomes from source-inferred risks.
+
+Briefly state justified tradeoffs, inspected/sampled scope and consequential
+gaps; no file inventory or lecture. Lead with unresolved risk if missing evidence
+prevents assessment. Otherwise, with no supported findings say "No actionable
+design findings in the inspected scope", not approval. Distinguish source
+review and model evaluation from executed runtime validation.
