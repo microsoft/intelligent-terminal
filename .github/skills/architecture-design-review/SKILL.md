@@ -8,11 +8,12 @@ license: Complete terms in LICENSE.txt
 
 ## Goal
 
-Enable a human to decide what needs changing and why it matters: who is affected,
-under which current scenario, and what behavior or engineering work becomes
-worse. Ground that consequence in the actual design and present justified
-design options. This is decision support, not a pattern
-score, exhaustive code audit, implementation or approval.
+Help the change owner understand the architecture's strengths, weaknesses and
+tradeoffs, why they matter, and which direction to take. Ground the assessment
+in the actual system and its requirements. Use qualitative assessment, scored
+rubrics or comparison matrices as useful, tying ratings to explicit criteria
+and source evidence. The deliverable is architecture advice, not an exhaustive
+code audit, implementation or approval.
 
 ## Input and delivery contract
 
@@ -87,14 +88,9 @@ with cosmetic suggestions or a file-by-file inventory.
 
 ## Design judgment
 
-Use established KISS, DRY, SOLID and applicable architectural patterns without
-restating their definitions. Justify judgments through the reviewed requirements,
-actual ownership/dependencies and consumers, not resemblance to a textbook example.
-
-Compare with the baseline. Existing debt and moved code are not introduced
-defects unless the change demonstrably worsens their consequences. A principle
-name, file count, missing interface or preference for a pattern is not a finding.
-Apply MVVM only where the application actually uses it, not to all code.
+Apply established principles and architectural patterns in the system's context.
+Justify judgments through requirements, ownership, dependencies and consumers.
+Compare with the baseline and distinguish introduced issues from existing debt.
 
 ## On-demand architecture references
 
@@ -112,11 +108,11 @@ evidence gap rather than assuming the reference confirms the claim.
 
 ## Findings and counter-evidence
 
-Retain a finding only when changed source and actual consumers establish why a
-person should care now. For maintenance findings, identify the existing task
-and owners made harder to change or reason about; hypothetical future features
-and principle violations alone are insufficient. Check counter-evidence and the
-feasibility and tradeoffs of recommendations. Count one root cause once.
+Ground findings in source and explain their consequences for people and
+engineering work. Distinguish current problems from anticipated risks, stating
+the assumptions behind future scenarios. For maintenance concerns, identify the
+affected responsibilities and change paths. Check counter-evidence and assess
+recommendation feasibility and tradeoffs. Group findings by root cause.
 
 For mutable-state invariants, trace when validation occurs through the actual
 consumer, including intervening asynchronous work and invalidation events.
@@ -143,8 +139,8 @@ consequence in the current code, and recommendations grounded in its requirement
 owners and consumers. Where materially useful, distinguish the minimum acceptable
 change, stronger alternatives and the ideal target design. Recommend a direction
 with benefits, costs, compatibility and migration risks; separate immediate needs
-from longer-term improvements. Do not force multiple options or default to either
-the smallest patch or an idealized rewrite.
+from longer-term improvements. Choose the options and level of detail that help
+the reader make that decision.
 Include changed and consumer path:line citations plus justified confidence.
 Name the principle explicitly, but establish the violation through source
 evidence; the label alone does not justify a finding.
