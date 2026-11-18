@@ -1,18 +1,23 @@
-# Report a command's status from Bash
+# Report a command's status from PowerShell
 
-If a command doesn't report [OSC 7501 program status](https://www.superlogical.com/rex/docs/build/program-status), Bash can report on its behalf: `working` before it starts, then `done` or `error` based on its exit code. The shell can't tell whether the command is waiting for input.
+If an executable doesn't report [OSC 7501 program status](https://www.superlogical.com/rex/docs/build/program-status), PowerShell can report `working` when you launch it, then `done` or `error` based on its exit code. The shell can't tell whether it's waiting for input.
 
-Add this function to `~/.bashrc` in the shell that runs the command (on the remote host for SSH). It works alongside Intelligent Terminal's [built-in shell integration](configuring-shell-integration-autofix.md): leave its OSC 133 prompt and exit-code marks in place. Use the wrapper only for commands without native status reporting so it won't overwrite a program's own reports.
+Add this function to your PowerShell 7 `$PROFILE` in the shell that runs the command (on the remote host for SSH). Place it outside the [built-in shell integration](configuring-shell-integration-autofix.md) block so its OSC 133 prompt and exit-code marks stay in place. Run programs with native OSC 7501 support directly.
 
-```bash
-with_status() {
-    if [[ ! -t 2 ]]; then "$@"; return $?; fi
-    local rc=0 state=done
-    printf '\033]7501;state=working\007' >&2
-    "$@" || { rc=$?; state=error; }
-    printf '\033]7501;state=%s\007' "$state" >&2
-    return "$rc"
+```powershell
+function Invoke-WithProgramStatus {
+    param([string]$FileName)
+    $report = -not [Console]::IsErrorRedirected
+    $state = 'error'
+    try {
+        if ($report) { [Console]::Error.Write("`e]7501;state=working`a") }
+        $exe = Get-Command $FileName -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        & $exe.Source @args
+        if ($?) { $state = 'done' }
+    } finally {
+        if ($report) { [Console]::Error.Write("`e]7501;state=$state`a") }
+    }
 }
 ```
 
-In a new Bash session, try `with_status sleep 3` to see **Active** then **Completed**, or `with_status false` to see **Error**. Reports go to the terminal on stderr, leaving stdout and the command's exit code unchanged.
+In a new PowerShell pane on Windows, try `Invoke-WithProgramStatus ping.exe -n 4 127.0.0.1` to see **Active** then **Completed**. Run `Invoke-WithProgramStatus cmd.exe /c exit 7` to see **Error**; `$LASTEXITCODE` is still `7`.
