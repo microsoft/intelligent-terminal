@@ -10,8 +10,8 @@ license: Complete terms in LICENSE.txt
 
 Enable a human to decide what needs changing and why it matters: who is affected,
 under which current scenario, and what behavior or engineering work becomes
-worse. Ground that consequence in the actual design and recommend the smallest
-correction that preserves requirements. This is decision support, not a pattern
+worse. Ground that consequence in the actual design and present justified
+design options. This is decision support, not a pattern
 score, exhaustive code audit, implementation or approval.
 
 ## Input and delivery contract
@@ -52,8 +52,8 @@ proof that the design preserves them. Read the actual framework/dependency
 consumer when a claim depends on its behavior. Build metadata can establish a
 build dependency, not a runtime relationship or MVVM ownership boundary.
 
-Compare the proposed design with the baseline and a feasible simpler alternative,
-including the cost or requirement that might justify keeping the proposal.
+Compare the proposed design with the baseline and viable alternatives, including
+the cost or requirement that might justify keeping the proposal.
 Use authoritative external architecture references only for a specific unresolved
 question, through permitted tools. If a necessary relationship or source is
 unavailable, record the missing evidence and its effect on the decision.
@@ -116,7 +116,7 @@ Retain a finding only when changed source and actual consumers establish why a
 person should care now. For maintenance findings, identify the existing task
 and owners made harder to change or reason about; hypothetical future features
 and principle violations alone are insufficient. Check counter-evidence and the
-smallest feasible correction, including its tradeoffs. Count one root cause once.
+feasibility and tradeoffs of recommendations. Count one root cause once.
 
 For mutable-state invariants, trace when validation occurs through the actual
 consumer, including intervening asynchronous work and invalidation events.
@@ -126,7 +126,7 @@ the impossibility of perfect atomicity does not justify every wider window.
 An intervening await alone is not a finding: establish material benefit and an
 actual supported correction surface before prescribing new consumer integration.
 Treat documented tradeoffs as claims to test against requirements, consequences
-and simpler alternatives, not blanket exemptions from findings.
+and viable alternatives, not blanket exemptions from findings.
 
 Use HIGH for a demonstrated cross-boundary contract/state ownership failure
 with broad consequences; MEDIUM for a concrete local design burden; LOW for a
@@ -139,8 +139,12 @@ with the evidence needed to resolve them, not in speculative finding rows.
 Return concise Markdown with the exact snapshot and consequential findings first.
 Each finding needs an impact-led title and severity, the impacted scenario, the
 applicable principle and how this design violates it, the concrete adverse
-consequence in the current code, and a fix grounded in its existing requirements,
-owners and consumers. Explain the fix's tradeoff, not a generic ideal redesign.
+consequence in the current code, and recommendations grounded in its requirements,
+owners and consumers. Where materially useful, distinguish the minimum acceptable
+change, stronger alternatives and the ideal target design. Recommend a direction
+with benefits, costs, compatibility and migration risks; separate immediate needs
+from longer-term improvements. Do not force multiple options or default to either
+the smallest patch or an idealized rewrite.
 Include changed and consumer path:line citations plus justified confidence.
 Name the principle explicitly, but establish the violation through source
 evidence; the label alone does not justify a finding.
