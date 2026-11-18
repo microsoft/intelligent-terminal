@@ -64,8 +64,10 @@ review reasoning and the structured report.
 2. Inspect the exact immutable patch with `read-security-diff`, passing
    `paths_json` as a JSON array of at most 20 normalized repository paths
    (`[]` requests the complete diff). Continue in bounded path groups until
-   every changed hunk has actually been read; do not silently skip truncated
-   output or rely on keyword filters to select findings or discard changes.
+   every changed hunk has actually been read. For each path group, repeat with
+   the returned `nextOffset` until it equals `totalBytes`, keeping `paths_json`
+   unchanged. Do not silently skip truncated output or rely on keyword filters
+   to select findings or discard changes.
    Summaries such as `--stat`, `--name-only`, and PR prose are discovery aids,
    not review evidence. Use `read-security-source` with `revision: base` or
    `head`, normalized `path`, and positive inclusive `start_line`/`end_line`

@@ -9,6 +9,7 @@ import {
   buildScope, createReportTemplate, submitSecurityReport, validateCandidate, validateProposal, validateReport,
   SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, readSecurityDiff, readSecuritySource,
   readImmutableHunks, inspectSecurityRepair, writeSecurityRepair,
+  sliceSecurityDiff,
 } from './security-review.mjs';
 import { restoreTrustedInputs } from './restore-security-review-trusted-inputs.mjs';
 import { proposeWarningDecisions, readWarningPage } from './ci-security.mjs';
@@ -870,6 +871,60 @@ test('complete native diff coverage rejects missing, partial, forged, failed and
   const duplicate = reads([PATH]).map(event => ({ ...event, data: { ...event.data, toolCallId: 'duplicate' } }));
   assert.throws(() => validate([...reads([PATH]), ...duplicate]), /complete immutable/);
   validate([...reads([PATH]), ...duplicate, ...second]);
+});
+
+test('bounded diff pages preserve UTF-8 and require exact complete coverage before driver completion', () => {
+  const diff = `${DIFF}${' unchanged context\n'.repeat(2000)}${'界🙂\n'.repeat(1000)}`;
+  const chunks = [];
+  let offset = 0;
+  do {
+    const page = sliceSecurityDiff(diff, offset);
+    assert(Buffer.byteLength(JSON.stringify(page)) < 16000);
+    assert(!page.diff.includes('\ufffd'));
+    assert(page.nextOffset > offset);
+    chunks.push(...call('mcpscripts-read_security_diff',
+      { baseSha: BASE, headSha: HEAD, ...page }, { paths_json: '[]', offset }, true, `page-${offset}`));
+    offset = page.nextOffset;
+  } while (offset < Buffer.byteLength(diff));
+  assert.equal(chunks.filter(event => event.type === 'tool.execution_complete')
+    .map(event => JSON.parse(event.data.result.content).diff).join(''), diff);
+  for (const [offset, limit] of [[-1, 12000], [0, 12001], [0, 3], [0.5, 12000],
+    [Buffer.byteLength(diff) + 1, 12000], [Buffer.byteLength(diff) - 2, 12000]]) {
+    assert.throws(() => sliceSecurityDiff(diff, offset, limit), /diff page/);
+  }
+  for (const variant of ['complete', 'missing-page', 'truncated-page', 'forged-total', 'different-paths']) {
+    withFixture(fixture => {
+      const report = { ...createReportTemplate(scope), summary: 'Complete immutable review.', summaryMarkdown: SUMMARY_MD };
+      const options = driverOptions(fixture, [], { candidate: () => report });
+      options.readDiff = () => diff;
+      options.inspect = () => ({
+        headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
+      });
+      const run = options.runChild;
+      options.runChild = (...args) => {
+        const result = run(...args);
+        const events = structuredClone(chunks);
+        if (variant === 'missing-page') events.splice(2, 2);
+        if (variant === 'different-paths') events[2].data.arguments.paths_json = JSON.stringify([PATH]);
+        if (['truncated-page', 'forged-total'].includes(variant)) {
+          const page = JSON.parse(events[3].data.result.content);
+          if (variant === 'truncated-page') page.diff = page.diff.slice(0, -1);
+          else page.totalBytes++;
+          events[3].data.result.content = JSON.stringify(page);
+        }
+        result.stdout = output([...events, ...result.stdout.trim().split('\n').map(line => JSON.parse(line)).slice(2)]);
+        return result;
+      };
+      const completion = join(fixture.reportPath, '..', 'security-driver-completion.json');
+      if (variant === 'complete') {
+        assert.equal(runSecurityReviewDriver(options).reviewed, false);
+        assert.equal(existsSync(completion), true);
+      } else {
+        assert.throws(() => runSecurityReviewDriver(options), /complete immutable original diff/);
+        assert.equal(existsSync(completion), false);
+      }
+    });
+  }
 });
 
 test('rename coverage requires both endpoints and empty scopes still require one complete native read', () => {

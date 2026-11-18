@@ -585,6 +585,18 @@ export function readSecurityDiff(scope, paths = [], workspace) {
     scope.baseSha, scope.headSha, '--', ...selected], workspace);
 }
 
+export function sliceSecurityDiff(diff, offset = 0, limit = 12000) {
+  const bytes = Buffer.from(diff, 'utf8');
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > bytes.length ||
+      !Number.isSafeInteger(limit) || limit < 4 || limit > 12000 ||
+      (offset < bytes.length && (bytes[offset] & 0xc0) === 0x80)) {
+    fail('diff page needs a UTF-8 byte offset and a limit between 4 and 12000 bytes');
+  }
+  let end = Math.min(offset + limit, bytes.length);
+  while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
+  return { offset, nextOffset: end, totalBytes: bytes.length, diff: bytes.subarray(offset, end).toString('utf8') };
+}
+
 export function readSecuritySource(scope, revision, path, startLine = 1, endLine = 400, workspace) {
   const sha = revision === 'base' ? scope?.baseSha : revision === 'head' ? scope?.headSha : '';
   if (!SHA.test(sha ?? '') || !Number.isInteger(startLine) || startLine < 1 ||

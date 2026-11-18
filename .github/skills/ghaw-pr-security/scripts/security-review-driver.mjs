@@ -11,6 +11,7 @@ import {
   createReportTemplate, inspectSecurityRepair, readSecurityDiff, readSecuritySource, validateCandidate,
   SECURITY_REPORT_MAX_BYTES, serializeSecurityReport, normalizePath, validatePatch, validateProposal, validateReport,
   validateSummaryMarkdown,
+  sliceSecurityDiff,
   TRUSTED_GUIDANCE_ROOTS, isTrustedGuidancePath,
 } from './security-review.mjs';
 import { completedWarningReview, readCiWarnings, readWarningPage } from './ci-security.mjs';
@@ -270,6 +271,7 @@ function coversRange(intervals, start, end) {
 export function validateCompleteDiffCoverage(calls, scope, diffForPaths) {
   const diffCalls = calls.filter(call => call.toolName === READ_TOOLS[0]);
   const covered = new Set();
+  const pages = new Map();
   let completeReads = 0;
   for (const call of diffCalls) {
     const data = nativeResult(call);
@@ -279,7 +281,17 @@ export function validateCompleteDiffCoverage(calls, scope, diffForPaths) {
       if (!Array.isArray(selected) || selected.length > 20) continue;
       selected.forEach(path => normalizePath(path));
       const expected = diffForPaths(selected);
-      if (typeof expected !== 'string' || data.diff !== expected) continue;
+      if (typeof expected !== 'string') continue;
+      if (data.offset !== undefined) {
+        const page = sliceSecurityDiff(expected, call.arguments?.offset ?? 0, call.arguments?.limit ?? 12000);
+        if (data.offset !== page.offset || data.nextOffset !== page.nextOffset ||
+            data.totalBytes !== page.totalBytes || data.diff !== page.diff) continue;
+        const key = JSON.stringify(selected);
+        const ranges = pages.get(key) ?? [];
+        ranges.push([page.offset, page.nextOffset - 1]);
+        pages.set(key, ranges);
+        if (page.totalBytes > 0 && !coversRange(ranges, 0, page.totalBytes - 1)) continue;
+      } else if (data.diff !== expected) continue;
       completeReads++;
       const includes = path => selected.length === 0 ||
         selected.some(parent => path === parent || path.startsWith(`${parent}/`));
