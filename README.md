@@ -154,6 +154,10 @@ When **Settings > Agents > Sessions** is off, session management shows a subtle 
 
 ### Sidebar
 
+<p align="center">
+  <img src="./images/intelligent-terminal-sidebar.png" alt="Screenshot of the sidebar showing terminal tabs, agent status, and recent agent sessions">
+</p>
+
 Manage terminal tabs and agent sessions from the sidebar. Press <kbd>Ctrl+Shift+S</kbd>
 to show or hide it, and switch between **Tabs** and **Agents** using the sidebar header.
 
