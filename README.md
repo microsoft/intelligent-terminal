@@ -175,7 +175,11 @@ To return to horizontal tabs, right-click a tab and change the tab layout.
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your remaining context and session cost when available; toggle this on or off in Agents settings.
+The agent status bar sits at the bottom of the window. On the left are the agent pane toggle (<kbd>Ctrl+Shift+.</kbd>) and the error detection icon (<kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected.
+
+In horizontal tab mode, the sessions icon appears at the bottom right and opens agent management (<kbd>Ctrl+Shift+/</kbd>). In sidebar mode, this icon is hidden; use the sidebar's **Recent agent sessions** section instead.
+
+The status bar can also display your remaining context and session cost when available; toggle this on or off in **Settings > Agents > Token usage**.
 
 ### Agent Pane
 
@@ -227,7 +231,7 @@ API key:   <optional>
   <img src="./images/intelligent-terminal-agent-management.png" alt="Screenshot of agent management panel showing active agents and past sessions">
 </p>
 
-View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. Click the agent management icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
+View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. In horizontal tab mode, click the sessions icon at the bottom right or press <kbd>Ctrl+Shift+/</kbd> to open agent management. In sidebar mode, use **Recent agent sessions**.
 
 While a tracked built-in agent session is live, its terminal pane uses the agent's icon. Vertical pane rows show their own icons; tab headers in both layouts follow the focused terminal pane. Focusing the AI helper keeps its associated terminal pane as the source. When the session ends, or the provider is custom or unknown, the profile icon is used instead. This works whether or not Agent status is selected as visible tab metadata.
 
