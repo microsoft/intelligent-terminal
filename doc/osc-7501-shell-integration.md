@@ -1,23 +1,24 @@
-# Report a command's status from PowerShell
+# Report command status automatically from PowerShell
 
-If an executable doesn't report [OSC 7501 program status](https://www.superlogical.com/rex/docs/build/program-status), PowerShell can report `working` when you launch it, then `done` or `error` based on its exit code. The shell can't tell whether it's waiting for input.
+A PowerShell integration can report basic [OSC 7501 status](https://www.superlogical.com/rex/docs/build/program-status) for ordinary commands. Users type commands normally. The two snippets below extend Intelligent Terminal's [existing shell integration](configuring-shell-integration-autofix.md); they are insertion points in the integration script, not commands to paste at the prompt.
 
-Add this function to your PowerShell 7 `$PROFILE` in the shell that runs the command (on the remote host for SSH). Place it outside the [built-in shell integration](configuring-shell-integration-autofix.md) block so its OSC 133 prompt and exit-code marks stay in place. Run programs with native OSC 7501 support directly.
+**When a command is submitted:** initialize `$Global:__ShellInteg_StatusPending = $false` when installing the hooks. In the existing `PSConsoleHostReadLine` hook, just before `return $line`, add:
 
 ```powershell
-function Invoke-WithProgramStatus {
-    param([string]$FileName)
-    $report = -not [Console]::IsErrorRedirected
-    $state = 'error'
-    try {
-        if ($report) { [Console]::Error.Write("`e]7501;state=working`a") }
-        $exe = Get-Command $FileName -CommandType Application -ErrorAction Stop | Select-Object -First 1
-        & $exe.Source @args
-        if ($?) { $state = 'done' }
-    } finally {
-        if ($report) { [Console]::Error.Write("`e]7501;state=$state`a") }
-    }
+if (-not [string]::IsNullOrWhiteSpace($line)) {
+    $Global:__ShellInteg_StatusPending = $true
+    [Console]::Write("$($Global:__ShellInteg_ESC)]7501;state=working$($Global:__ShellInteg_BEL)")
 }
 ```
 
-In a new PowerShell pane on Windows, try `Invoke-WithProgramStatus ping.exe -n 4 127.0.0.1` to see **Active** then **Completed**. Run `Invoke-WithProgramStatus cmd.exe /c exit 7` to see **Error**; `$LASTEXITCODE` is still `7`.
+**When the prompt returns:** just before the existing OSC 133 prompt-start mark, append the result using the exit code (`$gle`) already calculated by the integration. Keep the existing OSC 133 marks.
+
+```powershell
+if ($Global:__ShellInteg_StatusPending) {
+    $state = if ($gle -eq 0) { 'done' } else { 'error' }
+    $prefix += "${E}]7501;state=${state}${B}"
+    $Global:__ShellInteg_StatusPending = $false
+}
+```
+
+Open a new PowerShell pane and run `Start-Sleep -Seconds 3`: the sidebar should show **Active**, then **Completed**. On Windows, `cmd /c exit 7` should show **Error**. These reports describe the foreground command line, not background jobs or an application's internal progress. Programs can send richer status while they run. An integration update may replace local edits to the installed script.
