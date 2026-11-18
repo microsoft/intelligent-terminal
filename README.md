@@ -165,7 +165,6 @@ to show or hide it, and switch between **Tabs** and **Agents** using the sidebar
 - **Agents** helps you find agent tabs and recent agent sessions. Press <kbd>Ctrl+Shift+G</kbd> to toggle the Agents-only filter.
 - **Search** finds open tabs and recent agent sessions, including items hidden by the current display filters.
 - **Recent agent sessions** lets you return to supported conversations. Collapse the section to hide its rows without closing agents or deleting sessions.
-- The **+** button opens a new terminal tab using your default profile. Use the dropdown beside it to choose another shell or an installed agent profile.
 
 To return to horizontal tabs, right-click a tab and change the tab layout.
 
