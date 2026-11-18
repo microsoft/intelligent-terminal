@@ -159,10 +159,10 @@ When **Settings > Agents > Sessions** is off, session management shows a subtle 
 </p>
 
 Manage terminal tabs and agent sessions from the sidebar. Press <kbd>Ctrl+Shift+S</kbd>
-to show or hide it, and switch between **Tabs** and **Agents** using the sidebar header.
+to show or hide it. Use the sidebar's display-options menu to filter agent tabs and show recent agent sessions.
 
 - **Tabs** shows your terminal tabs, with display options for details such as working directory, Git branch, and agent status.
-- **Agents** helps you find agent tabs and recent agent sessions. Press <kbd>Ctrl+Shift+G</kbd> to toggle the Agents-only filter.
+- **Agents only** filters open tabs to agent tabs. Press <kbd>Ctrl+Shift+G</kbd> to toggle this filter.
 - **Search** finds open tabs and recent agent sessions, including items hidden by the current display filters.
 - **Recent agent sessions** lets you return to supported conversations. Collapse the section to hide its rows without closing agents or deleting sessions.
 
