@@ -586,7 +586,7 @@ export function readSecurityDiff(scope, paths = [], workspace) {
 }
 
 export function sliceSecurityDiff(diff, offset = 0, limit = 12000) {
-  const bytes = Buffer.from(diff, 'utf8');
+  const bytes = Buffer.isBuffer(diff) ? diff : Buffer.from(diff, 'utf8');
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > bytes.length ||
       !Number.isSafeInteger(limit) || limit < 4 || limit > 12000 ||
       (offset < bytes.length && (bytes[offset] & 0xc0) === 0x80)) {

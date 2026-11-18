@@ -896,7 +896,8 @@ test('bounded diff pages preserve UTF-8 and require exact complete coverage befo
     withFixture(fixture => {
       const report = { ...createReportTemplate(scope), summary: 'Complete immutable review.', summaryMarkdown: SUMMARY_MD };
       const options = driverOptions(fixture, [], { candidate: () => report });
-      options.readDiff = () => diff;
+      let diffReads = 0;
+      options.readDiff = () => { diffReads++; return diff; };
       options.inspect = () => ({
         headSha: HEAD, patch: '', patchSha256: createHash('sha256').update('').digest('hex'), paths: [],
       });
@@ -919,6 +920,7 @@ test('bounded diff pages preserve UTF-8 and require exact complete coverage befo
       if (variant === 'complete') {
         assert.equal(runSecurityReviewDriver(options).reviewed, false);
         assert.equal(existsSync(completion), true);
+        assert.equal(diffReads, 1, 'Paging one immutable path group must not rerun Git for each page.');
       } else {
         assert.throws(() => runSecurityReviewDriver(options), /complete immutable original diff/);
         assert.equal(existsSync(completion), false);
