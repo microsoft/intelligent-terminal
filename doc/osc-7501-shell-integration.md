@@ -2,6 +2,8 @@
 
 A PowerShell integration can report basic [OSC 7501 status](https://www.superlogical.com/rex/docs/build/program-status) for ordinary commands. Users type commands normally. The two snippets below extend Intelligent Terminal's [existing shell integration](configuring-shell-integration-autofix.md); they are insertion points in the integration script, not commands to paste at the prompt.
 
+See the [complete PowerShell sample](samples/osc-7501-shell-integration.ps1) for both hooks in context. This is a reference copy, not the script installed by default.
+
 **When a command is submitted:** initialize `$Global:__ShellInteg_StatusPending = $false` when installing the hooks. In the existing `PSConsoleHostReadLine` hook, just before `return $line`, add:
 
 ```powershell
