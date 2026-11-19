@@ -813,7 +813,11 @@ impl App {
             {
                 self.current_tab_mut().navigate_input_history_older();
             }
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            // A Shift+Enter binding that sends ESC CR reaches the helper as Alt+Enter.
+            KeyCode::Enter
+                if key.modifiers.contains(KeyModifiers::SHIFT)
+                    || (key.modifiers == KeyModifiers::ALT && self.chat_input_has_edit_focus()) =>
+            {
                 // Input editing only acts when the input is the live caret
                 // target. While a recommendation/permission card or a past
                 // turn is highlighted the input is locked (see Char below).
