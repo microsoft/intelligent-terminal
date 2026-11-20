@@ -16052,12 +16052,10 @@ namespace winrt::TerminalApp::implementation
 
         layout.LaunchMode({ mode });
 
-        // Only save the content size because the tab size will be added on load.
-        const auto contentWidth = static_cast<float>(_tabContent.ActualWidth());
-        const auto contentHeight = static_cast<float>(_tabContent.ActualHeight());
-        const winrt::Windows::Foundation::Size windowSize{ contentWidth, contentHeight };
-
-        layout.InitialSize(windowSize);
+        // The page includes the in-page tab row and bottom toolbar. Keep the
+        // separate content size so older versions can still restore this layout.
+        layout.InitialPageSize(winrt::Windows::Foundation::Size{ static_cast<float>(ActualWidth()), static_cast<float>(ActualHeight()) });
+        layout.InitialSize(winrt::Windows::Foundation::Size{ static_cast<float>(_tabContent.ActualWidth()), static_cast<float>(_tabContent.ActualHeight()) });
 
         // We don't actually know our own position. So we have to ask the window
         // layer for that.
@@ -16128,6 +16126,7 @@ namespace winrt::TerminalApp::implementation
             }
             layout.InitialPosition(visibleLayout.InitialPosition());
             layout.InitialSize(visibleLayout.InitialSize());
+            layout.InitialPageSize(visibleLayout.InitialPageSize());
             layout.LaunchMode(visibleLayout.LaunchMode());
         }
         actions.insert(actions.end(), std::make_move_iterator(extraActions.begin()), std::make_move_iterator(extraActions.end()));

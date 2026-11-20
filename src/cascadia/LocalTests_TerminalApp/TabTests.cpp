@@ -863,6 +863,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(KeepRunningStartupWaitsForHostRegistration);
         TEST_METHOD(KeepRunningStartupRestoresBatchAfterLayout);
         TEST_METHOD(KeepRunningLaunchDimensionsIncludeHostedTitlebar);
+        TEST_METHOD(PersistedWindowLaunchDimensionsIncludePageChrome);
+        TEST_METHOD(PersistedWindowLaunchDimensionsSupportLegacyLayouts);
         TEST_METHOD(KeepRunningWindowCloseCapturesSharedGeometry);
         TEST_METHOD(KeepRunningWindowRequestSelectsNewestValidGeometry);
         TEST_METHOD(KeepRunningStartupRestoresPhysicalOrigin);
@@ -3489,6 +3491,8 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, source->_manager.KeptGroups().Size());
             last->_OnVerticalRailCollapseRequested(nullptr, nullptr);
             VERIFY_IS_TRUE(last->_isVerticalRailCollapsed);
+            last->Measure({ 1200, 600 });
+            last->Arrange({ 0, 0, 1200, 600 });
             const auto preview = last->GetStartupRestoreLayout();
             VERIFY_IS_NOT_NULL(preview);
             last->CloseWindow();
@@ -3534,6 +3538,9 @@ namespace TerminalAppLocalTests
             const auto restored = WindowLayout::FromJson(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, saved["persistedWindowLayouts"][0])));
             VERIFY_ARE_EQUAL(expected, WindowLayout::ToJson(restored));
             VERIFY_IS_TRUE(restored.SidebarCollapsed().Value());
+            VERIFY_IS_NOT_NULL(restored.InitialPageSize());
+            VERIFY_ARE_EQUAL(1200.0f, restored.InitialPageSize().Value().Width);
+            VERIFY_ARE_EQUAL(600.0f, restored.InitialPageSize().Value().Height);
         });
     }
 
@@ -3991,6 +3998,65 @@ namespace TerminalAppLocalTests
                     }
                 }
             }
+        });
+    }
+
+    void TabTests::PersistedWindowLaunchDimensionsIncludePageChrome()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            page->Width(900);
+            page->Height(600);
+            page->Measure({ 900, 600 });
+            page->Arrange({ 0, 0, 900, 600 });
+            VERIFY_IS_TRUE(page->BottomBarRoot().ActualHeight() > 0);
+            VERIFY_IS_TRUE(page->_tabContent.ActualHeight() < page->ActualHeight());
+            const auto layout = WindowLayout::FromJson(WindowLayout::ToJson(page->GetWindowLayout()));
+
+            const auto settings = page->_settings;
+            settings.GlobalSettings().AlwaysShowTabs(true);
+            for (const auto hostedTitlebar : { false, true })
+            {
+                settings.GlobalSettings().ShowTabsInTitlebar(hostedTitlebar);
+                for (const auto mode : { LaunchMode::DefaultMode, LaunchMode::FocusMode })
+                {
+                    layout.LaunchMode({ mode });
+                    const auto loaded = winrt::make<winrt::TerminalApp::implementation::SettingsLoadEventArgs>(
+                        false, S_OK, winrt::hstring{}, nullptr, settings);
+                    const auto window = winrt::make_self<winrt::TerminalApp::implementation::TerminalWindow>(loaded, page->_manager);
+                    window->SetPersistedLayout(layout);
+                    const auto chromeHeight = hostedTitlebar && mode != LaunchMode::FocusMode ? 40.0f : 0.0f;
+                    const auto size = window->GetLaunchDimensions(144);
+                    VERIFY_ARE_EQUAL(1350.0f, size.Width);
+                    VERIFY_ARE_EQUAL((600.0f + chromeHeight) * 1.5f, size.Height);
+                }
+            }
+        });
+    }
+
+    void TabTests::PersistedWindowLaunchDimensionsSupportLegacyLayouts()
+    {
+        const auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto settings = page->_settings;
+            settings.GlobalSettings().ShowTabsInTitlebar(true);
+            const auto loaded = winrt::make<winrt::TerminalApp::implementation::SettingsLoadEventArgs>(
+                false, S_OK, winrt::hstring{}, nullptr, settings);
+            const auto window = winrt::make_self<winrt::TerminalApp::implementation::TerminalWindow>(loaded, page->_manager);
+            const auto layout = WindowLayout::FromJson(LR"({"initialSize":{"width":900,"height":600}})");
+            window->SetPersistedLayout(layout);
+            const auto legacySize = window->GetLaunchDimensions(96);
+            VERIFY_ARE_EQUAL(900.0f, legacySize.Width);
+            VERIFY_ARE_EQUAL(640.0f, legacySize.Height);
+
+            const auto command = winrt::make<winrt::TerminalApp::implementation::CommandlineArgs>();
+            command.Commandline({ L"wt.exe", L"--size", L"80,24" });
+            VERIFY_ARE_EQUAL(0, window->SetStartupCommandline(command));
+            const auto explicitSize = window->GetLaunchDimensions(96);
+            layout.InitialPageSize(winrt::Windows::Foundation::Size{ 1000, 700 });
+            const auto explicitSizeWithSavedPage = window->GetLaunchDimensions(96);
+            VERIFY_ARE_EQUAL(explicitSize.Width, explicitSizeWithSavedPage.Width);
+            VERIFY_ARE_EQUAL(explicitSize.Height, explicitSizeWithSavedPage.Height);
         });
     }
 
