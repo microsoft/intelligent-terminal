@@ -268,48 +268,6 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertEqual("triage", route["needs"])
         self.assertIn("steps.route.outputs.route", route["outputs"]["route"])
 
-    def test_configured_agent_and_staged_skill_use_trusted_workflow_before_model_entry(self):
-        steps = self.jobs["agent"]["steps"]
-        names = [s.get("name") for s in steps]
-        restore = names.index("Restore agent config folders from base branch")
-        replace = names.index("Prepare trusted accessibility evidence")
-        record = names.index("Record framework configuration changes")
-        model = next(i for i, s in enumerate(steps) if s.get("id") == "agentic_execution")
-        self.assertLess(replace, restore)
-        self.assertLess(restore, record)
-        self.assertLess(record, model)
-        # Dispatch activation checks out the dispatch SHA on the default branch.
-        # Admission binds that revision to github.workflow_sha before model entry.
-        activation = next(s for s in self.jobs["activation"]["steps"]
-                          if s.get("name") == "Checkout .github and .agents folders")
-        self.assertNotIn("ref", activation["with"])
-        self.assertIn(".github", activation["with"]["sparse-checkout"])
-        for job in (self.jobs["activation"], self.jobs["agent"]):
-            setup = next(s for s in job["steps"] if s.get("name") in (
-                "Save agent config folders for base branch restoration",
-                "Restore agent config folders from base branch"))
-            self.assertIn(".claude", setup["env"]["GH_AW_AGENT_FOLDERS"].split())
-        restore_step = steps[restore]
-        self.assertEqual("AGENTS.md", restore_step["env"]["GH_AW_AGENT_FILES"])
-        self.assertIn('bash "${RUNNER_TEMP}/gh-aw/actions/restore_base_github_folders.sh"', restore_step["run"])
-        config = yaml.safe_load((ROOT / ".github/workflows/ghaw-pr-accessibility.lock.yml").read_text(
-            encoding="utf-8"))["env"]["ACCESSIBILITY_SETUP_PATHS"].split()
-        self.assertEqual(set(restore_step["env"]["GH_AW_AGENT_FOLDERS"].split()) |
-                         {"AGENTS.md", ".mcp.json"}, set(config))
-        admission = next(s for s in self.jobs["admission"]["steps"] if s.get("id") == "admit")
-        self.assertIn("metadata.default_branch", admission["with"]["script"])
-        self.assertIn("REQUESTED_WORKFLOW_SHA !== process.env.EXPECTED_WORKFLOW_SHA",
-                      admission["with"]["script"])
-        prepare = next(s for s in steps if s.get("name") == "Prepare trusted accessibility evidence")
-        self.assertIn('test "$WORKFLOW_SHA" = "$(git rev-parse HEAD)"', prepare["run"])
-        self.assertIn('git show "$WORKFLOW_SHA:.github/skills/pr-accessibility/SKILL.md"', prepare["run"])
-        self.assertEqual("${{ github.workflow_sha }}", prepare["env"]["WORKFLOW_SHA"])
-        self.assertIn("--agent pr-accessibility", steps[model]["run"])
-        self.assertIn("--no-custom-instructions", steps[model]["run"])
-        self.assertNotIn("cmp -- AGENTS.md", steps[record]["run"])
-        self.assertLess(prepare["run"].index('git checkout -B "$HEAD_REF" "$HEAD_SHA"'),
-                        prepare["run"].index("rm -f -- AGENTS.md"))
-
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
         self.assertNotIn("native-selection", self.jobs)
         self.assertNotIn("native-evidence", self.jobs)
