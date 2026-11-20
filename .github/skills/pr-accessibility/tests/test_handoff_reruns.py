@@ -39,7 +39,8 @@ class ActualOutputSourceTests(unittest.TestCase):
                         route["run"].index('cat "$handoff" >> "$GITHUB_STEP_SUMMARY"'))
         deep = jobs["agent"]
         display = step_named(deep, "Display delivered deep review")
-        self.assertIn("steps.actual-output.outcome == 'success'", display["if"])
+        # A failed earlier diagnostic must not impose implicit success().
+        self.assertIn("always() && steps.actual-output.outcome == 'success'", display["if"])
         self.assertEqual('cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"',
                          display["run"])
         gate = step_named(deep, "Check findings and repair publication policy")

@@ -344,7 +344,7 @@ post-steps:
         "Generated Files/$ACCESSIBILITY_RUN" \
         --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
   - name: Display delivered deep review
-    if: steps.actual-output.outcome == 'success'
+    if: always() && steps.actual-output.outcome == 'success'
     run: cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"
 
   - name: Remove verified framework configuration changes
