@@ -110,11 +110,6 @@ The review describes proposed commits as local and includes one shared
 unbuilt/untested reviewer-ownership/revert notice. See the safe-output job for
 confirmed publication.
 
-The pinned gh-aw restorer uses a plain copy for root instructions. Clear its
-`AGENTS.md` destination before restoration so the copy cannot follow a
-candidate link. Keep `.claude` in trusted activation: the pinned Copilot
-workflow otherwise does not snapshot that project-skill directory.
-
 ## Maintenance
 
 Use gh-aw v0.87.10; compile and validate both accessibility workflows and
