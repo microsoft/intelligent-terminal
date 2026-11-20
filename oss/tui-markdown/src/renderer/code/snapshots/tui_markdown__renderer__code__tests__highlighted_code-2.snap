@@ -1,0 +1,28 @@
+---
+source: src/renderer/code/tests.rs
+expression: highlighted_code
+---
+Text::from_iter([
+    Line::from("```rust"),
+    Line::from_iter([
+        Span::from("fn").fg(Color::Rgb(180, 142, 173)).bg(Color::Rgb(43, 48, 59)),
+        Span::from(" ").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("main").fg(Color::Rgb(143, 161, 179)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("(").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from(")").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from(" ").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("{").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+    ]),
+    Line::from_iter([
+        Span::from("    ").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("println!").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("(").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("\"").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("Hello, highlighted code!").fg(Color::Rgb(163, 190, 140)).bg(Color::Rgb(43, 48, 59)),
+        Span::from("\"").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from(")").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+        Span::from(";").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59)),
+    ]),
+    Line::from(Span::from("}").fg(Color::Rgb(192, 197, 206)).bg(Color::Rgb(43, 48, 59))),
+    Line::from("```"),
+])

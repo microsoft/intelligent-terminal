@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "Registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/joshka/tui-markdown",
+          "commitHash": "493efd16d396b5c927832a7f2265d9ec881c7961"
+        }
+      }
+    }
+  ],
+  "Version": 1
+}
