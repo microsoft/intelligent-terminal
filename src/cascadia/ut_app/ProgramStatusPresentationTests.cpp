@@ -22,6 +22,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(CurrentMessagesTakePrecedenceOverTitles);
         TEST_METHOD(StatusTextAppendsMessagesWithoutResultBadges);
         TEST_METHOD(HookAndProgramArrivalOrderPreservesIndependentFacts);
+        TEST_METHOD(AcknowledgedCurrentErrorRemainsVisibleUntilReplaced);
+        TEST_METHOD(CurrentChildErrorSurvivesAnIdleRootWithoutOverridingWork);
     };
 
     void ProgramStatusPresentationTests::DescendantsAndUnseenResultsSurviveRootCompletion()
@@ -102,6 +104,60 @@ namespace TerminalAppUnitTests
         panes[0].blocked = 1;
         panes[0].unseenError = 0;
         VERIFY_IS_TRUE(Reduce(panes).category == Category::Blocked);
+    }
+
+    void ProgramStatusPresentationTests::AcknowledgedCurrentErrorRemainsVisibleUntilReplaced()
+    {
+        PaneStatus pane{
+            .observed = true,
+            .unseenError = 1,
+            .taskState = "error",
+            .message = L"Build failed",
+            .error = 1,
+        };
+        pane.unseenError = 0;
+        auto summary = Reduce(std::span{ &pane, 1 });
+        VERIFY_IS_TRUE(summary.category == Category::Error);
+        VERIFY_ARE_EQUAL(1u, summary.errorPanes);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Build failed" }, summary.description);
+
+        pane.error = 0;
+        VERIFY_IS_TRUE(Reduce(std::span{ &pane, 1 }).category == Category::Error);
+
+        pane.taskState = "idle";
+        pane.message = L"Ready";
+        summary = Reduce(std::span{ &pane, 1 });
+        VERIFY_IS_TRUE(summary.category == Category::Idle);
+        VERIFY_ARE_EQUAL(0u, summary.errorPanes);
+        VERIFY_ARE_EQUAL(std::wstring{ L"Ready" }, summary.description);
+    }
+
+    void ProgramStatusPresentationTests::CurrentChildErrorSurvivesAnIdleRootWithoutOverridingWork()
+    {
+        PaneStatus pane{
+            .observed = true,
+            .taskState = "idle",
+            .message = L"Ready",
+            .error = 1,
+        };
+        auto summary = Reduce(std::span{ &pane, 1 });
+        VERIFY_IS_TRUE(summary.category == Category::Error);
+        VERIFY_IS_TRUE(summary.description.empty());
+
+        pane.working = 1;
+        pane.progress = 40;
+        pane.taskState = "working";
+        pane.message = L"Another task";
+        summary = Reduce(std::span{ &pane, 1 });
+        VERIFY_IS_TRUE(summary.category == Category::Working);
+        VERIFY_IS_FALSE(summary.progress.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"Another task" }, summary.description);
+
+        pane.blocked = 1;
+        pane.taskState = "blocked";
+        VERIFY_IS_TRUE(Reduce(std::span{ &pane, 1 }).category == Category::Blocked);
+        pane.canonicalInput = true;
+        VERIFY_IS_TRUE(Reduce(std::span{ &pane, 1 }).category == Category::InputRequest);
     }
 
     void ProgramStatusPresentationTests::UntrustedTextCannotOverrideChromeDirection()

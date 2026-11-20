@@ -13922,6 +13922,46 @@ namespace TerminalAppLocalTests
         const auto errorBaseline = waitForWorking();
         emit(u"\x1b]7501;state=error\x1b\\\x1b]7501;state=idle\x1b\\");
         waitForAcknowledgedResult(errorBaseline, "unseen_error");
+
+        emit(u"\x1b]7501;state=working\x1b\\");
+        const auto currentErrorBaseline = waitForWorking();
+        emit(u"\x1b]7501;state=error\x1b\\");
+        waitForAcknowledgedResult(currentErrorBaseline, "unseen_error");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Error" &&
+                   owner->GetCombinedTaskbarState().State() == 2;
+        });
+        TestOnUIThread([&]() {
+            const auto value = snapshot();
+            VERIFY_ARE_EQUAL(std::string{ "error" }, value["state"].asString());
+            VERIFY_ARE_EQUAL(1u, value["error"].asUInt());
+            VERIFY_ARE_EQUAL(0u, value["unseen_error"].asUInt());
+            VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+        });
+        emit(u"\x1b]7501;state=idle\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Idle" &&
+                   owner->GetCombinedTaskbarState().State() == 0;
+        });
+
+        emit(u"\x1b]7501;state=blocked:kind=question\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Attention" &&
+                   owner->GetCombinedTaskbarState().State() == 4;
+        });
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(owner->_tabStatus.IsProgressRingActive());
+            VERIFY_IS_FALSE(owner->_tabStatus.IsProgressRingIndeterminate());
+            owner->UpdateIcon(L"\xE8A5", IconStyle::Default);
+            VERIFY_IS_NOT_NULL(owner->TabViewItem().IconSource());
+            VERIFY_IS_TRUE(owner->TabViewItem().IconSource() == owner->_iconSource);
+            VERIFY_ARE_EQUAL(0ull, owner->GetCombinedTaskbarState().Progress());
+        });
+        emit(u"\x1b]7501;state=working:progress=37\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_tabStatus.IsProgressRingActive() &&
+                   owner->_tabStatus.ProgressValue() == 37;
+        });
     }
 
     void TabTests::PureOscNonActivePaneProjectsUnread()

@@ -5,6 +5,7 @@
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
 #include "TabHeaderControl.h"
+#include "ProgressPresentation.h"
 #include "AgentPaneContent.h"
 #include "AgentIconUtils.h"
 #include "SettingsPaneContent.h"
@@ -1718,7 +1719,7 @@ namespace winrt::TerminalApp::implementation
                 const auto progressValue = gsl::narrow<uint32_t>(state.Progress());
                 _tabStatus.ProgressValue(progressValue);
             }
-            _tabStatus.IsProgressRingActive(true);
+            _tabStatus.IsProgressRingActive(::Microsoft::Terminal::ProgressPresentation::HasVisibleProgress(taskbarState, state.Progress()));
         }
         else
         {
