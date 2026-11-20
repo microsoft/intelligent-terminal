@@ -181,6 +181,18 @@ test('changed CI analysis definitions and a different base require manual review
     await assert.rejects(admitPerformanceCi(wrongBase.github, wrongBase.context, wrongBase.trusted), /non-default-target/);
 });
 
+test('legacy Cargo configuration cannot change analyzer policy through either admission path', async () => {
+    const f = fixture();
+    f.tree.tree = f.tree.tree.filter(item => item.path !== '.cargo/config');
+    const changed = structuredClone(f.tree);
+    changed.tree.push({ path: '.cargo/config', mode: '100644', type: 'blob', sha: 'e'.repeat(40) });
+    f.github.rest.git.getTree = async ({ tree_sha }) => ({ data: tree_sha === f.head ? changed : f.tree });
+    await assert.rejects(admitPerformanceCi(f.github, f.context, f.trusted), /CI implementation differs/);
+    const request = f.request;
+    f.request = endpoint => endpoint === `git/trees/${f.head}?recursive=1` ? changed : request(endpoint);
+    assert.throws(() => verifyPerformanceCi(f), /CI implementation differs/);
+});
+
 test('head/run/attempt and successful tool execution bind the analyzer receipt', () => {
     const identity = { headSha: 'a'.repeat(40), runId: '99', runAttempt: 2, comparisonBaseSha: 'b'.repeat(40) };
     const result = { headSha: identity.headSha, ciRunId: '99', ciRunAttempt: '2',

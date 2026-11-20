@@ -936,6 +936,7 @@ export const CI_DEFINITION_PATHS = [
   'build/scripts/ci-security-analysis.mjs',
   'build/scripts/Invoke-CiPerformanceAnalysis.ps1',
   '.cargo/config.toml',
+  '.cargo/config',
   'src/common.build.pre.props',
   'build/config/codeql-accepted-warnings.json',
 ];
