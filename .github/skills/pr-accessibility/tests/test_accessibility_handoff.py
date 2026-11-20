@@ -304,7 +304,8 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("--agent pr-accessibility", steps[model]["run"])
         self.assertIn("--no-custom-instructions", steps[model]["run"])
         self.assertNotIn("cmp -- AGENTS.md", steps[record]["run"])
-        self.assertIn('cp --remove-destination "${SNAPSHOT}" "${DEST}"', steps[replace]["run"])
+        self.assertIn('cp --remove-destination --no-target-directory "${SNAPSHOT}" "${DEST}"',
+                      steps[replace]["run"])
 
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
         self.assertNotIn("native-selection", self.jobs)

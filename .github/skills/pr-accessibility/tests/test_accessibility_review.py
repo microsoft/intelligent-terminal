@@ -594,14 +594,17 @@ class ValidationTests(unittest.TestCase):
         MODULE._git(self.root, "config", "core.symlinks", "true")
         root_instructions = self.root / "AGENTS.md"
         for name in ("accessibility_review.py", "prepared.json", "SKILL.md",
-                     "pr-accessibility.agent.md"):
+                     "pr-accessibility.agent.md", "trusted-directory"):
             with self.subTest(target=name):
                 target = runtime / name
                 sentinel = f"Trusted {name} bytes\n".encode()
-                target.write_bytes(sentinel)
+                if name == "trusted-directory":
+                    target.mkdir()
+                sentinel_path = target / snapshot.name if target.is_dir() else target
+                sentinel_path.write_bytes(sentinel)
                 root_instructions.unlink()
                 try:
-                    root_instructions.symlink_to(target)
+                    root_instructions.symlink_to(target, target_is_directory=target.is_dir())
                 except OSError as error:
                     self.skipTest(f"Native symlinks required: {error}")
                 MODULE._git(self.root, "add", "AGENTS.md")
@@ -621,14 +624,14 @@ class ValidationTests(unittest.TestCase):
                 self.assertEqual(0, restored.returncode, restored.stderr.decode())
                 self.assertFalse(root_instructions.is_symlink())
                 self.assertEqual(snapshot.read_bytes(), root_instructions.read_bytes())
-                self.assertEqual(sentinel, target.read_bytes())
+                self.assertEqual(sentinel, sentinel_path.read_bytes())
                 captured = self.run_framework_setup_step("Record framework configuration changes")
                 self.assertEqual(0, captured.returncode, captured.stderr.decode())
                 cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
                 self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
                 self.assertTrue(root_instructions.is_symlink())
                 self.assertEqual(target, root_instructions.resolve())
-                self.assertEqual(sentinel, target.read_bytes())
+                self.assertEqual(sentinel, sentinel_path.read_bytes())
                 self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
 
     def test_framework_setup_changes_do_not_become_candidate_repairs(self):

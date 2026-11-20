@@ -237,7 +237,7 @@ jobs:
 steps:
   - name: Use non-dereferencing framework root-file restoration
     run: |
-      sed -i 's/cp "${SNAPSHOT}" "${DEST}"/cp --remove-destination "${SNAPSHOT}" "${DEST}"/' \
+      sed -i 's/cp "${SNAPSHOT}" "${DEST}"/cp --remove-destination --no-target-directory "${SNAPSHOT}" "${DEST}"/' \
         "$RUNNER_TEMP/gh-aw/actions/restore_base_github_folders.sh"
 
   - name: Download original-head CI native evidence
