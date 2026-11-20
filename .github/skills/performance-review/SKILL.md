@@ -32,6 +32,12 @@ Review produces Markdown using the results template below. The caller owns
 execution permissions, additional output formats, validation and delivery.
 Review-only is the default; authorized corrections follow the repair criteria.
 
+### Large changes
+
+1. Give read-only subagents each relevant file's diff at the same immutable base/head, the exact path to this skill, and access to enclosing source and callers. Do not limit review languages to the repair allowlist.
+2. Each returns the reviewed revisions/ranges and source-backed findings, no findings, or "Too big to review - please break down this change." Subagents do not repair or delegate further.
+3. The parent verifies findings and cross-file interactions, requests focused follow-up for oversized files or gaps, and produces one summary naming unreviewed files. Only the parent handles authorized repairs. Use existing tools; add no chunking scripts or framework.
+
 ## Investigation
 
 Inspect the complete patch and compare behavior with the baseline. Trace the
