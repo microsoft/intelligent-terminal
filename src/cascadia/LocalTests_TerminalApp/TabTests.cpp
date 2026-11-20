@@ -22495,7 +22495,7 @@ namespace TerminalAppLocalTests
                 }
                 return nullptr;
             };
-            const auto verifySelection = [&](const auto& display, const int32_t selectedPane) {
+            const auto verifySelection = [&](const winrt::TerminalApp::TabStripDisplayItem& display, const int32_t selectedPane) {
                 host.UpdateLayout();
                 const auto container = strip.ContainerFromIndex(display == firstDisplay ? 0 : 1).as<ListViewItem>();
                 VERIFY_IS_NOT_NULL(container);
@@ -26381,7 +26381,7 @@ namespace TerminalAppLocalTests
             keys->SetActionMap(CascadiaSettings::LoadDefaults().ActionMap());
             keys->SetDispatch(*page->_actionDispatch);
         });
-        const auto headerVisible = [&](const auto& tab) {
+        const auto headerVisible = [&](const winrt::com_ptr<Tab>& tab) {
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
             const auto header = strip->HeaderForTab(tab->TabViewItem()).try_as<FrameworkElement>();
             if (!header || !header.IsLoaded() || header.ActualHeight() <= 0)
@@ -29952,7 +29952,7 @@ namespace TerminalAppLocalTests
                 }
                 return nullptr;
             };
-            const auto parentPresenter = findPresenter(findPresenter, page->_tabStrip.ContainerFromIndex(0));
+            const Primitives::ListViewItemPresenter parentPresenter = findPresenter(findPresenter, page->_tabStrip.ContainerFromIndex(0));
             VERIFY_IS_NOT_NULL(parentPresenter);
             if (!highContrast)
             {
@@ -29970,7 +29970,7 @@ namespace TerminalAppLocalTests
                 const auto coloredHover = coloredTab->TabViewItem().Resources().ThemeDictionaries()
                                               .Lookup(winrt::box_value(L"Dark")).as<ResourceDictionary>()
                                               .Lookup(winrt::box_value(L"TabViewItemHeaderBackgroundPointerOver")).as<Media::SolidColorBrush>();
-                const auto coloredPresenter = findPresenter(findPresenter, page->_tabStrip.ContainerFromIndex(1));
+                const Primitives::ListViewItemPresenter coloredPresenter = findPresenter(findPresenter, page->_tabStrip.ContainerFromIndex(1));
                 VERIFY_IS_NOT_NULL(coloredPresenter);
                 strip->OnSidebarRowPointerEntered(headerGrid(1), nullptr);
                 const auto hover = headerGrid(1).FindName(L"TabColorHoverBackground").as<Border>().Background().as<Media::SolidColorBrush>();
@@ -30209,7 +30209,7 @@ namespace TerminalAppLocalTests
                 }
                 return nullptr;
             };
-            const auto presenter = findPresenter(findPresenter, container);
+            const Primitives::ListViewItemPresenter presenter = findPresenter(findPresenter, container);
             VERIFY_IS_NOT_NULL(presenter);
             VERIFY_IS_NOT_NULL(presenter.Content());
             VERIFY_IS_TRUE(presenter.Content() == container.Content());
@@ -30635,7 +30635,7 @@ namespace TerminalAppLocalTests
                     }
                     return nullptr;
                 };
-                const auto presenter = findPresenter(findPresenter, close);
+                const ContentPresenter presenter = findPresenter(findPresenter, close);
                 VERIFY_IS_NOT_NULL(presenter);
                 for (const auto state : { L"PointerOver", L"Pressed" })
                 {
@@ -36796,7 +36796,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(secondShellPane->Id().has_value());
             VERIFY_IS_TRUE(focusedTab->FocusPane(secondShellPane->Id().value()));
             focusedTab->HidePane();
-            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+            focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (!pane->IsHidden() &&
                     pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
@@ -36811,7 +36811,7 @@ namespace TerminalAppLocalTests
             focusedTab->ShowPane();
             shellPaneCount = 0;
             visibleChipCount = 0;
-            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+            focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (!pane->IsHidden() &&
                     pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
@@ -36858,7 +36858,7 @@ namespace TerminalAppLocalTests
             int terminalPaneCount = 0;
             int nonTerminalPaneCount = 0;
             int visibleChipCount = 0;
-            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+            focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++terminalPaneCount;
@@ -36923,7 +36923,7 @@ namespace TerminalAppLocalTests
 
             int terminalPaneCount = 0;
             int visibleChipCount = 0;
-            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+            focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++terminalPaneCount;
