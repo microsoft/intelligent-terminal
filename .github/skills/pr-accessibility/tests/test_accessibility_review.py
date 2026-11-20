@@ -558,13 +558,16 @@ class ValidationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_framework_setup_step(self, name):
+    def run_framework_setup_step(self, name, after=""):
         workflow = (SCRIPT.parents[3] / "workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         step = workflow.split(f"  - name: {name}\n", 1)
         self.assertEqual(2, len(step), f"Missing executable workflow step: {name}")
         match = re.search(r"(?m)^    run: \|\n((?:      .*\n|\n)+)", step[1])
         self.assertIsNotNone(match)
         script = "\n".join(line[6:] for line in match[1].splitlines())
+        if after:
+            script = script.split(after, 1)[1]
+        paths = re.search(r"(?m)^  ACCESSIBILITY_SETUP_PATHS: '([^']+)'$", workflow)[1]
         bash = shutil.which("bash")
         if os.name == "nt":
             bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe")
@@ -575,7 +578,8 @@ class ValidationTests(unittest.TestCase):
         return subprocess.run(
             [bash, "--noprofile", "--norc"], cwd=self.root, input=script.encode("utf-8"),
             capture_output=True, timeout=30,
-            env={**os.environ, "RUNNER_TEMP": runtime.as_posix(), "EXPECTED_HEAD_SHA": self.head},
+            env={**os.environ, "RUNNER_TEMP": runtime.as_posix(), "EXPECTED_HEAD_SHA": self.head,
+                 "ACCESSIBILITY_SETUP_PATHS": paths},
         )
 
     def restored_configuration(self):
@@ -584,55 +588,33 @@ class ValidationTests(unittest.TestCase):
         path.write_text("name: Unrelated base workflow\n", encoding="utf-8")
         return path
 
-    def test_framework_root_restore_replaces_symlink_without_overwriting_trusted_inputs(self):
-        runtime = self.workspace / "runtime"
-        actions = runtime / "gh-aw/actions"
-        actions.mkdir(parents=True)
-        restorer = actions / "restore_base_github_folders.sh"
-        snapshot = runtime / "snapshot.md"
-        snapshot.write_text("Trusted root instructions\n", encoding="utf-8")
+    def test_candidate_root_link_is_removed_before_framework_restore(self):
         MODULE._git(self.root, "config", "core.symlinks", "true")
+        target = self.workspace / "fixture"
+        target.mkdir()
         root_instructions = self.root / "AGENTS.md"
-        for name in ("accessibility_review.py", "prepared.json", "SKILL.md",
-                     "pr-accessibility.agent.md", "trusted-directory"):
-            with self.subTest(target=name):
-                target = runtime / name
-                sentinel = f"Trusted {name} bytes\n".encode()
-                if name == "trusted-directory":
-                    target.mkdir()
-                sentinel_path = target / snapshot.name if target.is_dir() else target
-                sentinel_path.write_bytes(sentinel)
-                root_instructions.unlink()
-                try:
-                    root_instructions.symlink_to(target, target_is_directory=target.is_dir())
-                except OSError as error:
-                    self.skipTest(f"Native symlinks required: {error}")
-                MODULE._git(self.root, "add", "AGENTS.md")
-                MODULE._git(self.root, "commit", "-qm", f"Candidate root link to {name}")
-                self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
-                # Pinned framework root-copy operation; execute the workflow's
-                # one-line adaptation before exercising restoration.
-                restorer.write_text('cp "${SNAPSHOT}" "${DEST}"\n', encoding="utf-8")
-                adapted = self.run_framework_setup_step(
-                    "Use non-dereferencing framework root-file restoration")
-                self.assertEqual(0, adapted.returncode, adapted.stderr.decode())
-                restored = subprocess.run(
-                    ["bash" if os.name != "nt" else str(Path(shutil.which("git")).parents[1] / "bin/bash.exe"),
-                     str(restorer)], capture_output=True, timeout=30,
-                    env={**os.environ, "SNAPSHOT": snapshot.as_posix(),
-                         "DEST": root_instructions.as_posix()})
-                self.assertEqual(0, restored.returncode, restored.stderr.decode())
-                self.assertFalse(root_instructions.is_symlink())
-                self.assertEqual(snapshot.read_bytes(), root_instructions.read_bytes())
-                self.assertEqual(sentinel, sentinel_path.read_bytes())
-                captured = self.run_framework_setup_step("Record framework configuration changes")
-                self.assertEqual(0, captured.returncode, captured.stderr.decode())
-                cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
-                self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
-                self.assertTrue(root_instructions.is_symlink())
-                self.assertEqual(target, root_instructions.resolve())
-                self.assertEqual(sentinel, sentinel_path.read_bytes())
-                self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
+        root_instructions.unlink()
+        try:
+            root_instructions.symlink_to(target, target_is_directory=True)
+        except OSError as error:
+            self.skipTest(f"Native symlinks required: {error}")
+        MODULE._git(self.root, "add", "AGENTS.md")
+        MODULE._git(self.root, "commit", "-qm", "Candidate root link")
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        cleared = self.run_framework_setup_step(
+            "Prepare trusted accessibility evidence", after='git checkout -B "$HEAD_REF" "$HEAD_SHA"')
+        self.assertEqual(0, cleared.returncode, cleared.stderr.decode())
+        self.assertFalse(root_instructions.is_symlink())
+        self.assertFalse(root_instructions.exists())
+        self.assertEqual([], list(target.iterdir()))
+        # Model the built-in restore's resulting regular file for patch cleanup.
+        root_instructions.write_text("Trusted root instructions\n", encoding="utf-8")
+        for step in ("Record framework configuration changes", "Remove verified framework configuration changes"):
+            result = self.run_framework_setup_step(step)
+            self.assertEqual(0, result.returncode, result.stderr.decode())
+        self.assertTrue(root_instructions.is_symlink())
+        self.assertEqual(target, root_instructions.resolve())
+        self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
 
     def test_framework_setup_changes_do_not_become_candidate_repairs(self):
         self.restored_configuration()
@@ -1767,13 +1749,12 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn('--summary "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md"', workflow)
-        summary = (root / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
         self.assertIn("## Human action and limits", workflow)
         self.assertIn("| Proposed fix commit |", workflow)
         self.assertIn("[commit SHA](COMMIT_URL)", workflow)
         self.assertIn("`${{ github.server_url }}`", workflow)
         self.assertIn("prepared `publication.repository`", workflow)
-        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
+        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"', workflow)
         self.assertIn("original PR", workflow)
         self.assertIn("may revert any fix commit", workflow)
         self.assertIn("only once below the table", workflow)
@@ -1793,8 +1774,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("\n  accessibility-report:", compiled)
         self.assertNotIn("\n  native-evidence:", compiled)
         self.assertIn("ci-accessibility-native-", compiled)
-        summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
-        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
 
     def test_support_paths_are_classified_by_trusted_ci_admission(self):
         root = Path(__file__).parents[4]

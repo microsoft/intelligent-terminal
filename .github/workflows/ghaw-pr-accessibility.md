@@ -46,11 +46,13 @@ max-ai-credits: 500
 max-daily-ai-credits: 100000
 imports:
   - .github/agents/pr-accessibility.agent.md
+# Copilot also discovers project skills here; restore them from trusted activation.
 ambient-folders: ['.claude']
 
 env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
   ACCESSIBILITY_HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
+  ACCESSIBILITY_SETUP_PATHS: '.agents .github .claude AGENTS.md .mcp.json'
   GH_AW_HARNESS_MAX_RETRIES: '0'
 
 checkout:
@@ -172,9 +174,10 @@ jobs:
           HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
         run: |
           set -euo pipefail
+          handoff="Generated Files/$ACCESSIBILITY_RUN/triage-input/triage.md"
           route="$(python3 .github/skills/pr-accessibility/scripts/accessibility_handoff.py triage \
-            "Generated Files/$ACCESSIBILITY_RUN/triage-input/triage.md" \
-            --base "$BASE_SHA" --head "$HEAD_SHA")"
+            "$handoff" --base "$BASE_SHA" --head "$HEAD_SHA")"
+          cat "$handoff" >> "$GITHUB_STEP_SUMMARY"
           echo "route=$route" >> "$GITHUB_OUTPUT"
 
   agent:
@@ -216,31 +219,7 @@ jobs:
     needs: [agent, detection, publication-admission]
     if: needs.agent.result == 'success' && needs.publication-admission.result == 'success'
 
-  final-summary:
-    needs: [admission, triage, triage-route, agent, safe_outputs]
-    if: ${{ always() && needs.admission.result == 'success' && needs.admission.outputs.applicable == 'true' }}
-    uses: ./.github/workflows/ghaw-accessibility-summary.lock.yml
-    permissions:
-      actions: write # gh-aw artifact conclusion handler; model jobs remain read-only.
-      contents: read
-      pull-requests: read
-      copilot-requests: write
-    secrets: inherit
-    with:
-      native-artifact-id: ${{ needs.admission.outputs.native_artifact_id }}
-      triage-result: ${{ needs.triage-route.result }}
-      route: ${{ needs.triage-route.outputs.route }}
-      deep-result: ${{ needs.agent.result }}
-      publication-result: ${{ needs.safe_outputs.result }}
-      publication-status: ${{ needs.safe_outputs.outputs.process_safe_outputs_status }}
-      published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}
-
 steps:
-  - name: Use non-dereferencing framework root-file restoration
-    run: |
-      sed -i 's/cp "${SNAPSHOT}" "${DEST}"/cp --remove-destination --no-target-directory "${SNAPSHOT}" "${DEST}"/' \
-        "$RUNNER_TEMP/gh-aw/actions/restore_base_github_folders.sh"
-
   - name: Download original-head CI native evidence
     uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
     with:
@@ -290,6 +269,9 @@ steps:
       cp "$TRUSTED_ACCESSIBILITY/prepared.json" "Generated Files/$ACCESSIBILITY_RUN/prepared.json"
       git check-ref-format --branch "$HEAD_REF"
       git checkout -B "$HEAD_REF" "$HEAD_SHA"
+      # The pinned framework root-file restore uses plain cp. Remove its candidate
+      # destination before the built-in restore so cp cannot follow a link.
+      rm -f -- AGENTS.md
 
 pre-agent-steps:
   - name: Record framework configuration changes
@@ -303,7 +285,7 @@ pre-agent-steps:
         exit 1
       fi
       TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
-      setup_paths=(.agents .github .claude AGENTS.md .mcp.json)
+      read -ra setup_paths <<< "$ACCESSIBILITY_SETUP_PATHS"
       git ls-files --others --exclude-standard -z -- "${setup_paths[@]}" |
         xargs -0 -r git add --intent-to-add --
       git diff --binary --no-ext-diff --no-textconv "$EXPECTED_HEAD_SHA" -- "${setup_paths[@]}" \
@@ -361,6 +343,10 @@ post-steps:
       python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" deep \
         "Generated Files/$ACCESSIBILITY_RUN" \
         --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
+  - name: Display delivered deep review
+    if: steps.actual-output.outcome == 'success'
+    run: cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
   - name: Remove verified framework configuration changes
     shell: bash
     env:
@@ -368,7 +354,7 @@ post-steps:
     run: |
       set -euo pipefail
       TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
-      setup_paths=(.agents .github .claude AGENTS.md .mcp.json)
+      read -ra setup_paths <<< "$ACCESSIBILITY_SETUP_PATHS"
       if [ ! -f "$TRUSTED_ACCESSIBILITY/framework-configuration.patch" ]; then
         echo "::error::Framework configuration evidence is missing."
         exit 1

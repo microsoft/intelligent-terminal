@@ -111,8 +111,8 @@ paths without more triage investigation. None skips the deep model review only;
 Related and Uncertain are forwarded unchanged to the deep reviewer, who decides
 which existing CI native evidence applies. Path-gated CI scans already ran
 independently before triage; None does not skip CI or its cost.
-The final summarizer also receives this original
-handoff, including uncertainty. Request noop after writing it.
+The routing job displays this original handoff, including uncertainty.
+Request noop after writing it.
 Do not use the final chat message or a safe-output noop as the handoff itself.
 Missing, empty, incomplete or crashed output is **No result**; never replace it
 with a guessed None/Uncertain decision. Use the existing gh-aw job diagnostics;

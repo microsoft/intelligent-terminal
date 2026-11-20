@@ -74,9 +74,10 @@ def deep(path):
     native(read_output(path / "native-checks.md", 16384))
     return "Complete"
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("triage", "deep", "summary"))
+    parser.add_argument("kind", choices=("triage", "deep"))
     parser.add_argument("path", type=Path)
     parser.add_argument("--base")
     parser.add_argument("--head")
@@ -90,17 +91,13 @@ def main():
     if args.kind == "deep":
         print(deep(args.path))
         return
-    text = read_output(args.path, 32768 if args.kind == "summary" else 16384)
-    if args.kind == "triage":
-        if not all(value and re.fullmatch(r"[0-9a-fA-F]{40}", value) for value in (args.base, args.head)):
-            raise ValueError("triage requires immutable base/head SHAs")
-        data = subprocess.check_output(
-            ["git", "diff", "--no-ext-diff", "--name-only", "-z", f"{args.base}...{args.head}"], text=True
-        )
-        result = triage(text, set(data.rstrip("\0").split("\0")))
-    else:
-        result = "Complete"
-    print(result)
+    if not all(value and re.fullmatch(r"[0-9a-fA-F]{40}", value) for value in (args.base, args.head)):
+        raise ValueError("triage requires immutable base/head SHAs")
+    text = read_output(args.path, 16384)
+    data = subprocess.check_output(
+        ["git", "diff", "--no-ext-diff", "--name-only", "-z", f"{args.base}...{args.head}"], text=True
+    )
+    print(triage(text, set(data.rstrip("\0").split("\0"))))
 
 
 if __name__ == "__main__":
