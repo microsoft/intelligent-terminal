@@ -126,8 +126,9 @@ Authoritative stage outcomes:
 - Repair publication `${{ inputs.publication-result }}`; processing status
   `${{ inputs.publication-status }}`; confirmed tip `${{ inputs.published-sha }}`.
 
-Use `## Outcome`, `## Results`, `## Human action and limits`, with substantive
-content in each. Preserve the original triage explanation and Uncertain doubt.
+Explain the outcome, actual results, human action and limits. Suggested headings:
+`## Outcome`, `## Results`, `## Human action and limits`; presentation is flexible.
+Preserve the original triage explanation and Uncertain doubt.
 None means deep review skipped, not accessibility passed; CI ran independently.
 Missing/empty/invalid files or failed/crashed required producers mean **No result**
 and **review incomplete**, never None, Pass, an invented report or a product bug.

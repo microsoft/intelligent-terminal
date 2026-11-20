@@ -147,7 +147,7 @@ class PrepareIntegrationTests(unittest.TestCase):
                 git("checkout", "-qb", "feature")
                 path.write_text('<Button Content="Open" AutomationProperties.AccessibilityView="Raw" />\n', encoding="utf-8")
                 if instruction_change:
-                    (root / "AGENTS.md").write_text("Changed operating instructions\n", encoding="utf-8")
+                    (path.parent / "AGENTS.md").write_text("Changed operating instructions\n", encoding="utf-8")
                 git("add", ".")
                 git("commit", "-qm", "Feature change")
                 head = git("rev-parse", "HEAD")
@@ -165,16 +165,12 @@ class PrepareIntegrationTests(unittest.TestCase):
                 if '--trusted-sha "$WORKFLOW_SHA"' in workflow:
                     command += ["--trusted-sha", workflow_sha]
                 result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-                if instruction_change:
-                    self.assertNotEqual(0, result.returncode)
-                    self.assertIn("operating instructions", result.stderr)
-                else:
-                    self.assertEqual(0, result.returncode, result.stderr)
-                    prepared = json.loads(output.read_text())
-                    self.assertTrue(prepared["relevant"])
-                    self.assertEqual(base, prepared["comparison_base_sha"])
-                    self.assertEqual(workflow_sha, prepared["trusted_base_sha"])
-                    self.assertEqual(1, len(prepared["static_findings"]))
+                self.assertEqual(0, result.returncode, result.stderr)
+                prepared = json.loads(output.read_text())
+                self.assertTrue(prepared["relevant"])
+                self.assertEqual(base, prepared["comparison_base_sha"])
+                self.assertEqual(workflow_sha, prepared["trusted_base_sha"])
+                self.assertEqual(1, len(prepared["static_findings"]))
 
     def test_test_host_only_changes_require_review(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -236,8 +232,6 @@ class PrepareIntegrationTests(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             subprocess.run(["git", "commit", "-qm", "Feature changes one control"], cwd=root, check=True)
             head = MODULE._git(root, "rev-parse", "HEAD").strip()
-            with self.assertRaisesRegex(ValueError, "operating instructions"):
-                MODULE._verify_instruction_boundary(root, trusted_base, head)
             output = root / "prepared.json"
             MODULE.prepare(root, trusted_base, head, output)
             prepared = json.loads(output.read_text())
@@ -531,6 +525,7 @@ class ValidationTests(unittest.TestCase):
             encoding="utf-8",
         )
         (path.parent / "Test2.xaml").write_text('<Button Content="Save" />\n', encoding="utf-8")
+        (self.root / "AGENTS.md").write_text("Trusted operating instructions\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
         subprocess.run(["git", "commit", "-qm", "baseline"], cwd=self.root, check=True)
         self.head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
@@ -577,6 +572,8 @@ class ValidationTests(unittest.TestCase):
             self.skipTest("Bash required for actual workflow setup steps")
         runtime = self.workspace / "runtime"
         (runtime / "gh-aw/accessibility-trusted").mkdir(parents=True, exist_ok=True)
+        (runtime / "gh-aw/accessibility-trusted/AGENTS.md").write_text(
+            "Trusted operating instructions\n", encoding="utf-8")
         return subprocess.run(
             [bash, "--noprofile", "--norc"], cwd=self.root, input=script.encode("utf-8"),
             capture_output=True, timeout=30,
@@ -1200,6 +1197,14 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SKIPPED/BLOCKED"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
+    def test_no_finding_report_preserves_prepared_runtime_checks(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        data["runtime_checks"] = []
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "preserve every prepared runtime check"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
     def test_malformed_output_is_rejected(self):
         report = self.root / "report.json"
         report.write_text("{", encoding="utf-8")
@@ -1410,20 +1415,64 @@ class ValidationTests(unittest.TestCase):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared,
                             self.report([], [relative]))
 
-    def test_changed_ambient_configuration_blocks_preparation(self):
-        for relative in ("AGENTS.md", ".github/hooks/launch.json", "src/cascadia/TerminalApp/AGENTS.md",
+    def test_configuration_repair_is_still_outside_publication_paths(self):
+        relative = ".github/agents/pr-accessibility.agent.md"
+        path = self.root / relative
+        path.parent.mkdir(parents=True)
+        path.write_text("Not an eligible UI repair\n", encoding="utf-8")
+        MODULE._git(self.root, "add", relative)
+        with self.assertRaisesRegex(ValueError, "outside the native UI/test allowlist"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared,
+                            self.report([], [relative]))
+
+    def test_changed_configuration_does_not_hide_ui_evidence(self):
+        for relative in ("AGENTS.md", ".github/hooks/launch.json",
+                         ".github/workflows/review.yml", ".agents/reviewer.md",
+                         "src/cascadia/TerminalApp/AGENTS.md", "CLAUDE.md", "GEMINI.md",
+                         ".github/skills/pr-accessibility/SKILL.md",
                          "test/accessibility/Invoke-AxeWindowsScan.ps1"):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("PR-controlled operating configuration\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        source = "src/cascadia/TerminalApp/Test.xaml"
+        (self.root / source).write_text('<Button Content="Changed" />\n', encoding="utf-8")
+        subprocess.run(["git", "add", source], cwd=self.root, check=True)
         subprocess.run(["git", "commit", "-qm", "Change ambient configuration"], cwd=self.root, check=True)
         head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
-        with self.assertRaisesRegex(ValueError, "blocked before agent startup"):
-            MODULE.prepare(self.root, self.head, head, self.workspace / "blocked.json")
-        self.assertFalse((self.workspace / "blocked.json").exists())
+        output = self.workspace / "ui-and-configuration.json"
+        MODULE.prepare(self.root, self.head, head, output)
+        prepared = json.loads(output.read_text())
+        self.assertEqual([source], prepared["changed_files"])
+        self.assertIn('Content="Changed"', prepared["source_evidence"][source]["head"]["text"])
 
-    def test_source_only_changes_preserve_instruction_boundary(self):
+    def test_framework_cleanup_preserves_candidate_root_instructions(self):
+        path = self.root / "AGENTS.md"
+        candidate = "PR instruction change, reviewed as data\n"
+        path.write_text(candidate, encoding="utf-8")
+        MODULE._git(self.root, "add", "AGENTS.md")
+        MODULE._git(self.root, "commit", "-qm", "Update root instructions")
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        base = MODULE._git(self.root, "rev-parse", "HEAD^").strip()
+        MODULE.prepare(self.root, base, self.head, self.workspace / "root-instructions.json")
+        path.write_text("Trusted operating instructions\n", encoding="utf-8")
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+        self.assertEqual(candidate, path.read_text(encoding="utf-8"))
+        self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
+
+    def test_root_instruction_symlink_is_not_a_source_preparation_policy(self):
+        blob = MODULE._git(self.root, "rev-parse", "HEAD:AGENTS.md").strip()
+        MODULE._git(self.root, "update-index", "--cacheinfo", f"120000,{blob},AGENTS.md")
+        MODULE._git(self.root, "commit", "-qm", "Candidate instruction symlink")
+        head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        output = self.workspace / "symlink.json"
+        MODULE.prepare(self.root, self.head, head, output)
+        self.assertFalse(json.loads(output.read_text())["relevant"])
+
+    def test_source_only_changes_prepare_evidence(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
         path.write_text('<Button Width="200" Content="Open" />\n', encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
@@ -1460,7 +1509,7 @@ class ValidationTests(unittest.TestCase):
         MODULE.prepare(self.root, self.head, head, output)
         self.assertEqual([source], json.loads(output.read_text())["changed_files"])
 
-    def test_spelling_workflow_and_instructions_remain_blocked(self):
+    def test_configuration_only_changes_prepare_no_finding_candidate(self):
         for relative in (".github/actions/spelling/action.yml",
                          ".github/actions/spelling/allow/AGENTS.md"):
             path = self.root / relative
@@ -1469,8 +1518,13 @@ class ValidationTests(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=self.root, check=True)
             subprocess.run(["git", "commit", "-qm", "Change spelling operating code"], cwd=self.root, check=True)
             head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
-            with self.assertRaisesRegex(ValueError, re.escape(relative)):
-                MODULE.prepare(self.root, self.head, head, self.workspace / "blocked-spelling.json")
+            output = self.workspace / "configuration-only.json"
+            MODULE.prepare(self.root, self.head, head, output)
+            prepared = json.loads(output.read_text())
+            self.assertFalse(prepared["relevant"])
+            self.assertEqual([], prepared["changed_files"])
+            self.assertEqual([], prepared["static_findings"])
+            self.assertEqual([], prepared["required_review_checks"])
 
     def test_git_replacement_refs_do_not_change_reviewed_blobs(self):
         path = self.root / "src/cascadia/TerminalApp/Test.xaml"
@@ -1657,8 +1711,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("original PR", workflow)
         self.assertIn("may revert any fix commit", workflow)
         self.assertIn("only once below the table", workflow)
-        self.assertIn("emit empty", workflow)
-        self.assertIn("honest runtime-check statuses", workflow)
+        self.assertIn("keep both empty when none apply", workflow)
+        self.assertIn("complete `runtime_checks`", workflow)
+        self.assertIn("retaining each check's ID, SKIPPED/BLOCKED status and reason", workflow)
         self.assertIn("Include this paragraph only if repair commits exist; otherwise remove it.", workflow)
         self.assertNotIn("summary.push(", workflow)
 

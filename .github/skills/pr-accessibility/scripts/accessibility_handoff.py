@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Fail-closed routing for the small agent-written Markdown handoffs.
+"""Validate producer delivery and the small machine-consumed decisions.
 
-This parses decisions, never renders the human summary or judges accessibility.
+Human Markdown is passed through unchanged, not parsed or rendered.
 """
 import argparse
 import json
@@ -45,19 +45,9 @@ def read_output(path, limit):
     if path.stat().st_size > limit:
         raise ValueError(f"producer output exceeds {limit} bytes: {path.name}")
     text = path.read_text(encoding="utf-8")
-    if not text.strip():
+    if not text.lstrip("\ufeff").strip():
         raise ValueError(f"empty producer output: {path.name}")
     return text
-
-
-def summary(text):
-    headings = ("## Outcome", "## Results", "## Human action and limits")
-    sections = re.split(r"^(## .+)$", text, flags=re.MULTILINE)
-    if sections[0].strip() or tuple(sections[1::2]) != headings:
-        raise ValueError("summary requires the three ordered result headings")
-    if not all(section.strip() for section in sections[2::2]):
-        raise ValueError("summary has an incomplete section")
-    return "Complete"
 
 
 def producer(outcome, safe_outputs):
@@ -80,7 +70,7 @@ def deep(path):
     required = {"version", "source_sha", "runtime_checks", "findings", "patch_files"}
     if not isinstance(report, dict) or not required.issubset(report):
         raise ValueError("incomplete deep structured output")
-    summary(read_output(path / "deep-summary.md", 32768))
+    read_output(path / "deep-summary.md", 32768)
     native(read_output(path / "native-checks.md", 16384))
     return "Complete"
 
@@ -109,7 +99,7 @@ def main():
         )
         result = triage(text, set(data.rstrip("\0").split("\0")))
     else:
-        result = summary(text)
+        result = "Complete"
     print(result)
 
 

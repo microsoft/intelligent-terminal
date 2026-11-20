@@ -170,9 +170,21 @@ class ProducerOutputTests(unittest.TestCase):
                     kind, path, "success" if crashed.returncode == 0 else "failure"))
                 self.assertEqual(content, (self.root / filename).read_text(encoding="utf-8"))
 
-    def test_missing_empty_and_incomplete_final_outputs_never_generate_replacements(self):
-        for text in (None, "", " \n", "## Outcome\nOnly a partial answer.\n",
-                     "## Outcome\nActual.\n## Results\n\n## Human action and limits\nGap.\n"):
+    def test_human_markdown_presentation_is_not_a_machine_contract(self):
+        for text in ("# Accessibility summary\n\n" + SUMMARY,
+                     "Review completed.\n\n## Limits\nRuntime gaps.\n\n## Findings\nNo findings.\n",
+                     "No findings; runtime validation remains with the reviewer.\n"):
+            for kind, path in (("summary", self.summary), ("deep", self.root)):
+                with self.subTest(kind=kind, text=text):
+                    target = path if kind == "summary" else path / "deep-summary.md"
+                    original = text.encode("utf-8")
+                    target.write_bytes(original)
+                    result = self.run_producer(kind, path)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertEqual(original, target.read_bytes())
+
+    def test_missing_empty_and_invalid_final_outputs_never_generate_replacements(self):
+        for text in (None, "", " \n", "\ufeff", "\ufeff \t\n", "\ufeff\ufeff", "\ufeff\ufeff \t\n"):
             with self.subTest(text=text):
                 self.summary.unlink(missing_ok=True)
                 if text is not None:
@@ -183,17 +195,36 @@ class ProducerOutputTests(unittest.TestCase):
                 else:
                     self.assertEqual(text, self.summary.read_text(encoding="utf-8"))
 
+    def test_nonempty_bom_output_preserves_original_text_and_bytes(self):
+        for text in ("\ufeff" + SUMMARY, "\ufeff \t\n" + SUMMARY, "\ufeff\ufeff" + SUMMARY):
+            with self.subTest(text=text):
+                original = text.encode("utf-8")
+                self.summary.write_bytes(original)
+                self.assertEqual(text, handoff.read_output(self.summary, 32768))
+                result = self.run_producer("summary", self.summary)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("Complete\n", result.stdout)
+                self.assertEqual(original, self.summary.read_bytes())
+
     def test_deep_requires_each_actual_file_and_complete_json(self):
         for filename in ("final.json", "deep-summary.md", "native-checks.md"):
             path = self.root / filename
             original = path.read_text(encoding="utf-8")
-            for text in (None, "", "{}" if filename == "final.json" else "# Incomplete\n"):
+            for text in (None, "", "{}" if filename == "final.json" else " \n"):
                 with self.subTest(filename=filename, text=text):
                     path.unlink(missing_ok=True)
                     if text is not None:
                         path.write_text(text, encoding="utf-8")
                     self.assert_no_result(self.run_producer("deep", self.root))
             path.write_text(original, encoding="utf-8")
+
+    def test_human_output_still_requires_bounded_regular_utf8_files(self):
+        for content in (b"x" * 32769, b"\xff"):
+            for kind, path in (("summary", self.summary), ("deep", self.root)):
+                target = path if kind == "summary" else path / "deep-summary.md"
+                with self.subTest(kind=kind, content=content[:10]):
+                    target.write_bytes(content)
+                    self.assert_no_result(self.run_producer(kind, path))
 
     def test_deep_producer_validates_native_selection_without_a_second_job(self):
         path = self.root / "native-checks.md"
@@ -245,6 +276,32 @@ class CompiledGraphTests(unittest.TestCase):
         route = self.jobs["triage-route"]
         self.assertEqual("triage", route["needs"])
         self.assertIn("steps.route.outputs.route", route["outputs"]["route"])
+
+    def test_configured_agent_and_staged_skill_use_trusted_workflow_before_model_entry(self):
+        steps = self.jobs["agent"]["steps"]
+        names = [s.get("name") for s in steps]
+        restore = names.index("Restore agent config folders from base branch")
+        record = names.index("Record framework configuration changes")
+        model = next(i for i, s in enumerate(steps) if s.get("id") == "agentic_execution")
+        self.assertLess(restore, record)
+        self.assertLess(record, model)
+        # Dispatch activation checks out the dispatch SHA on the default branch.
+        # Admission binds that revision to github.workflow_sha before model entry.
+        activation = next(s for s in self.jobs["activation"]["steps"]
+                          if s.get("name") == "Checkout .github and .agents folders")
+        self.assertNotIn("ref", activation["with"])
+        self.assertIn(".github", activation["with"]["sparse-checkout"])
+        admission = next(s for s in self.jobs["admission"]["steps"] if s.get("id") == "admit")
+        self.assertIn("metadata.default_branch", admission["with"]["script"])
+        self.assertIn("REQUESTED_WORKFLOW_SHA !== process.env.EXPECTED_WORKFLOW_SHA",
+                      admission["with"]["script"])
+        prepare = next(s for s in steps if s.get("name") == "Prepare trusted accessibility evidence")
+        self.assertIn('test "$WORKFLOW_SHA" = "$(git rev-parse HEAD)"', prepare["run"])
+        self.assertIn('git show "$WORKFLOW_SHA:.github/skills/pr-accessibility/SKILL.md"', prepare["run"])
+        self.assertEqual("${{ github.workflow_sha }}", prepare["env"]["WORKFLOW_SHA"])
+        self.assertIn("--agent pr-accessibility", steps[model]["run"])
+        self.assertIn("--no-custom-instructions", steps[model]["run"])
+        self.assertNotIn("cmp -- AGENTS.md", steps[record]["run"])
 
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
         self.assertNotIn("native-selection", self.jobs)

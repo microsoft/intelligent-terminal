@@ -301,32 +301,6 @@ def _review_surfaces(path: str, text: str, changed: set[int] | None) -> list[str
     return [name for name, pattern in checks if re.search(pattern, selected, re.I)]
 
 
-def _verify_instruction_boundary(root: Path, base: str, head: str) -> None:
-    changed = _git(root, "diff", "--name-only", "-z", "--no-renames", base, head, "--").split("\0")
-    configuration_directories = {".github", ".claude", ".copilot", ".agents", ".gemini"}
-    instruction_names = {"agents.md", "claude.md", "gemini.md", "copilot-instructions.md", "skill.md", ".mcp.json"}
-    trusted_harness_paths = ("test/accessibility/", "build/scripts/get-dependenciesfromappxrecipe.ps1")
-    spelling_wordlists = {
-        ".github/actions/spelling/allow/allow.txt",
-        ".github/actions/spelling/expect/expect.txt",
-    }
-    blocked = []
-    for path in changed:
-        if not path or path in spelling_wordlists:
-            continue
-        parts = Path(path.lower()).parts
-        if (configuration_directories.intersection(parts)
-                or path.lower().startswith(trusted_harness_paths)
-                or parts[-1] in instruction_names
-                or parts[-1].endswith((".instructions.md", ".agent.md"))):
-            blocked.append(path)
-    if blocked:
-        raise ValueError(
-            "PR changes operating instructions/configuration; source review is blocked before agent startup: "
-            + ", ".join(sorted(blocked))
-        )
-
-
 def prepare(root: Path, base: str, head: str, output: Path,
             publication: dict[str, Any] | None = None, trusted_sha: str | None = None) -> None:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", head):
@@ -337,7 +311,6 @@ def prepare(root: Path, base: str, head: str, output: Path,
     if not re.fullmatch(r"[0-9a-fA-F]{40}", trusted_sha):
         raise ValueError("trusted SHA must be an exact 40-character hexadecimal value")
     comparison_base = _git(root, "merge-base", base, head).strip()
-    _verify_instruction_boundary(root, comparison_base, head)
     paths = _changed_paths(root, comparison_base, head)
 
     findings: list[dict[str, Any]] = []
