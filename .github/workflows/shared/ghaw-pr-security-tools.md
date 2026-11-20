@@ -66,20 +66,12 @@ mcp-scripts:
       return validator.submitSecurityReport(report_json, scope, "/tmp/gh-aw/agent/security-findings.json", summary_markdown);
 
   read-security-diff:
-    description: 'Read an immutable diff in bounded UTF-8 pages. Repeat with nextOffset until it equals totalBytes; keep paths_json unchanged between pages.'
+    description: 'Read immutable base/head diff hunks without shell, external diff drivers, or text conversion.'
     inputs:
       paths_json:
         type: string
         default: '[]'
         description: 'JSON array of up to 20 normalized repository paths; empty means the complete immutable diff.'
-      offset:
-        type: integer
-        default: 0
-        description: 'UTF-8 byte offset; use nextOffset from the preceding page.'
-      limit:
-        type: integer
-        default: 12000
-        description: 'Maximum bytes per page, between 4 and 12000.'
     env:
       SECURITY_NATIVE_DIR: ${{ runner.temp }}/gh-aw
       SECURITY_WORKSPACE: ${{ github.workspace }}
@@ -89,8 +81,7 @@ mcp-scripts:
       const directory = process.env.SECURITY_NATIVE_DIR;
       const validator = await import(pathToFileURL(`${directory}/security-review-check.mjs`).href);
       const scope = JSON.parse(readFileSync(`${directory}/security-report-scope.json`, "utf8"));
-      return { baseSha: scope.baseSha, headSha: scope.headSha,
-        ...validator.sliceSecurityDiff(validator.readSecurityDiff(scope, JSON.parse(paths_json), process.env.SECURITY_WORKSPACE), offset, limit) };
+      return { baseSha: scope.baseSha, headSha: scope.headSha, diff: validator.readSecurityDiff(scope, JSON.parse(paths_json), process.env.SECURITY_WORKSPACE) };
 
   read-security-source:
     description: 'Read a bounded source range from immutable Git blobs, never filesystem commands or executable scripts.'
