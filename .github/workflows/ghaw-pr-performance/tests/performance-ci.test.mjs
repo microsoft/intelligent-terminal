@@ -193,6 +193,23 @@ test('legacy Cargo configuration cannot change analyzer policy through either ad
     assert.throws(() => verifyPerformanceCi(f), /CI implementation differs/);
 });
 
+test('root and component Clang-Tidy configuration changes require manual review', async () => {
+    for (const path of ['.clang-tidy', 'src/cascadia/TerminalApp/.clang-tidy']) {
+        for (const change of ['added', 'modified', 'removed']) {
+            const f = fixture();
+            if (change !== 'added') f.tree.tree.push({ path, mode: '100644', type: 'blob', sha: 'c'.repeat(40) });
+            const changed = structuredClone(f.tree);
+            changed.tree = changed.tree.filter(item => item.path !== path);
+            if (change !== 'removed') changed.tree.push({ path, mode: '100644', type: 'blob', sha: 'e'.repeat(40) });
+            f.github.rest.git.getTree = async ({ tree_sha }) => ({ data: tree_sha === f.head ? changed : f.tree });
+            await assert.rejects(admitPerformanceCi(f.github, f.context, f.trusted), /CI implementation differs/);
+            const request = f.request;
+            f.request = endpoint => endpoint === `git/trees/${f.head}?recursive=1` ? changed : request(endpoint);
+            assert.throws(() => verifyPerformanceCi(f), /CI implementation differs/);
+        }
+    }
+});
+
 test('head/run/attempt and successful tool execution bind the analyzer receipt', () => {
     const identity = { headSha: 'a'.repeat(40), runId: '99', runAttempt: 2, comparisonBaseSha: 'b'.repeat(40) };
     const result = { headSha: identity.headSha, ciRunId: '99', ciRunAttempt: '2',
