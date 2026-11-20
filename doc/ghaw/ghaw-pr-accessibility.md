@@ -87,7 +87,7 @@ CI/harness changes require manual review until installed on the default branch.
 Triage writes `triage.md`: Related, None or Uncertain with a short explanation
 and candidate changed paths. None skips deep review only; it does not skip
 independent CI or mean accessibility passed. Uncertain is forwarded faithfully.
-The routing job displays the validated original triage verbatim. Deep review
+The triage job displays its validated original Markdown verbatim. Deep review
 writes `final.json`, `deep-summary.md` and `native-checks.md`; its job displays
 the delivered Markdown verbatim without a second model or report renderer.
 Stage artifacts have stable per-run names for retained successful producers.

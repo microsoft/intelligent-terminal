@@ -171,10 +171,9 @@ jobs:
           HEAD_SHA: ${{ fromJSON(github.event.inputs.pull_request).head.sha }}
         run: |
           set -euo pipefail
-          handoff="Generated Files/$ACCESSIBILITY_RUN/triage-input/triage.md"
           route="$(python3 .github/skills/pr-accessibility/scripts/accessibility_handoff.py triage \
-            "$handoff" --base "$BASE_SHA" --head "$HEAD_SHA")"
-          cat "$handoff" >> "$GITHUB_STEP_SUMMARY"
+            "Generated Files/$ACCESSIBILITY_RUN/triage-input/triage.md" \
+            --base "$BASE_SHA" --head "$HEAD_SHA")"
           echo "route=$route" >> "$GITHUB_OUTPUT"
 
   agent:

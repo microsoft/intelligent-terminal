@@ -33,18 +33,23 @@ class ActualOutputSourceTests(unittest.TestCase):
     def test_only_successfully_delivered_markdown_is_displayed_verbatim(self):
         jobs = workflow("ghaw-pr-accessibility")["jobs"]
         self.assertEqual(["triage"], [key for key, job in jobs.items() if "uses" in job])
-        route = next(step for step in jobs["triage-route"]["steps"] if step.get("id") == "route")
-        self.assertIn("set -euo pipefail", route["run"])
-        self.assertLess(route["run"].index("accessibility_handoff.py triage"),
-                        route["run"].index('cat "$handoff" >> "$GITHUB_STEP_SUMMARY"'))
-        deep = jobs["agent"]
-        display = step_named(deep, "Display delivered deep review")
-        # A failed earlier diagnostic must not impose implicit success().
-        self.assertIn("always() && steps.actual-output.outcome == 'success'", display["if"])
-        self.assertEqual('cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"',
-                         display["run"])
-        gate = step_named(deep, "Check findings and repair publication policy")
-        self.assertLess(deep["steps"].index(display), deep["steps"].index(gate))
+        triage = workflow("ghaw-accessibility-triage")["jobs"]["agent"]
+        for job, display_name, filename, later_step in (
+            (triage, "Display delivered triage", "triage.md",
+             "Preserve original triage even when invalid"),
+            (jobs["agent"], "Display delivered deep review", "deep-summary.md",
+             "Check findings and repair publication policy"),
+        ):
+            with self.subTest(filename=filename):
+                steps = job["steps"]
+                check = next(step for step in steps if step.get("id") == "actual-output")
+                display = step_named(job, display_name)
+                # Display requires successful delivery, not a successful diagnostic or downstream job.
+                self.assertEqual("always() && steps.actual-output.outcome == 'success'", display["if"])
+                self.assertEqual(f'cat "Generated Files/$ACCESSIBILITY_RUN/{filename}" >> "$GITHUB_STEP_SUMMARY"',
+                                 display["run"])
+                self.assertLess(steps.index(check), steps.index(display))
+                self.assertLess(steps.index(display), steps.index(step_named(job, later_step)))
 
     def test_stages_disable_existing_native_harness_retry(self):
         for name in ("ghaw-accessibility-triage", "ghaw-pr-accessibility"):
