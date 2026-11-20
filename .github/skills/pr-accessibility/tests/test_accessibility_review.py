@@ -645,6 +645,23 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
         MODULE.validate(self.root, self.head, self.head, True, self.prepared, self.report())
 
+    def test_framework_cleanup_restores_candidate_claude_skill_as_data(self):
+        skill = self.root / ".claude/skills/candidate/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        candidate = "Candidate skill is PR data, not reviewer instructions\n"
+        skill.write_text(candidate, encoding="utf-8")
+        MODULE._git(self.root, "add", ".claude")
+        MODULE._git(self.root, "commit", "-qm", "Candidate Claude skill")
+        self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+        # Framework removes an injected folder absent from its trusted snapshot.
+        shutil.rmtree(self.root / ".claude")
+        captured = self.run_framework_setup_step("Record framework configuration changes")
+        self.assertEqual(0, captured.returncode, captured.stderr.decode())
+        cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+        self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+        self.assertEqual(candidate, skill.read_text(encoding="utf-8"))
+        self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
+
     def test_framework_cleanup_rejects_agent_changes_to_restored_configuration(self):
         path = self.restored_configuration()
         captured = self.run_framework_setup_step("Record framework configuration changes")
@@ -1476,6 +1493,7 @@ class ValidationTests(unittest.TestCase):
     def test_changed_configuration_does_not_hide_ui_evidence(self):
         for relative in ("AGENTS.md", ".github/hooks/launch.json",
                          ".github/workflows/review.yml", ".agents/reviewer.md",
+                         ".claude/skills/candidate/SKILL.md",
                          "src/cascadia/TerminalApp/AGENTS.md", "CLAUDE.md", "GEMINI.md",
                          ".github/skills/pr-accessibility/SKILL.md",
                          "test/accessibility/Invoke-AxeWindowsScan.ps1"):

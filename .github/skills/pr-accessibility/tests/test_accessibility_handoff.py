@@ -293,6 +293,12 @@ class CompiledGraphTests(unittest.TestCase):
                           if s.get("name") == "Checkout .github and .agents folders")
         self.assertNotIn("ref", activation["with"])
         self.assertIn(".github", activation["with"]["sparse-checkout"])
+        for job in (self.jobs["activation"], self.jobs["agent"]):
+            setup = next(s for s in job["steps"] if s.get("name") in (
+                "Save agent config folders for base branch restoration",
+                "Restore agent config folders from base branch"))
+            self.assertIn(".claude", setup["env"]["GH_AW_AGENT_FOLDERS"].split())
+        self.assertIn(".claude", steps[record]["run"])
         admission = next(s for s in self.jobs["admission"]["steps"] if s.get("id") == "admit")
         self.assertIn("metadata.default_branch", admission["with"]["script"])
         self.assertIn("REQUESTED_WORKFLOW_SHA !== process.env.EXPECTED_WORKFLOW_SHA",

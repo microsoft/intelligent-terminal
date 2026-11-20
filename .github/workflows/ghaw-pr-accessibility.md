@@ -46,6 +46,7 @@ max-ai-credits: 500
 max-daily-ai-credits: 100000
 imports:
   - .github/agents/pr-accessibility.agent.md
+ambient-folders: ['.claude']
 
 env:
   ACCESSIBILITY_RUN: accessibility-${{ github.run_id }}-${{ github.run_attempt }}
@@ -302,7 +303,7 @@ pre-agent-steps:
         exit 1
       fi
       TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
-      setup_paths=(.agents .github AGENTS.md .mcp.json)
+      setup_paths=(.agents .github .claude AGENTS.md .mcp.json)
       git ls-files --others --exclude-standard -z -- "${setup_paths[@]}" |
         xargs -0 -r git add --intent-to-add --
       git diff --binary --no-ext-diff --no-textconv "$EXPECTED_HEAD_SHA" -- "${setup_paths[@]}" \
@@ -367,7 +368,7 @@ post-steps:
     run: |
       set -euo pipefail
       TRUSTED_ACCESSIBILITY="$RUNNER_TEMP/gh-aw/accessibility-trusted"
-      setup_paths=(.agents .github AGENTS.md .mcp.json)
+      setup_paths=(.agents .github .claude AGENTS.md .mcp.json)
       if [ ! -f "$TRUSTED_ACCESSIBILITY/framework-configuration.patch" ]; then
         echo "::error::Framework configuration evidence is missing."
         exit 1
