@@ -25,6 +25,7 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<Windows.Foundation.Size> InitialSize;
         Windows.Foundation.IReference<LaunchMode> LaunchMode;
         Windows.Foundation.IReference<Boolean> SidebarCollapsed;
+        Windows.Foundation.IReference<Windows.Foundation.Size> InitialPageSize;
     };
 
     [default_interface] runtimeclass ApplicationState {

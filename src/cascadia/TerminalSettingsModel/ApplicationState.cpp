@@ -21,6 +21,7 @@ static constexpr std::string_view InitialPositionKey{ "initialPosition" };
 static constexpr std::string_view InitialSizeKey{ "initialSize" };
 static constexpr std::string_view LaunchModeKey{ "launchMode" };
 static constexpr std::string_view SidebarCollapsedKey{ "sidebarCollapsed" };
+static constexpr std::string_view InitialPageSizeKey{ "initialPageSize" };
 
 namespace Microsoft::Terminal::Settings::Model::JsonUtils
 {
@@ -38,6 +39,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, LaunchModeKey, layout->_LaunchMode);
             GetValueForKey(json, InitialSizeKey, layout->_InitialSize);
             GetValueForKey(json, SidebarCollapsedKey, layout->_SidebarCollapsed);
+            GetValueForKey(json, InitialPageSizeKey, layout->_InitialPageSize);
 
             return *layout;
         }
@@ -56,6 +58,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, LaunchModeKey, val.LaunchMode());
             SetValueForKey(json, InitialSizeKey, val.InitialSize());
             SetValueForKey(json, SidebarCollapsedKey, val.SidebarCollapsed());
+            SetValueForKey(json, InitialPageSizeKey, val.InitialPageSize());
 
             return json;
         }
