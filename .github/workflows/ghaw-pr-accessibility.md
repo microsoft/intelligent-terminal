@@ -235,6 +235,11 @@ jobs:
       published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}
 
 steps:
+  - name: Use non-dereferencing framework root-file restoration
+    run: |
+      sed -i 's/cp "${SNAPSHOT}" "${DEST}"/cp --remove-destination "${SNAPSHOT}" "${DEST}"/' \
+        "$RUNNER_TEMP/gh-aw/actions/restore_base_github_folders.sh"
+
   - name: Download original-head CI native evidence
     uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
     with:

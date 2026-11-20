@@ -281,8 +281,10 @@ class CompiledGraphTests(unittest.TestCase):
         steps = self.jobs["agent"]["steps"]
         names = [s.get("name") for s in steps]
         restore = names.index("Restore agent config folders from base branch")
+        replace = names.index("Use non-dereferencing framework root-file restoration")
         record = names.index("Record framework configuration changes")
         model = next(i for i, s in enumerate(steps) if s.get("id") == "agentic_execution")
+        self.assertLess(replace, restore)
         self.assertLess(restore, record)
         self.assertLess(record, model)
         # Dispatch activation checks out the dispatch SHA on the default branch.
@@ -302,6 +304,7 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("--agent pr-accessibility", steps[model]["run"])
         self.assertIn("--no-custom-instructions", steps[model]["run"])
         self.assertNotIn("cmp -- AGENTS.md", steps[record]["run"])
+        self.assertIn('cp --remove-destination "${SNAPSHOT}" "${DEST}"', steps[replace]["run"])
 
     def test_native_ci_consumption_is_independent_of_deep_selection(self):
         self.assertNotIn("native-selection", self.jobs)

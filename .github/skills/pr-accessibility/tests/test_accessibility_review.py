@@ -572,8 +572,6 @@ class ValidationTests(unittest.TestCase):
             self.skipTest("Bash required for actual workflow setup steps")
         runtime = self.workspace / "runtime"
         (runtime / "gh-aw/accessibility-trusted").mkdir(parents=True, exist_ok=True)
-        (runtime / "gh-aw/accessibility-trusted/AGENTS.md").write_text(
-            "Trusted operating instructions\n", encoding="utf-8")
         return subprocess.run(
             [bash, "--noprofile", "--norc"], cwd=self.root, input=script.encode("utf-8"),
             capture_output=True, timeout=30,
@@ -585,6 +583,53 @@ class ValidationTests(unittest.TestCase):
         path.parent.mkdir(parents=True)
         path.write_text("name: Unrelated base workflow\n", encoding="utf-8")
         return path
+
+    def test_framework_root_restore_replaces_symlink_without_overwriting_trusted_inputs(self):
+        runtime = self.workspace / "runtime"
+        actions = runtime / "gh-aw/actions"
+        actions.mkdir(parents=True)
+        restorer = actions / "restore_base_github_folders.sh"
+        snapshot = runtime / "snapshot.md"
+        snapshot.write_text("Trusted root instructions\n", encoding="utf-8")
+        MODULE._git(self.root, "config", "core.symlinks", "true")
+        root_instructions = self.root / "AGENTS.md"
+        for name in ("accessibility_review.py", "prepared.json", "SKILL.md",
+                     "pr-accessibility.agent.md"):
+            with self.subTest(target=name):
+                target = runtime / name
+                sentinel = f"Trusted {name} bytes\n".encode()
+                target.write_bytes(sentinel)
+                root_instructions.unlink()
+                try:
+                    root_instructions.symlink_to(target)
+                except OSError as error:
+                    self.skipTest(f"Native symlinks required: {error}")
+                MODULE._git(self.root, "add", "AGENTS.md")
+                MODULE._git(self.root, "commit", "-qm", f"Candidate root link to {name}")
+                self.head = MODULE._git(self.root, "rev-parse", "HEAD").strip()
+                # Pinned framework root-copy operation; execute the workflow's
+                # one-line adaptation before exercising restoration.
+                restorer.write_text('cp "${SNAPSHOT}" "${DEST}"\n', encoding="utf-8")
+                adapted = self.run_framework_setup_step(
+                    "Use non-dereferencing framework root-file restoration")
+                self.assertEqual(0, adapted.returncode, adapted.stderr.decode())
+                restored = subprocess.run(
+                    ["bash" if os.name != "nt" else str(Path(shutil.which("git")).parents[1] / "bin/bash.exe"),
+                     str(restorer)], capture_output=True, timeout=30,
+                    env={**os.environ, "SNAPSHOT": snapshot.as_posix(),
+                         "DEST": root_instructions.as_posix()})
+                self.assertEqual(0, restored.returncode, restored.stderr.decode())
+                self.assertFalse(root_instructions.is_symlink())
+                self.assertEqual(snapshot.read_bytes(), root_instructions.read_bytes())
+                self.assertEqual(sentinel, target.read_bytes())
+                captured = self.run_framework_setup_step("Record framework configuration changes")
+                self.assertEqual(0, captured.returncode, captured.stderr.decode())
+                cleaned = self.run_framework_setup_step("Remove verified framework configuration changes")
+                self.assertEqual(0, cleaned.returncode, cleaned.stderr.decode())
+                self.assertTrue(root_instructions.is_symlink())
+                self.assertEqual(target, root_instructions.resolve())
+                self.assertEqual(sentinel, target.read_bytes())
+                self.assertEqual("", MODULE._git(self.root, "status", "--porcelain").strip())
 
     def test_framework_setup_changes_do_not_become_candidate_repairs(self):
         self.restored_configuration()
