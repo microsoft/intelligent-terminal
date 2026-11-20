@@ -498,9 +498,9 @@
     <value>ట్యాబ్ మెటాడేటా</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>ఏజెంట్ స్థితి</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>స్థితి</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>ప్రస్తుత పని డైరెక్టరీ</value>
@@ -802,5 +802,24 @@
   <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
     <value>మీ ఏజెంట్ల కార్యకలాపాన్ని ఒక్క చూపులో చూడటానికి నిలువు ట్యాబ్‌లకు మారండి. ట్యాబ్‌పై కుడి-క్లిక్ చేసి, {0} ఎంచుకోండి.</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
+  <data name="ProgramStatusCompleted" xml:space="preserve">
+    <value>పూర్తయింది</value>
+    <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
+  </data>
+  <data name="ProgramStatusPreviousResult" xml:space="preserve">
+    <value>మునుపటి ఫలితం</value>
+    <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>
+  </data>
+  <data name="ProgramStatusPermissionRequested" xml:space="preserve">
+    <value>అనుమతి అభ్యర్థించబడింది</value>
+    <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
+  </data>
+  <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
+    <value>అధికారం కోసం వేచి ఉంది...</value>
+    <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
+  </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>మొత్తం {1}లో పేన్ {0}</value>
   </data>
 </root>

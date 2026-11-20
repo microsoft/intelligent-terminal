@@ -12,8 +12,21 @@ on:
       - 'oss/**'
       - 'res/**'
       - '.cargo/**'
-      - '.github/workflows/pr-ci.yml'
-      - '.github/workflows/pr-ci-native.yml'
+      - '.github/**'
+      - '**/.github/**'
+      - '**/AGENTS.md'
+      - '**/CLAUDE.md'
+      - '**/GEMINI.md'
+      - '**/copilot-instructions.md'
+      - '**/SKILL.md'
+      - '**/*.instructions.md'
+      - '**/*.agent.md'
+      - '**/.mcp.json'
+      - '**/.claude/**'
+      - '**/.copilot/**'
+      - '**/.agents/**'
+      - '**/.gemini/**'
+      - 'test/accessibility/**'
       - '*.props'
       - '*.targets'
       - '*.sln*'
@@ -35,3 +48,7 @@ concurrency:
 jobs:
   native:
     uses: ./.github/workflows/pr-ci-native.yml
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read

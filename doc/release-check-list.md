@@ -32,6 +32,23 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C005` `[MANUAL]` **Agent CLI versions:** Copilot, Claude, Codex, Gemini, and any custom agent versions are recorded.
 - [ ] `C006` `[MANUAL]` **Known limitations:** Expected limitations are written down before sign-off.
 
+## OSC 7501 program status
+
+- [ ] `C490` `[new]` `[E2E]` **OSC 7501 hierarchy reaches pane and tab metadata:** Real program stdout crosses ConPTY, Core and Control to render blocked descendants, active children and unread root completion without averaging unrelated percentages. _(E2E: `Feature.ProgramStatus.Tests.ps1`, `OSC 7501 hierarchy reaches pane and tab metadata`.)_
+- [ ] `C491` `[new]` `[E2E]` **OSC 7501 unread completion survives rapid idle and focus:** Done followed immediately by Idle remains visible until deliberate input acknowledges it; merely focusing the pane does not acknowledge results. _(E2E: `Feature.ProgramStatus.Tests.ps1`, `OSC 7501 unread completion survives rapid idle and focus`.)_
+- [ ] `C492` `[new]` `[E2E]` **OSC 7501 rejects malformed reports and recovers without shell false positives:** Invalid IDs and oversized records cannot create a root task, the next valid child reaches metadata, and an ordinary shell never acquires an agent identity. _(E2E: `Feature.ProgramStatus.Tests.ps1`, `OSC 7501 rejects malformed reports and recovers without shell false positives`.)_
+- [ ] `C493` `[new]` `[E2E]` **OSC 7501 prompt start drops transient tasks and retains unread results:** Working and Blocked are removed, the native lease is released, and unread Done remains visible. _(E2E: `Feature.ProgramStatus.Tests.ps1`, `OSC 7501 prompt start drops transient tasks and retains unread results`.)_
+- [ ] `C494` `[new]` `[E2E]` **OSC 7501 prompt lifecycle is provider neutral:** Copilot, Claude, Codex, Gemini, OpenCode, Antigravity and a custom sentinel use the same terminal wire behavior without provider branches. _(E2E: `Feature.ProgramStatus.Tests.ps1`, `OSC 7501 prompt lifecycle is provider neutral`; this verifies compatibility, not provider adoption.)_
+- [ ] `C495` `[new]` `[E2E]` **PowerShell generated prompt releases transient OSC 7501 ownership:** The test command emits OSC 7501 but no OSC 133; installed shell integration generates D/A before the released snapshot while retaining completion. _(E2E: `Feature.ProgramStatusPromptLifecycle.Tests.ps1`, `PowerShell generated prompt releases transient OSC 7501 ownership`.)_
+
+## Native agent profiles
+
+- [ ] `C501` `[new]` `[E2E]` **Native profile resume uses effective launch and resume arguments only when requested:** Explicit native resume uses the selected profile's command, model and startup arguments followed by configured resume arguments and the automatic session ID, with Sessions on or off. Ordinary launches omit the resume suffix. Both launch paths expose provider/Sidebar Idle/cwd within five seconds while the owned master is paused, before hooks or new-pane snapshots. Repeated correctly shaped controlled hooks produce authoritative Working with Sessions on, retaining exactly one conversation on the same provider/pane without affecting the ordinary sibling. _(E2E: `Feature.AgentProfileResume`; deterministic native custom fixture, no installed hook mutation.)_
+- [ ] `C502` `[new]` `[E2E]` **Agent profile settings expose an indicator and automatic session ID guidance:** Native profile Settings identify the profile as an Agent profile and explain that resume appends the session ID automatically. _(E2E: `Feature.AgentProfileResume`.)_
+- [ ] `C503` `[new]` `[E2E]` **Master native history activation uses edited profile settings and preserves its receipt:** Resuming the exact unbound native fixture row through the owning master uses the corresponding generated profile's edited model and resume arguments; replay retains the same successful creation receipt without launching again. _(E2E: `Feature.AgentProfileResume`; real private-package master, COM and ConPTY boundary, mock ACP only.)_
+- [ ] `C504` `[new]` `[E2E]` **Agent profiles default to home and migrate empty startup folders only once:** A generated custom profile starts in `%USERPROFILE%`; upgrade migrates empty startup folders and persists completion together, while a later deliberate empty value survives reload. _(E2E: `Feature.AgentProfileResume`.)_
+- [ ] `C505` `[new]` `[E2E]` **Agent profile icon edits update live tabs and recent sessions without changing identity:** Built-in and custom profiles retain their provider/GUID relationship through renaming, and both rendered rows follow profile artwork changes. _(E2E: `Feature.AgentProfileResume`; owned-window pixel assertions.)_
+
 ## 0. First-run experience (FRE)
 
 **Feature definition:** FRE guides first-time users through agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup. Display preferences remain available in normal Settings.
@@ -457,6 +474,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C342` `[new]` `[E2E]` **Focusing a kept session reattaches its original tab:** The shared history/session focus path restores a detached whole tab, focuses the original pane, preserves shell/helper processes and state, and does not duplicate tabs or restore unrelated stale targets. _(E2E: `Feature.KeepRunningFocus`.)_
 - [ ] `C343` `[new]` `[E2E]` **Bare launch opens a new tab without attaching kept tabs:** With no windows and two detached tabs, Start menu Open and explicit profile launches create a new ordinary tab while retained processes stay alive and detached; only explicit session activation attaches them. _(E2E: `Feature.KeepRunningFocus`.)_
+- [ ] `C506` `[new]` `[E2E]` **Tray restoration preserves window geometry and live sessions across five closes:** With a hosted titlebar and default launch mode, five close/notification-area restore cycles preserve the original normal-window frame within two physical pixels and retain shell/helper processes and ACP session identity. _(E2E: `Feature.KeepRunningFocus`; automated notification callback, not a physical tray click; live validation pending.)_
 
 ### Surfaces
 

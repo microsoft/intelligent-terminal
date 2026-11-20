@@ -13,6 +13,77 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         . (Join-Path $PSScriptRoot 'helpers\TabHeaderContext.ps1')
         . (Join-Path $PSScriptRoot 'helpers\PackageProfileActivation.ps1')
         . (Join-Path $PSScriptRoot 'helpers\KeptTabReattachment.ps1')
+        if (-not ('ItE2E.KeptWindowGeometry' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+namespace ItE2E {
+    public static class KeptWindowGeometry {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Rect { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+        delegate bool EnumWindow(IntPtr window, IntPtr parameter);
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+        [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder name, int count);
+        [DllImport("user32.dll", SetLastError=true)] static extern bool GetWindowRect(IntPtr window, out Rect bounds);
+        [DllImport("user32.dll", SetLastError=true)] static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+        [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+        [DllImport("user32.dll", SetLastError=true)] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+        [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, IntPtr lparam, uint flags, uint timeout, out UIntPtr result);
+        public static Rect Frame(IntPtr window) {
+            IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if (previous == IntPtr.Zero) throw new Win32Exception();
+            try {
+                Rect bounds;
+                if (!GetWindowRect(window, out bounds)) throw new Win32Exception();
+                return bounds;
+            } finally { SetThreadDpiAwarenessContext(previous); }
+        }
+        public static void Place(IntPtr window) {
+            IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if (previous == IntPtr.Zero) throw new Win32Exception();
+            try {
+                var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+                if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref info)) throw new Win32Exception();
+                int width = Math.Min(1000, info.Work.Right - info.Work.Left - 160);
+                int height = Math.Min(700, info.Work.Bottom - info.Work.Top - 160);
+                if (!SetWindowPos(window, IntPtr.Zero, info.Work.Left + 80, info.Work.Top + 80, width, height, 0x14))
+                    throw new Win32Exception();
+            } finally { SetThreadDpiAwarenessContext(previous); }
+        }
+        public static void RestoreFromTray(uint pid) {
+            IntPtr target = IntPtr.Zero;
+            int matches = 0;
+            var brands = new[] { "Intelligent Terminal", "Windows Terminal Dev", "Windows Terminal Preview", "Windows Terminal Canary" };
+            EnumWindows((window, parameter) => {
+                uint owner;
+                GetWindowThreadProcessId(window, out owner);
+                if (owner == pid) {
+                    var name = new StringBuilder(256);
+                    GetClassName(window, name, name.Capacity);
+                    var receiverClass = name.ToString();
+                    if (Array.Exists(brands, brand => receiverClass == brand || receiverClass.StartsWith(brand + " ", StringComparison.Ordinal))) {
+                        target = window;
+                        matches++;
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+            if (matches != 1) throw new InvalidOperationException("Expected one owned Terminal notification receiver.");
+            UIntPtr result;
+            // WindowEmperor's notification callback, NIN_SELECT. Not a physical tray click.
+            if (SendMessageTimeout(target, 0x403, UIntPtr.Zero, new IntPtr(0x400), 2, 10000, out result) == IntPtr.Zero)
+                throw new Win32Exception();
+        }
+    }
+}
+'@
+        }
         $script:app = $null
         $script:originalRunToken = $env:ITE2E_RUN_TOKEN
         $script:originalOwnedReceipt = $env:ITE2E_OWNED_PROCESS_RECEIPT
@@ -38,6 +109,8 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
         } -Settings @{
             language = 'en-US'
             tabLayout = 'vertical'
+            showTabsInTitlebar = $true
+            launchMode = 'default'
             'warning.confirmOnClose' = 'never'
             firstWindowPreference = 'defaultProfile'
             startupActions = ''
@@ -84,6 +157,7 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
             @((Get-WtWindows -App $script:app) | Where-Object { [string]$_.window_id -eq $windowId })[0].tab_count
         }
         $tabCount = & $getTabCount
+        $originalFrame = [ItE2E.KeptWindowGeometry]::Frame([IntPtr][long]$script:app.Hwnd)
 
         foreach ($cycle in 1..2) {
             Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $target.session_id -Title $title
@@ -119,6 +193,61 @@ Describe 'Feature: focus kept sessions' -Tag 'Feature', 'KeepRunning' -Skip:(-no
             } | Out-Null
             Set-WtPaneFocus -App $script:app -SessionId $target.session_id
             (& $getTabCount) | Should -Be $tabCount -Because 'repeated activation must not duplicate the tab'
+            $frame = [ItE2E.KeptWindowGeometry]::Frame([IntPtr][long]$script:app.Hwnd)
+            foreach ($edge in 'Left', 'Top', 'Right', 'Bottom') {
+                $frame.$edge | Should -Be $originalFrame.$edge -Because 'reattaching into an existing window must not move or resize it'
+            }
+        }
+    }
+
+    It 'Tray restoration preserves window geometry and live sessions across five closes' {
+        $target = Get-ActivePane -App $script:app
+        $helper = Wait-NewAgentPaneSession -App $script:app -TimeoutSec 40
+        $helper.AcpSessionId | Should -Not -BeNullOrEmpty
+        $pids = @{}
+        foreach ($id in @($target.session_id, $helper.PaneSessionId)) {
+            $pids[$id] = (Get-WtPaneStatus -App $script:app -SessionId $id).pid
+        }
+        $tabs = @(Get-WtTabs -App $script:app)
+        $tabs.Count | Should -Be 1
+        Invoke-TestTabHeaderContextMenu -App $script:app -PaneSessionId $target.session_id -Title $tabs[0].title
+        Invoke-UiElement -App $script:app -Selector KeepTabRunningMenuItem | Out-Null
+        Close-TestOwnedTabFlyout -App $script:app -HeaderPoint $script:app.LastCanonicalHeaderPoint
+        [ItE2E.KeptWindowGeometry]::Place([IntPtr][long]$script:app.Hwnd)
+        Start-Sleep -Milliseconds 500
+        $baseline = [ItE2E.KeptWindowGeometry]::Frame([IntPtr][long]$script:app.Hwnd)
+
+        foreach ($cycle in 1..5) {
+            Send-WtWindowKey -App $script:app -Vk 0x73 -Alt -RequireForeground | Out-Null
+            Wait-Until -TimeoutSec 15 -Because 'the owned window to close while its sessions remain alive' -Condition {
+                @(Get-WtWindows -App $script:app).Count -eq 0
+            } | Out-Null
+            [ItE2E.KeptWindowGeometry]::RestoreFromTray([uint32]$script:app.Pid)
+            $window = Wait-Until -TimeoutSec 20 -Because 'tray recovery to restore exactly the original tab' -Condition {
+                $windows = @(Get-WtWindows -App $script:app)
+                if ($windows.Count -eq 1 -and $windows[0].tab_count -eq 1) { $windows[0] }
+            }
+            $script:app.WindowId = [string]$window.window_id
+            $script:app.Hwnd = Wait-Until -TimeoutSec 15 -Because 'the restored receiver to become visible' -Condition {
+                Get-WtWindowHwnds -App $script:app | Where-Object pid -eq $script:app.Pid |
+                    Select-Object -First 1 -ExpandProperty hwnd
+            }
+            Wait-Until -TimeoutSec 15 -Because 'the same retained pane to be active after layout' -Condition {
+                (Get-ActivePane -App $script:app).session_id -eq $target.session_id
+            } | Out-Null
+            $frame = [ItE2E.KeptWindowGeometry]::Frame([IntPtr][long]$script:app.Hwnd)
+            foreach ($edge in 'Left', 'Top', 'Right', 'Bottom') {
+                [Math]::Abs($frame.$edge - $baseline.$edge) | Should -BeLessOrEqual 2 `
+                    -Because "cycle $cycle must preserve the original frame, not accumulate drift"
+            }
+            foreach ($id in $pids.Keys) {
+                $status = Get-WtPaneStatus -App $script:app -SessionId $id
+                $status.pid | Should -Be $pids[$id]
+                $status.state | Should -Be 'running'
+            }
+            $currentHelper = Get-AgentPaneSession -App $script:app -PaneSessionId $helper.PaneSessionId
+            $currentHelper.HelperProcessId | Should -Be $helper.HelperProcessId
+            $currentHelper.AcpSessionId | Should -Be $helper.AcpSessionId
         }
     }
 

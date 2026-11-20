@@ -25,6 +25,7 @@
 #include "WindowListRequest.g.h"
 #include "Toast.h"
 #include "SharedWta.h"
+#include "ProgramStatusPresentation.h"
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -59,6 +60,7 @@ namespace winrt::Microsoft::Terminal::Settings
 
 namespace winrt::TerminalApp::implementation
 {
+    struct KeptWindowGeometry;
     struct TerminalSettingsCache;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
@@ -288,6 +290,8 @@ namespace winrt::TerminalApp::implementation
         void OnDefaultPasteRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        Windows::Foundation::IAsyncOperation<hstring> CreateNativeProfileResumeTab(hstring eventJson);
+        void _OnResumeInNewAgentTabRequested(hstring eventJson, Json::Value* creationReceipt);
         void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
@@ -999,7 +1003,7 @@ namespace winrt::TerminalApp::implementation
         bool _applyingSidebarFilters{ false };
         ::TerminalApp::SidebarTelemetry::KeyboardEntry _sidebarKeyboardEntry;
         bool _IsSidebarElement(const Windows::Foundation::IInspectable& element) const;
-        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab);
+        bool _KeepTabRunning(const winrt::com_ptr<Tab>& tab, const KeptWindowGeometry* geometry = nullptr);
         friend struct ContentManager;
         void _SettingsButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _CommandPaletteButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
@@ -1072,6 +1076,10 @@ namespace winrt::TerminalApp::implementation
             std::string tabId;
             Json::Value location;
             Json::Value inferredHistoryKey;
+            bool inputRequired{};
+            bool canonicalError{};
+            bool canonicalWorking{};
+            std::string inputMessage;
             bool launchMetadata{ false };
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
@@ -1092,13 +1100,17 @@ namespace winrt::TerminalApp::implementation
         std::optional<_RichTabAgentInfo> _RichTabAgentInfoForControl(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateAgentCompletions();
         void _ReadFocusedPaneAgentActivity(Tab& tab);
-        bool _HasUnreadAgentActivity(const Microsoft::Terminal::Control::TermControl& control);
+        bool _HasUnreadAgentActivity(const Microsoft::Terminal::Control::TermControl& control, bool* needsAttention = nullptr);
         void _RefreshTabUnreadActivity(Tab& tab);
         void _AgentCompletionChanged(const winrt::guid& paneId);
         bool _HistoryItemHasUnreadCompletion(const TerminalApp::TabStripHistoryItem& item) const;
         std::string_view _AgentStatusForPresentation(const _RichTabAgentInfo& info) const;
         void _SyncNativeAgentStatusMode();
         void _PublishNativeAgentSignal(const Microsoft::Terminal::Control::TermControl& control, bool attention, uint64_t progressState);
+        void _UpdateProgramStatusForTab(Tab& tab);
+        ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus _ProgramPaneStatus(const Json::Value& snapshot, const Microsoft::Terminal::Control::TermControl& control);
+        static std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus> _ParseHistoryProgramStatus(const Json::Value& pane);
+        static winrt::hstring _ProgramSummaryText(const ::Microsoft::Terminal::ProgramStatusPresentation::Summary& summary);
         void _PublishNativeAgentObservation(const Microsoft::Terminal::Control::TermControl& control, std::string_view kind, bool reset = false, std::optional<uint64_t> progressState = std::nullopt, bool birthBeforeReset = false);
         static std::string _NativeAgentObservationSource(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& backend);
         static Json::Value _NativeAgentObservationLocation(std::string_view source);
@@ -1109,7 +1121,14 @@ namespace winrt::TerminalApp::implementation
         std::pair<bool, std::optional<std::string>> _RichTabAgentCwdForControl(const Microsoft::Terminal::Control::TermControl& control);
         bool _RichTabCwdDependentFieldsVisible() const;
         std::vector<std::string> _SelectedRichTabVisibleFields() const;
-        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& profileIcon);
+        winrt::hstring _AgentIconForControl(const Microsoft::Terminal::Control::TermControl& control,
+                                            const winrt::hstring& profileIcon,
+                                            const winrt::Microsoft::Terminal::Settings::Model::Profile& profile = nullptr);
+        winrt::Microsoft::Terminal::Settings::Model::Profile _FindNativeAgentProfile(
+            const winrt::hstring& providerId,
+            const winrt::hstring& sessionId,
+            std::optional<winrt::guid> requestedGuid = std::nullopt);
+        winrt::hstring _ResolveSidebarHistoryIconPath(const TerminalApp::TabStripHistoryItem& item);
         std::unordered_map<std::string, std::string> _BuildRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _UpdateRichTabFirstPartyFields(const Microsoft::Terminal::Control::TermControl& control);
         void _LogSidebarRowFieldsTelemetry(const char* source) const;

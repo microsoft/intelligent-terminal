@@ -137,6 +137,8 @@ agents.status.active: "Schafft"
 agents.status.waiting_for_input: "Waart op Input"
 agents.status.error: "Feeler"
 agents.status.idle: "Onbeschäftegt"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Ofgeschloss"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Am Gebrauch"
 

@@ -6,6 +6,7 @@
 #include <fstream>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
+#include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 #include "../TerminalApp/TabHeaderControl.h"
@@ -25,6 +26,173 @@ namespace Model = winrt::Microsoft::Terminal::Settings::Model;
 
 namespace
 {
+    namespace DJ = winrt::Windows::Data::Json;
+
+    hstring DiagnosticIdentity(const winrt::Windows::Foundation::IInspectable& value)
+    {
+        return value ? to_hstring(reinterpret_cast<uint64_t>(get_abi(value))) : L"null";
+    }
+
+    DJ::JsonObject DiagnosticBrush(const Media::Brush& brush)
+    {
+        DJ::JsonObject result;
+        result.SetNamedValue(L"identity", DJ::JsonValue::CreateStringValue(DiagnosticIdentity(brush)));
+        if (brush)
+        {
+            result.SetNamedValue(L"class", DJ::JsonValue::CreateStringValue(get_class_name(brush)));
+            result.SetNamedValue(L"opacity", DJ::JsonValue::CreateNumberValue(brush.Opacity()));
+            if (const auto solid = brush.try_as<Media::SolidColorBrush>())
+            {
+                const auto color = solid.Color();
+                result.SetNamedValue(L"a", DJ::JsonValue::CreateNumberValue(color.A));
+                result.SetNamedValue(L"r", DJ::JsonValue::CreateNumberValue(color.R));
+                result.SetNamedValue(L"g", DJ::JsonValue::CreateNumberValue(color.G));
+                result.SetNamedValue(L"b", DJ::JsonValue::CreateNumberValue(color.B));
+            }
+        }
+        return result;
+    }
+
+    DJ::JsonObject DiagnosticElement(const winrt::Windows::Foundation::IInspectable& value)
+    {
+        DJ::JsonObject result;
+        result.SetNamedValue(L"identity", DJ::JsonValue::CreateStringValue(DiagnosticIdentity(value)));
+        if (!value)
+        {
+            return result;
+        }
+        result.SetNamedValue(L"class", DJ::JsonValue::CreateStringValue(get_class_name(value)));
+        if (const auto element = value.try_as<FrameworkElement>())
+        {
+            result.SetNamedValue(L"name", DJ::JsonValue::CreateStringValue(element.Name()));
+            result.SetNamedValue(L"requestedTheme", DJ::JsonValue::CreateNumberValue(static_cast<int>(element.RequestedTheme())));
+            result.SetNamedValue(L"actualTheme", DJ::JsonValue::CreateNumberValue(static_cast<int>(element.ActualTheme())));
+            result.SetNamedValue(L"width", DJ::JsonValue::CreateNumberValue(element.ActualWidth()));
+            result.SetNamedValue(L"height", DJ::JsonValue::CreateNumberValue(element.ActualHeight()));
+        }
+        Media::Brush foreground{ nullptr };
+        DependencyProperty foregroundProperty{ nullptr };
+        if (const auto icon = value.try_as<IconElement>())
+        {
+            foreground = icon.Foreground();
+            foregroundProperty = IconElement::ForegroundProperty();
+            if (const auto bitmap = icon.try_as<BitmapIcon>())
+            {
+                result.SetNamedValue(L"monochrome", DJ::JsonValue::CreateBooleanValue(bitmap.ShowAsMonochrome()));
+            }
+        }
+        else if (const auto control = value.try_as<Control>())
+        {
+            foreground = control.Foreground();
+            foregroundProperty = Control::ForegroundProperty();
+        }
+        else if (const auto text = value.try_as<TextBlock>())
+        {
+            foreground = text.Foreground();
+            foregroundProperty = TextBlock::ForegroundProperty();
+        }
+        else if (const auto presenter = value.try_as<ContentPresenter>())
+        {
+            foreground = presenter.Foreground();
+            foregroundProperty = ContentPresenter::ForegroundProperty();
+        }
+        else if (const auto listPresenter = value.try_as<Primitives::ListViewItemPresenter>())
+        {
+            foreground = listPresenter.Foreground();
+            result.SetNamedValue(L"foregroundDependencyProperty", DJ::JsonValue::CreateStringValue(L"not exposed by this presenter projection"));
+        }
+        result.SetNamedValue(L"foreground", DiagnosticBrush(foreground));
+        if (foregroundProperty)
+        {
+            const auto element = value.as<FrameworkElement>();
+            const auto expression = element.GetBindingExpression(foregroundProperty);
+            result.SetNamedValue(L"bindingPresent", DJ::JsonValue::CreateBooleanValue(expression != nullptr));
+            result.SetNamedValue(L"localForegroundUnset", DJ::JsonValue::CreateBooleanValue(element.ReadLocalValue(foregroundProperty) == DependencyProperty::UnsetValue()));
+            if (expression)
+            {
+                result.SetNamedValue(L"bindingSourceIdentity", DJ::JsonValue::CreateStringValue(DiagnosticIdentity(expression.ParentBinding().Source())));
+            }
+        }
+        return result;
+    }
+
+    void DiagnosticVisualChildren(const DependencyObject& root, DJ::JsonArray const& output, const uint32_t depth = 0)
+    {
+        if (!root || depth > 12)
+        {
+            return;
+        }
+        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(root); ++index)
+        {
+            const auto child = Media::VisualTreeHelper::GetChild(root, index);
+            const auto element = child.try_as<FrameworkElement>();
+            const auto className = get_class_name(child);
+            if ((element && element.Name() == L"TextView") ||
+                std::wstring_view{ className }.find(L"Presenter") != std::wstring_view::npos)
+            {
+                output.Append(DiagnosticElement(child));
+            }
+            DiagnosticVisualChildren(child, output, depth + 1);
+        }
+    }
+
+    DJ::JsonObject DiagnosticSnapshot(const Grid& root, const winrt::TerminalApp::TabStrip& strip, const uint64_t sequence)
+    {
+        DJ::JsonObject snapshot;
+        snapshot.SetNamedValue(L"sequence", DJ::JsonValue::CreateNumberValue(static_cast<double>(sequence)));
+        snapshot.SetNamedValue(L"utc100ns", DJ::JsonValue::CreateStringValue(to_hstring(winrt::clock::now().time_since_epoch().count())));
+        snapshot.SetNamedValue(L"root", DiagnosticElement(root));
+        snapshot.SetNamedValue(L"sidebar", DiagnosticElement(strip));
+        snapshot.SetNamedValue(L"applicationRequestedTheme", DJ::JsonValue::CreateNumberValue(static_cast<int>(Application::Current().RequestedTheme())));
+        DJ::JsonArray rows;
+        const auto impl = get_self<winrt::TerminalApp::implementation::TabStrip>(strip);
+        for (const auto& item : strip.HistoryItems())
+        {
+            const auto container = impl->ItemsList().ContainerFromItem(item).try_as<ListViewItem>();
+            if (!container)
+            {
+                continue;
+            }
+            DJ::JsonObject row;
+            row.SetNamedValue(L"itemId", DJ::JsonValue::CreateStringValue(item.SessionId()));
+            row.SetNamedValue(L"itemIdentity", DJ::JsonValue::CreateStringValue(DiagnosticIdentity(item)));
+            row.SetNamedValue(L"isCurrent", DJ::JsonValue::CreateBooleanValue(item.IsCurrent()));
+            row.SetNamedValue(L"container", DiagnosticElement(container));
+            const auto contentRoot = container.ContentTemplateRoot().try_as<FrameworkElement>();
+            if (contentRoot)
+            {
+                const auto title = contentRoot.FindName(L"HistoryTitleText").try_as<Control>();
+                const auto wrapper = contentRoot.FindName(L"HistoryProviderIcon").try_as<ContentControl>();
+                row.SetNamedValue(L"contentRoot", DiagnosticElement(contentRoot));
+                row.SetNamedValue(L"titleControl", DiagnosticElement(title));
+                row.SetNamedValue(L"wrapper", DiagnosticElement(wrapper));
+                if (wrapper)
+                {
+                    row.SetNamedValue(L"icon", DiagnosticElement(wrapper.Content()));
+                }
+                DJ::JsonArray descendants;
+                DiagnosticVisualChildren(container, descendants);
+                row.SetNamedValue(L"textViewsAndPresenters", descendants);
+            }
+            rows.Append(row);
+        }
+        snapshot.SetNamedValue(L"rows", rows);
+        DJ::JsonObject resources;
+        for (const auto key : { L"TreeViewItemForeground", L"TreeViewItemForegroundPointerOver", L"TreeViewItemForegroundSelected", L"ListViewItemForeground", L"ListViewItemForegroundPointerOver" })
+        {
+            try
+            {
+                resources.SetNamedValue(key, DiagnosticBrush(ThemeLookup(Application::Current().Resources(), root.ActualTheme(), box_value(hstring{ key })).try_as<Media::Brush>()));
+            }
+            catch (const hresult_error& error)
+            {
+                resources.SetNamedValue(key, DJ::JsonValue::CreateStringValue(to_hstring(error.code().value)));
+            }
+        }
+        snapshot.SetNamedValue(L"themeResources", resources);
+        return snapshot;
+    }
+
     struct VisualFixturePaneContent :
         implements<VisualFixturePaneContent, winrt::TerminalApp::IPaneContent>,
         winrt::TerminalApp::implementation::BasicPaneEvents
@@ -131,6 +299,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
                   Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
             </Grid>)")
@@ -155,7 +324,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         chromeImpl->IsVerticalLayout(true);
         chromeImpl->SetVerticalRailState(true, false, 272);
         strip.TopChromeContent(chromeImpl->VerticalTitleBarContent());
-        Grid::SetRow(strip, 1);
+        Grid::SetRow(strip, 2);
         root.Children().Append(strip);
 
         ComboBox themePreset;
@@ -283,7 +452,120 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
         history.Status(L"Ended");
         history.IsHistorical(true);
         history.Subtitle(L"1h");
+        get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(history)->SyncIcon(L"ms-appx:///AgentIcons/copilot.svg");
         stripImpl->CommitHistorySnapshot({ history }, true);
+
+        ToggleSwitch historyCurrent;
+        historyCurrent.Header(box_value(L"Current history row"));
+        Automation::AutomationProperties::SetAutomationId(historyCurrent, L"FixtureHistoryCurrent");
+        historyCurrent.Toggled([weakStrip = make_weak(strip), history, group](const winrt::Windows::Foundation::IInspectable& sender, const RoutedEventArgs&) {
+            if (const auto sidebar = weakStrip.get())
+            {
+                get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->SetCurrentHistoryItem(
+                    sender.as<ToggleSwitch>().IsOn() ? history : nullptr, group);
+            }
+        });
+        toolbar.Children().Append(historyCurrent);
+
+        StackPanel diagnosticToolbar;
+        diagnosticToolbar.Orientation(Orientation::Horizontal);
+        diagnosticToolbar.Spacing(16);
+        diagnosticToolbar.Margin({ 16, 0, 16, 8 });
+        Grid::SetRow(diagnosticToolbar, 1);
+        root.Children().Append(diagnosticToolbar);
+
+        ToggleSwitch manyHistory;
+        manyHistory.Header(box_value(L"40 synthetic history rows"));
+        Automation::AutomationProperties::SetAutomationId(manyHistory, L"FixtureManyHistory");
+        diagnosticToolbar.Children().Append(manyHistory);
+        const auto generation = std::make_shared<uint32_t>(0);
+        const auto populateHistory = [weakStrip = make_weak(strip), history, weakMany = make_weak(manyHistory), generation]() {
+            const auto sidebar = weakStrip.get();
+            const auto many = weakMany.get();
+            if (!sidebar || !many)
+            {
+                return;
+            }
+            std::vector<winrt::TerminalApp::TabStripHistoryItem> items;
+            const auto count = many.IsOn() ? 40u : 1u;
+            for (uint32_t index = 0; index < count; ++index)
+            {
+                if (!many.IsOn())
+                {
+                    items.emplace_back(history);
+                    break;
+                }
+                const auto item = make<winrt::TerminalApp::implementation::TabStripHistoryItem>();
+                const auto id = hstring{ index < 10 ? L"0" : L"" } + to_hstring(index);
+                item.SessionId(hstring{ L"diagnostic-history-" } + id);
+                item.Title(hstring{ L"Diagnostic history " } + id);
+                item.Cwd(hstring{ L"C:\\workspace\\synthetic-" } + id);
+                item.AgentId(L"copilot");
+                item.ProviderDisplayName(L"GitHub Copilot");
+                item.Status(L"Ended");
+                item.IsHistorical(true);
+                item.Subtitle(to_hstring(*generation) + L"h");
+                get_self<winrt::TerminalApp::implementation::TabStripHistoryItem>(item)->SyncIcon(L"ms-appx:///AgentIcons/copilot.svg");
+                items.emplace_back(item);
+            }
+            get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->CommitHistorySnapshot(items, true);
+        };
+        manyHistory.Toggled([populateHistory](const auto&, const RoutedEventArgs&) { populateHistory(); });
+        Button refreshHistory;
+        refreshHistory.Content(box_value(L"Refresh synthetic history"));
+        Automation::AutomationProperties::SetAutomationId(refreshHistory, L"FixtureRefreshHistory");
+        refreshHistory.Click([populateHistory, generation](const auto&, const RoutedEventArgs&) {
+            ++*generation;
+            populateHistory();
+        });
+        diagnosticToolbar.Children().Append(refreshHistory);
+
+        Button diagnosticSnapshot;
+        diagnosticSnapshot.Content(box_value(L"Read foreground snapshot"));
+        Automation::AutomationProperties::SetAutomationId(diagnosticSnapshot, L"FixtureForegroundSnapshot");
+        diagnosticToolbar.Children().Append(diagnosticSnapshot);
+        const auto diagnosticSequence = std::make_shared<uint64_t>(0);
+        const auto diagnosticPath = std::filesystem::path{
+            winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()
+        } / L"sidebar-foreground-snapshots.jsonl";
+        const auto readDiagnostic = [weakRoot = make_weak(root), weakStrip = make_weak(strip), weakButton = make_weak(diagnosticSnapshot), diagnosticSequence, diagnosticPath]() {
+            const auto host = weakRoot.get();
+            const auto sidebar = weakStrip.get();
+            const auto button = weakButton.get();
+            if (!host || !sidebar || !button)
+            {
+                return;
+            }
+            try
+            {
+                const auto snapshot = DiagnosticSnapshot(host, sidebar, ++*diagnosticSequence);
+                const auto text = snapshot.Stringify();
+                // Sampling only reads production state; only the synthetic diagnostic surface/log is updated.
+                Automation::AutomationProperties::SetItemStatus(button, text);
+                std::ofstream log{ diagnosticPath, std::ios::app | std::ios::binary };
+                log << to_string(text) << '\n';
+                THROW_HR_IF(E_FAIL, !log);
+            }
+            catch (const hresult_error& error)
+            {
+                Automation::AutomationProperties::SetItemStatus(button, L"diagnostic-error:" + to_hstring(error.code().value));
+            }
+        };
+        diagnosticSnapshot.Click([readDiagnostic](const auto&, const RoutedEventArgs&) { readDiagnostic(); });
+        DispatcherTimer diagnosticTimer;
+        diagnosticTimer.Interval(std::chrono::milliseconds{ 500 });
+        diagnosticTimer.Tick([readDiagnostic, diagnosticSequence](const winrt::Windows::Foundation::IInspectable& sender, const auto&) {
+            if (*diagnosticSequence < 1200)
+            {
+                readDiagnostic();
+            }
+            else
+            {
+                sender.as<DispatcherTimer>().Stop();
+            }
+        });
+        root.Loaded([diagnosticTimer](const auto&, const RoutedEventArgs&) { diagnosticTimer.Start(); });
+        root.Unloaded([diagnosticTimer](const auto&, const RoutedEventArgs&) { diagnosticTimer.Stop(); });
 
         const auto paneEventCounts = std::make_shared<std::pair<uint64_t, uint64_t>>();
         const auto recordPaneEvent = [weakStrip = make_weak(strip), paneEventCounts](bool activation, uint32_t contentId) {
@@ -317,7 +599,7 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
 
         stage = L"loading built-in theme presets";
         const auto settings = Model::CascadiaSettings::LoadDefaults();
-        const auto applyPreset = [weakRoot = make_weak(root), weakStrip = make_weak(strip), weakPreset = make_weak(themePreset), weakActive = make_weak(activePalette), themes = settings.GlobalSettings().Themes(), ownedTabs]() {
+        const auto applyPreset = [weakRoot = make_weak(root), weakStrip = make_weak(strip), weakPreset = make_weak(themePreset), weakActive = make_weak(activePalette), weakCurrent = make_weak(historyCurrent), history, group, themes = settings.GlobalSettings().Themes(), ownedTabs]() {
             const auto host = weakRoot.get();
             const auto sidebar = weakStrip.get();
             const auto picker = weakPreset.get();
@@ -345,6 +627,11 @@ extern "C" HRESULT __stdcall InitializeSidebarVisualFixture(wchar_t* errorMessag
                 owner->ThemeColor(theme.Tab() ? theme.Tab().Background() : nullptr,
                                   theme.Tab() ? theme.Tab().UnfocusedBackground() : nullptr,
                                   rowColor);
+            }
+            if (const auto current = weakCurrent.get())
+            {
+                get_self<winrt::TerminalApp::implementation::TabStrip>(sidebar)->SetCurrentHistoryItem(
+                    current.IsOn() ? history : nullptr, group);
             }
         };
         themePreset.SelectionChanged([applyPreset](const auto&, const SelectionChangedEventArgs&) { applyPreset(); });

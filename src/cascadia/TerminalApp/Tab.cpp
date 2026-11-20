@@ -307,7 +307,7 @@ namespace winrt::TerminalApp::implementation
             text.append(L" ");
             text.append(paneCount);
         }
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabTooltipText.empty())
         {
             text.append(L"\n");
             text.append(_richTabTooltipText);
@@ -333,7 +333,7 @@ namespace winrt::TerminalApp::implementation
             text.append(L"\n");
             text.append(RS_(L"PinnedTabName"));
         }
-        if (_isVerticalTabLayout && !_richTabTooltipText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabTooltipText.empty())
         {
             text.append(L"\n");
             text.append(_richTabTooltipText);
@@ -668,13 +668,11 @@ namespace winrt::TerminalApp::implementation
         const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation)
     {
         ASSERT_UI_THREAD();
-        const auto highlightColor = presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None;
         if (_richTabPresentation != presentation)
         {
             _richTabPresentation = presentation;
             _UpdateRichTabPresentation();
         }
-        _headerControl.MetadataHighlightColor(highlightColor);
     }
 
     void Tab::SetUnreadAgentActivity(const bool unread, const bool needsAttention)
@@ -691,29 +689,75 @@ namespace winrt::TerminalApp::implementation
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
+        auto highlightColor = TerminalApp::TextHighlightColor::None;
         Windows::Foundation::Collections::IVector<TerminalApp::HighlightedRun> highlightRanges{ nullptr };
         Windows::Foundation::Collections::IVector<TerminalApp::TextEllipsisRange> ellipsisRanges{ nullptr };
         if constexpr (Feature_RichTabProviders::IsEnabled())
         {
-            if (_richTabPresentation)
+            auto presentation = _richTabPresentation;
+            if (!_programStatusVisible || !_programStatusText.empty())
             {
-                text = _richTabPresentation->text;
-                tooltip = _richTabPresentation->tooltip;
-                accessibilityText = _richTabPresentation->accessibilityText;
-                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*_richTabPresentation);
-                ellipsisRanges = TabHeaderControl::BuildMetadataEllipsisRanges(*_richTabPresentation);
+                presentation = ::Microsoft::Terminal::RichTab::Provider::ProviderBroker::OverlayAgentStatus(
+                    presentation, _programStatusVisible ? std::wstring_view{ _programStatusText } : std::wstring_view{}, _programStatusId);
+            }
+            highlightColor = presentation ? TabHeaderControl::AgentStatusHighlightColor(presentation->agentStatus) : TerminalApp::TextHighlightColor::None;
+            if (presentation)
+            {
+                text = presentation->text;
+                tooltip = presentation->tooltip;
+                accessibilityText = presentation->accessibilityText;
+                highlightRanges = TabHeaderControl::BuildMetadataHighlightRanges(*presentation);
+                ellipsisRanges = TabHeaderControl::BuildMetadataEllipsisRanges(*presentation);
             }
         }
-
+        if (_programStatusVisible && !_programStatusDetails.empty())
+        {
+            if (!tooltip.empty())
+            {
+                tooltip.append(L"\n");
+            }
+            tooltip.append(_programStatusDetails);
+        }
+        if (!_isVerticalTabLayout && _programStatusVisible && !_programStatusText.empty())
+        {
+            text = _programStatusText;
+            tooltip = _programStatusDetails;
+            accessibilityText = _programStatusText;
+            highlightRanges = nullptr;
+            ellipsisRanges = nullptr;
+        }
         const auto hasVisibleMetadata = !text.empty();
         _richTabTooltipText = tooltip;
         _richTabAccessibilityText = accessibilityText;
-        const auto highlightColor = _richTabPresentation ? TabHeaderControl::AgentStatusHighlightColor(_richTabPresentation->agentStatus) : TerminalApp::TextHighlightColor::None;
         winrt::get_self<TabHeaderPresentation>(_headerControl.Presentation())->SetMetadata(winrt::hstring{ text }, _richTabAccessibilityText, highlightColor, highlightRanges, ellipsisRanges);
-        _headerControl.IsMetadataVisible(_isVerticalTabLayout && hasVisibleMetadata);
+        _headerControl.IsMetadataVisible(hasVisibleMetadata && (_isVerticalTabLayout || (_programStatusVisible && !_programStatusText.empty())));
 
         _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::SetProgramStatusPresentation(const winrt::hstring& text, const winrt::hstring& details, std::vector<Pane::TaskbarStateWithContentId> states, const std::string_view status, const bool visible)
+    {
+        ASSERT_UI_THREAD();
+        const auto sameStates = std::equal(
+            states.begin(), states.end(), _programTaskbarStates.begin(), _programTaskbarStates.end(), [](const auto& left, const auto& right) {
+                return left.ContentId == right.ContentId &&
+                       left.CombinedState.State() == right.CombinedState.State() &&
+                       left.CombinedState.Progress() == right.CombinedState.Progress();
+            });
+        _programTaskbarStates = std::move(states);
+        if (_programStatusText != text || _programStatusDetails != details || _programStatusId != status || _programStatusVisible != visible)
+        {
+            _programStatusText = text;
+            _programStatusDetails = details;
+            _programStatusId = status;
+            _programStatusVisible = visible;
+            _UpdateRichTabPresentation();
+        }
+        if (!sameStates)
+        {
+            _UpdateProgressState();
+        }
     }
 
     void Tab::_UpdateAutomationName()
@@ -724,16 +768,22 @@ namespace winrt::TerminalApp::implementation
             name += L", ";
             name += RS_(L"PinnedTabName");
         }
-        if (_isVerticalTabLayout && !_richTabAccessibilityText.empty())
+        if ((_isVerticalTabLayout || !_programStatusText.empty()) && !_richTabAccessibilityText.empty())
         {
             name += L", ";
             name += _richTabAccessibilityText;
         }
         const auto unreadStatus = _unreadAgentActivityNeedsAttention ? "Attention" : "Complete";
+        std::string_view metadataAgentStatus;
+        if (_programStatusVisible)
+        {
+            metadataAgentStatus = !_programStatusText.empty() ? std::string_view{ _programStatusId } :
+                                  _richTabPresentation ? std::string_view{ _richTabPresentation->agentStatus } :
+                                                         std::string_view{};
+        }
         const auto metadataIncludesUnreadStatus = _isVerticalTabLayout &&
                                                   !_richTabAccessibilityText.empty() &&
-                                                  _richTabPresentation &&
-                                                  _richTabPresentation->agentStatus == unreadStatus;
+                                                  metadataAgentStatus == unreadStatus;
         if (_headerControl.Presentation().HasUnreadActivity() && !metadataIncludesUnreadStatus)
         {
             name += L", ";
@@ -1616,6 +1666,14 @@ namespace winrt::TerminalApp::implementation
         if (_rootPane)
         {
             _rootPane->CollectTaskbarStates(states);
+        }
+        for (auto& state : states)
+        {
+            if (const auto program = std::find_if(_programTaskbarStates.begin(), _programTaskbarStates.end(), [&](const auto& candidate) { return candidate.ContentId == state.ContentId; });
+                program != _programTaskbarStates.end())
+            {
+                state = *program;
+            }
         }
         return states.empty() ?
                    Pane::TaskbarStateWithContentId{

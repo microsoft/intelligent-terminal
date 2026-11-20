@@ -331,8 +331,7 @@
                                     VerticalContentAlignment="Stretch"
                                     AutomationProperties.AccessibilityView="Raw"
                                     AutomationProperties.Name="{x:Bind ProviderDisplayName}"
-                                    Content="{Binding Foreground, ElementName=HistoryTitleText}"
-                                    ContentTemplate="{x:Bind IconTemplate}"
+                                    Content="{x:Bind CreateIcon(IconSource), Mode=OneWay}"
                                     IsTabStop="False" />
                     <Grid x:Name="HistoryTitleGroup"
                           Grid.Column="1"
@@ -460,8 +459,8 @@
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
-                    Template="{StaticResource CompactNewTabButtonTemplate}"
-                    Click="OnCompactNewTabClick">
+                    Click="OnCompactNewTabClick"
+                    Template="{StaticResource CompactNewTabButtonTemplate}">
                 <Viewbox Width="16"
                          Height="16">
                     <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -477,8 +476,8 @@
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
-                    Template="{StaticResource CompactNewTabButtonTemplate}"
-                    Click="OnCompactNewTabMenuClick">
+                    Click="OnCompactNewTabMenuClick"
+                    Template="{StaticResource CompactNewTabButtonTemplate}">
                 <Viewbox Width="16"
                          Height="16">
                     <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
@@ -731,7 +730,7 @@
                                         IsEnabled="False"
                                         Style="{StaticResource RichTabMetadataSectionStyle}" />
                         <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
-                                              x:Uid="VerticalTabsMetadataAgentStatus"
+                                              x:Uid="VerticalTabsMetadataStatus"
                                               Click="OnRichTabAgentStatusVisibleClick"
                                               IsChecked="True" />
                         <ToggleMenuFlyoutItem x:Name="RichTabWorkingDirectoryVisibleItem"
@@ -835,8 +834,8 @@
                                       DragOver="OnListDragOver"
                                       Drop="OnListDrop"
                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                      GotFocus="OnSidebarListFocusChanged"
                                       GettingFocus="OnSidebarListGettingFocus"
+                                      GotFocus="OnSidebarListFocusChanged"
                                       IsItemClickEnabled="False"
                                       LostFocus="OnSidebarListFocusChanged"
                                       ReorderMode="Disabled"
@@ -1090,12 +1089,12 @@
                                                             HorizontalAlignment="Stretch"
                                                             HorizontalContentAlignment="Stretch"
                                                             VerticalContentAlignment="Stretch"
-                                                            AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                                                            AutomationProperties.Name="{x:Bind ActivationAutomationName, Mode=OneWay}"
                                                             Background="Transparent"
                                                             BorderThickness="0"
                                                             Click="OnPaneActivateClick"
                                                             FocusVisualMargin="{StaticResource SidebarPaneFocusInset}"
-                                                            ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
+                                                            ToolTipService.ToolTip="{x:Bind ProgramStatusDetails, Mode=OneWay}">
                                                         <Button.Resources>
                                                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                              Color="Transparent" />

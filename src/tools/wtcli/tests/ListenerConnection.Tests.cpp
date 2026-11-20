@@ -11,6 +11,7 @@
 
 // Load SDK/WIL declarations before mocking the CLI's COM activation calls.
 #include "..\..\..\cascadia\TerminalProtocol\ProtocolMarshaling.h"
+#include "..\..\..\cascadia\inc\AgentPolicy.h"
 
 namespace NativeMock
 {
@@ -18,8 +19,15 @@ namespace NativeMock
     HRESULT WINAPI CoCreateInstance(REFCLSID, IUnknown*, DWORD, REFIID, void**);
     HRESULT LoadProxy(wil::unique_hmodule&);
     HRESULT RegisterProxy(const wil::unique_hmodule&);
+    void ReloadPolicy();
 }
 
+namespace Microsoft::Terminal::Settings::Model::AgentPolicy
+{
+    using NativeMock::ReloadPolicy;
+}
+
+#define Reload ReloadPolicy
 #define LoadAndVerifyLocalProxyDll LoadProxy
 #define RegisterProcessLocalProxyFactory RegisterProxy
 namespace Microsoft::Terminal::Protocol
@@ -36,6 +44,7 @@ namespace Microsoft::Terminal::Protocol
 #undef GetActiveObject
 #undef RegisterProcessLocalProxyFactory
 #undef LoadAndVerifyLocalProxyDll
+#undef Reload
 
 namespace NativeMock
 {
@@ -50,13 +59,28 @@ namespace NativeMock
     unsigned loadCalls = 0;
     unsigned registerCalls = 0;
     ITerminalProtocol* queryServer = nullptr;
+    bool customPolicyAllowed = true;
+    unsigned policyReloads = 0;
+    void ReloadPolicy()
+    {
+        ++policyReloads;
+        auto policy = std::make_shared<Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot>();
+        policy->customAgents = customPolicyAllowed ?
+            Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Allowed :
+            Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked;
+        Microsoft::Terminal::Settings::Model::AgentPolicy::SetSnapshotForTest(std::move(policy));
+    }
 
-    struct ProfileServer : ITerminalProtocol
+    struct ProfileServer : ITerminalProtocol, ITerminalProtocolNativeAgent
     {
         const char* capabilities = R"(["list_profiles"])";
         const char* profiles = R"([{"id":"{5784e726-2a17-4932-bd11-18a387ef9c02}","name":"Copilot","is_default":false,"agent_id":"copilot"}])";
         HRESULT queryResult = S_OK;
         unsigned queryCalls = 0;
+        unsigned nativeInterfaceQueries = 0;
+        unsigned nativeResumeCalls = 0;
+        const char* settings = "{}";
+        unsigned settingsCalls = 0;
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override
         {
@@ -64,6 +88,13 @@ namespace NativeMock
             if (iid == __uuidof(IUnknown) || iid == __uuidof(ITerminalProtocol))
             {
                 *object = static_cast<ITerminalProtocol*>(this);
+                AddRef();
+                return S_OK;
+            }
+            if (iid == __uuidof(ITerminalProtocolNativeAgent))
+            {
+                ++nativeInterfaceQueries;
+                *object = static_cast<ITerminalProtocolNativeAgent*>(this);
                 AddRef();
                 return S_OK;
             }
@@ -94,7 +125,12 @@ namespace NativeMock
         HRESULT STDMETHODCALLTYPE ReadPaneOutput(GUID, BSTR, long, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetProcessStatus(GUID, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetSessionVariable(GUID, BSTR, BSTR*) override { return E_NOTIMPL; }
-        HRESULT STDMETHODCALLTYPE GetSettings(BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE GetSettings(BSTR* json) override
+        {
+            ++settingsCalls;
+            *json = SUCCEEDED(queryResult) ? Bstr(settings) : nullptr;
+            return queryResult;
+        }
         HRESULT STDMETHODCALLTYPE CreateTab(unsigned __int64, BSTR, BSTR, BSTR, BSTR, boolean, boolean, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE SplitPane(GUID, BSTR, float, BSTR, BSTR, boolean, BSTR*) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE ClosePane(GUID) override { return E_NOTIMPL; }
@@ -105,6 +141,13 @@ namespace NativeMock
         HRESULT STDMETHODCALLTYPE Unsubscribe() override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE SendEvent(BSTR) override { return E_NOTIMPL; }
         HRESULT STDMETHODCALLTYPE GetPaneContext(GUID, boolean, long, long, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CreateAgentCliTab(unsigned __int64, BSTR, BSTR, BSTR, BSTR, boolean, boolean, BSTR, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE SplitAgentCliPane(GUID, BSTR, float, BSTR, BSTR, boolean, BSTR, BSTR*) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CreateNativeProfileResumeTab(unsigned __int64, BSTR, BSTR*) override
+        {
+            ++nativeResumeCalls;
+            return E_NOTIMPL;
+        }
     };
 
     HRESULT LoadProxy(wil::unique_hmodule& module)
@@ -145,6 +188,12 @@ namespace NativeMock
             *object = nullptr;
             if (iid != __uuidof(ITerminalProtocol))
                 throw std::runtime_error("wrong protocol interface");
+            if (queryServer)
+            {
+                *object = queryServer;
+                queryServer->AddRef();
+                return S_OK;
+            }
             return E_NOINTERFACE;
         }
         HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return S_OK; }
@@ -251,6 +300,36 @@ namespace NativeMock
         puts("Listener timestamp formatting tests passed.");
     }
 
+    void CheckListenEventFiltering()
+    {
+        const auto matches = [](const char* json, const char* filter) {
+            return wtcli::MatchesEventFilter(json, "", filter);
+        };
+
+        Require(matches(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "program_status_changed"));
+        Require(matches(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "program_status*"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent_event"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent.task.completed"));
+        Require(matches(R"({"method":"agent_event","params":{"event":"agent.task.completed","pane_id":"owner"}})", "agent.*"));
+        Require(!matches(R"({"method":"program_status_changed","params":{"event":"agent.task.completed"}})", "agent.task.completed"));
+
+        for (const auto* subtype : {
+                 R"({"method":"agent_event","params":{}})",
+                 R"({"method":"agent_event","params":{"event":1}})",
+                 R"({"method":"agent_event","params":{"event":true}})",
+                 R"({"method":"agent_event","params":{"event":{}}})",
+                 R"({"method":"agent_event","params":{"event":[]}})",
+             })
+        {
+            Require(matches(subtype, "agent_event"));
+            Require(!matches(subtype, "agent.*"));
+        }
+
+        Require(wtcli::MatchesEventFilter(R"({"method":"program_status_changed","params":{"pane_id":"owner"}})", "owner", "program_status_changed"));
+        Require(!wtcli::MatchesEventFilter(R"({"method":"program_status_changed","params":{"pane_id":"other"}})", "owner", "program_status_changed"));
+        puts("Listener event filtering tests passed.");
+    }
+
     int Listen(bool existingOnly)
     {
         wchar_t executable[] = L"wtcli";
@@ -285,6 +364,20 @@ namespace NativeMock
         return result;
     }
 
+    int NativeProfileResume()
+    {
+        wchar_t executable[] = L"wtcli";
+        wchar_t json[] = L"--json";
+        wchar_t command[] = L"native-profile-resume";
+        wchar_t windowOption[] = L"--window-id";
+        wchar_t windowId[] = L"42";
+        wchar_t payload[] = L"{\"method\":\"resume_in_new_agent_tab\",\"params\":{\"request_id\":\"owned\",\"window_id\":\"42\",\"resume_target\":\"native\",\"agent_source\":\"host\",\"session_id\":\"external\",\"agent_id\":\"custom:hookless\"}}";
+        wchar_t* argv[]{ executable, json, command, windowOption, windowId, payload };
+        const auto result = WtcliMain(6, argv);
+        winrt::uninit_apartment();
+        return result;
+    }
+
     void CheckProfileQueries()
     {
         Reset();
@@ -315,6 +408,58 @@ namespace NativeMock
         Require(query() == 1 && server.queryCalls == 4, "malformed capabilities must not reach the appended method");
         puts("Profile query compatibility tests passed.");
     }
+
+    void CheckCustomAcpProjection()
+    {
+        Reset();
+        ProfileServer server;
+        queryServer = &server;
+        policyReloads = 0;
+        customPolicyAllowed = true;
+        const auto cleanup = wil::scope_exit([]() noexcept {
+            queryServer = nullptr;
+            Microsoft::Terminal::Settings::Model::AgentPolicy::ResetForTest();
+        });
+        const auto query = [](bool projection) {
+            wchar_t executable[] = L"wtcli";
+            wchar_t command[] = L"get-settings";
+            wchar_t option[] = L"--custom-acp-commands";
+            wchar_t* argv[]{ executable, command, option };
+            const auto result = WtcliMain(projection ? 3 : 2, argv);
+            winrt::uninit_apartment();
+            return result;
+        };
+        server.settings = R"({/* JSONC */"acpCustomCommands":["QWEN.cmd --acp",null,"qwen --duplicate"],"acpCustomCommand":"qwen --legacy","unrelatedInvalidSetting":42,})";
+        Require(query(true) == 0 && server.settingsCalls == 1 && policyReloads == 1, "catalog projection must use existing raw JSONC read and reload policy");
+        Json::Value settings;
+        settings["acpCustomCommands"].append("QWEN.cmd --acp");
+        settings["acpCustomCommands"].append(Json::Value{});
+        settings["acpCustomCommands"].append("qwen --duplicate");
+        settings["acpCustomCommand"] = "qwen --legacy";
+        const auto commands = Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings);
+        Require(commands.size() == 1 && commands["custom:qwen"] == "QWEN.cmd --acp", "plural-first canonical IDs must preserve the first command");
+        server.settings = R"({"acpCustomCommands":"kimi acp","acpCustomCommand":null})";
+        Require(query(true) == 0, "SettingsModel scalar-vector and null-string conversion must remain supported");
+        for (const auto invalid : { "[]", R"({"acpCustomCommands":[42]})", R"({"acpCustomCommand":{}})", "invalid JSON" })
+        {
+            server.settings = invalid;
+            Require(query(true) == 1, "invalid catalogs must fail explicitly");
+        }
+        server.settings = R"({"acpCustomCommands":42})";
+        const auto reloads = policyReloads;
+        Require(query(false) == 0 && policyReloads == reloads, "ordinary get-settings must not project, validate the catalog, or reload policy");
+        server.queryResult = E_FAIL;
+        Require(query(true) == 1, "raw settings read failure must not become an empty catalog");
+        customPolicyAllowed = false;
+        server.settings = "invalid JSON";
+        const auto calls = server.settingsCalls;
+        Require(query(true) == 0 && server.settingsCalls == calls, "confirmed policy block must return empty before reading even invalid settings");
+        customPolicyAllowed = true;
+        server.queryResult = S_OK;
+        server.settings = R"({"acpCustomCommands":["\"C:\\Agents\\QWEN.cmd\" --acp"],"acpCustomCommand":"qwen --legacy"})";
+        Require(query(true) == 0 && server.settingsCalls == calls + 1, "policy unblock must immediately resume the authoritative raw read");
+        puts("Custom ACP settings projection tests passed.");
+    }
 }
 
 int wmain()
@@ -323,8 +468,10 @@ int wmain()
     try
     {
         CheckListenTimestampFormatting();
+        CheckListenEventFiltering();
         SetEnvironmentVariableW(L"WT_COM_CLSID", L"{11111111-1111-1111-1111-111111111111}");
         CheckProfileQueries();
+        CheckCustomAcpProjection();
         for (const auto failLoad : { false, true })
         {
             for (const auto existingOnly : { false, true })
@@ -395,6 +542,29 @@ int wmain()
             supportsFactory = false;
             Require(Publish(true, fromStdin) == 1);
             Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == 0);
+        }
+
+        for (const auto factoryRegistered : { false, true })
+        {
+            Reset();
+            registered = factoryRegistered;
+            Require(NativeProfileResume() != 0, "native resume must fail when no existing protocol instance can be created");
+            Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == (factoryRegistered ? 1u : 0u),
+                    "native-profile-resume must never activate a replacement Terminal");
+        }
+
+        for (const auto capabilities : { R"(["create_agent_cli_tab","split_agent_cli_pane"])", "{}" })
+        {
+            Reset();
+            ProfileServer server;
+            server.capabilities = capabilities;
+            queryServer = &server;
+            const auto resetServer = wil::scope_exit([]() noexcept { queryServer = nullptr; });
+            Require(NativeProfileResume() != 0, "native resume must reject unsupported or malformed capabilities");
+            Require(activationCalls == 0 && activeCalls == 1 && factoryCalls == 1,
+                    "native resume capability checks must use only the existing Terminal");
+            Require(server.nativeInterfaceQueries == 0 && server.nativeResumeCalls == 0,
+                    "native resume capability gate must run before native interface QI and the appended method");
         }
 
         puts("Listener/publisher connection tests passed (no real COM server or agent).");

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import childProcess, { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { syncBuiltinESMExports } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -133,10 +133,13 @@ test('controller reports execution status on the admitted PR commit, not the wor
     ['success', 'true', 'success', 'success', 'false', 'success'],
     ['success', 'false', 'skipped', 'skipped', '', 'success'],
     ['failure', 'true', 'skipped', 'success', 'true', 'failure'],
-    ['failure', 'true', 'skipped', 'skipped', '', 'failure'],
-    ['cancelled', 'true', 'skipped', 'skipped', '', 'cancelled'],
+    ['failure', 'true', 'skipped', 'failure', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', 'true', 'failure'],
+    ['failure', 'true', 'skipped', 'skipped', '', 'neutral'],
+    ['cancelled', 'true', 'skipped', 'skipped', '', 'neutral'],
+    ['success', 'true', 'skipped', 'skipped', '', 'neutral'],
     ['success', 'true', 'failure', 'skipped', 'false', 'failure'],
-    ['success', 'true', 'success', 'failure', 'false', 'failure'],
+    ['success', 'true', 'success', 'failure', 'false', 'neutral'],
   ]) {
     const calls = [], outputs = {};
     const github = { rest: { checks: {
@@ -147,6 +150,8 @@ test('controller reports execution status on the admitted PR commit, not the wor
     const process = { env: { REVIEWED_HEAD_SHA: HEAD, PR_NUMBER: '17', ANALYSIS_RESULT: analysis,
       SCOPE_APPLICABLE: applicable, REPAIR_RESULT: repair, REPORT_RESULT: report,
       REVIEW_BLOCKING: blocking, CANONICAL_RESULT: blocking ? 'success' : 'failure',
+      PUBLICATION: repair === 'skipped' ? 'none' : 'push',
+      DIAGNOSTIC_RUN_URL: analysis !== 'success' ? 'https://github.com/owner/repo/actions/runs/789' : '',
       GITHUB_RUN_ATTEMPT: '1' } };
     await execute(pending)(github, context, process, core);
     process.env.REVIEW_CHECK_ID = outputs.review_check_id;
@@ -155,9 +160,15 @@ test('controller reports execution status on the admitted PR commit, not the wor
     assert.equal(calls[0].head_sha, HEAD);
     assert.equal(calls[1].check_run_id, 1234);
     assert.equal(calls[1].conclusion, expected);
-    assert(calls.every(value => value.details_url.endsWith('/actions/runs/456')));
-    if (blocking === 'true') assert.equal(calls[1].output.title, 'Changes required');
-    else if (!['success', 'cancelled'].includes(expected)) assert.equal(calls[1].output.title, 'Review did not complete');
+    assert(calls[0].details_url.endsWith('/actions/runs/456'));
+    const diagnosticRun = process.env.DIAGNOSTIC_RUN_URL ? '789' : '456';
+    assert(calls[1].details_url.endsWith(`/actions/runs/${expected === 'neutral' ? diagnosticRun : '456'}`));
+    if (expected === 'failure') assert.equal(calls[1].output.title, 'Changes required');
+    else if (expected === 'neutral') {
+      assert.equal(calls[1].output.title, 'Security review unavailable');
+      assert.match(calls[1].output.summary, /No security conclusion/);
+      assert(calls[1].output.summary.includes(`/actions/runs/${diagnosticRun}`));
+    }
   }
   const github = { rest: { checks: {
     create: async () => assert.fail('No admitted head; no check write.'),
@@ -407,7 +418,6 @@ test('controller separates cached PR base from new worker SHA and rejects dispat
     assert.equal(env.EXPECTED_BASE_SHA, BASE);
   }
   assert(controller.includes('[ "$WORKER_CONCLUSION" = success ]'));
-  assert(controller.includes('echo "::error::The internal security worker did not succeed."'));
 });
 
 test('controller correlates dispatched runs beyond the first page with the same immutable identity', async () => {
@@ -904,7 +914,7 @@ test('publication rejects wrong run, revision, source job, attempt and detector 
 function ciFixture() {
   const identity = { repository: 'owner/repo', repositoryId: 42, runId: '91', runAttempt: 2,
     headSha: HEAD, prNumber: 17, baseSha: BASE, headRef: 'topic', defaultBranch: 'main' };
-  const run = { id: 91, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
+  const run = { id: 91, run_number: 14, run_attempt: 2, repository: { id: 42, full_name: 'owner/repo' },
     head_repository: { id: 42, full_name: 'owner/repo' }, head_sha: HEAD, head_branch: 'topic',
     path: '.github/workflows/pr-ci.yml', name: 'PR CI',
     workflow_id: 7, event: 'pull_request', status: 'completed', conclusion: 'success' };
@@ -1021,6 +1031,295 @@ test('native CI verification rechecks live PR and trusted workflow before return
   responses['actions/workflows/pr-ci.yml'].id = 7;
   pull.head.sha = BASE;
   assert.throws(() => verifyCiSecurity({ environment, request }), /stale/);
+});
+
+function accessibilityCiFixture() {
+  const { run, pull } = ciFixture();
+  const environment = { GITHUB_REPOSITORY: 'owner/repo', GITHUB_REPOSITORY_ID: '42',
+    CI_RUN_ID: '91', CI_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: HEAD,
+    PR_NUMBER: '17', EXPECTED_BASE_SHA: BASE, HEAD_REF: 'topic', EXPECTED_WORKFLOW_SHA: '3'.repeat(40) };
+  const artifact = { id: 105, name: 'ci-accessibility-native-91-2', expired: false,
+    workflow_run: { id: 91, head_sha: HEAD } };
+  const workflow = { id: 7, path: run.path, state: 'active' };
+  const producer = { name: 'native / Native accessibility / Native Axe.Windows smoke',
+    run_id: 91, run_attempt: 2, head_sha: HEAD, status: 'completed', conclusion: 'success' };
+  const jobsEndpoint = 'actions/runs/91/jobs?filter=all&per_page=100&page=1';
+  const runsEndpoint = `actions/workflows/7/runs?event=pull_request&head_sha=${HEAD}&per_page=100&page=1`;
+  const responses = {
+    '': { id: 42, full_name: 'owner/repo', default_branch: 'main' },
+    'actions/runs/91': run, 'actions/workflows/pr-ci.yml': workflow, 'pulls/17': pull,
+    [runsEndpoint]: { workflow_runs: [run] },
+    [jobsEndpoint]: { jobs: [producer] },
+    'actions/runs/91/artifacts?per_page=100&page=1': { artifacts: [artifact] },
+    [`compare/${environment.EXPECTED_WORKFLOW_SHA}...${HEAD}?per_page=1`]: { merge_base_commit: { sha: BASE } },
+    [`git/trees/${HEAD}?recursive=1`]: ciDefinitionTree(),
+    [`git/trees/${BASE}?recursive=1`]: ciDefinitionTree(),
+  };
+  const calls = [];
+  const request = endpoint => {
+    calls.push(endpoint);
+    assert(Object.hasOwn(responses, endpoint), `Unexpected CI API: ${endpoint}`);
+    return responses[endpoint];
+  };
+  return { run, pull, artifact, producer, jobsEndpoint, environment, workflow, responses, request, calls, runsEndpoint,
+    verify: () => verifyCiSecurity({ environment, request,
+      producerJob: producer.name,
+      artifactNames: (run, job) => [`ci-accessibility-native-${run.id}-${job.run_attempt}`] }) };
+}
+
+test('accessibility reuses the full CI boundary with only the exact native producer artifact', () => {
+  const f = accessibilityCiFixture();
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  assert(f.calls.includes(f.runsEndpoint), 'Native admission must request freshness.');
+  assert(f.calls.includes(f.jobsEndpoint));
+});
+
+test('successful retained native producer survives unrelated failed-job reruns without relaxing current CI identity', () => {
+  const f = accessibilityCiFixture();
+  f.producer.run_attempt = 1;
+  f.artifact.name = 'ci-accessibility-native-91-1';
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  assert.equal(f.verify().identity.runAttempt, 2);
+  f.artifact.name = 'ci-accessibility-native-91-2';
+  assert.throws(f.verify, /CI artifact identity/);
+  f.artifact.name = 'ci-accessibility-native-91-1';
+  f.environment.CI_RUN_ATTEMPT = '1';
+  assert.throws(f.verify, /CI run identity/);
+  f.environment.CI_RUN_ATTEMPT = '2';
+  f.responses[f.runsEndpoint].workflow_runs.push({ ...f.run, id: 92, run_number: 15 });
+  assert.throws(f.verify, /newer PR CI run/);
+});
+
+for (const [name, change] of [
+  ['failed latest', f => { f.producer.conclusion = 'failure'; }],
+  ['cancelled latest', f => { f.producer.conclusion = 'cancelled'; }],
+  ['pending latest', f => { f.producer.status = 'in_progress'; }],
+  ['missing producer', f => { f.responses[f.jobsEndpoint].jobs = []; }],
+  ['wrong head', f => { f.producer.head_sha = BASE; }],
+  ['wrong run', f => { f.producer.run_id++; }],
+  ['duplicate latest', f => { f.responses[f.jobsEndpoint].jobs.push({ ...f.producer }); }],
+  ['future attempt', f => { f.producer.run_attempt++; }],
+  ['missing attempt', f => { delete f.producer.run_attempt; }],
+  ['unsafe attempt', f => { f.producer.run_attempt = Number.MAX_SAFE_INTEGER + 1; }],
+]) test(`native producer selection rejects ${name} instead of falling back to successful attempt one`, () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.jobsEndpoint].jobs.push({ ...f.producer, run_attempt: 1 });
+  change(f);
+  assert.throws(f.verify, /CI producer/);
+});
+
+test('native producer selection paginates all attempts and uses the unique latest producer', () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.jobsEndpoint].jobs = Array(100).fill({ name: 'unrelated' });
+  f.responses[f.jobsEndpoint.replace('&page=1', '&page=2')] = {
+    jobs: [{ ...f.producer, run_attempt: 1 }, f.producer],
+  };
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  f.producer.conclusion = 'failure';
+  assert.throws(f.verify, /CI producer/);
+});
+
+for (const [status, conclusion] of [
+  ['requested', null], ['queued', null], ['in_progress', null],
+  ['completed', 'cancelled'], ['completed', 'failure'], ['completed', 'success'],
+]) test(`new same-head CI ${status}/${conclusion} supersedes a successful old native run`, () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.runsEndpoint].workflow_runs = [
+    { ...f.run, id: 1, run_number: 15, status, conclusion },
+  ];
+  assert.throws(f.verify, /newer PR CI run/);
+});
+
+test('native CI freshness uses workflow-scoped run numbers, not IDs, listing order or unrelated source identity', () => {
+  for (const change of [
+    { workflow_id: 8 }, { path: '.github/workflows/other.yml' }, { event: 'push' },
+    { repository: { id: 43 } }, { head_repository: { id: 43 } },
+    { head_branch: 'other' }, { head_sha: BASE }, { run_number: 13 }, { run_number: 14 },
+  ]) {
+    const f = accessibilityCiFixture();
+    f.responses[f.runsEndpoint].workflow_runs = [{ ...f.run, id: 9999, run_number: 15, ...change }];
+    assert.deepEqual(f.verify().identity, { runId: '91', runAttempt: 2, headSha: HEAD });
+  }
+});
+
+test('native CI freshness and artifact lookup paginate without losing later negative controls', () => {
+  const f = accessibilityCiFixture();
+  f.responses[f.runsEndpoint].workflow_runs = Array(100).fill(f.run);
+  f.responses[f.runsEndpoint.replace('&page=1', '&page=2')] = {
+    workflow_runs: [{ ...f.run, id: 92, run_number: 15, status: 'queued', conclusion: null }],
+  };
+  assert.throws(f.verify, /newer PR CI run/);
+  f.responses[f.runsEndpoint.replace('&page=1', '&page=2')].workflow_runs = [];
+  const artifactsEndpoint = 'actions/runs/91/artifacts?per_page=100&page=1';
+  f.responses[artifactsEndpoint].artifacts = Array(100).fill({ name: 'unrelated' });
+  f.responses[artifactsEndpoint.replace('&page=1', '&page=2')] = { artifacts: [f.artifact] };
+  assert.deepEqual(f.verify().artifacts, [f.artifact]);
+  f.responses[artifactsEndpoint].artifacts[0] = f.artifact;
+  assert.throws(f.verify, /ambiguous/);
+});
+
+for (const [name, change, error] of [
+  ['pending run', f => { f.run.status = 'in_progress'; f.run.conclusion = null; }, /CI run identity/],
+  ['cancelled run', f => { f.run.conclusion = 'cancelled'; }, /CI run identity/],
+  ['failed run', f => { f.run.conclusion = 'failure'; }, /CI run identity/],
+  ['new attempt', f => { f.run.run_attempt++; }, /CI run identity/],
+  ['wrong workflow ID', f => { f.run.workflow_id++; }, /source workflow/],
+  ['inactive workflow', f => { f.workflow.state = 'disabled_manually'; }, /source workflow/],
+  ['wrong workflow path', f => { f.run.path = '.github/workflows/other.yml'; }, /CI run identity/],
+  ['manual run', f => { f.run.event = 'workflow_dispatch'; }, /CI run identity/],
+  ['push run', f => { f.run.event = 'push'; }, /CI run identity/],
+  ['merge SHA', f => { f.run.head_sha = BASE; }, /CI run identity/],
+  ['foreign repository', f => { f.run.repository.id++; }, /CI run identity/],
+  ['fork repository', f => { f.run.head_repository.id++; }, /CI run identity/],
+  ['live head advanced', f => { f.pull.head.sha = BASE; }, /CI pull request/],
+  ['live base advanced', f => { f.pull.base.sha = HEAD; }, /CI pull request/],
+  ['live branch renamed', f => { f.pull.head.ref = 'renamed'; }, /CI pull request/],
+  ['closed PR', f => { f.pull.state = 'closed'; }, /CI pull request/],
+  ['nondefault target', f => { f.pull.base.ref = 'release'; }, /CI pull request/],
+  ['changed CI definition', f => { f.responses[`git/trees/${HEAD}?recursive=1`].tree[0].sha = HEAD; }, /CI implementation differs/],
+  ['changed native CI definition', f => {
+    f.responses[`git/trees/${HEAD}?recursive=1`].tree.find(file =>
+      file.path === '.github/workflows/native-accessibility.yml').sha = HEAD;
+  }, /CI implementation differs/],
+  ['truncated provenance', f => { f.responses[`git/trees/${HEAD}?recursive=1`].truncated = true; }, /complete immutable trees/],
+  ['missing run number', f => { delete f.run.run_number; }, /freshness/],
+  ['missing artifact', f => { f.responses['actions/runs/91/artifacts?per_page=100&page=1'].artifacts = []; }, /CI artifact identity/],
+  ['duplicate artifact', f => { f.responses['actions/runs/91/artifacts?per_page=100&page=1'].artifacts.push(f.artifact); }, /CI artifact identity/],
+  ['expired artifact', f => { f.artifact.expired = true; }, /CI artifact identity/],
+  ['stale artifact attempt', f => { f.artifact.name = 'ci-accessibility-native-91-1'; }, /CI artifact identity/],
+  ['wrong artifact run', f => { f.artifact.workflow_run.id++; }, /CI artifact identity/],
+  ['wrong artifact head', f => { f.artifact.workflow_run.head_sha = BASE; }, /CI artifact identity/],
+  ['invalid artifact ID', f => { f.artifact.id = 0; }, /CI artifact identity/],
+  ['malformed run list', f => { f.responses[f.runsEndpoint].workflow_runs = null; }, /invalid CI API list/],
+]) test(`shared native admission rejects ${name}`, () => {
+  const f = accessibilityCiFixture();
+  change(f);
+  assert.throws(f.verify, error);
+});
+
+function accessibilityScript(file, marker) {
+  const text = readFileSync(new URL(`../../../workflows/${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const block = text.split(marker)[1]?.split('          script: |\n')[1];
+  assert(block, `Missing workflow script: ${marker}`);
+  const lines = block.split('\n');
+  const end = lines.findIndex(line => line.trim() && !line.startsWith('            '));
+  return lines.slice(0, end === -1 ? lines.length : end).map(line => line.slice(12)).join('\n');
+}
+
+const executeAccessibilityScript = script => new (Object.getPrototypeOf(async function () {}).constructor)(
+  'github', 'context', 'process', 'core', 'require', script);
+const workflowRequire = createRequire(import.meta.url);
+const workspace = fileURLToPath(new URL('../../../../', import.meta.url));
+
+test('accessibility controller executes relevance before dispatch and sends only immutable current PR identity', async () => {
+  const script = accessibilityScript('ghaw-pr-accessibility-controller.yml', '      - name: Admit and dispatch current relevant CI');
+  for (const [name, mutate, count, failure] of [
+    ['current relevant PR', () => {}, 1],
+    ['unrelated change', f => { f.files = [{ filename: 'README.md' }]; }, 0],
+    ['relevant rename origin', f => { f.files = [{ filename: 'archive/old.txt', previous_filename: 'src/cascadia/TerminalApp/Tab.cpp' }]; }, 1],
+    ['truncated file list', f => { f.files = Array(3000).fill({ filename: 'README.md' }); }, 1],
+    ['draft PR', f => { f.pull.draft = true; }, 0],
+    ['advanced live PR', f => { f.pull.head.sha = BASE; }, 0, /CI pull request/],
+    ['retargeted live PR', f => { f.pull.base.ref = 'release'; }, 0, /CI pull request/],
+    ['ambiguous PR association', f => { f.associated.push(structuredClone(f.pull)); }, 0, /one current/],
+    ['absent PR association', f => { f.associated = []; }, 0, /one current/],
+    ['fork association', f => { f.associated[0].head.repo.id++; }, 0, /one current/],
+    ['stale webhook attempt', f => { f.run.run_attempt++; }, 0, /CI run identity/],
+    ['duplicate CI review', f => { f.reviews = [{ display_title: 'Accessibility CI 91-2' }]; }, 0],
+    ['earlier attempt review', f => { f.reviews = [{ display_title: 'Accessibility CI 91-1' }]; }, 1],
+  ]) {
+    const f = accessibilityCiFixture(), dispatched = [];
+    f.associated = [structuredClone(f.pull)];
+    f.files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
+    f.reviews = [];
+    const context = { repo: { owner: 'owner', repo: 'repo' },
+      payload: { workflow_run: structuredClone(f.run), repository: f.responses[''] } };
+    mutate(f);
+    const github = { rest: { actions: {
+      getWorkflowRun: async () => ({ data: f.run }),
+      listWorkflowRuns: 'reviews',
+      createWorkflowDispatch: async value => dispatched.push(value),
+    }, repos: { listPullRequestsAssociatedWithCommit: 'associated' },
+    pulls: { get: async () => ({ data: f.pull }), listFiles: 'files' } },
+    paginate: async method => {
+      assert(['associated', 'files', 'reviews'].includes(method));
+      return f[method];
+    } };
+    const run = executeAccessibilityScript(script)(github, context,
+      { env: { GITHUB_WORKSPACE: workspace, TRUSTED_SHA: '3'.repeat(40) } }, {}, workflowRequire);
+    if (failure) await assert.rejects(run, failure, name);
+    else await run;
+    assert.equal(dispatched.length, count, name);
+    if (count) {
+      const dispatch = dispatched[0];
+      assert.equal(dispatch.ref, 'main');
+      assert.equal(dispatch.workflow_id, 'ghaw-pr-accessibility.lock.yml');
+      assert.deepEqual(Object.keys(dispatch.inputs).sort(),
+        ['aw_context', 'ci_run_attempt', 'ci_run_id', 'expected_workflow_sha', 'pull_request']);
+      assert.equal(dispatch.inputs.ci_run_attempt, '2');
+      assert.equal(JSON.parse(dispatch.inputs.pull_request).head.sha, HEAD);
+      assert(!Object.hasOwn(JSON.parse(dispatch.inputs.pull_request), 'body'));
+    }
+  }
+});
+
+test('worker entry executes default-branch, draft, typed retarget provenance and relevance controls around shared CI admission', async t => {
+  const script = accessibilityScript('ghaw-pr-accessibility.md', '      - name: Validate shared CI identity before model entry');
+  for (const [name, mutate, applicable, failure] of [
+    ['current relevant PR', () => {}, 'true'],
+    ['irrelevant PR', f => { f.files = [{ filename: 'README.md' }]; }, 'false'],
+    ['relevant rename origin', f => { f.files = [{ filename: 'old.txt', previous_filename: 'src/cascadia/TerminalApp/Tab.cpp' }]; }, 'true'],
+    ['file list limit', f => { f.files = Array(3000).fill({ filename: 'README.md' }); }, 'true'],
+    ['candidate worker ref', f => { f.context.ref = 'refs/heads/topic'; }, undefined, /Untrusted worker/],
+    ['wrong trusted revision', f => { f.environment.REQUESTED_WORKFLOW_SHA = HEAD; }, undefined, /Untrusted worker/],
+    ['wrong publication context', f => { f.context.payload.inputs.aw_context = '{}'; }, undefined, /publication context/],
+    ['draft PR', f => { f.pull.draft = true; }, undefined, /Draft/],
+    ['retarget event', f => { f.events.nodes = [{ __typename: 'BaseRefChangedEvent' }]; }, undefined, /provenance/],
+    ['force-pushed base event', f => { f.events.nodes = [{ __typename: 'BaseRefForcePushedEvent' }]; }, undefined, /provenance/],
+    ['incomplete timeline', f => { f.events.pageInfo.hasNextPage = true; }, undefined, /provenance/],
+    ['unavailable timeline', f => { f.events = null; }, undefined, /provenance/],
+  ]) await t.test(name, async t => {
+    const f = accessibilityCiFixture(), outputs = {};
+    f.context = { repo: { owner: 'owner', repo: 'repo' }, ref: 'refs/heads/main',
+      payload: { inputs: { aw_context: JSON.stringify({ item_type: 'pull_request',
+        item_number: 17, repo: 'owner/repo', head_sha: HEAD, base_sha: BASE }) } } };
+    f.files = [{ filename: 'src/cascadia/TerminalApp/Tab.cpp' }];
+    f.events = { nodes: [], pageInfo: { hasNextPage: false } };
+    Object.assign(f.environment, { REQUESTED_WORKFLOW_SHA: f.environment.EXPECTED_WORKFLOW_SHA,
+      GITHUB_WORKSPACE: workspace });
+    mutate(f);
+    const github = { rest: { repos: { get: async () => ({ data: f.responses[''] }) },
+      pulls: { get: async () => ({ data: f.pull }), listFiles: 'files' } },
+    graphql: async query => {
+      assert(query.includes('itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT]'));
+      return { repository: { pullRequest: { timelineItems: f.events } } };
+    },
+    paginate: async method => { assert.equal(method, 'files'); return f.files; } };
+    const previous = Object.fromEntries(Object.keys(f.environment).map(key => [key, process.env[key]]));
+    const command = t.mock.method(childProcess, 'execFileSync', (program, args) => {
+      assert.equal(program, 'gh');
+      assert.equal(args[0], 'api');
+      const root = '/repos/owner/repo';
+      assert(args[1] === root || args[1].startsWith(`${root}/`));
+      return JSON.stringify(f.request(args[1].slice(root.length).replace(/^\//, '')));
+    });
+    Object.assign(process.env, f.environment);
+    syncBuiltinESMExports();
+    try {
+      const run = executeAccessibilityScript(script)(github, f.context, { env: f.environment },
+        { setOutput: (key, value) => { outputs[key] = value; } }, workflowRequire);
+      if (failure) await assert.rejects(run, failure);
+      else await run;
+      assert.equal(outputs.applicable, applicable);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      command.mock.restore();
+      syncBuiltinESMExports();
+    }
+  });
 });
 
 test('publication native API adapter reaches CI validation through the canonical repository endpoint', t => {

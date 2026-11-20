@@ -1503,6 +1503,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             if (profileList.GetAt(i).Guid() == guid)
             {
+                if (!profileList.GetAt(i).IsDeletable())
+                {
+                    return;
+                }
                 profileList.RemoveAt(i);
                 break;
             }

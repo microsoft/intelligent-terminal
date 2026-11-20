@@ -11,9 +11,14 @@
 
 namespace winrt::Microsoft::Terminal::Settings::Model
 {
+    namespace implementation
+    {
+        struct GlobalAppSettings;
+    }
     class AgentProfileGenerator final : public IDynamicProfileGenerator
     {
     public:
+        explicit AgentProfileGenerator(const implementation::GlobalAppSettings* settings = nullptr);
         class DiscoveryCache
         {
         public:
@@ -29,5 +34,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model
         std::wstring_view GetDisplayName() const noexcept override;
         std::wstring_view GetIcon() const noexcept override;
         void GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const override;
+
+    private:
+        std::vector<winrt::hstring> _customCommands;
     };
 }

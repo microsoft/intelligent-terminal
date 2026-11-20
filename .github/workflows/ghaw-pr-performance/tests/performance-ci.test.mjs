@@ -14,7 +14,7 @@ function fixture() {
         head_sha: head, head_branch: 'topic', status: 'completed', conclusion: 'success' };
     run.referenced_workflows = [{ path: 'owner/repo/.github/workflows/pr-ci-native.yml@refs/pull/42/merge', sha: merge }];
     const commit = { sha: merge, parents: [{ sha: base }, { sha: head }] };
-    const jobs = ['native / performance-scope', 'native / C++ build and unit tests', 'native / Rust build and unit tests']
+    const jobs = ['native / performance-scope', 'native / C++ build', 'native / C++ unit tests', 'native / Rust build and unit tests']
         .map(name => ({ name, run_id: 99, run_attempt: 2, status: 'completed', conclusion: 'success',
             steps: [{ name: 'Confirm default-target CI origin', status: 'completed', conclusion: 'success' }] }));
     const pr = { number: 42, state: 'open', draft: false,
@@ -250,6 +250,27 @@ test('same-head retargeting and unverifiable workflow revisions cannot establish
     await assert.rejects(admitPerformanceCi(substituted.github, substituted.context, substituted.trusted), /CI implementation differs/);
     assert.equal(substituted.pr.base.ref, 'main');
     assert.equal(substituted.pr.head.sha, substituted.run.head_sha);
+});
+
+test('upstream unit and accessibility jobs retain explicit performance provenance requirements', async () => {
+    for (const conclusion of ['success', 'skipped']) {
+        const f = fixture();
+        f.jobs.push({ name: 'native / Native accessibility / Native Axe.Windows smoke',
+            run_id: 99, run_attempt: 2, status: 'completed', conclusion });
+        assert.ok(await admitPerformanceCi(f.github, f.context, f.trusted));
+        assert.ok(verifyPerformanceCi(f));
+    }
+    for (const change of [
+        f => { f.jobs[2].conclusion = 'skipped'; },
+        f => { f.jobs.push({ name: 'Unexpected job', run_id: 99, run_attempt: 2, status: 'completed', conclusion: 'success' }); },
+        f => { f.jobs.push({ name: 'native / Native accessibility / Native Axe.Windows smoke',
+            run_id: 99, run_attempt: 2, status: 'completed', conclusion: 'failure' }); },
+    ]) {
+        const f = fixture();
+        change(f);
+        await assert.rejects(admitPerformanceCi(f.github, f.context, f.trusted));
+        assert.throws(() => verifyPerformanceCi(f));
+    }
 });
 
 test('completed artifacts require raw diagnostics and every recorded phase log', t => {

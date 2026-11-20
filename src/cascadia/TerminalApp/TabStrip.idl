@@ -78,6 +78,8 @@ namespace TerminalApp
         String StatusLabelText;
         String WindowHintText;
         Boolean HasUnreadActivity { get; };
+        Object IconSource;
+        Windows.UI.Xaml.Controls.IconElement CreateIcon(Object source);
     };
 
     [default_interface] runtimeclass TabStripHistoryActivationEventArgs
@@ -108,6 +110,9 @@ namespace TerminalApp
         Windows.UI.Xaml.Visibility CloseVisibility;
         Boolean HasUnreadActivity;
         IVector<TextEllipsisRange> MetadataEllipsisRanges;
+        // Append new members to preserve the existing default-interface slots.
+        String ActivationAutomationName { get; };
+        String ProgramStatusDetails;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

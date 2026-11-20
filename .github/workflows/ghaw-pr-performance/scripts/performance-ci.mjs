@@ -19,14 +19,21 @@ export function validatePerformanceProvenance(run, proof) {
         !['ahead', 'identical'].includes(proof.baseComparison?.status))
         throw Error('CI workflow revision does not bind the reviewed head to default-branch history.');
     validateCiDefinition(proof.workflowTree, proof.trustedTree);
-    if (!Array.isArray(proof.jobs) || proof.jobs.length !== 3)
+    if (!Array.isArray(proof.jobs) || ![4, 5].includes(proof.jobs.length))
         throw Error('CI provenance requires exactly the native workflow jobs.');
-    for (const name of ['native / performance-scope', 'native / C++ build and unit tests', 'native / Rust build and unit tests']) {
+    const required = ['native / performance-scope', 'native / C++ build',
+        'native / C++ unit tests', 'native / Rust build and unit tests'];
+    for (const name of required) {
         const jobs = proof.jobs.filter(job => job.name === name);
         if (jobs.length !== 1 || jobs[0].run_id !== run.id || jobs[0].run_attempt !== run.run_attempt ||
             jobs[0].status !== 'completed' || jobs[0].conclusion !== 'success')
             throw Error('CI provenance requires all native jobs to complete successfully.');
     }
+    const additional = proof.jobs.filter(job => !required.includes(job.name));
+    if (additional.some(job => !['native / Native accessibility', 'native / Native accessibility / Native Axe.Windows smoke'].includes(job.name) ||
+        job.run_id !== run.id || job.run_attempt !== run.run_attempt || job.status !== 'completed' ||
+        !['success', 'skipped'].includes(job.conclusion)))
+        throw Error('CI provenance contains an unexpected or unsuccessful native job.');
     const origin = proof.jobs.find(job => job.name === 'native / performance-scope').steps?.filter(step =>
         step.name === 'Confirm default-target CI origin');
     if (origin?.length !== 1 || origin[0].status !== 'completed' || origin[0].conclusion !== 'success')

@@ -8,6 +8,7 @@
 
 using namespace WEX::TestExecution;
 using CompletionState = winrt::TerminalApp::implementation::ContentManager::AgentCompletionState;
+using CompletionKind = winrt::TerminalApp::implementation::ContentManager::UnreadAgentCompletionKind;
 
 namespace TerminalAppUnitTests
 {
@@ -18,6 +19,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ReadingAndRepeatedIdleDoNotRearmCompletion);
         TEST_METHOD(NewActivityAndIdentityResetCompletion);
         TEST_METHOD(AttentionRearmsAfterStateTransition);
+        TEST_METHOD(ReadingAttentionPreservesTransitionDetector);
+        TEST_METHOD(UnreadKindTracksCompletionClassification);
         TEST_METHOD(ReadingOnePanePreservesOtherPaneActivity);
     };
 
@@ -78,6 +81,18 @@ namespace TerminalAppUnitTests
         VERIFY_IS_TRUE(state.unread);
     }
 
+    void AgentCompletionTests::ReadingAttentionPreservesTransitionDetector()
+    {
+        const winrt::guid pane{ L"64791111-2222-3333-4444-555555555555" };
+        CompletionState state;
+        state.Update(pane, "session", "copilot", "Attention", false);
+        VERIFY_IS_TRUE(state.unread);
+        state.MarkRead();
+        VERIFY_IS_FALSE(state.unread);
+        VERIFY_IS_FALSE(state.Update(pane, "session", "copilot", "Attention", false));
+        VERIFY_IS_FALSE(state.unread);
+    }
+
     void AgentCompletionTests::ReadingOnePanePreservesOtherPaneActivity()
     {
         const winrt::guid first{ L"64761111-2222-3333-4444-555555555555" };
@@ -90,6 +105,24 @@ namespace TerminalAppUnitTests
         firstState.Update(first, "first", "copilot", "Attention", true);
         VERIFY_IS_FALSE(firstState.unread);
         VERIFY_IS_TRUE(secondState.unread);
+    }
+
+    void AgentCompletionTests::UnreadKindTracksCompletionClassification()
+    {
+        const winrt::guid pane{ L"64781111-2222-3333-4444-555555555555" };
+        CompletionState state;
+        VERIFY_ARE_EQUAL(CompletionKind::None, state.UnreadKind());
+        state.Update(pane, "session", "copilot", "Attention", false);
+        VERIFY_ARE_EQUAL(CompletionKind::Attention, state.UnreadKind());
+        state.Update(pane, "session", "copilot", "Idle", false);
+        VERIFY_ARE_EQUAL(CompletionKind::Complete, state.UnreadKind());
+        state.Update(pane, "session", "copilot", "Idle", true);
+        VERIFY_ARE_EQUAL(CompletionKind::None, state.UnreadKind());
+        state.Update(pane, "session", "copilot", "Working", false);
+        state.Update(pane, "session", "copilot", "Idle", false);
+        VERIFY_ARE_EQUAL(CompletionKind::Complete, state.UnreadKind());
+        state.Update(pane, "replacement", "claude", "Idle", false);
+        VERIFY_ARE_EQUAL(CompletionKind::None, state.UnreadKind());
     }
 
     void AgentCompletionTests::NewActivityAndIdentityResetCompletion()

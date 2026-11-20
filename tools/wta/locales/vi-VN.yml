@@ -137,6 +137,8 @@ agents.status.active: "Đang làm việc"
 agents.status.waiting_for_input: "Đang chờ nhập liệu"
 agents.status.error: "Lỗi"
 agents.status.idle: "Rảnh"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Đã hoàn tất"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Đang được sử dụng"
 

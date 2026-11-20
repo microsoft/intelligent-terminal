@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::{AgentInstanceId, HelperId, MasterStateInner};
+use super::{begin_interaction, finish_interaction, AgentInstanceId, HelperId, MasterStateInner};
 use crate::agent_source::AgentSource;
 use crate::agent_tools::action_proposal::pipe::ProposalValidationResponse;
 use crate::agent_tools::session_mcp::{
@@ -1147,10 +1147,17 @@ async fn submit_user_input_to_helper(
     let (route_key, helper_id, forwarder) =
         resolve_helper(state, capability, "request_user_input").await?;
     let session_id = route_key.session_id.clone();
+    let interaction_route = route_key.clone();
     let _lease = state
         .session_mcp_capabilities
         .try_begin_user_input(route_key)?;
     let request_id = Uuid::new_v4().simple().to_string();
+    let interaction = begin_interaction(
+        state,
+        &interaction_route,
+        format!("session-mcp:{request_id}"),
+    )
+    .await;
     let params = serde_json::value::to_raw_value(&UserInputHelperRequest {
         request_id: request_id.clone(),
         session_id: session_id.to_string(),
@@ -1189,9 +1196,10 @@ async fn submit_user_input_to_helper(
                 error_code = ?error.code,
                 "owning Helper rejected user input request"
             );
-            return Err(
-                anyhow::Error::new(error).context("owning Helper rejected user input request")
-            );
+            let result =
+                Err(anyhow::Error::new(error).context("owning Helper rejected user input request"));
+            finish_interaction(state, interaction).await;
+            return result;
         }
         Err(_) => {
             tracing::warn!(
@@ -1204,11 +1212,19 @@ async fn submit_user_input_to_helper(
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "timed out waiting for user input"
             );
+            finish_interaction(state, interaction).await;
             anyhow::bail!("timed out waiting for user input");
         }
     };
-    let response: UserInputResponse = serde_json::from_str(helper_response.0.get())
-        .context("decode Helper user input response")?;
+    let response: UserInputResponse = match serde_json::from_str(helper_response.0.get())
+        .context("decode Helper user input response")
+    {
+        Ok(response) => response,
+        Err(error) => {
+            finish_interaction(state, interaction).await;
+            return Err(error);
+        }
+    };
     cancel_guard.disarm();
     tracing::info!(
         target: "session_mcp",
@@ -1223,6 +1239,7 @@ async fn submit_user_input_to_helper(
         elapsed_ms = started.elapsed().as_millis() as u64,
         "user input MCP call completed"
     );
+    finish_interaction(state, interaction).await;
     Ok(response)
 }
 
