@@ -737,6 +737,16 @@ void IslandWindow::_OnGetMinMaxInfo(const WPARAM /*wParam*/, const LPARAM lParam
     {
         return _OnMoving(wparam, lparam);
     }
+    case WM_ENTERSIZEMOVE:
+    {
+        WindowMoveSizeChanged.raise(true);
+        break;
+    }
+    case WM_EXITSIZEMOVE:
+    {
+        WindowMoveSizeChanged.raise(false);
+        break;
+    }
     case WM_MOVE:
     {
         WindowMoved.raise();

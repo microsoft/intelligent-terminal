@@ -204,7 +204,8 @@
             </muxc:NavigationViewItem>
 
             <muxc:NavigationViewItemHeader x:Name="ProfilesNavHeader"
-                                           x:Uid="Nav_Profiles" />
+                                           x:Uid="Nav_Profiles"
+                                           Loaded="ProfilesNavHeader_Loaded" />
 
             <muxc:NavigationViewItem x:Name="BaseLayerMenuItem"
                                      x:Uid="Nav_ProfileDefaults"
