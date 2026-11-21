@@ -226,4 +226,7 @@
   <data name="FileNotFound" xml:space="preserve">
     <value>指定されたファイルが見つかりません。</value>
   </data>
+  <data name="LocalizationWorkflowCombinedRetest" xml:space="preserve">
+    <value>ターミナルのローカライズ公開の再テスト メッセージです。</value>
+  </data>
 </root>
