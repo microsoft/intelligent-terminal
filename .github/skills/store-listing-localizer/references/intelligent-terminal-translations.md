@@ -66,9 +66,9 @@
 | pl-PL | Inteligentny Terminal |
 | pt-BR | Terminal Inteligente |
 | pt-PT | Terminal Inteligente |
-| qps-ploc | Terminal |
-| qps-ploca | Terminal |
-| qps-plocm | Terminal |
+| qps-ploc | Intelligent Terminal |
+| qps-ploca | Intelligent Terminal |
+| qps-plocm | Intelligent Terminal |
 | quz-PE | Yuyaysapa Terminal |
 | ro-RO | Terminal Inteligent |
 | ru-RU | Интеллектуальный Терминал |
