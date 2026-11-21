@@ -4,11 +4,20 @@ use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrig
 use crate::session_registry::SessionInfo;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant, SystemTime};
 
 static PROBE_GATE: LazyLock<Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(1)));
+
+struct ProbeCancellation(Arc<AtomicBool>);
+
+impl Drop for ProbeCancellation {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProbeError {
@@ -169,11 +178,12 @@ fn probe_owner(
     root: &Path,
     lookup: &impl Fn(u32) -> Result<Option<Process>, ProbeError>,
     deadline: Instant,
+    cancelled: &AtomicBool,
 ) -> Result<Option<u32>, ProbeError> {
     if !eligible(row) {
         return Ok(None);
     }
-    if Instant::now() >= deadline {
+    if cancelled.load(Ordering::Acquire) || Instant::now() >= deadline {
         return Err(ProbeError::Timeout);
     }
     let Some(root) = optional_io(root.canonicalize())? else {
@@ -190,7 +200,7 @@ fn probe_owner(
         .map_err(|_| ProbeError::Unavailable)?
         .enumerate()
     {
-        if Instant::now() >= deadline {
+        if cancelled.load(Ordering::Acquire) || Instant::now() >= deadline {
             return Err(ProbeError::Timeout);
         }
         if index >= 64 {
@@ -242,7 +252,7 @@ fn probe_owner(
             }
         }
     }
-    if Instant::now() >= deadline {
+    if cancelled.load(Ordering::Acquire) || Instant::now() >= deadline {
         return Err(ProbeError::Timeout);
     }
     Ok(owner)
@@ -253,8 +263,10 @@ fn probe_status(
     root: &Path,
     lookup: &impl Fn(u32) -> Result<Option<Process>, ProbeError>,
     deadline: Instant,
+    cancelled: &AtomicBool,
 ) -> Result<Option<AgentStatus>, ProbeError> {
-    probe_owner(row, root, lookup, deadline).map(|owner| owner.map(|_| AgentStatus::InUse))
+    probe_owner(row, root, lookup, deadline, cancelled)
+        .map(|owner| owner.map(|_| AgentStatus::InUse))
 }
 
 pub(crate) async fn owned_by_process(row: SessionInfo, pid: u32) -> Result<bool, ProbeError> {
@@ -264,12 +276,13 @@ pub(crate) async fn owned_by_process(row: SessionInfo, pid: u32) -> Result<bool,
     let Some(root) = session_root() else {
         return Ok(false);
     };
-    run_probe(PROBE_GATE.clone(), move || {
+    run_probe(PROBE_GATE.clone(), move |cancelled| {
         probe_owner(
             &row,
             &root,
             &native_process,
             Instant::now() + Duration::from_secs(2),
+            &cancelled,
         )
         .map(|owner| owner == Some(pid))
     })
@@ -278,24 +291,24 @@ pub(crate) async fn owned_by_process(row: SessionInfo, pid: u32) -> Result<bool,
 
 async fn run_probe<T: Send + 'static>(
     gate: Arc<tokio::sync::Semaphore>,
-    work: impl FnOnce() -> T + Send + 'static,
+    work: impl FnOnce(Arc<AtomicBool>) -> T + Send + 'static,
 ) -> Result<T, ProbeError> {
     let permit = gate.try_acquire_owned().map_err(|_| ProbeError::Busy)?;
-    let task = tokio::task::spawn_blocking(move || {
-        // Keep admission occupied even after the async waiter times out or is dropped.
-        let _permit = permit;
-        work()
-    });
-    tokio::time::timeout(Duration::from_secs(2), task)
-        .await
-        .map_err(|_| ProbeError::Timeout)?
-        .map_err(|_| ProbeError::Unavailable)
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let _cancellation = ProbeCancellation(cancelled.clone());
+    let task = tokio::task::spawn_blocking(move || work(cancelled));
+    let result = match tokio::time::timeout(Duration::from_secs(2), task).await {
+        Ok(result) => result.map_err(|_| ProbeError::Unavailable),
+        Err(_) => Err(ProbeError::Timeout),
+    };
+    drop(permit);
+    result
 }
 
 pub(crate) async fn enrich_snapshot(rows: &mut Vec<SessionInfo>) {
     let Some(root) = session_root() else { return };
     let snapshot = rows.clone();
-    let result = run_probe(PROBE_GATE.clone(), move || {
+    let result = run_probe(PROBE_GATE.clone(), move |cancelled| {
         let mut rows = snapshot;
         let deadline = Instant::now() + Duration::from_secs(2);
         let mut order: Vec<_> = (0..rows.len())
@@ -303,8 +316,11 @@ pub(crate) async fn enrich_snapshot(rows: &mut Vec<SessionInfo>) {
             .collect();
         order.sort_by_key(|index| std::cmp::Reverse(rows[*index].last_activity_at_ms));
         for index in order {
+            if cancelled.load(Ordering::Acquire) {
+                return rows;
+            }
             let row = &mut rows[index];
-            match probe_status(row, &root, &native_process, deadline) {
+            match probe_status(row, &root, &native_process, deadline, &cancelled) {
                 Ok(Some(in_use)) => row.status = Some(in_use),
                 Ok(None) => {}
                 Err(error) => {
@@ -330,7 +346,13 @@ fn status(
     lookup: &impl Fn(u32) -> Option<Process>,
     deadline: Instant,
 ) -> Option<AgentStatus> {
-    probe_status(row, root, &|pid| Ok(lookup(pid)), deadline)
+    probe_status(
+        row,
+        root,
+        &|pid| Ok(lookup(pid)),
+        deadline,
+        &AtomicBool::new(false),
+    )
         .ok()
         .flatten()
 }
