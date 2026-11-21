@@ -2741,6 +2741,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void TermControl::EnableAgentRightClickContextMenu(bool enabled)
     {
+        _agentRightClickContextMenuEnabled = enabled;
         get_self<ControlInteractivity>(_interactivity)->EnableAgentRightClickContextMenu(enabled);
     }
 
@@ -4204,9 +4205,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         SelectCommandWithSelectionButton().Visibility(shouldShowSelectCommand ? Visibility::Visible : Visibility::Collapsed);
         SelectOutputWithSelectionButton().Visibility(shouldShowSelectOutput ? Visibility::Visible : Visibility::Collapsed);
 
-        (_core.HasSelection() ? SelectionContextMenu() :
-                                ContextMenu())
-            .ShowAt(*this, myOption);
+        auto menu{ _core.HasSelection() ? SelectionContextMenu() : ContextMenu() };
+        if (_agentRightClickContextMenuEnabled)
+        {
+            // Agent panes do not use the shell-specific secondary commands.
+            // Hiding them also avoids the CommandBarFlyout overflow flyout,
+            // which can crash when opened from a text selection.
+            menu.SecondaryCommands().Clear();
+        }
+        menu.ShowAt(*this, myOption);
     }
 
     void TermControl::ShowContextMenu()
