@@ -62,10 +62,11 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 .unwrap_or_default();
             if let Some(q) = tool_names.iter().find(|t| is_user_input_tool(t)) {
                 // The agent is asking the user (e.g. AskUserQuestion).
-                vec![SessionEvent::Notification {
+                vec![SessionEvent::InteractionNotification {
                     key: key.clone(),
                     message: (*q).to_string(),
                     timestamp_ms: None,
+                    interaction_epoch: None,
                 }]
             } else {
                 // Running (or streaming toward) a tool — still Working.
@@ -173,10 +174,11 @@ mod tests {
         );
         assert_eq!(
             classify(&r, &"k".to_string()),
-            vec![SessionEvent::Notification {
+            vec![SessionEvent::InteractionNotification {
                 key: "k".to_string(),
                 message: "AskUserQuestion".to_string(),
                 timestamp_ms: None,
+                interaction_epoch: None,
             }]
         );
     }

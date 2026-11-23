@@ -41,9 +41,9 @@ See `doc/specs/Multi-window-agent-pane.md` for the detailed lifecycle and
 
 ## Supported agents and settings
 
-Built-in ACP and delegation providers are Copilot, Claude, Codex, Gemini, and
-OpenCode. Custom providers use a `custom:<name>` ID plus the matching custom
-command setting.
+Built-in ACP and delegation providers are Copilot, Claude, Codex, Gemini,
+OpenCode, and Antigravity. Custom providers use a `custom:<name>` ID plus the
+matching custom command setting.
 
 ```jsonc
 {

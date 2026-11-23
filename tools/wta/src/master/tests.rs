@@ -2500,6 +2500,10 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
                 ) {
                     let advisory = advisory.unwrap();
                     assert!(advisory.agent_session_id.is_none());
+                    assert!(advisory.session_universe.is_none());
+                    assert!(!advisory.canonical_working);
+                    assert!(!advisory.canonical_error);
+                    assert!(!advisory.input_required);
                     assert_eq!(advisory.pane_id, pane.to_string());
                     assert_eq!(advisory.inferred_history_key, row.history_row_key());
                     assert!(
@@ -2524,6 +2528,237 @@ async fn native_wsl_lease_correlation_is_read_only_and_rechecks_lifetime() {
             }
         })
         .await;
+}
+
+#[test]
+fn interaction_ledger_tracks_exact_tokens_and_finishes_epoch_once() {
+    let ledger = Arc::new(std::sync::Mutex::new(InteractionLedger::default()));
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new("interaction-session"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            "interaction-session",
+            None,
+        ),
+    };
+    let route = InteractionRouteKey {
+        identity: identity.clone(),
+        agent_instance_id: uuid::Uuid::new_v4(),
+    };
+    let first = InteractionLease::begin(Arc::clone(&ledger), route.clone(), "request:first".into());
+    let second = InteractionLease::begin(Arc::clone(&ledger), route, "request:second".into());
+    assert_eq!(first.epoch(), second.epoch());
+    assert_eq!(
+        ledger.lock().unwrap().active_epoch_for(&identity),
+        Some(first.epoch())
+    );
+    let mut candidate = crate::agent_sessions::SessionEvent::QualifiedHook {
+        identity: identity.clone(),
+        pane_session_id: "pane".into(),
+        event: crate::agent_sessions::QualifiedHookActivity::Notification {
+            message: "Approve?".into(),
+            timestamp_ms: None,
+            interaction_candidate: true,
+            interaction_epoch: None,
+        },
+    };
+    bind_interaction_epoch(&ledger, &mut candidate);
+    assert!(matches!(
+        candidate,
+        crate::agent_sessions::SessionEvent::QualifiedHook {
+            event: crate::agent_sessions::QualifiedHookActivity::Notification {
+                interaction_candidate: true,
+                interaction_epoch: Some(epoch),
+                ..
+            },
+            ..
+        } if epoch == first.epoch()
+    ));
+
+    assert!(!first.finish().epoch_empty);
+    assert!(second.finish().epoch_empty);
+    assert_eq!(ledger.lock().unwrap().active_epoch_for(&identity), None);
+}
+
+#[test]
+fn interaction_ledger_drop_removes_only_its_exact_token() {
+    let ledger = Arc::new(std::sync::Mutex::new(InteractionLedger::default()));
+    let identity = crate::session_registry::SessionIdentity {
+        session_id: acp::schema::v1::SessionId::new("interaction-session"),
+        history_key: crate::session_registry::HistoryRowKey::new(
+            "copilot",
+            crate::agent_sessions::SessionLocation::Host,
+            "interaction-session",
+            None,
+        ),
+    };
+    let route = InteractionRouteKey {
+        identity: identity.clone(),
+        agent_instance_id: uuid::Uuid::new_v4(),
+    };
+    let kept = InteractionLease::begin(Arc::clone(&ledger), route.clone(), "request:kept".into());
+    let dropped = InteractionLease::begin(Arc::clone(&ledger), route, "request:dropped".into());
+    let epoch = kept.epoch();
+    drop(dropped);
+
+    assert_eq!(
+        ledger.lock().unwrap().active_epoch_for(&identity),
+        Some(epoch)
+    );
+    assert!(kept.finish().epoch_empty);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn interaction_begin_after_candidate_still_clears_matching_attention() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation};
+    use crate::session_registry::SessionInfo;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let agent = unbound_test_agent("interaction-agent");
+            add_test_agent_to_pool(&state, &agent).await;
+            let sid = acp::schema::v1::SessionId::new("interaction-session");
+            let mut row = SessionInfo::new(sid.clone(), std::path::PathBuf::from(r"C:\repo"));
+            row.provider_id = Some("copilot".into());
+            row.location = SessionLocation::Host;
+            row.cli_source = Some(CliSource::Copilot);
+            row.status = Some(AgentStatus::Working);
+            row.current_tool = Some("ask_user".into());
+            state.registry.upsert(row).await;
+
+            assert!(
+                state
+                    .registry
+                    .apply_event(
+                        crate::agent_sessions::SessionEvent::InteractionNotification {
+                            key: sid.to_string(),
+                            message: "Which folder?".into(),
+                            timestamp_ms: None,
+                            interaction_epoch: None,
+                        }
+                    )
+                    .await
+            );
+            let lease = begin_interaction(
+                &state,
+                &LiveRouteKey::new(agent.instance_id, sid.clone()),
+                "session-mcp:request".into(),
+            )
+            .await
+            .expect("exact agent route should register an interaction");
+            finish_interaction(&state, Some(lease)).await;
+
+            let row = state.registry.lookup(&sid).await.unwrap();
+            assert_eq!(row.status, Some(AgentStatus::Working));
+            assert!(row.current_tool.is_none());
+            assert!(row.attention_reason.is_none());
+        })
+        .await;
+}
+
+async fn current_session_is_hook_owned(
+    state: &Arc<MasterStateInner>,
+    sid: &acp::schema::v1::SessionId,
+) -> bool {
+    let Some(row) = state.registry.lookup(sid).await else {
+        return false;
+    };
+    state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&crate::session_registry::SessionIdentity::from_info(&row))
+}
+
+#[tokio::test]
+async fn program_status_dispatch_preserves_hook_authority_and_enriches_pane_metadata() {
+    use crate::agent_sessions::{AgentStatus, SessionLocation};
+    use crate::session_registry::SessionInfo;
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    for tracking_enabled in [false, true] {
+        let state = make_state();
+        let pane = "00112233-4455-6677-8899-aabbccddeeff";
+        let sid = acp::schema::v1::SessionId::new("osc-hook-owner");
+        let mut row = SessionInfo::new(sid.clone(), std::path::PathBuf::from(r"C:\repo"))
+            .with_pane_session_id(pane);
+        row.provider_id = Some("copilot".into());
+        row.location = SessionLocation::Host;
+        row.born_bound_pane = true;
+        row.status = Some(AgentStatus::Error);
+        let identity = crate::session_registry::SessionIdentity::from_info(&row);
+        state.registry.upsert(row).await;
+        state.hook_owned.lock().await.insert(identity.clone());
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method":"native_agent_observation", "params": {
+                    "pane_id":pane,"provider_id":"copilot","window_id":7,"tab_id":"tab-7",
+                    "mode_epoch":1,"kind":"reset","tracking_enabled":tracking_enabled
+                }
+            }),
+        )
+        .await;
+        let mut row = state.registry.lookup(&sid).await.unwrap();
+        row.status = Some(AgentStatus::Error);
+        state.registry.upsert(row).await;
+        let report = |revision| {
+            serde_json::json!({
+                "method":"native_agent_observation", "params": {
+                    "pane_id":pane,"provider_id":"copilot","window_id":7,"tab_id":"tab-7",
+                    "mode_epoch":1,"kind":"program_status","canonical_owned":false,
+                    "program_status":{"revision":revision,"observed":true,"state":"working","working":1}
+                }
+            })
+        };
+        handle_master_wt_event(&state, report(1)).await;
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Error)
+        );
+        let panes = state.registry.pane_status_snapshot().await.0;
+        assert_eq!(panes[0].program_status.as_ref().unwrap().working, 1);
+        let mut row = state.registry.lookup(&sid).await.unwrap();
+        row.status = Some(AgentStatus::Working);
+        state.registry.upsert(row).await;
+        for (revision, status) in [(2, serde_json::json!("done")), (3, serde_json::Value::Null)] {
+            let mut completion = report(revision);
+            completion["params"]["program_status"] = serde_json::json!({
+                "revision": revision, "observed": true, "state": status,
+                "done": if revision == 2 { 1 } else { 0 }, "unseen_done": 1
+            });
+            handle_master_wt_event(&state, completion).await;
+            let response = handle_sessions_list_with_probe(
+                &state,
+                None,
+                &Default::default(),
+                |rows| async move { rows },
+            )
+            .await
+            .unwrap();
+            let response =
+                crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+            let pane = serde_json::to_value(&response.pane_statuses[0]).unwrap();
+            assert_eq!(pane["canonical_working"], true);
+            assert_eq!(response.pane_statuses[0].status, AgentStatus::Working);
+        }
+        state.hook_owned.lock().await.remove(&identity);
+        handle_master_wt_event(&state, report(4)).await;
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
+        let response =
+            handle_sessions_list_with_probe(&state, None, &Default::default(), |rows| async move {
+                rows
+            })
+            .await
+            .unwrap();
+        let response = crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+        let pane = serde_json::to_value(&response.pane_statuses[0]).unwrap();
+        assert_eq!(pane["canonical_working"], false);
+    }
 }
 
 #[tokio::test]
@@ -2842,7 +3077,11 @@ async fn native_pinned_launch_registration_after_reset_preserves_identity_and_ac
             assert_eq!(native.agent_session_id.as_deref(), Some("pinned-launch"));
             assert!(native.inferred_history_key.is_none());
             assert!(state.born_bound.lock().await.contains(&sid));
-            assert!(!state.hook_owned.lock().await.contains(&sid));
+            assert!(!state
+                .hook_owned
+                .lock()
+                .await
+                .contains(&crate::session_registry::SessionIdentity::from_info(&row)));
 
             let unrelated = SessionEvent::SessionStarted {
                 key: "unrelated-hook".into(),
@@ -3030,7 +3269,11 @@ async fn born_bound_wsl_replay_preserves_live_hook_and_stamps_legacy_location() 
     );
     assert_eq!(row.status, Some(AgentStatus::Working));
     assert_eq!(row.title.as_deref(), Some("Live title"));
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state
+        .hook_owned
+        .lock()
+        .await
+        .contains(&crate::session_registry::SessionIdentity::from_info(&row)));
     assert!(!state.born_bound.lock().await.contains(&sid));
 }
 
@@ -3377,6 +3620,7 @@ fn make_state_with_retirement_pending_timeout(
         session_to_helper: Mutex::new(LiveRouteTable::default()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
+        interactions: Arc::new(std::sync::Mutex::new(InteractionLedger::default())),
         pending_usage: Mutex::new(PendingUsageTable::default()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -13967,7 +14211,7 @@ async fn native_resume_tracking_enabled_born_replay_preserves_owner_and_title_wo
                     .assign_resume_pane_identity(&identity, "pane-b".into())
                     .await
             );
-            state.hook_owned.lock().await.insert(sid.clone());
+            state.hook_owned.lock().await.insert(identity.clone());
         } else {
             state.born_bound.lock().await.insert(sid.clone());
         }
@@ -14168,7 +14412,7 @@ async fn sidebar_cli_resume_enables_watcher_activity_for_new_generation() {
         let identity = SessionIdentity::from_info(&row);
         state.registry.upsert(row).await;
         if stale_hook {
-            state.hook_owned.lock().await.insert(sid.clone());
+            state.hook_owned.lock().await.insert(identity.clone());
         }
         let response = execute_session_activation(
             &state,
@@ -14895,7 +15139,7 @@ async fn sidebar_cli_resume_accepts_a_matching_hook_binding_without_resetting_ac
                     state.registry.lookup_identity(&identity).await.unwrap(),
                     current
                 );
-                assert!(state.hook_owned.lock().await.contains(&sid));
+                assert!(state.hook_owned.lock().await.contains(&identity));
                 assert!(!state.born_bound.lock().await.contains(&sid));
                 apply_watcher_event(
                     &state,
@@ -15156,6 +15400,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         session_to_helper: Mutex::new(LiveRouteTable::default()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
+        interactions: Arc::new(std::sync::Mutex::new(InteractionLedger::default())),
         pending_usage: Mutex::new(PendingUsageTable::default()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
@@ -21360,7 +21605,7 @@ async fn native_off_watcher_admits_exact_copilot_input_activity() {
         AgentStatus::Attention
     );
     let identity = crate::session_registry::SessionIdentity::from_info(&row);
-    state.hook_owned.lock().await.insert(sid.clone());
+    state.hook_owned.lock().await.insert(identity.clone());
     let mut collision = row.clone();
     collision.provider_id = Some("claude".into());
     collision.pane_session_id = None;
@@ -21589,13 +21834,6 @@ async fn copilot_completion_hooks_resume_activity_without_file_events() {
             Some(AgentStatus::Attention)
         );
         crate::wt_protocol_events::take_test_published_events();
-        let before = state.registry.lookup(&sid).await.unwrap();
-        handle_master_wt_event(&state, hook("agent.tool.finished")).await;
-        assert_eq!(state.registry.lookup(&sid).await.unwrap(), before);
-        assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
-        let mut expired = before;
-        expired.attention_cooldown_until_ms = Some(0);
-        state.registry.upsert(expired).await;
         handle_master_wt_event(&state, hook("agent.tool.finished")).await;
         let row = state.registry.lookup(&sid).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Working));
@@ -21731,24 +21969,28 @@ async fn copilot_stale_tool_return_preserves_master_waiting() {
 async fn watcher_event_dropped_when_session_is_hook_owned() {
     // A session a hook (or #266 born-bound) already claimed is recorded in
     // `hook_owned`. The watcher is a fallback and must not double-track it:
-    // its event is dropped before any row is created.
+    // its event is dropped before the hook-owned row can be changed.
     let state = make_state();
-    state
-        .hook_owned
-        .lock()
-        .await
-        .insert(acp::schema::v1::SessionId::new("sid-hooked".to_string()));
+    handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid-hooked".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Codex,
+            pane_session_id: "hook-pane".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        },
+        false,
+    )
+    .await
+    .expect("valid session hook");
+    let sid = acp::schema::v1::SessionId::new("sid-hooked");
 
     apply_watcher_event(&state, codex_emitted("sid-hooked")).await;
 
-    assert!(
-        state
-            .registry
-            .lookup(&acp::schema::v1::SessionId::new("sid-hooked".to_string()))
-            .await
-            .is_none(),
-        "watcher must not create a row for a hook-owned session"
-    );
+    let row = state.registry.lookup(&sid).await.expect("hook-owned row");
+    assert_eq!(row.pane_session_id.as_deref(), Some("hook-pane"));
+    assert!(current_session_is_hook_owned(&state, &sid).await);
 }
 
 #[tokio::test]
@@ -21795,12 +22037,9 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
         .await
         .expect("valid session_hook accepted");
 
+    let sid = acp::schema::v1::SessionId::new("sid-claimed");
     assert!(
-        state
-            .hook_owned
-            .lock()
-            .await
-            .contains(&acp::schema::v1::SessionId::new("sid-claimed".to_string())),
+        current_session_is_hook_owned(&state, &sid).await,
         "a keyed session_hook event must mark the session hook-owned"
     );
 
@@ -21849,7 +22088,7 @@ async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
         assert_eq!(row.status, Some(AgentStatus::Idle));
         assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
         assert!(state.born_bound.lock().await.contains(&sid));
-        assert!(!state.hook_owned.lock().await.contains(&sid));
+        assert!(!current_session_is_hook_owned(&state, &sid).await);
     }
 }
 
@@ -21890,7 +22129,7 @@ async fn restored_session_birth_preserves_an_earlier_live_hook() {
     assert_eq!(row.status, Some(AgentStatus::Working));
     assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
     assert_eq!(row.title.as_deref(), Some("Live conversation title"));
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(current_session_is_hook_owned(&state, &sid).await);
     assert!(!state.born_bound.lock().await.contains(&sid));
 }
 
@@ -21956,7 +22195,7 @@ async fn restored_session_birth_normalizes_pane_identity_and_preserves_live_hook
             assert_eq!(row.current_tool, before.current_tool);
             assert_eq!(row.attention_reason, before.attention_reason);
             assert_eq!(row.pane_session_id.as_deref(), Some(plain));
-            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(current_session_is_hook_owned(&state, &sid).await);
             assert!(!state.born_bound.lock().await.contains(&sid));
             assert!(
                 state
@@ -21997,7 +22236,7 @@ async fn session_born_bound_marks_born_bound_not_hook_owned() {
         "born-bound registration must record the session in `born_bound`"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !current_session_is_hook_owned(&state, &sid).await,
         "born-bound is binding-only — must NOT be hook-owned"
     );
 }
@@ -22174,7 +22413,7 @@ async fn real_hook_takes_over_born_bound_session() {
         .expect("real hook accepted");
 
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        current_session_is_hook_owned(&state, &sid).await,
         "the real hook must take ownership"
     );
     assert!(
@@ -22266,7 +22505,8 @@ async fn native_resume_in_use_authoritative_owner_is_not_normalized() {
             foreign
         );
         if authority == "hook" {
-            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(state.hook_owned.lock().await.contains(&identity));
+            assert!(!state.hook_owned.lock().await.contains(&foreign_identity));
             // The foreign snapshot must not borrow the other provider's raw hook claim.
             assert!(
                 apply_master_session_event(
@@ -22296,7 +22536,8 @@ async fn native_resume_in_use_authoritative_owner_is_not_normalized() {
                 state.registry.pane_status_snapshot().await.0,
                 vec![owned_before.clone()]
             );
-            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(state.hook_owned.lock().await.contains(&identity));
+            assert!(!state.hook_owned.lock().await.contains(&foreign_identity));
         }
     }
 }
@@ -22320,7 +22561,7 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
         let identity_b = SessionIdentity::from_info(&b);
         state.registry.upsert(a).await;
         state.registry.upsert(b).await;
-        state.hook_owned.lock().await.insert(sid.clone());
+        state.hook_owned.lock().await.insert(identity_a.clone());
         assert!(
             !apply_master_session_event(
                 &state,
@@ -22333,7 +22574,8 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
             .await
             .0
         );
-        assert!(state.hook_owned.lock().await.contains(&sid));
+        assert!(state.hook_owned.lock().await.contains(&identity_a));
+        assert!(!state.hook_owned.lock().await.contains(&identity_b));
         for identity in [&identity_a, &identity_b] {
             assert!(
                 apply_master_session_event(
@@ -22365,21 +22607,29 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
                 .await
                 .0
             );
+        } else {
+            assert!(
+                state
+                    .registry
+                    .assign_resume_pane_identity(&identity_a, "hook-pane-a".into())
+                    .await
+            );
         }
         let foreign_before_hook = state.registry.lookup_identity(&identity_b).await.unwrap();
-        handle_session_hook(
-            &state,
-            SessionEvent::SessionStarted {
-                key: sid.to_string(),
-                cli_source: CliSource::Copilot,
-                pane_session_id: "hook-pane-a".into(),
-                cwd: PathBuf::from("C:\\repo"),
-                title: "Hook A".into(),
-            },
-            false,
-        )
-        .await
-        .unwrap();
+        assert!(
+            apply_master_session_event(
+                &state,
+                SessionEvent::ToolStarting {
+                    key: sid.to_string(),
+                    tool_name: "test".into(),
+                }
+                .qualify_hook(identity_a.clone(), "hook-pane-a"),
+                false,
+                crate::agent_sessions::SessionLocation::Host,
+            )
+            .await
+            .0
+        );
         assert_eq!(
             state.registry.lookup_identity(&identity_b).await.unwrap(),
             foreign_before_hook
@@ -22390,7 +22640,10 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
             .await
             .unwrap();
         assert_eq!(SessionIdentity::from_info(&pane_owner), identity_a);
-        assert!(!pane_owner.born_bound_pane);
+        assert!(
+            state.hook_owned.lock().await.contains(&identity_a),
+            "qualified hook must claim A before late resume events"
+        );
         assert!(
             !apply_master_session_event(
                 &state,
@@ -22407,6 +22660,10 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
             .0
         );
         assert!(
+            state.hook_owned.lock().await.contains(&identity_a),
+            "late failed receipt must preserve A hook ownership"
+        );
+        assert!(
             apply_master_session_event(
                 &state,
                 SessionEvent::QualifiedResume {
@@ -22420,6 +22677,10 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
             )
             .await
             .0
+        );
+        assert!(
+            state.hook_owned.lock().await.contains(&identity_a),
+            "B receipt must not clear A hook ownership"
         );
         assert_eq!(
             state
@@ -22441,7 +22702,8 @@ async fn native_resume_qualified_collision_publication_and_hook_wins() {
                 .as_deref(),
             Some("receipt-pane-b")
         );
-        assert!(state.hook_owned.lock().await.contains(&sid));
+        assert!(state.hook_owned.lock().await.contains(&identity_a));
+        assert!(!state.hook_owned.lock().await.contains(&identity_b));
     }
 }
 
@@ -22465,7 +22727,7 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         "ResumeDispatched must be born_bound"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !current_session_is_hook_owned(&state, &sid).await,
         "ResumeDispatched must NOT be hook_owned"
     );
 
@@ -22480,7 +22742,7 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         state.born_bound.lock().await.contains(&sid),
         "ResumePaneAssigned must be born_bound"
     );
-    assert!(!state.hook_owned.lock().await.contains(&sid));
+    assert!(!current_session_is_hook_owned(&state, &sid).await);
 }
 
 #[tokio::test]
@@ -22505,7 +22767,7 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
     handle_session_hook(&state, first_run, false)
         .await
         .expect("real hook accepted");
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(current_session_is_hook_owned(&state, &sid).await);
 
     let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
         key: "sid-rerun".to_string(),
@@ -22515,7 +22777,7 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
         .expect("resume dispatched accepted");
 
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !current_session_is_hook_owned(&state, &sid).await,
         "the resume must drop the previous run's hook_owned claim, or the \
          watcher's status fallback stays suppressed for the whole session"
     );
@@ -22539,7 +22801,9 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
     handle_session_hook(&state, earlier, false)
         .await
         .expect("real hook accepted");
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(state.hook_owned.lock().await.contains(
+        &crate::session_registry::SessionIdentity::legacy(sid.clone())
+    ));
 
     let born = crate::agent_sessions::SessionEvent::SessionStarted {
         key: "sid-delegate".to_string(),
@@ -22552,7 +22816,7 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
         .await
         .expect("born-bound accepted");
 
-    assert!(!state.hook_owned.lock().await.contains(&sid));
+    assert!(!current_session_is_hook_owned(&state, &sid).await);
     assert!(state.born_bound.lock().await.contains(&sid));
 }
 
@@ -22835,7 +23099,9 @@ async fn copilot_prompt_recovery_after_missing_start_publishes_full_binding() {
     assert_eq!(recovered.pane_session_id.as_deref(), Some(pane));
     assert_eq!(recovered.cwd, PathBuf::from("C:\\current"));
     assert_eq!(recovered.title, expected.title);
-    assert!(state.hook_owned.lock().await.contains(&expected.session_id));
+    assert!(state.hook_owned.lock().await.contains(
+        &crate::session_registry::SessionIdentity::from_info(&recovered)
+    ));
     assert!(matches!(
         crate::session_registry::parse_ext_notification(&notifications.try_recv().unwrap()),
         crate::session_registry::WtaExtNotification::SessionsChanged
@@ -23048,7 +23314,7 @@ async fn master_com_hook_source_preserves_known_wsl_without_external_lookup() {
             distro: "Ubuntu".into()
         }
     );
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(current_session_is_hook_owned(&state, &sid).await);
     assert!(wt.calls().is_empty());
 }
 
@@ -23734,7 +24000,7 @@ async fn master_com_agent_event_routes_directly_into_the_registry() {
     );
     assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        current_session_is_hook_owned(&state, &sid).await,
         "a real COM hook must suppress the hookless watcher just like the old \
          helper-forwarded path did"
     );
@@ -24230,7 +24496,7 @@ async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
         }),
     )
     .await;
-    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(current_session_is_hook_owned(&state, &sid).await);
 
     let response = handle_session_hook(
         &state,
@@ -24248,7 +24514,7 @@ async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
         "the callback is a no-op because the hook already bound this pane"
     );
     assert!(
-        state.hook_owned.lock().await.contains(&sid),
+        current_session_is_hook_owned(&state, &sid).await,
         "a no-op binding callback must not erase current hook ownership"
     );
     assert!(
@@ -24287,7 +24553,7 @@ async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
         "a session that only ever reported its end must not materialize"
     );
     assert!(
-        !state.hook_owned.lock().await.contains(&sid),
+        !current_session_is_hook_owned(&state, &sid).await,
         "a no-op terminal event must not claim watcher ownership"
     );
 }
@@ -24395,11 +24661,12 @@ async fn qualified_hook_routing_master_com_and_forwarded_owner_context() {
             .await
             .0
     );
-    assert!(!state
-        .hook_owned
-        .lock()
-        .await
-        .contains(&SessionId::new("hook-collision")));
+    {
+        let hook_owned = state.hook_owned.lock().await;
+        assert!(identities
+            .iter()
+            .all(|(identity, _, _)| hook_owned.contains(identity)));
+    }
     let wrong_owner = SessionEvent::ToolStarting {
         key: "hook-collision".into(),
         tool_name: "foreign".into(),
@@ -24441,23 +24708,114 @@ async fn qualified_hook_routing_master_com_and_forwarded_owner_context() {
         key: "hook-collision".into(),
         tool_name: "foreign".into(),
     }
-    .qualify_hook(conflicting_identity, "host-copilot");
+    .qualify_hook(conflicting_identity.clone(), "host-copilot");
     assert!(
         !apply_master_session_event(&state, conflicting_event, false, SessionLocation::Host)
             .await
             .0
     );
     assert_eq!(state.registry.snapshot().await, before);
-    assert!(!state
-        .hook_owned
-        .lock()
-        .await
-        .contains(&SessionId::new("hook-collision")));
+    {
+        let hook_owned = state.hook_owned.lock().await;
+        assert!(identities
+            .iter()
+            .all(|(identity, _, _)| hook_owned.contains(identity)));
+        assert!(!hook_owned.contains(&conflicting_identity));
+    }
     assert!(state
         .born_bound
         .lock()
         .await
         .contains(&SessionId::new("hook-collision")));
+}
+
+#[tokio::test]
+async fn qualified_hook_owner_blocks_osc_completion_for_only_its_colliding_identity() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+
+    let state = make_state();
+    let sid = SessionId::new("hook-owner-collision");
+    let mut copilot = SessionInfo::new(sid.clone(), PathBuf::from("C:\\repo"));
+    copilot.provider_id = Some("copilot".into());
+    copilot.cli_source = Some(CliSource::Copilot);
+    copilot.location = SessionLocation::Host;
+    copilot.status = Some(AgentStatus::Idle);
+    copilot.pane_session_id = Some("copilot-pane".into());
+    let copilot_identity = SessionIdentity::from_info(&copilot);
+
+    let mut claude = copilot.clone();
+    claude.provider_id = Some("claude".into());
+    claude.cli_source = Some(CliSource::Claude);
+    claude.pane_session_id = Some("claude-pane".into());
+    let claude_identity = SessionIdentity::from_info(&claude);
+    state.registry.upsert(copilot).await;
+    state.registry.upsert(claude).await;
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method":"native_agent_observation", "params":{
+                "pane_id":"copilot-pane", "provider_id":"copilot",
+                "agent_session_id":"hook-owner-collision", "location":"Host",
+                "window_id":0, "tab_id":"tab", "mode_epoch":1,
+                "kind":"reset", "tracking_enabled":false
+            }
+        }),
+    )
+    .await;
+    assert!(
+        apply_master_session_event(
+            &state,
+            SessionEvent::ToolStarting {
+                key: sid.to_string(),
+                tool_name: "test".into(),
+            }
+            .qualify_hook(copilot_identity.clone(), "copilot-pane"),
+            false,
+            SessionLocation::Host,
+        )
+        .await
+        .0
+    );
+    assert!(state.hook_owned.lock().await.contains(&copilot_identity));
+    assert!(!state.hook_owned.lock().await.contains(&claude_identity));
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method":"native_agent_observation", "params":{
+                "pane_id":"copilot-pane", "provider_id":"copilot",
+                "agent_session_id":"hook-owner-collision", "location":"Host",
+                "window_id":0, "tab_id":"tab", "mode_epoch":1,
+                "kind":"program_status", "canonical_owned":false,
+                "program_status":{
+                    "revision":1, "observed":true, "state":"done",
+                    "done":1, "unseen_done":1
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&copilot_identity)
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Working)
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup_identity(&claude_identity)
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Idle)
+    );
 }
 
 #[tokio::test]

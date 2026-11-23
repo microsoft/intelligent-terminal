@@ -730,7 +730,7 @@
                                         IsEnabled="False"
                                         Style="{StaticResource RichTabMetadataSectionStyle}" />
                         <ToggleMenuFlyoutItem x:Name="RichTabAgentStatusVisibleItem"
-                                              x:Uid="VerticalTabsMetadataAgentStatus"
+                                              x:Uid="VerticalTabsMetadataStatus"
                                               Click="OnRichTabAgentStatusVisibleClick"
                                               IsChecked="True" />
                         <ToggleMenuFlyoutItem x:Name="RichTabWorkingDirectoryVisibleItem"
@@ -1094,7 +1094,7 @@
                                                             BorderThickness="0"
                                                             Click="OnPaneActivateClick"
                                                             FocusVisualMargin="{StaticResource SidebarPaneFocusInset}"
-                                                            ToolTipService.ToolTip="{x:Bind Title, Mode=OneWay}">
+                                                            ToolTipService.ToolTip="{x:Bind ProgramStatusDetails, Mode=OneWay}">
                                                         <Button.Resources>
                                                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver"
                                                                              Color="Transparent" />

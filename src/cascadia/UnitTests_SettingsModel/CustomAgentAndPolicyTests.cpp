@@ -894,6 +894,20 @@ namespace SettingsModelUnitTests
         std::ofstream{ shim }.put('\n');
         VERIFY_ARE_EQUAL(shim.native(), Agents::Discover(path).at(L"claude").native());
         VERIFY_IS_TRUE(Agents::Discover(L"").empty());
+        const auto openCodeShim = early / L"opencode.cmd";
+        const auto openCodeExe = late / L"opencode.exe";
+        std::ofstream{ openCodeShim }.put('\n');
+        std::ofstream{ openCodeExe }.put('\n');
+        VERIFY_ARE_EQUAL(openCodeShim.native(), Agents::ResolveExecutable(L"opencode", path).native());
+        auto profile = winrt::make_self<implementation::Profile>();
+        profile->AgentProfileId(L"opencode");
+        VERIFY_ARE_EQUAL(Agents::BuildCommand(openCodeShim.native(), L"opencode", {}, {}, {}), Agents::Command(*profile, true, path));
+        std::ofstream{ early / L"opencode.exe" }.put('\n');
+        VERIFY_ARE_EQUAL((early / L"opencode.exe").native(), Agents::ResolveExecutable(L"opencode", path).native());
+        std::filesystem::remove(early / L"opencode.exe");
+        std::filesystem::remove(openCodeShim);
+        std::filesystem::remove(openCodeExe);
+        VERIFY_IS_TRUE(Agents::ResolveExecutable(L"opencode", path).empty());
         std::ofstream{ late / L"agy.exe" }.put('\n');
         VERIFY_ARE_EQUAL((late / L"agy.exe").native(), Agents::Discover(path).at(L"antigravity").native());
     }

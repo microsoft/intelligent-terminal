@@ -112,6 +112,7 @@ namespace TerminalApp
         IVector<TextEllipsisRange> MetadataEllipsisRanges;
         // Append new members to preserve the existing default-interface slots.
         String ActivationAutomationName { get; };
+        String ProgramStatusDetails;
     };
 
     [default_interface] runtimeclass TabStripDisplayItem : Windows.UI.Xaml.Data.INotifyPropertyChanged

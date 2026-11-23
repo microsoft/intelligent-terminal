@@ -330,16 +330,17 @@ fn spawn_host_agent_process(
         .copied()
         .ok_or_else(|| anyhow!("empty agent command"))?;
     let args: Vec<&str> = parts[1..].to_vec();
-    let resolved_program = if resolve_spawn_profile(agent_cmd, agent_id).id
-        == crate::agent_registry::ANTIGRAVITY_AGENT_ID
-        && raw_program.eq_ignore_ascii_case("agy_acp_server.exe")
-    {
-        crate::agent_check::find_acp_exe(crate::agent_registry::ANTIGRAVITY_AGENT_ID)
-            .context("Antigravity ACP is not ready after dependency preparation")?
-    } else {
-        crate::agent_registry::resolve_bare_agent_name(raw_program)
-    };
-    let needs_cmd = crate::coordinator::needs_shell_launch(&resolved_program);
+    let base_path = crate::agent_check::spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"));
+    let resolution_cwd =
+        std::env::current_dir().context("failed to capture agent resolution directory")?;
+    let (mut cmd, resolved_program) = host_agent_command(
+        raw_program,
+        resolve_spawn_profile(agent_cmd, agent_id),
+        base_path.as_deref().unwrap_or_default(),
+        &resolution_cwd,
+    )?;
 
     let is_npx = resolved_program.eq_ignore_ascii_case("npx")
         || resolved_program.eq_ignore_ascii_case("npx.cmd")
@@ -351,16 +352,6 @@ fn spawn_host_agent_process(
     } else {
         None
     };
-
-    let program = if needs_cmd {
-        "cmd"
-    } else {
-        resolved_program.as_str()
-    };
-    let mut cmd = tokio::process::Command::new(program);
-    if needs_cmd {
-        cmd.arg("/c").arg(&resolved_program);
-    }
 
     // The claude-code-acp adapter refuses to start when its recursion-
     // guard env var is set — that guard exists to block recursive
@@ -385,9 +376,6 @@ fn spawn_host_agent_process(
     //
     // The agent's tool shells inherit this environment, so prompt contracts can
     // invoke short `wta.exe` while still selecting this exact WTA installation.
-    let base_path = crate::agent_check::spawn_path()
-        .map(std::ffi::OsString::from)
-        .or_else(|| std::env::var_os("PATH"));
     if let Some(base_path) = base_path.as_ref() {
         cmd.env("PATH", base_path);
     }
@@ -465,6 +453,39 @@ fn spawn_host_agent_process(
         resolved_program,
         adapter_package,
     })
+}
+
+fn host_agent_command(
+    raw_program: &str,
+    profile: &crate::agent_registry::AgentProfile,
+    path: &std::ffi::OsStr,
+    cwd: &Path,
+) -> Result<(tokio::process::Command, String)> {
+    let pinned_opencode = profile.id == crate::agent_registry::OPENCODE_AGENT_ID
+        && raw_program.eq_ignore_ascii_case("opencode");
+    let resolved_program = if pinned_opencode {
+        crate::agent_check::find_opencode_in_path(path, cwd, |candidate| Ok(candidate.is_file()))?
+            .context("OpenCode executable is unavailable on the effective PATH")?
+            .to_string_lossy()
+            .into_owned()
+    } else if profile.id == crate::agent_registry::ANTIGRAVITY_AGENT_ID
+        && raw_program.eq_ignore_ascii_case("agy_acp_server.exe")
+    {
+        crate::agent_check::find_acp_exe(crate::agent_registry::ANTIGRAVITY_AGENT_ID)
+            .context("Antigravity ACP is not ready after dependency preparation")?
+    } else {
+        crate::agent_registry::resolve_bare_agent_name(raw_program)
+    };
+    // Rust's Windows batch launcher quotes a pinned .cmd path and its argv.
+    // Do not feed an already-tokenized full path to a command-line parser.
+    let command = if !pinned_opencode && crate::coordinator::needs_shell_launch(&resolved_program) {
+        let mut command = tokio::process::Command::new("cmd");
+        command.arg("/c").arg(&resolved_program);
+        command
+    } else {
+        tokio::process::Command::new(&resolved_program)
+    };
+    Ok((command, resolved_program))
 }
 
 pub(crate) fn wta_cli_directory() -> Result<PathBuf> {
@@ -804,6 +825,126 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opencode_host_command_fixture() {
+        if std::env::var_os("WTA_OPENCODE_SPAWN_FIXTURE_EXE").is_none() {
+            return;
+        }
+        println!(
+            "OPENCODE_SPAWN_FIXTURE:{}",
+            serde_json::json!({
+                "argv": std::env::args()
+                    .skip_while(|arg| arg != "--")
+                    .skip(1)
+                    .collect::<Vec<_>>(),
+                "cwd": std::env::current_dir().unwrap(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn opencode_host_command_runs_the_pinned_shim_with_atomic_arguments() {
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                std::fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let fixture = Fixture(std::env::temp_dir().join(format!(
+            "wta-opencode-spawn-\u{65e5}\u{672c}\u{8a9e}-{}",
+            uuid::Uuid::new_v4()
+        )));
+        let early = fixture.0.join("early & npm");
+        let late = fixture.0.join("old exe");
+        let child_cwd = fixture.0.join("pane & work");
+        for directory in [&early, &late, &child_cwd] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        let shim = early.join("opencode.cmd");
+        std::fs::write(
+            &shim,
+            "@echo off\r\n\"%WTA_OPENCODE_SPAWN_FIXTURE_EXE%\" --exact protocol::acp::spawn::tests::opencode_host_command_fixture --nocapture -- \"%~f0\" %*\r\n",
+        )
+        .unwrap();
+        std::fs::write(late.join("opencode.exe"), "not the selected executable").unwrap();
+        let path = std::env::join_paths([&early, &late]).unwrap();
+        let (mut command, resolved) = host_agent_command(
+            "OpEnCoDe",
+            resolve_spawn_profile("OpEnCoDe acp", Some("opencode")),
+            &path,
+            &fixture.0,
+        )
+        .unwrap();
+        assert_eq!(Path::new(&resolved), shim);
+        let output = tokio::time::timeout(
+            Duration::from_secs(10),
+            command
+                .args(["acp", "literal & value", "\u{4e2d}\u{6587}"])
+                .env(
+                    "WTA_OPENCODE_SPAWN_FIXTURE_EXE",
+                    std::env::current_exe().unwrap(),
+                )
+                .current_dir(&child_cwd)
+                .output(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let payload = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("OPENCODE_SPAWN_FIXTURE:"))
+            .unwrap_or_else(|| panic!("missing fixture output: {stdout}"));
+        let value: serde_json::Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(
+            value["argv"],
+            serde_json::json!([shim, "acp", "literal & value", "\u{4e2d}\u{6587}"])
+        );
+        assert_eq!(value["cwd"], serde_json::json!(child_cwd));
+        std::fs::write(early.join("opencode.exe"), "same-directory native exe").unwrap();
+        let (command, resolved) = host_agent_command(
+            "opencode",
+            resolve_spawn_profile("opencode acp", Some("opencode")),
+            &path,
+            &fixture.0,
+        )
+        .unwrap();
+        assert_eq!(Path::new(&resolved), early.join("opencode.exe"));
+        assert_eq!(
+            command.as_std().get_program(),
+            std::ffi::OsStr::new(&resolved)
+        );
+    }
+
+    #[test]
+    fn opencode_host_command_has_no_bare_fallback_or_custom_command_override() {
+        let profile = resolve_spawn_profile("opencode acp", Some("opencode"));
+        let cwd = Path::new(r"C:\Terminal");
+        assert!(host_agent_command("opencode", profile, std::ffi::OsStr::new(";;"), cwd).is_err());
+        for (program, agent_id) in [
+            ("opencode", "custom:opencode"),
+            ("opencode.exe", "opencode"),
+            (r"C:\Explicit\opencode.cmd", "opencode"),
+        ] {
+            let (_, resolved) = host_agent_command(
+                program,
+                resolve_spawn_profile(program, Some(agent_id)),
+                std::ffi::OsStr::new(""),
+                cwd,
+            )
+            .unwrap();
+            assert_eq!(
+                resolved,
+                crate::agent_registry::resolve_bare_agent_name(program)
+            );
+        }
+    }
 
     #[tokio::test]
     async fn failed_acp_startup_reclaims_the_owned_descendant_before_returning() {

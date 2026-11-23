@@ -18,6 +18,7 @@
 
 #[cfg(test)]
 mod tests {
+    use rust_i18n::Backend;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
@@ -109,6 +110,51 @@ mod tests {
             search_from = value_start + relative_end + 1;
         }
         keys
+    }
+
+    #[test]
+    fn static_backend_matches_every_catalog_value() {
+        let catalog = rust_i18n_support::load_locales(
+            locales_dir().to_str().expect("UTF-8 locale directory"),
+            |_| false,
+        );
+        let backend = crate::StaticLocaleBackend;
+        assert_eq!(
+            backend.available_locales(),
+            catalog.keys().map(String::as_str).collect::<Vec<_>>()
+        );
+        for (locale, translations) in &catalog {
+            for (key, value) in translations {
+                assert_eq!(
+                    backend.translate(locale, key),
+                    Some(value.as_str()),
+                    "{locale}: {key}"
+                );
+            }
+        }
+        assert_eq!(backend.translate("unknown-locale", "queue.recall"), None);
+        assert_eq!(backend.translate("en-US", "__missing_translation__"), None);
+    }
+
+    #[test]
+    fn static_backend_preserves_fallback_and_interpolation() {
+        let backend = crate::StaticLocaleBackend;
+        let key = "setup.subtitle.connection_failed";
+        let english = backend.translate("en-US", key).expect("English fallback");
+        let agent = "agent \"quoted\"\n%{unexpanded}";
+        for locale in ["zh-CN", "ar-SA", "en-US-x-test", "unknown-locale"] {
+            let expected = backend.translate(locale, key).unwrap_or(english);
+            assert_eq!(
+                t!(
+                    "setup.subtitle.connection_failed",
+                    locale = locale,
+                    agent = agent
+                ),
+                expected.replace("%{agent}", agent),
+                "{locale}"
+            );
+        }
+        assert!(crate::_rust_i18n_try_translate("zh-CN", "__missing_translation__").is_none());
     }
 
     #[test]

@@ -686,16 +686,27 @@ namespace wtcli
 
         if (!eventTypeFilter.empty())
         {
-            auto eventType = ev["params"].get("event", "").asString();
-            if (eventTypeFilter.back() == '*')
-            {
-                auto prefix = eventTypeFilter.substr(0, eventTypeFilter.size() - 1);
-                if (eventType.substr(0, prefix.size()) != prefix)
+            const auto matches = [&](const std::string_view candidate) {
+                if (eventTypeFilter.back() == '*')
                 {
-                    return false;
+                    const auto prefix = std::string_view{ eventTypeFilter }.substr(0, eventTypeFilter.size() - 1);
+                    return candidate.starts_with(prefix);
                 }
+                return candidate == eventTypeFilter;
+            };
+            const auto& methodValue = ev["method"];
+            if (!methodValue.isString())
+            {
+                return false;
             }
-            else if (eventType != eventTypeFilter)
+            const auto method = methodValue.asString();
+            auto matched = matches(method);
+            if (!matched && method == "agent_event")
+            {
+                const auto& subtype = ev["params"]["event"];
+                matched = subtype.isString() && matches(subtype.asString());
+            }
+            if (!matched)
             {
                 return false;
             }

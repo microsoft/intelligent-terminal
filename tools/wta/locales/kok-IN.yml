@@ -150,6 +150,8 @@ agents.status.active: "काम करता"
 agents.status.waiting_for_input: "इनपुटाची वाट"
 agents.status.error: "चूक"
 agents.status.idle: "निश्क्रिय"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "पुराय जालें"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "वापरांत"
 

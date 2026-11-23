@@ -22,7 +22,7 @@
   "fields": [
     {
       "id": "agentStatus",
-      "displayName": "Agent status",
+      "displayName": "Status",
       "type": "string",
       "defaultVisible": true
     },

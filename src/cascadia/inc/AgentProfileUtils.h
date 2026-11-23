@@ -115,12 +115,8 @@ namespace Microsoft::Terminal::AgentProfiles
     inline std::filesystem::path ResolveExecutable(const std::wstring_view id, const std::wstring_view path)
     {
         const auto executable = Settings::Model::AgentRegistry::CliExecutable(id);
-        for (const auto extension : { L".exe", L".cmd" })
-        {
-            if (id == L"antigravity" && std::wstring_view{ extension } == L".cmd")
-            {
-                continue;
-            }
+        const auto resolutionCwd = id == L"opencode" ? std::filesystem::current_path() : std::filesystem::path{};
+        const auto searchPath = [&](const std::initializer_list<std::wstring_view> extensions) -> std::filesystem::path {
             size_t start = 0;
             while (start < path.size())
             {
@@ -132,23 +128,26 @@ namespace Microsoft::Terminal::AgentProfiles
                 }
                 if (!directory.empty())
                 {
-                    const auto candidate = std::filesystem::path{ directory } / (std::wstring{ executable } + extension);
-                    WIN32_FIND_DATAW findData{};
-                    const wil::unique_hfind findHandle{ FindFirstFileW(candidate.c_str(), &findData) };
-                    const auto findError = findHandle ? ERROR_SUCCESS : GetLastError();
-                    // App execution aliases are launchable, but filesystem::status can fail to follow them.
-                    const auto appExecutionAlias = findHandle &&
-                                                   WI_IsFlagSet(findData.dwFileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) &&
-                                                   WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY) &&
-                                                   findData.dwReserved0 == IO_REPARSE_TAG_APPEXECLINK;
-                    const auto missing = findError == ERROR_FILE_NOT_FOUND || findError == ERROR_PATH_NOT_FOUND;
-                    const auto launchable = !missing &&
-                                            (findHandle && WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) ?
-                                                 WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY) :
-                                                 appExecutionAlias || std::filesystem::is_regular_file(candidate));
-                    if (launchable)
+                    for (const auto extension : extensions)
                     {
-                        return std::filesystem::absolute(candidate);
+                        const auto candidate = resolutionCwd / std::filesystem::path{ directory } / (std::wstring{ executable } + std::wstring{ extension });
+                        WIN32_FIND_DATAW findData{};
+                        const wil::unique_hfind findHandle{ FindFirstFileW(candidate.c_str(), &findData) };
+                        const auto findError = findHandle ? ERROR_SUCCESS : GetLastError();
+                        // App execution aliases are launchable, but filesystem::status can fail to follow them.
+                        const auto appExecutionAlias = findHandle &&
+                                                       WI_IsFlagSet(findData.dwFileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) &&
+                                                       WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY) &&
+                                                       findData.dwReserved0 == IO_REPARSE_TAG_APPEXECLINK;
+                        const auto missing = findError == ERROR_FILE_NOT_FOUND || findError == ERROR_PATH_NOT_FOUND;
+                        const auto launchable = !missing &&
+                                                (findHandle && WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) ?
+                                                     WI_IsFlagClear(findData.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY) :
+                                                     appExecutionAlias || std::filesystem::is_regular_file(candidate));
+                        if (launchable)
+                        {
+                            return std::filesystem::absolute(candidate);
+                        }
                     }
                 }
                 if (end == std::wstring_view::npos)
@@ -156,6 +155,22 @@ namespace Microsoft::Terminal::AgentProfiles
                     break;
                 }
                 start = end + 1;
+            }
+            return {};
+        };
+        if (id == L"opencode")
+        {
+            return searchPath({ L".exe", L".cmd" });
+        }
+        for (const auto extension : { L".exe", L".cmd" })
+        {
+            if (id == L"antigravity" && std::wstring_view{ extension } == L".cmd")
+            {
+                continue;
+            }
+            if (auto result = searchPath({ extension }); !result.empty())
+            {
+                return result;
             }
         }
         return {};

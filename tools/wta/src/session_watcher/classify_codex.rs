@@ -6,12 +6,13 @@
 //!   * turn start: `{"type":"event_msg","payload":{"type":"task_started"}}`   → WORKING
 //!   * turn end:   `{"type":"event_msg","payload":{"type":"task_complete"}}`   → IDLE
 //!   * tool start: `{"type":"response_item","payload":{"type":"function_call","name":"shell_command"}}`
-//!   * tool end:   `{"type":"response_item","payload":{"type":"function_call_output",...}}` (ignored)
+//!   * tool end:   `{"type":"response_item","payload":{"type":"function_call_output",...}}`
 //!
 //! task_started is what makes the row appear in the session view *immediately*
 //! (the first `function_call` can be 10-30s into the turn). task_complete is a
 //! per-turn boundary → IDLE, NOT a session end — the session stays resumable;
-//! `function_call_output` is ignored because IDLE is owned by task_complete.
+//! `function_call_output` resumes interaction-owned Attention without taking
+//! turn-end ownership away from task_complete.
 
 use crate::agent_sessions::{is_user_input_tool, AgentKey, SessionEvent};
 
@@ -47,16 +48,18 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
             // command requesting escalated sandbox permissions is blocked on
             // the user → ATTENTION. Check it before the generic tool handling.
             if let Some(reason) = codex_permission_reason(payload) {
-                vec![SessionEvent::Notification {
+                vec![SessionEvent::InteractionNotification {
                     key: key.clone(),
                     message: reason,
                     timestamp_ms: None,
+                    interaction_epoch: None,
                 }]
             } else if is_user_input_tool(&tool) {
-                vec![SessionEvent::Notification {
+                vec![SessionEvent::InteractionNotification {
                     key: key.clone(),
                     message: tool,
                     timestamp_ms: None,
+                    interaction_epoch: None,
                 }]
             } else {
                 vec![SessionEvent::ToolStarting {
@@ -65,9 +68,11 @@ pub fn classify(record: &serde_json::Value, key: &AgentKey) -> Vec<SessionEvent>
                 }]
             }
         }
-        // function_call_output / custom_tool_call_output intentionally dropped:
-        // IDLE is owned by task_complete, so a tool finishing mid-turn must not
-        // flip the row to IDLE while the agent keeps working.
+        ("response_item", "function_call_output")
+        | ("response_item", "custom_tool_call_output") => vec![SessionEvent::ToolReturned {
+            key: key.clone(),
+            timestamp_ms: None,
+        }],
         _ => Vec::new(),
     }
 }
@@ -150,10 +155,11 @@ mod tests {
         );
         assert_eq!(
             classify(&r, &"k".to_string()),
-            vec![SessionEvent::Notification {
+            vec![SessionEvent::InteractionNotification {
                 key: "k".to_string(),
                 message: "Allow listing System32?".to_string(),
                 timestamp_ms: None,
+                interaction_epoch: None,
             }]
         );
     }
@@ -165,7 +171,8 @@ mod tests {
         );
         assert!(matches!(
             classify(&r, &"k".to_string()).as_slice(),
-            [SessionEvent::Notification { message, .. }] if message == "permission requested"
+            [SessionEvent::InteractionNotification { message, .. }]
+                if message == "permission requested"
         ));
     }
 
@@ -197,11 +204,15 @@ mod tests {
     }
 
     #[test]
-    fn function_call_output_is_dropped() {
-        // IDLE is owned by task_complete; a tool finishing mid-turn must not
-        // flip the row to IDLE while the agent keeps working.
+    fn function_call_output_returns_activity_without_ending_turn() {
         let r = rec(r#"{"type":"response_item","payload":{"type":"function_call_output"}}"#);
-        assert!(classify(&r, &"k".to_string()).is_empty());
+        assert_eq!(
+            classify(&r, &"k".to_string()),
+            vec![SessionEvent::ToolReturned {
+                key: "k".to_string(),
+                timestamp_ms: None,
+            }]
+        );
     }
 
     #[test]

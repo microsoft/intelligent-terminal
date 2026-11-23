@@ -429,6 +429,22 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    ContentManager::UnreadAgentCompletionKind ContentManager::UnreadAgentCompletion(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && it->second.completion.HasUnread())
+        {
+            const auto& completion = it->second.completion;
+            const auto connection = it->second.core.Core().Connection();
+            if (connection && connection.SessionId() == completion.paneId)
+            {
+                return completion.UnreadKind();
+            }
+        }
+        return UnreadAgentCompletionKind::None;
+    }
+
     bool ContentManager::HasUnreadAgentCompletion(
         const winrt::guid& paneId, const std::string_view sessionId, const std::string_view providerId) const
     {
@@ -436,7 +452,7 @@ namespace winrt::TerminalApp::implementation
         for (const auto& [id, content] : _content)
         {
             const auto& completion = content.completion;
-            if (completion.unread && completion.paneId == paneId &&
+            if (completion.HasUnread() && completion.paneId == paneId &&
                 completion.sessionId == sessionId && completion.providerId == providerId)
             {
                 const auto connection = content.core.Core().Connection();
@@ -452,9 +468,9 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> changed;
         {
             std::lock_guard lock{ _mutex };
-            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.unread)
+            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.HasUnread())
             {
-                it->second.completion.unread = false;
+                it->second.completion.MarkRead();
                 changed = it->second.completion.paneId;
             }
         }

@@ -745,10 +745,11 @@ pub fn plan_agent_event(
                     .and_then(|v| v.as_str())
                     .unwrap_or("waiting for user input")
                     .to_string();
-                SessionEvent::Notification {
+                SessionEvent::InteractionNotification {
                     key,
                     message,
                     timestamp_ms: None,
+                    interaction_epoch: None,
                 }
             } else {
                 SessionEvent::ToolStarting { key, tool_name }
@@ -758,19 +759,13 @@ pub fn plan_agent_event(
             key,
             tool_name: "prompt".to_string(),
         },
-        // Successful Copilot tool returns resume activity, not Idle. Other providers
-        // retain the legacy no-op; agent.stop still owns the turn-end transition.
-        "agent.tool.completed" | "agent.tool.finished" => {
-            if *cli_source == crate::agent_sessions::CliSource::Copilot {
-                SessionEvent::ToolReturned {
-                    key,
-                    timestamp_ms: hook_timestamp_ms(payload),
-                }
-            } else {
-                plan.events.clear();
-                return plan;
-            }
-        }
+        // A tool result resumes an interaction but never ends the turn. The
+        // registry only applies this to Copilot's normal tool activity or an
+        // interaction-owned Attention; agent.stop still owns Idle.
+        "agent.tool.completed" | "agent.tool.finished" => SessionEvent::ToolReturned {
+            key,
+            timestamp_ms: hook_timestamp_ms(payload),
+        },
         "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
         "agent.notification" => {
             // Background work and idle reminders do not block the owning session.
@@ -795,16 +790,30 @@ pub fn plan_agent_event(
                 plan.events.clear();
                 return plan;
             }
-            SessionEvent::Notification {
-                key,
-                message: payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                timestamp_ms: (*cli_source == crate::agent_sessions::CliSource::Copilot)
-                    .then(|| hook_timestamp_ms(payload))
-                    .flatten(),
+            let message = payload
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let timestamp_ms = (*cli_source == crate::agent_sessions::CliSource::Copilot)
+                .then(|| hook_timestamp_ms(payload))
+                .flatten();
+            if matches!(
+                notification_type,
+                "permission_prompt" | "elicitation_dialog"
+            ) {
+                SessionEvent::InteractionNotification {
+                    key,
+                    message,
+                    timestamp_ms,
+                    interaction_epoch: None,
+                }
+            } else {
+                SessionEvent::Notification {
+                    key,
+                    message,
+                    timestamp_ms,
+                }
             }
         }
         "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {

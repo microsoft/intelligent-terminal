@@ -5,6 +5,9 @@
    -->
   <ItemGroup>
     <ClCompile Include="..\OutputStateMachineEngine.cpp" />
+    <ClCompile Include="..\ProgramStatus.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\stateMachine.cpp" />
     <ClCompile Include="..\tracing.cpp" />
     <ClCompile Include="..\precomp.cpp">
