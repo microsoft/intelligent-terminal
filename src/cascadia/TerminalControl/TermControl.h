@@ -72,6 +72,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void EnableAgentPasteShortcutFallback(bool enabled) noexcept { _agentPasteShortcutFallbackEnabled = enabled; }
         void EnableAgentMouseWheelZoom(bool enabled) noexcept { _agentMouseWheelZoomEnabled = enabled; }
         void EnableAgentRightClickContextMenu(bool enabled);
+        bool IsAgentPaneContextMenuEnabled() const noexcept { return _agentRightClickContextMenuEnabled; }
         void SelectAll();
         bool ToggleBlockSelection();
         void ToggleMarkMode();
@@ -308,6 +309,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _quickFixButtonCollapsible{ false };
         bool _quickFixesAvailable{ false };
         bool _agentPasteShortcutFallbackEnabled{ false };
+        bool _agentRightClickContextMenuEnabled{ false };
         til::CoordType _quickFixBufferPos{};
 
         std::shared_ptr<ThrottledFunc<>> _playWarningBell;

@@ -20918,7 +20918,7 @@ namespace winrt::TerminalApp::implementation
         // withSelection can be used to add actions that only appear if there's
         // selected text, like "search the web"
 
-        if (!control || !menu)
+        if (!control || !menu || control.IsAgentPaneContextMenuEnabled())
         {
             return;
         }

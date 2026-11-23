@@ -193,5 +193,6 @@ namespace Microsoft.Terminal.Control
         String ProgramStatusJson();
         void AcknowledgeProgramStatus(UInt64 revision);
         event Windows.Foundation.TypedEventHandler<Object, Object> ProgramStatusChanged;
+        Boolean IsAgentPaneContextMenuEnabled { get; };
     }
 }
