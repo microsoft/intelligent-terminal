@@ -9377,7 +9377,7 @@ async fn execute_session_activation(
         }
     };
 
-    let Some(row) = state.registry.lookup_identity(&parsed.identity).await else {
+    let Some(mut row) = state.registry.lookup_identity(&parsed.identity).await else {
         return respond!(
             "not_found",
             false,
@@ -9539,6 +9539,37 @@ async fn execute_session_activation(
                     Some("The selected session provider is blocked by policy.".to_string())
                 );
             }
+            // Reserve this session before creating a tab. Activation IDs only
+            // deduplicate retries of the same request; distinct activations
+            // for this session must serialize on its lifecycle gate.
+            let lifecycle_gate = session_lifecycle_gate(state, &row.session_id).await;
+            let lifecycle_guard = lifecycle_gate.lock().await;
+            let Some(current) = state.registry.lookup_identity(&parsed.identity).await else {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session is no longer available.".to_string())
+                );
+            };
+            if let Some(pane_session_id) = current
+                .pane_session_id
+                .as_ref()
+                .filter(|pane_session_id| !pane_session_id.is_empty())
+            {
+                let pane_session_id = pane_session_id.clone();
+                drop(lifecycle_guard);
+                return focus(pane_session_id).await;
+            }
+            if current.status.as_ref().is_some_and(|status| {
+                !matches!(status, AgentStatus::Historical | AgentStatus::Ended)
+            }) {
+                return respond!(
+                    "resume_cli",
+                    false,
+                    Some("The selected session is already being resumed.".to_string())
+                );
+            }
+            row = current;
             let commandline = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => Ok(String::new()),
                 crate::agent_sessions::SessionLocation::Wsl { distro } => {
@@ -9633,8 +9664,6 @@ async fn execute_session_activation(
                             Unknown
                         );
                     };
-                    let lifecycle_gate = session_lifecycle_gate(state, &row.session_id).await;
-                    let lifecycle_guard = lifecycle_gate.lock().await;
                     let binding_changed = state
                         .registry
                         .assign_resume_pane_identity(&parsed.identity, pane_session_id.clone())
