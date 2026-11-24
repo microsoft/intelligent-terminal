@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../../ghaw-pr-architecture-design.md', import.meta.url), 'utf8');
@@ -124,10 +124,13 @@ test('evidence contains both revisions and unchanged consumers without checking 
         git('add', '.');
         git('commit', '-qm', 'head');
         const head = git('rev-parse', 'HEAD');
-        git('checkout', '--quiet', '--detach', base);
+        git('branch', 'trusted-base', base);
+        const checkout = path.join(root, 'checkout');
+        git('clone', '--quiet', '--depth=1', '--branch', 'trusted-base', pathToFileURL(root).href, checkout);
+        git('-C', checkout, 'fetch', '--quiet', '--depth=1', '--no-tags', 'origin', base, head);
         const exporter = fileURLToPath(new URL('../scripts/prepare-evidence.py', import.meta.url));
-        execFileSync(process.platform === 'win32' ? 'python' : 'python3', [exporter, base, head, 'evidence'], { cwd: root });
-        const evidence = path.join(root, 'evidence');
+        execFileSync(process.platform === 'win32' ? 'python' : 'python3', [exporter, base, head, 'evidence'], { cwd: checkout });
+        const evidence = path.join(checkout, 'evidence');
         const index = revision => Object.fromEntries(fs.readFileSync(path.join(evidence, `${revision}.jsonl`), 'utf8')
             .trim().split('\n').map(line => JSON.parse(line)).map(record => [record.path, record]));
         const before = index('base');
@@ -140,8 +143,9 @@ test('evidence contains both revisions and unchanged consumers without checking 
         assert.equal(read(after['consumer.txt']), 'unchanged consumer\n');
         assert.ok(after['binary.dat'].gap);
         assert.match(fs.readFileSync(path.join(evidence, 'diff.txt'), 'utf8'), /-before\r?\n\+after/);
-        assert.equal(git('rev-parse', 'HEAD'), base);
-        assert.ok(!fs.existsSync(path.join(root, 'AGENTS.md')));
+        assert.equal(git('-C', checkout, 'rev-parse', '--is-shallow-repository'), 'true');
+        assert.equal(git('-C', checkout, 'rev-parse', 'HEAD'), base);
+        assert.ok(!fs.existsSync(path.join(checkout, 'AGENTS.md')));
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

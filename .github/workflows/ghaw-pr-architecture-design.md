@@ -109,7 +109,7 @@ pre-agent-steps:
       set -euo pipefail
       [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
       git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-        fetch --no-tags --no-recurse-submodules origin "$BASE" "$HEAD_SHA"
+        fetch --depth=1 --no-tags --no-recurse-submodules origin "$BASE" "$HEAD_SHA"
       mkdir -p 'Generated Files'
       python3 .github/workflows/ghaw-pr-architecture-design/scripts/prepare-evidence.py \
         "$BASE" "$HEAD_SHA" 'Generated Files/architecture-evidence'
