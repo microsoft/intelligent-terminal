@@ -186,8 +186,9 @@ strings. For a proposed trusted static repair, leave `validation` empty. The
 native gate rejects model-authored PASS claims, verifies the complete candidate
 against its recipe, and adds the trusted attestation itself.
 
-When the caller requests a human-readable Markdown summary, write it directly
-using its template. Keep the outcome in prose and actual results in a table:
+When the caller requests a human-readable Markdown summary, write it directly.
+Use its template as a presentation guide, with flexible headings and order.
+Keep the outcome in prose and actual results in a table:
 HIGH before MEDIUM before LOW, unresolved HIGH before fixed HIGH. Explain each
 blocker and the specific change, decision, or runtime check needed from a human.
 Keep it consistent with the structured report; do not claim publication or

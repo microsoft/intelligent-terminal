@@ -215,25 +215,6 @@ jobs:
     needs: [agent, detection, publication-admission]
     if: needs.agent.result == 'success' && needs.publication-admission.result == 'success'
 
-  final-summary:
-    needs: [admission, triage, triage-route, agent, safe_outputs]
-    if: ${{ always() && needs.admission.result == 'success' && needs.admission.outputs.applicable == 'true' }}
-    uses: ./.github/workflows/ghaw-accessibility-summary.lock.yml
-    permissions:
-      actions: write # gh-aw artifact conclusion handler; model jobs remain read-only.
-      contents: read
-      pull-requests: read
-      copilot-requests: write
-    secrets: inherit
-    with:
-      native-artifact-id: ${{ needs.admission.outputs.native_artifact_id }}
-      triage-result: ${{ needs.triage-route.result }}
-      route: ${{ needs.triage-route.outputs.route }}
-      deep-result: ${{ needs.agent.result }}
-      publication-result: ${{ needs.safe_outputs.result }}
-      publication-status: ${{ needs.safe_outputs.outputs.process_safe_outputs_status }}
-      published-sha: ${{ needs.safe_outputs.outputs.push_commit_sha }}
-
 steps:
   - name: Download original-head CI native evidence
     uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -355,6 +336,10 @@ post-steps:
       python3 "$RUNNER_TEMP/gh-aw/accessibility-trusted/accessibility_handoff.py" deep \
         "Generated Files/$ACCESSIBILITY_RUN" \
         --producer-outcome "$PRODUCER_OUTCOME" --safe-outputs "$GH_AW_SAFE_OUTPUTS"
+  - name: Display delivered deep review
+    if: always() && steps.actual-output.outcome == 'success'
+    run: cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
   - name: Remove verified framework configuration changes
     shell: bash
     env:
@@ -446,9 +431,10 @@ This selects relevant existing evidence, not CI scheduling. Source-only changes
 may select None; explain other required runtime scenarios as gaps.
 Produce actual `final.json`, `deep-summary.md` and `native-checks.md` under this
 run's Generated Files directory; never stage or commit them. Chat/noop is not a
-file handoff. Missing/empty/crashed output is **No result**, not invented None,
-Pass or a reconstructed report. If prepared `relevant` is false, emit empty
-findings/patches with the prepared identity and honest runtime-check statuses.
+file handoff. Missing/empty/crashed output is **No result**. Start `final.json`
+from the prepared report's `version`, `source_sha` and complete `runtime_checks`
+array, retaining each check's ID, SKIPPED/BLOCKED status and reason. Add findings
+and patch files from the actual review; keep both empty when none apply.
 
 ## Repairs
 
@@ -486,8 +472,9 @@ commit publication atomic; do not add a comment workaround.
 
 ## Agent-written summary
 
-Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/deep-summary.md` directly, as non-empty UTF-8 Markdown
-within 32 KiB. Use this template; no script generates or reconstructs the table.
+Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/deep-summary.md` directly as
+non-empty UTF-8 Markdown within 32 KiB. This template is a presentation guide;
+headings and section order are flexible.
 
 ```markdown
 ## Outcome
@@ -523,12 +510,11 @@ unchanged; publication outcomes remain visible in the safe-output job.
 
 ## Structured evidence
 
-Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/final.json` once, using:
+Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/final.json` once, preserving
+the prepared fields described above and adding these review fields:
 
 ```json
 {
-  "version": 1,
-  "source_sha": "40-character reviewed head SHA",
   "review_checks": [
     {
       "id": "prepared required_review_checks id",
@@ -539,9 +525,6 @@ Write `Generated Files/${{ env.ACCESSIBILITY_RUN }}/final.json` once, using:
         {"file": "repository/path", "revision": "head|base", "line": 1, "text": "exact source line"}
       ]
     }
-  ],
-  "runtime_checks": [
-    {"id": "prepared check id", "status": "SKIPPED|BLOCKED", "reason": "specific missing prerequisite"}
   ],
   "findings": [
     {

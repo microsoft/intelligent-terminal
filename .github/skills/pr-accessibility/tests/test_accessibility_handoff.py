@@ -71,14 +71,13 @@ class ProducerOutputTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.queue = self.root / "safeoutputs.jsonl"
         self.queue.write_text('{"type":"noop"}\n', encoding="utf-8")
-        self.summary = self.root / "summary.md"
-        self.summary.write_text(SUMMARY, encoding="utf-8")
+        self.summary = self.root / "deep-summary.md"
         self.report = {
             "version": 1, "source_sha": "a" * 40, "review_checks": [],
             "runtime_checks": [], "findings": [], "dismissed_signals": [], "patch_files": [],
         }
         (self.root / "final.json").write_text(json.dumps(self.report), encoding="utf-8")
-        (self.root / "deep-summary.md").write_text(SUMMARY, encoding="utf-8")
+        self.summary.write_text(SUMMARY, encoding="utf-8")
         (self.root / "native-checks.md").write_text(
             "# Native checks: None\n\nActual source-only selection.\n", encoding="utf-8")
 
@@ -96,11 +95,9 @@ class ProducerOutputTests(unittest.TestCase):
         self.assertIn("No result:", result.stderr)
 
     def test_complete_real_files_are_accepted_unchanged(self):
-        for kind, path in (("summary", self.summary), ("deep", self.root)):
-            with self.subTest(kind=kind):
-                result = self.run_producer(kind, path)
-                self.assertEqual(0, result.returncode, result.stderr)
-                self.assertEqual("Complete\n", result.stdout)
+        result = self.run_producer("deep", self.root)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("Complete\n", result.stdout)
         self.assertEqual(SUMMARY, self.summary.read_text(encoding="utf-8"))
         triage = self.root / "triage.md"
         original = "# None\n\nActual source diff has no changes.\n"
@@ -123,8 +120,7 @@ class ProducerOutputTests(unittest.TestCase):
         self.assertEqual(original, report.read_text(encoding="utf-8"))
 
     def test_crashed_cancelled_or_unknown_producer_cannot_reuse_complete_files(self):
-        for kind, path in (("summary", self.summary), ("deep", self.root),
-                           ("triage", self.root / "triage.md")):
+        for kind, path in (("deep", self.root), ("triage", self.root / "triage.md")):
             path_to_write = path if kind == "triage" else None
             if path_to_write:
                 path_to_write.write_text("# None\n\nActual decision.\n", encoding="utf-8")
@@ -136,7 +132,7 @@ class ProducerOutputTests(unittest.TestCase):
     def test_complete_analysis_is_retained_when_a_later_stage_fails(self):
         triage = self.root / "triage.md"
         triage.write_text("# None\n\nActual source diff has no changes.\n", encoding="utf-8")
-        for kind, path in (("triage", triage), ("deep", self.root), ("summary", self.summary)):
+        for kind, path in (("triage", triage), ("deep", self.root)):
             with self.subTest(kind=kind):
                 produced = self.run_producer(kind, path)
                 self.assertEqual(0, produced.returncode, produced.stderr)
@@ -152,7 +148,6 @@ class ProducerOutputTests(unittest.TestCase):
         for kind, filename, content in (
             ("triage", "triage.md", "# None\n\nA file written before the crash.\n"),
             ("deep", "final.json", json.dumps(self.report)),
-            ("summary", "summary.md", SUMMARY),
         ):
             with self.subTest(kind=kind):
                 crashed = subprocess.run(
@@ -170,30 +165,57 @@ class ProducerOutputTests(unittest.TestCase):
                     kind, path, "success" if crashed.returncode == 0 else "failure"))
                 self.assertEqual(content, (self.root / filename).read_text(encoding="utf-8"))
 
-    def test_missing_empty_and_incomplete_final_outputs_never_generate_replacements(self):
-        for text in (None, "", " \n", "## Outcome\nOnly a partial answer.\n",
-                     "## Outcome\nActual.\n## Results\n\n## Human action and limits\nGap.\n"):
+    def test_human_markdown_presentation_is_not_a_machine_contract(self):
+        for text in ("# Accessibility summary\n\n" + SUMMARY,
+                     "Review completed.\n\n## Limits\nRuntime gaps.\n\n## Findings\nNo findings.\n",
+                     "No findings; runtime validation remains with the reviewer.\n"):
+            with self.subTest(text=text):
+                original = text.encode("utf-8")
+                self.summary.write_bytes(original)
+                result = self.run_producer("deep", self.root)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(original, self.summary.read_bytes())
+
+    def test_missing_empty_and_invalid_final_outputs_never_generate_replacements(self):
+        for text in (None, "", " \n", "\ufeff", "\ufeff \t\n", "\ufeff\ufeff", "\ufeff\ufeff \t\n"):
             with self.subTest(text=text):
                 self.summary.unlink(missing_ok=True)
                 if text is not None:
                     self.summary.write_text(text, encoding="utf-8")
-                self.assert_no_result(self.run_producer("summary", self.summary))
+                self.assert_no_result(self.run_producer("deep", self.root))
                 if text is None:
                     self.assertFalse(self.summary.exists())
                 else:
                     self.assertEqual(text, self.summary.read_text(encoding="utf-8"))
 
+    def test_nonempty_bom_output_preserves_original_text_and_bytes(self):
+        for text in ("\ufeff" + SUMMARY, "\ufeff \t\n" + SUMMARY, "\ufeff\ufeff" + SUMMARY):
+            with self.subTest(text=text):
+                original = text.encode("utf-8")
+                self.summary.write_bytes(original)
+                self.assertEqual(text, handoff.read_output(self.summary, 32768))
+                result = self.run_producer("deep", self.root)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("Complete\n", result.stdout)
+                self.assertEqual(original, self.summary.read_bytes())
+
     def test_deep_requires_each_actual_file_and_complete_json(self):
         for filename in ("final.json", "deep-summary.md", "native-checks.md"):
             path = self.root / filename
             original = path.read_text(encoding="utf-8")
-            for text in (None, "", "{}" if filename == "final.json" else "# Incomplete\n"):
+            for text in (None, "", "{}" if filename == "final.json" else " \n"):
                 with self.subTest(filename=filename, text=text):
                     path.unlink(missing_ok=True)
                     if text is not None:
                         path.write_text(text, encoding="utf-8")
                     self.assert_no_result(self.run_producer("deep", self.root))
             path.write_text(original, encoding="utf-8")
+
+    def test_human_output_still_requires_bounded_regular_utf8_files(self):
+        for content in (b"x" * 32769, b"\xff"):
+            with self.subTest(content=content[:10]):
+                self.summary.write_bytes(content)
+                self.assert_no_result(self.run_producer("deep", self.root))
 
     def test_deep_producer_validates_native_selection_without_a_second_job(self):
         path = self.root / "native-checks.md"
@@ -217,7 +239,7 @@ class ProducerOutputTests(unittest.TestCase):
                 self.queue.unlink(missing_ok=True)
                 if text is not None:
                     self.queue.write_text(text, encoding="utf-8")
-                self.assert_no_result(self.run_producer("summary", self.summary))
+                self.assert_no_result(self.run_producer("deep", self.root))
 
     def test_missing_or_empty_triage_is_not_none_or_uncertain(self):
         triage = self.root / "triage.md"
@@ -250,21 +272,14 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertNotIn("native-selection", self.jobs)
         self.assertNotIn("native-evidence", self.jobs)
         self.assertNotIn("native-runtime", self.jobs)
-        # CI ran before this workflow; None skips deep, not the native evidence
-        # available to the final summary.
-        summary = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(
-            encoding="utf-8"))["jobs"]["agent"]
-        for job, artifact_id in (
-            (self.jobs["agent"], "${{ needs.admission.outputs.native_artifact_id }}"),
-            (summary, "${{ inputs.native-artifact-id }}"),
-        ):
-            native = next(step for step in job["steps"]
-                          if step.get("name") == "Download original-head CI native evidence")
-            self.assertNotIn("if", native)
-            self.assertEqual("${{ github.event.inputs.ci_run_id }}", native["with"]["run-id"])
-            self.assertEqual(artifact_id, native["with"]["artifact-ids"])
-            self.assertNotIn("name", native["with"])
-            self.assertEqual("read", job["permissions"]["actions"])
+        job = self.jobs["agent"]
+        native = next(step for step in job["steps"]
+                      if step.get("name") == "Download original-head CI native evidence")
+        self.assertNotIn("if", native)
+        self.assertEqual("${{ github.event.inputs.ci_run_id }}", native["with"]["run-id"])
+        self.assertEqual("${{ needs.admission.outputs.native_artifact_id }}", native["with"]["artifact-ids"])
+        self.assertNotIn("name", native["with"])
+        self.assertEqual("read", job["permissions"]["actions"])
 
     def test_native_selection_requires_complete_deep_production(self):
         check = next(step for step in self.jobs["agent"]["steps"]
@@ -276,18 +291,6 @@ class CompiledGraphTests(unittest.TestCase):
         upload = next(step for step in self.jobs["agent"]["steps"]
                       if step.get("name") == "Upload deep review evidence even when incomplete")
         self.assertIn("always()", upload["if"])
-
-    def test_final_summary_runs_after_skips_and_failures(self):
-        summary = self.jobs["final-summary"]
-        self.assertIn("always()", summary["if"])
-        self.assertEqual(
-            {"admission", "agent", "safe_outputs", "triage", "triage-route"},
-            set(summary["needs"]),
-        )
-        for key in ("deep-result", "publication-result", "triage-result", "route"):
-            self.assertIn(key, summary["with"])
-        self.assertIn("needs.admission.result == 'success'", summary["if"])
-        self.assertIn("needs.admission.outputs.applicable == 'true'", summary["if"])
 
     def test_all_costly_entrypoints_require_ci_admission(self):
         self.assertIn("admission", self.jobs["triage"]["needs"])
@@ -301,9 +304,6 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertIn("String(verified.artifacts[0].id)", admission["with"]["script"])
         self.assertEqual("${{ steps.admit.outputs.native_artifact_id }}",
                          self.jobs["admission"]["outputs"]["native_artifact_id"])
-        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
-            jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
-            self.assertNotIn("admission", jobs)
         controller = yaml.safe_load((ROOT / ".github/workflows/ghaw-pr-accessibility-controller.yml").read_text())
         # PyYAML's YAML 1.1 parser represents the Actions `on` key as True.
         self.assertEqual(["PR CI"], controller[True]["workflow_run"]["workflows"])
@@ -315,7 +315,6 @@ class CompiledGraphTests(unittest.TestCase):
         dependencies = self.jobs["safe_outputs"]["needs"]
         self.assertNotIn("native-runtime", dependencies)
         self.assertNotIn("native-selection", dependencies)
-        self.assertNotIn("final-summary", dependencies)
 
     def test_native_consumer_uses_pinned_cross_run_download_before_models(self):
         steps = self.jobs["agent"]["steps"]
@@ -357,17 +356,17 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertEqual(1, build["run"].count(r"Terminal\Tests\TestHostApp"))
 
     def test_controller_bot_is_authorized_but_ci_admission_still_gates_models(self):
-        for name in ("ghaw-accessibility-triage.lock.yml", "ghaw-accessibility-summary.lock.yml"):
-            jobs = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))["jobs"]
-            membership = next(step for step in jobs["pre_activation"]["steps"] if step.get("id") == "check_membership")
-            self.assertEqual("github-actions[bot]", membership["env"]["GH_AW_ALLOWED_BOTS"])
-            self.assertNotIn("read", membership["env"]["GH_AW_REQUIRED_ROLES"])
-            self.assertNotIn("admission", jobs)
+        jobs = yaml.safe_load((ROOT / self.jobs["triage"]["uses"]).read_text(encoding="utf-8"))["jobs"]
+        membership = next(step for step in jobs["pre_activation"]["steps"] if step.get("id") == "check_membership")
+        self.assertEqual("github-actions[bot]", membership["env"]["GH_AW_ALLOWED_BOTS"])
+        self.assertNotIn("read", membership["env"]["GH_AW_REQUIRED_ROLES"])
+        self.assertNotIn("admission", jobs)
 
     def test_reusable_workflow_permissions_fit_callers(self):
         levels = {"none": 0, "read": 1, "write": 2}
-        for job_id in ("triage", "final-summary"):
-            caller = self.jobs[job_id]
+        for job_id, caller in self.jobs.items():
+            if "uses" not in caller:
+                continue
             child = yaml.safe_load((ROOT / caller["uses"].removeprefix("./")).read_text(encoding="utf-8"))
             for child_id, job in child["jobs"].items():
                 requested = job.get("permissions", child.get("permissions", {}))
@@ -379,16 +378,6 @@ class CompiledGraphTests(unittest.TestCase):
             self.assertNotIn("issues", child["jobs"]["agent"]["permissions"])
             self.assertIn(child["jobs"]["agent"]["permissions"].get("actions"), (None, "read"))
             self.assertNotIn("issues", caller["permissions"])
-
-    def test_original_triage_is_available_to_deep_and_final(self):
-        deep = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
-        summary = (ROOT / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
-        self.assertIn("Download original triage", deep)
-        self.assertIn("inputs/accessibility-triage-*", summary)
-        self.assertIn("original triage explanation and Uncertain doubt", summary)
-        self.assertIn("review incomplete", summary)
-        self.assertIn("None means deep review skipped, not accessibility passed", summary)
-        self.assertIn("complete deep handoff remains evidence when later\nvalidation/publication fails", summary)
 
     def test_model_triage_extraction_cannot_replace_verified_ci_native_evidence(self):
         steps = self.jobs["agent"]["steps"]
@@ -405,13 +394,6 @@ class CompiledGraphTests(unittest.TestCase):
         upload = next(s for s in producer["steps"] if s.get("name") == "Preserve original triage even when invalid")
         self.assertEqual(["/triage.md"],
                          ["/" + line.rsplit("/", 1)[-1] for line in upload["with"]["path"].splitlines()])
-        summary = yaml.safe_load((ROOT / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(
-            encoding="utf-8"))["jobs"]["agent"]
-        summary_inputs = next(s for s in summary["steps"] if s.get("name") == "Download review handoffs")
-        summary_native = next(s for s in summary["steps"]
-                              if s.get("name") == "Download original-head CI native evidence")
-        self.assertEqual(summary_native["with"]["path"].removesuffix("/native") + "/inputs",
-                         summary_inputs["with"]["path"])
         # A hostile extra native member in a retained/model-authored artifact
         # still stays in the triage namespace, even though producer scope now
         # prevents publishing it. Use the actual compiled destination suffix.
@@ -424,13 +406,11 @@ class CompiledGraphTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as stream:
                 stream.writestr("triage.md", "# None\n\nUntrusted model handoff.\n")
                 stream.writestr("native/fre/result.json", "forged PASS")
-            for destination in (triage_path, summary_inputs["with"]["path"]):
-                with self.subTest(destination=destination):
-                    target = root / destination.rsplit("/", 1)[-1]
-                    with zipfile.ZipFile(archive) as stream:
-                        stream.extractall(target)
-                    self.assertEqual("verified original CI result", verified.read_text())
-                    self.assertEqual("forged PASS", (target / "native/fre/result.json").read_text())
+            target = root / triage_path.rsplit("/", 1)[-1]
+            with zipfile.ZipFile(archive) as stream:
+                stream.extractall(target)
+            self.assertEqual("verified original CI result", verified.read_text())
+            self.assertEqual("forged PASS", (target / "native/fre/result.json").read_text())
 
     def test_native_selection_output_stays_at_explicit_run_root_after_triage_isolation(self):
         source = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
