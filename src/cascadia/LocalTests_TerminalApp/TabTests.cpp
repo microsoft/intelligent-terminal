@@ -22515,7 +22515,7 @@ namespace TerminalAppLocalTests
             };
             const auto verifySelection = [&](const auto& display, const int32_t selectedPane) {
                 host.UpdateLayout();
-                const auto container = strip.ContainerFromIndex(display == firstDisplay ? 0 : 1).as<ListViewItem>();
+                const auto container = strip.ContainerFromIndex(display == firstDisplay ? 0 : 1).template as<ListViewItem>();
                 VERIFY_IS_NOT_NULL(container);
                 const auto nativePresenter = findPresenter(findPresenter, container);
                 VERIFY_IS_NOT_NULL(nativePresenter);
