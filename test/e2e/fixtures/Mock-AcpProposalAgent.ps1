@@ -47,7 +47,7 @@ function Invoke-ProposalTool {
         params = @{
             name = 'run_command_in_current_shell'
             arguments = @{
-                summary = "Run echo $Marker"
+                summary = if ($CommandPath) { 'Run supplied command' } else { "Run echo $Marker" }
                 command = $command
             }
         }

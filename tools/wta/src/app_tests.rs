@@ -26308,6 +26308,8 @@ fn recommendation_review_followup_later_action_change_invalidates_review() {
 
 #[test]
 fn recommendation_full_view_runs_or_inserts_without_resize_or_scroll_gate() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
