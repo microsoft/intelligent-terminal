@@ -109,7 +109,7 @@ jobs:
             if (context.ref !== `refs/heads/${metadata.default_branch}` ||
                 process.env.REQUESTED_WORKFLOW_SHA !== process.env.EXPECTED_WORKFLOW_SHA) throw Error('Untrusted worker revision.');
             const verified = verifyCiSecurity({
-              producerJob: 'Native accessibility / Native Axe.Windows smoke',
+              producerJob: 'native / Native accessibility / Native Axe.Windows smoke',
               artifactNames: (run, producer) => [`ci-accessibility-native-${run.id}-${producer.run_attempt}`]
             });
             core.setOutput('native_artifact_id', String(verified.artifacts[0].id));
@@ -206,7 +206,7 @@ jobs:
           node --input-type=module -e '
             import { verifyCiSecurity } from "./.github/skills/ghaw-pr-security/scripts/security-review.mjs";
             verifyCiSecurity({
-              producerJob: "Native accessibility / Native Axe.Windows smoke",
+              producerJob: "native / Native accessibility / Native Axe.Windows smoke",
               artifactNames: (run, producer) => [`ci-accessibility-native-${run.id}-${producer.run_attempt}`]
             });
           '

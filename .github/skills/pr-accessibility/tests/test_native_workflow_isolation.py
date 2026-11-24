@@ -86,7 +86,7 @@ class NativeCiIdentityTests(unittest.TestCase):
 
 class OrdinaryUnitCompletenessTests(unittest.TestCase):
     def test_real_workflow_check_requires_every_unit_and_local_or_root_runner(self):
-        workflow = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
+        workflow = yaml.safe_load((ROOT / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8"))
         step = next(s for s in workflow["jobs"]["cpp-tests"]["steps"]
                     if s.get("name") == "Verify ordinary unit test completeness")
         names = ("Conhost.Unit.Tests.dll", "Conhost.Interactivity.Win32.Unit.Tests.dll",
@@ -245,7 +245,7 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
         self.assertNotIn(": write", native)
 
     def test_native_ci_discovery_receives_immutable_identities(self):
-        caller = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        caller = (ROOT / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8")
         native = (ROOT / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         for key in ("head-sha", "trusted-sha"):
             self.assertIn(f"      {key}:", caller)
@@ -309,9 +309,9 @@ class NativeWorkflowIsolationTests(unittest.TestCase):
     def test_instruction_and_configuration_trigger_scope_is_complete(self):
         caller = (ROOT / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn("verifyCiSecurity({", caller)
-        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", caller)
+        self.assertIn("producerJob: 'native / Native accessibility / Native Axe.Windows smoke'", caller)
         scope = (ROOT / "build/scripts/ci-accessibility-scope.mjs").read_text(encoding="utf-8")
-        producer = (ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        producer = (ROOT / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8")
         self.assertIn("export function relevantPath", scope)
         self.assertIn("build/scripts/ci-accessibility-scope.mjs", caller)
         self.assertIn("build/scripts/ci-accessibility-scope.mjs", producer)

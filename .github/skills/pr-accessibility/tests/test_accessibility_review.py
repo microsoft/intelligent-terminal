@@ -1688,7 +1688,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", trigger)
         self.assertNotIn("\n  pull_request:", trigger)
         self.assertIn("verifyCiSecurity({", workflow)
-        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", workflow)
+        self.assertIn("producerJob: 'native / Native accessibility / Native Axe.Windows smoke'", workflow)
         self.assertIn("files.some(f => relevantPath(f.filename)", workflow)
         self.assertIn("relevantPath(f.previous_filename", workflow)
         shared = (root / ".github/skills/ghaw-pr-security/scripts/security-review.mjs").read_text()
@@ -1791,7 +1791,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("\n  native-runtime:\n", caller)
-        ci = (root / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        ci = (root / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8")
         self.assertIn("uses: ./.github/workflows/native-accessibility.yml", ci)
         workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)

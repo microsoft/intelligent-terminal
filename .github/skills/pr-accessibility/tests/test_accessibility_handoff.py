@@ -299,7 +299,7 @@ class CompiledGraphTests(unittest.TestCase):
         self.assertNotIn("deep-admission", self.jobs)
         admission = self.jobs["admission"]["steps"][-1]
         self.assertIn("verifyCiSecurity({", admission["with"]["script"])
-        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", admission["with"]["script"])
+        self.assertIn("producerJob: 'native / Native accessibility / Native Axe.Windows smoke'", admission["with"]["script"])
         self.assertIn("ci-accessibility-native-${run.id}-${producer.run_attempt}", admission["with"]["script"])
         self.assertIn("String(verified.artifacts[0].id)", admission["with"]["script"])
         self.assertEqual("${{ steps.admit.outputs.native_artifact_id }}",
@@ -328,13 +328,13 @@ class CompiledGraphTests(unittest.TestCase):
         publication = self.jobs["publication-admission"]
         self.assertIn("agent", publication["needs"])
         self.assertIn("verifyCiSecurity({", publication["steps"][-1]["run"])
-        self.assertIn('producerJob: "Native accessibility / Native Axe.Windows smoke"', publication["steps"][-1]["run"])
+        self.assertIn('producerJob: "native / Native accessibility / Native Axe.Windows smoke"', publication["steps"][-1]["run"])
         self.assertIn("publication-admission", self.jobs["safe_outputs"]["needs"])
 
     def test_existing_parallel_ci_build_publishes_payload_without_a_second_build(self):
-        ci = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
-        self.assertNotIn("needs", ci["jobs"]["cpp"])
-        self.assertNotIn("needs", ci["jobs"]["rust"])
+        ci = yaml.safe_load((ROOT / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8"))
+        self.assertEqual("performance-scope", ci["jobs"]["cpp"]["needs"])
+        self.assertEqual("performance-scope", ci["jobs"]["rust"]["needs"])
         steps = ci["jobs"]["cpp"]["steps"]
         names = [step["name"] for step in steps]
         self.assertLess(names.index("Build production Terminal and C++ tests"),
@@ -350,7 +350,8 @@ class CompiledGraphTests(unittest.TestCase):
         for name in ("Stage complete original-head TestHost layout", "Publish accessibility TestHost payload"):
             self.assertIn("steps.accessibility-scope.outputs.required == 'true'",
                           next(step for step in steps if step["name"] == name)["if"])
-        self.assertNotIn("doc/**", ci[True]["pull_request"]["paths"])
+        trigger = yaml.safe_load((ROOT / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8"))
+        self.assertNotIn("doc/**", trigger[True]["pull_request"]["paths"])
         build = next(step for step in steps if step["name"] == "Build production Terminal and C++ tests")
         self.assertEqual(1, build["run"].count(r"Terminal\Tests\TestHostApp"))
 
