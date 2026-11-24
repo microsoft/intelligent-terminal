@@ -262,11 +262,14 @@ fn extract_archive(archive: &Path, directory: &Path, platform: Platform) -> Resu
         zip.len() == 2,
         "the ACP archive does not contain exactly two expected files"
     );
+    // Validate the entire archive before creating even the first output file.
+    zip.validate_header_consistency()
+        .context("the ACP archive has inconsistent headers")?;
     let mut total = 0u64;
     for index in 0..zip.len() {
         let entry = zip.by_index(index)?;
         ensure!(
-            platform.files().contains(&entry.name()) && !entry.is_dir(),
+            platform.files().contains(&entry.name()?.as_ref()) && !entry.is_dir(),
             "the ACP archive contains an unexpected or unsafe path"
         );
         total = total
@@ -947,14 +950,21 @@ mod tests {
     }
 
     fn archive(root: &Path, names: &[&str]) -> PathBuf {
+        archive_with_compression(root, names, zip::CompressionMethod::Stored)
+    }
+
+    fn archive_with_compression(
+        root: &Path,
+        names: &[&str],
+        compression: zip::CompressionMethod,
+    ) -> PathBuf {
         let path = root.join("fixture.zip");
         let mut writer = zip::ZipWriter::new(File::create(&path).unwrap());
         for name in names {
             writer
                 .start_file(
                     *name,
-                    zip::write::SimpleFileOptions::default()
-                        .compression_method(zip::CompressionMethod::Stored),
+                    zip::write::SimpleFileOptions::default().compression_method(compression),
                 )
                 .unwrap();
             writer
@@ -963,6 +973,97 @@ mod tests {
         }
         writer.finish().unwrap();
         path
+    }
+
+    #[test]
+    fn archive_header_mismatch_is_rejected_before_writing_files() {
+        for compression in [
+            zip::CompressionMethod::Stored,
+            zip::CompressionMethod::Deflated,
+        ] {
+            for index in 0..2 {
+                // Change only the local header, preserving central-directory metadata.
+                for (field_name, offset) in [
+                    ("file name", 30),
+                    ("CRC32", 14),
+                    ("uncompressed size", 22),
+                    ("compression method", 8),
+                    ("general-purpose flags", 6),
+                    ("last modification time", 10),
+                ] {
+                    let root = fixture();
+                    let names = Platform::WindowsX64.files();
+                    let zip = archive_with_compression(&root, &names, compression);
+                    let mut bytes = fs::read(&zip).unwrap();
+                    let mut reader = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+                    let header = reader.by_index(index).unwrap().header_start() as usize;
+                    drop(reader);
+                    bytes[header + offset] ^= 1;
+                    fs::write(&zip, bytes).unwrap();
+                    let stage = root.join("stage");
+                    fs::create_dir(&stage).unwrap();
+                    let error = extract_archive(&zip, &stage, Platform::WindowsX64)
+                        .expect_err(&format!(
+                            "entry {index}, local field {field_name} at offset {offset}, {compression:?}: inconsistent headers must not be extracted"
+                        ));
+                    assert_eq!(
+                        error.to_string(),
+                        "the ACP archive has inconsistent headers",
+                        "entry {index}, local field {field_name} at offset {offset}, {compression:?}: unexpected error: {error:#}"
+                    );
+                    assert_eq!(
+                        fs::read_dir(&stage).unwrap().count(),
+                        0,
+                        "entry {index}, local field {field_name} at offset {offset}, {compression:?}"
+                    );
+                    fs::remove_dir_all(root).unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn archive_expected_pair_extracts_with_supported_compression_on_all_platforms() {
+        for platform in [
+            Platform::WindowsX64,
+            Platform::WindowsArm64,
+            Platform::LinuxX64,
+            Platform::LinuxArm64,
+        ] {
+            for compression in [
+                zip::CompressionMethod::Stored,
+                zip::CompressionMethod::Deflated,
+            ] {
+                let root = fixture();
+                let zip = archive_with_compression(&root, &platform.files(), compression);
+                let stage = root.join("stage");
+                fs::create_dir(&stage).unwrap();
+                let ownership = extract_archive(&zip, &stage, platform).unwrap();
+                assert_eq!(ownership.files.len(), 2);
+                for name in platform.files() {
+                    assert_eq!(
+                        fs::read(stage.join(name)).unwrap(),
+                        b"synthetic ACP file, never executed"
+                    );
+                }
+                assert_eq!(fs::read_dir(&stage).unwrap().count(), 2);
+                fs::remove_dir_all(root).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn archive_extraction_preserves_existing_destination_file() {
+        let root = fixture();
+        let names = Platform::WindowsX64.files();
+        let zip = archive(&root, &names);
+        let stage = root.join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::write(stage.join(names[0]), b"existing file").unwrap();
+        assert!(extract_archive(&zip, &stage, Platform::WindowsX64).is_err());
+        assert_eq!(fs::read(stage.join(names[0])).unwrap(), b"existing file");
+        assert_eq!(fs::read_dir(&stage).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

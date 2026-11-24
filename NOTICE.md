@@ -698,7 +698,7 @@ if it were canonical for the whole group.
 - **kasuari** v0.4.11 -- [https://github.com/ratatui/kasuari](https://github.com/ratatui/kasuari) -- `Apache-2.0 OR MIT`
 - **lab** v0.11.0 -- [https://github.com/TooManyBees/lab](https://github.com/TooManyBees/lab) -- `MIT`
 - **lazy_static** v1.5.0 -- [https://github.com/rust-lang-nursery/lazy-static.rs](https://github.com/rust-lang-nursery/lazy-static.rs) -- `Apache-2.0 OR MIT`
-- **libc** v0.2.183 -- [https://github.com/rust-lang/libc](https://github.com/rust-lang/libc) -- `Apache-2.0 OR MIT`
+- **libc** v0.2.191 -- [https://github.com/rust-lang/libc](https://github.com/rust-lang/libc) -- `Apache-2.0 OR MIT`
 - **line-clipping** v0.3.5 -- [https://github.com/joshka/line-clipping](https://github.com/joshka/line-clipping) -- `Apache-2.0 OR MIT`
 - **litemap** v0.8.3 -- [https://github.com/unicode-org/icu4x](https://github.com/unicode-org/icu4x) -- `Unicode-3.0`
 - **litrs** v1.0.0 -- [https://github.com/LukasKalbertodt/litrs](https://github.com/LukasKalbertodt/litrs) -- `Apache-2.0 OR MIT`
@@ -859,6 +859,7 @@ if it were canonical for the whole group.
 - **triomphe** v0.1.15 -- [https://github.com/Manishearth/triomphe](https://github.com/Manishearth/triomphe) -- `Apache-2.0 OR MIT`
 - **try-lock** v0.2.5 -- [https://github.com/seanmonstar/try-lock](https://github.com/seanmonstar/try-lock) -- `MIT`
 - **tui-markdown** v0.3.11 -- [https://github.com/joshka/tui-markdown](https://github.com/joshka/tui-markdown) -- `Apache-2.0 OR MIT`
+- **typed-path** v0.12.4 -- [https://github.com/chipsenkbeil/typed-path](https://github.com/chipsenkbeil/typed-path) -- `Apache-2.0 OR MIT`
 - **typenum** v1.19.0 -- [https://github.com/paholg/typenum](https://github.com/paholg/typenum) -- `Apache-2.0 OR MIT`
 - **ucd-trie** v0.1.7 -- [https://github.com/BurntSushi/ucd-generate](https://github.com/BurntSushi/ucd-generate) -- `Apache-2.0 OR MIT`
 - **unicase** v2.10.0 -- [https://github.com/seanmonstar/unicase](https://github.com/seanmonstar/unicase) -- `Apache-2.0 OR MIT`
@@ -887,13 +888,16 @@ if it were canonical for the whole group.
 - **winapi** v0.3.9 -- [https://github.com/retep998/winapi-rs](https://github.com/retep998/winapi-rs) -- `Apache-2.0 OR MIT`
 - **winapi-util** v0.1.11 -- [https://github.com/BurntSushi/winapi-util](https://github.com/BurntSushi/winapi-util) -- `MIT OR Unlicense`
 - **windows_x86_64_msvc** v0.48.5 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
+- **windows_x86_64_msvc** v0.52.6 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-link** v0.2.1 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-registry** v0.6.1 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-result** v0.4.1 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-strings** v0.5.1 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-sys** v0.48.0 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
+- **windows-sys** v0.52.0 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-sys** v0.61.2 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **windows-targets** v0.48.5 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
+- **windows-targets** v0.52.6 -- [https://github.com/microsoft/windows-rs](https://github.com/microsoft/windows-rs) -- `Apache-2.0 OR MIT`
 - **winnow** v0.7.15 -- [https://github.com/winnow-rs/winnow](https://github.com/winnow-rs/winnow) -- `MIT`
 - **winsafe** v0.0.19 -- [https://github.com/rodrigocfd/winsafe](https://github.com/rodrigocfd/winsafe) -- `MIT`
 - **writeable** v0.6.4 -- [https://github.com/unicode-org/icu4x](https://github.com/unicode-org/icu4x) -- `Unicode-3.0`
@@ -905,7 +909,7 @@ if it were canonical for the whole group.
 - **zerotrie** v0.2.5 -- [https://github.com/unicode-org/icu4x](https://github.com/unicode-org/icu4x) -- `Unicode-3.0`
 - **zerovec** v0.11.8 -- [https://github.com/unicode-org/icu4x](https://github.com/unicode-org/icu4x) -- `Unicode-3.0`
 - **zerovec-derive** v0.11.6 -- [https://github.com/unicode-org/icu4x](https://github.com/unicode-org/icu4x) -- `Unicode-3.0`
-- **zip** v6.0.0 -- [https://github.com/zip-rs/zip2.git](https://github.com/zip-rs/zip2.git) -- `MIT`
+- **zip** v9.0.5 -- [https://github.com/zip-rs/zip2](https://github.com/zip-rs/zip2) -- `MIT`
 - **zmij** v1.0.21 -- [https://github.com/dtolnay/zmij](https://github.com/dtolnay/zmij) -- `MIT`
 
 ## License texts
@@ -931,7 +935,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 229 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+221 more)
+Applies to 233 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+225 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -1340,7 +1344,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 318 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+310 more)
+Applies to 322 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+314 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
