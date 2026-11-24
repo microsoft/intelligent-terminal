@@ -34,6 +34,23 @@ while ($clock.Elapsed.TotalSeconds -lt $LifetimeSec) {
             [Console]::Write([char]27 + ']9;4;' + $request.state + ';35' + [char]27 + '\')
             [Console]::Out.Flush()
         }
+        elseif ($request.kind -eq 'program_status') {
+            if ([string]$request.state -notin 'idle', 'working', 'blocked', 'done', 'error') {
+                throw 'Invalid fixture program status state.'
+            }
+            $body = 'state=' + [string]$request.state + ':app=copilot'
+            if ($request.state -eq 'blocked') { $body += ':kind=permission' }
+            [Console]::Write([char]27 + ']7501;' + $body + [char]27 + '\')
+            [Console]::Out.Flush()
+        }
+        elseif ($request.kind -eq 'program_clear') {
+            [Console]::Write([char]27 + ']7501;state=clear' + [char]27 + '\')
+            [Console]::Out.Flush()
+        }
+        elseif ($request.kind -eq 'prompt') {
+            [Console]::Write([char]27 + ']133;A' + [char]27 + '\')
+            [Console]::Out.Flush()
+        }
         elseif ($request.kind -ne 'noop') { throw 'Invalid fixture request.' }
         @{
             token = $request.token

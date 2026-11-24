@@ -2196,6 +2196,10 @@ fn make_state() -> Arc<MasterStateInner> {
     make_state_with_retirement_pending_timeout(SESSION_CLOSE_TIMEOUT)
 }
 
+fn make_state_with_receiver_generation(generation: u64) -> Arc<MasterStateInner> {
+    make_state_with_options(SESSION_CLOSE_TIMEOUT, Some(generation))
+}
+
 #[test]
 fn interaction_ledger_tracks_exact_tokens_and_finishes_epoch_once() {
     let ledger = Arc::new(std::sync::Mutex::new(InteractionLedger::default()));
@@ -2425,6 +2429,1466 @@ async fn program_status_dispatch_preserves_hook_authority_and_enriches_pane_meta
         let pane = serde_json::to_value(&response.pane_statuses[0]).unwrap();
         assert_eq!(pane["canonical_working"], false);
     }
+}
+
+const OSC_AUTHORITY_PANE: &str = "10112233-4455-6677-8899-aabbccddeeff";
+
+async fn start_osc_authority_session(
+    state: &Arc<MasterStateInner>,
+    session_id: &str,
+    cli_source: crate::agent_sessions::CliSource,
+    provider_id: &str,
+    hook_owned: bool,
+    reset_progress: Option<u8>,
+    receiver_generation: Option<u64>,
+) {
+    handle_session_hook(
+        state,
+        crate::agent_sessions::SessionEvent::SessionStarted {
+            key: session_id.into(),
+            cli_source,
+            pane_session_id: OSC_AUTHORITY_PANE.into(),
+            cwd: PathBuf::from(r"C:\before"),
+            title: "Before".into(),
+        },
+        !hook_owned,
+    )
+    .await
+    .unwrap();
+    let mut params = serde_json::json!({
+        "pane_id":OSC_AUTHORITY_PANE,"provider_id":provider_id,
+        "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+        "agent_session_id":session_id,"location":"Host",
+        "kind":"reset","tracking_enabled":true
+    });
+    if let Some(progress) = reset_progress {
+        params["current_progress_state"] = serde_json::json!(progress);
+    }
+    if let Some(generation) = receiver_generation {
+        params["receiver_generation"] = serde_json::json!(generation);
+    }
+    handle_master_wt_event(
+        state,
+        serde_json::json!({"method":"native_agent_observation","params":params}),
+    )
+    .await;
+}
+
+fn program_status_event(
+    session_id: &str,
+    provider_id: &str,
+    revision: u64,
+    state_name: Option<&str>,
+    observed: bool,
+    native_lease_active: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "method":"native_agent_observation","params":{
+            "pane_id":OSC_AUTHORITY_PANE,"provider_id":provider_id,
+            "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+            "agent_session_id":session_id,"location":"Host",
+            "kind":"program_status","program_status":{
+                "revision":revision,"observed":observed,
+                "native_lease_active":native_lease_active,
+                "state":state_name,
+                "working":u32::from(state_name == Some("working")),
+                "blocked":u32::from(state_name == Some("blocked")),
+                "done":u32::from(state_name == Some("done")),
+                "error":u32::from(state_name == Some("error")),
+                "unseen_done":u32::from(state_name == Some("done")),
+                "unseen_error":u32::from(state_name == Some("error"))
+            }
+        }
+    })
+}
+
+async fn send_program_status(
+    state: &Arc<MasterStateInner>,
+    session_id: &str,
+    provider_id: &str,
+    revision: u64,
+    state_name: Option<&str>,
+    native_lease_active: bool,
+) {
+    handle_master_wt_event(
+        state,
+        program_status_event(
+            session_id,
+            provider_id,
+            revision,
+            state_name,
+            true,
+            native_lease_active,
+        ),
+    )
+    .await;
+}
+
+async fn retire_foreground(state: &Arc<MasterStateInner>, session_id: &str) {
+    handle_master_wt_event(
+        state,
+        serde_json::json!({
+            "method":"native_agent_observation","params":{
+                "pane_id":OSC_AUTHORITY_PANE,"provider_id":"copilot",
+                "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+                "agent_session_id":session_id,"location":"Host",
+                "kind":"foreground_retired","cause":"shell_prompt"
+            }
+        }),
+    )
+    .await;
+}
+
+async fn master_sessions_snapshot(
+    state: &Arc<MasterStateInner>,
+) -> crate::session_registry::SessionsListResponse {
+    let response = handle_sessions_list_with_probe(
+        state,
+        None,
+        &Default::default(),
+        |rows| async move { rows },
+    )
+    .await
+    .unwrap();
+    crate::session_registry::parse_sessions_list_response(&response.0).unwrap()
+}
+
+async fn master_pane_status(
+    state: &Arc<MasterStateInner>,
+    pane_id: &str,
+) -> crate::session_registry::PaneAgentStatus {
+    master_sessions_snapshot(state)
+        .await
+        .pane_statuses
+        .into_iter()
+        .find(|pane| pane.pane_id.eq_ignore_ascii_case(pane_id))
+        .expect("pane status")
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct OscAuthorityObservables {
+    program_status: Option<crate::session_registry::ProgramStatusSnapshot>,
+    effective_row: Option<crate::session_registry::SessionInfo>,
+    pane_snapshot: Vec<crate::session_registry::PaneAgentStatus>,
+    public_snapshot: crate::session_registry::SessionsListResponse,
+}
+
+async fn osc_authority_observables(
+    state: &Arc<MasterStateInner>,
+    session_id: &str,
+) -> OscAuthorityObservables {
+    osc_authority_observables_for_pane(state, session_id, OSC_AUTHORITY_PANE).await
+}
+
+async fn osc_authority_observables_for_pane(
+    state: &Arc<MasterStateInner>,
+    session_id: &str,
+    pane_id: &str,
+) -> OscAuthorityObservables {
+    let pane_snapshot = state.registry.pane_status_snapshot().await.0;
+    let program_status = pane_snapshot
+        .iter()
+        .find(|pane| pane.pane_id.eq_ignore_ascii_case(pane_id))
+        .and_then(|pane| pane.program_status.clone());
+    OscAuthorityObservables {
+        program_status,
+        effective_row: state
+            .registry
+            .lookup_effective(&acp::schema::v1::SessionId::new(session_id))
+            .await,
+        pane_snapshot,
+        public_snapshot: master_sessions_snapshot(state).await,
+    }
+}
+
+#[tokio::test]
+async fn program_status_promotion_admission_is_exact_and_qualified() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::{ProgramState, SessionInfo};
+
+    #[derive(Clone, Copy)]
+    enum Case {
+        Gemini,
+        Custom,
+        InactiveDone,
+        InactiveError,
+        ClearOnly,
+        Empty,
+        DuplicateRevision,
+        WrongProvider,
+        WrongLocation,
+        WrongPane,
+        WrongSession,
+        WrongEpoch,
+        WrongReceiver,
+        LegacyOwner,
+        Eligible,
+    }
+
+    let cases = [
+        ("gemini", Case::Gemini),
+        ("custom", Case::Custom),
+        ("inactive-done", Case::InactiveDone),
+        ("clear-only", Case::ClearOnly),
+        ("inactive-error", Case::InactiveError),
+        ("empty", Case::Empty),
+        ("duplicate-revision", Case::DuplicateRevision),
+        ("wrong-provider", Case::WrongProvider),
+        ("wrong-location", Case::WrongLocation),
+        ("wrong-pane", Case::WrongPane),
+        ("wrong-session", Case::WrongSession),
+        ("wrong-epoch", Case::WrongEpoch),
+        ("wrong-receiver", Case::WrongReceiver),
+        ("legacy-owner", Case::LegacyOwner),
+        ("eligible", Case::Eligible),
+    ];
+
+    for (name, case) in cases {
+        let receiver_generation = matches!(case, Case::WrongReceiver).then_some(7);
+        let state =
+            receiver_generation.map_or_else(make_state, make_state_with_receiver_generation);
+        if receiver_generation.is_some() {
+            handle_master_wt_event(&state, serde_json::json!({"method":"wt_listener_ready"})).await;
+        }
+        let session_id = format!("admission-{name}");
+        let (cli_source, provider_id) = match case {
+            Case::Gemini => (CliSource::Gemini, "gemini"),
+            Case::Custom => (
+                CliSource::Unknown("custom:fixture".into()),
+                "custom:fixture",
+            ),
+            _ => (CliSource::Copilot, "copilot"),
+        };
+
+        if matches!(case, Case::LegacyOwner) {
+            let mut row = SessionInfo::new(session_id.clone().into(), PathBuf::from(r"C:\legacy"))
+                .with_pane_session_id(OSC_AUTHORITY_PANE);
+            row.status = Some(AgentStatus::Idle);
+            row.born_bound_pane = true;
+            state.registry.upsert(row).await;
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({"method":"native_agent_observation","params":{
+                    "pane_id":OSC_AUTHORITY_PANE,"provider_id":"copilot",
+                    "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+                    "agent_session_id":session_id,"location":"Host",
+                    "kind":"reset","tracking_enabled":true
+                }}),
+            )
+            .await;
+        } else {
+            start_osc_authority_session(
+                &state,
+                &session_id,
+                cli_source,
+                provider_id,
+                true,
+                None,
+                receiver_generation,
+            )
+            .await;
+        }
+
+        let mut candidate = match case {
+            Case::InactiveDone => {
+                program_status_event(&session_id, provider_id, 1, Some("done"), true, false)
+            }
+            Case::InactiveError => {
+                program_status_event(&session_id, provider_id, 1, Some("error"), true, false)
+            }
+            Case::ClearOnly => program_status_event(&session_id, provider_id, 1, None, true, false),
+            Case::Empty => program_status_event(&session_id, provider_id, 1, None, false, false),
+            _ => program_status_event(
+                &session_id,
+                if matches!(case, Case::WrongProvider) {
+                    "claude"
+                } else {
+                    provider_id
+                },
+                if matches!(case, Case::DuplicateRevision) {
+                    2
+                } else {
+                    1
+                },
+                Some("working"),
+                true,
+                true,
+            ),
+        };
+        match case {
+            Case::DuplicateRevision => {
+                handle_master_wt_event(
+                    &state,
+                    program_status_event(&session_id, provider_id, 2, Some("done"), true, false),
+                )
+                .await;
+            }
+            Case::WrongLocation => {
+                candidate["params"]["location"] = serde_json::json!({"Wsl":{"distro":"Ubuntu"}});
+            }
+            Case::WrongPane => {
+                candidate["params"]["pane_id"] =
+                    serde_json::json!("11112233-4455-6677-8899-aabbccddeeff");
+            }
+            Case::WrongSession => {
+                candidate["params"]["agent_session_id"] = serde_json::json!("other-session");
+            }
+            Case::WrongEpoch => candidate["params"]["mode_epoch"] = serde_json::json!(2),
+            Case::WrongReceiver => {
+                candidate["params"]["receiver_generation"] = serde_json::json!(8)
+            }
+            _ => {}
+        }
+        let must_leave_projection_unchanged = matches!(
+            case,
+            Case::InactiveDone
+                | Case::InactiveError
+                | Case::ClearOnly
+                | Case::Empty
+                | Case::DuplicateRevision
+                | Case::WrongProvider
+                | Case::WrongLocation
+                | Case::WrongPane
+                | Case::WrongSession
+                | Case::WrongEpoch
+                | Case::WrongReceiver
+        );
+        let before_candidate = if must_leave_projection_unchanged {
+            Some((
+                state
+                    .registry
+                    .lookup(&acp::schema::v1::SessionId::new(session_id.clone()))
+                    .await
+                    .unwrap(),
+                master_pane_status(&state, OSC_AUTHORITY_PANE).await,
+                state.registry.pane_status_snapshot().await.0,
+            ))
+        } else {
+            None
+        };
+        handle_master_wt_event(&state, candidate).await;
+        if let Some((before_row, before_pane, before_panes)) = before_candidate {
+            assert_eq!(
+                state
+                    .registry
+                    .lookup(&acp::schema::v1::SessionId::new(session_id.clone()))
+                    .await
+                    .unwrap(),
+                before_row,
+                "{name}"
+            );
+            assert_eq!(
+                master_pane_status(&state, OSC_AUTHORITY_PANE).await,
+                before_pane,
+                "{name}"
+            );
+            let panes = state.registry.pane_status_snapshot().await.0;
+            assert_eq!(panes, before_panes, "{name}");
+            if matches!(case, Case::WrongPane) {
+                assert!(
+                    panes.iter().all(|pane| !pane
+                        .pane_id
+                        .eq_ignore_ascii_case("11112233-4455-6677-8899-aabbccddeeff")),
+                    "{name}"
+                );
+            }
+        }
+        handle_session_hook(
+            &state,
+            SessionEvent::Notification {
+                key: session_id.clone(),
+                message: format!("competing-{name}"),
+                timestamp_ms: None,
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+        let row = state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(session_id.clone()))
+            .await
+            .expect("owner row");
+        if matches!(case, Case::LegacyOwner) {
+            assert_eq!(row.status, Some(AgentStatus::Attention), "{name}");
+            continue;
+        }
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        if matches!(case, Case::Eligible) {
+            assert_eq!(row.status, Some(AgentStatus::Working), "{name}");
+            assert_eq!(
+                pane.program_display_state(),
+                Some(ProgramState::Working),
+                "{name}"
+            );
+            assert!(!pane.input_required, "{name}");
+        } else {
+            assert_eq!(row.status, Some(AgentStatus::Attention), "{name}");
+            assert_eq!(pane.status, AgentStatus::Attention, "{name}");
+            assert!(pane.input_required, "{name}");
+            if matches!(case, Case::DuplicateRevision) {
+                assert_eq!(
+                    pane.program_status.as_ref().map(|status| status.revision),
+                    Some(2)
+                );
+                assert_eq!(
+                    pane.program_status.as_ref().and_then(|status| status.state),
+                    Some(ProgramState::Done)
+                );
+            }
+        }
+    }
+}
+
+async fn seed_qualified_program_owner(
+    state: &Arc<MasterStateInner>,
+    session_id: &str,
+    pane_id: &str,
+    location: crate::agent_sessions::SessionLocation,
+) -> crate::session_registry::SessionIdentity {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::{SessionIdentity, SessionInfo};
+
+    let mut row = SessionInfo::new(
+        acp::schema::v1::SessionId::new(session_id),
+        PathBuf::from(r"C:\collision"),
+    )
+    .with_pane_session_id(pane_id);
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = location;
+    row.status = Some(AgentStatus::Idle);
+    row.born_bound_pane = true;
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+    identity
+}
+
+async fn send_qualified_program_status(
+    state: &Arc<MasterStateInner>,
+    session_id: Option<&str>,
+    pane_id: &str,
+    location: crate::agent_sessions::SessionLocation,
+) {
+    let location = serde_json::to_value(location).unwrap();
+    let mut reset = serde_json::json!({
+        "pane_id":pane_id,"provider_id":"copilot",
+        "window_id":7,"tab_id":"collision-tab","mode_epoch":1,
+        "location":location,"kind":"reset","tracking_enabled":true
+    });
+    if let Some(session_id) = session_id {
+        reset["agent_session_id"] = serde_json::json!(session_id);
+    }
+    handle_master_wt_event(
+        state,
+        serde_json::json!({"method":"native_agent_observation","params":reset.clone()}),
+    )
+    .await;
+    reset["kind"] = serde_json::json!("program_status");
+    reset.as_object_mut().unwrap().remove("tracking_enabled");
+    reset["program_status"] = serde_json::json!({
+        "revision":1,"observed":true,"native_lease_active":true,
+        "state":"working","working":1
+    });
+    handle_master_wt_event(
+        state,
+        serde_json::json!({"method":"native_agent_observation","params":reset}),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn program_status_promotion_isolated_across_qualified_raw_id_collisions() {
+    use crate::agent_sessions::{
+        AgentStatus, QualifiedHookActivity, SessionEvent, SessionLocation,
+    };
+    use crate::session_registry::ProgramState;
+
+    let raw_session_id = "qualified-collision";
+    let pairs = [
+        (
+            "host-ubuntu",
+            SessionLocation::Host,
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            "20112233-4455-6677-8899-aabbccddeeff",
+            "21112233-4455-6677-8899-aabbccddeeff",
+        ),
+        (
+            "ubuntu-debian",
+            SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+            SessionLocation::Wsl {
+                distro: "Debian".into(),
+            },
+            "30112233-4455-6677-8899-aabbccddeeff",
+            "31112233-4455-6677-8899-aabbccddeeff",
+        ),
+    ];
+    let mut observed = Vec::new();
+    for (name, owner_location, other_location, owner_pane, other_pane) in pairs {
+        let state = make_state();
+        let owner = seed_qualified_program_owner(
+            &state,
+            raw_session_id,
+            owner_pane,
+            owner_location.clone(),
+        )
+        .await;
+        let other =
+            seed_qualified_program_owner(&state, raw_session_id, other_pane, other_location).await;
+        send_qualified_program_status(&state, Some(raw_session_id), owner_pane, owner_location)
+            .await;
+
+        for (identity, pane, message) in [
+            (other.clone(), other_pane, "other"),
+            (owner.clone(), owner_pane, "owner"),
+        ] {
+            state
+                .registry
+                .apply_event(SessionEvent::QualifiedHook {
+                    identity,
+                    pane_session_id: pane.into(),
+                    event: QualifiedHookActivity::Notification {
+                        message: format!("{name}-{message}"),
+                        timestamp_ms: None,
+                        interaction_candidate: false,
+                        interaction_epoch: None,
+                    },
+                })
+                .await;
+        }
+
+        let owner_row = state.registry.lookup_identity(&owner).await.unwrap();
+        let other_row = state.registry.lookup_identity(&other).await.unwrap();
+        let owner_status = master_pane_status(&state, owner_pane).await;
+        let other_status = master_pane_status(&state, other_pane).await;
+        observed.push((
+            name,
+            owner_row.status,
+            other_row.status,
+            owner_status.program_display_state(),
+            owner_status.input_required,
+            other_status.status,
+        ));
+    }
+
+    let ambiguous = make_state();
+    let first_pane = "{40112233-4455-6677-8899-AABBCCDDEEFF}";
+    let second_pane = "40112233-4455-6677-8899-aabbccddeeff";
+    let first = seed_qualified_program_owner(
+        &ambiguous,
+        "ambiguous-first",
+        first_pane,
+        SessionLocation::Host,
+    )
+    .await;
+    let second = seed_qualified_program_owner(
+        &ambiguous,
+        "ambiguous-second",
+        second_pane,
+        SessionLocation::Host,
+    )
+    .await;
+    send_qualified_program_status(&ambiguous, None, second_pane, SessionLocation::Host).await;
+    let after_ambiguous_candidate =
+        osc_authority_observables_for_pane(&ambiguous, "ambiguous-second", second_pane).await;
+    ambiguous
+        .registry
+        .apply_event(SessionEvent::QualifiedHook {
+            identity: second.clone(),
+            pane_session_id: second_pane.into(),
+            event: QualifiedHookActivity::Notification {
+                message: "ambiguous owner".into(),
+                timestamp_ms: None,
+                interaction_candidate: false,
+                interaction_epoch: None,
+            },
+        })
+        .await;
+    let after_exact_hook =
+        osc_authority_observables_for_pane(&ambiguous, "ambiguous-second", second_pane).await;
+    assert_eq!(
+        ambiguous
+            .registry
+            .lookup_identity(&first)
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Idle)
+    );
+    assert_eq!(
+        ambiguous
+            .registry
+            .lookup_identity(&second)
+            .await
+            .unwrap()
+            .status,
+        Some(AgentStatus::Attention)
+    );
+    assert!(after_ambiguous_candidate.program_status.is_none());
+    assert_eq!(
+        after_ambiguous_candidate
+            .effective_row
+            .as_ref()
+            .and_then(|row| row.status.as_ref()),
+        Some(&AgentStatus::Idle)
+    );
+    assert_eq!(
+        after_ambiguous_candidate
+            .public_snapshot
+            .sessions
+            .iter()
+            .find(|row| row.session_id.0.as_ref() == "ambiguous-second")
+            .and_then(|row| row.status.as_ref()),
+        Some(&AgentStatus::Idle)
+    );
+    assert_eq!(
+        after_ambiguous_candidate.pane_snapshot,
+        after_ambiguous_candidate.public_snapshot.pane_statuses
+    );
+    assert!(after_ambiguous_candidate
+        .pane_snapshot
+        .iter()
+        .all(|pane| !pane.pane_id.eq_ignore_ascii_case(second_pane)));
+    assert!(after_exact_hook.program_status.is_none());
+    assert_eq!(
+        after_exact_hook
+            .effective_row
+            .as_ref()
+            .and_then(|row| row.status.as_ref()),
+        Some(&AgentStatus::Attention)
+    );
+    assert_eq!(
+        after_exact_hook.pane_snapshot,
+        after_exact_hook.public_snapshot.pane_statuses
+    );
+    assert!(after_exact_hook
+        .pane_snapshot
+        .iter()
+        .all(|pane| !pane.pane_id.eq_ignore_ascii_case(second_pane)));
+    assert_eq!(
+        after_exact_hook
+            .public_snapshot
+            .sessions
+            .iter()
+            .find(|row| row.session_id.0.as_ref() == "ambiguous-second")
+            .map(|row| {
+                (
+                    row.status.as_ref(),
+                    row.attention_reason.as_deref(),
+                    row.pane_session_id.as_deref(),
+                )
+            }),
+        Some((
+            Some(&AgentStatus::Attention),
+            Some("ambiguous owner"),
+            Some(second_pane),
+        ))
+    );
+
+    assert_eq!(
+        observed,
+        vec![
+            (
+                "host-ubuntu",
+                Some(AgentStatus::Working),
+                Some(AgentStatus::Attention),
+                Some(ProgramState::Working),
+                false,
+                AgentStatus::Attention,
+            ),
+            (
+                "ubuntu-debian",
+                Some(AgentStatus::Working),
+                Some(AgentStatus::Attention),
+                Some(ProgramState::Working),
+                false,
+                AgentStatus::Attention,
+            ),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn osc_authority_suppresses_each_competing_visual_source() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::ProgramState;
+
+    let mut observed = Vec::new();
+    let mut complete_contract = Vec::new();
+    for source in [
+        "hook-working",
+        "hook-stop",
+        "hook-attention",
+        "hook-error",
+        "watcher",
+        "progress",
+        "bell",
+        "reset-progress",
+    ] {
+        let state = make_state();
+        let hook_owned = source != "watcher";
+        start_osc_authority_session(
+            &state,
+            source,
+            CliSource::Copilot,
+            "copilot",
+            hook_owned,
+            (source == "reset-progress").then_some(3),
+            None,
+        )
+        .await;
+        let osc_state = if source == "hook-stop" {
+            "working"
+        } else {
+            "idle"
+        };
+        send_program_status(&state, source, "copilot", 1, Some(osc_state), true).await;
+        let before = osc_authority_observables(&state, source).await;
+
+        match source {
+            "hook-working" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::ToolStarting {
+                        key: source.into(),
+                        tool_name: "hook".into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "hook-stop" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::ToolCompleted { key: source.into() },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "hook-attention" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::Notification {
+                        key: source.into(),
+                        message: "permission".into(),
+                        timestamp_ms: None,
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "hook-error" => {
+                handle_master_wt_event(
+                    &state,
+                    serde_json::json!({"method":"agent_event","params":{
+                        "event":"agent.error","cli_source":"copilot",
+                        "agent_session_id":source,"pane_id":OSC_AUTHORITY_PANE,
+                        "payload":{"error":"provider failure"}
+                    }}),
+                )
+                .await;
+            }
+            "watcher" => {
+                apply_watcher_event(
+                    &state,
+                    crate::session_watcher::Emitted {
+                        cli: CliSource::Copilot,
+                        key: source.into(),
+                        event: SessionEvent::ToolStarting {
+                            key: source.into(),
+                            tool_name: "watcher".into(),
+                        },
+                    },
+                )
+                .await;
+            }
+            "progress" | "bell" => {
+                handle_master_wt_event(
+                    &state,
+                    serde_json::json!({"method":"native_agent_observation","params":{
+                        "pane_id":OSC_AUTHORITY_PANE,"provider_id":"copilot",
+                        "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+                        "agent_session_id":source,"location":"Host",
+                        "kind":source,"progress_state":1
+                    }}),
+                )
+                .await;
+            }
+            "reset-progress" => {}
+            _ => unreachable!(),
+        }
+
+        let after = osc_authority_observables(&state, source).await;
+        let complete_unchanged = if source == "reset-progress" {
+            send_program_status(&state, source, "copilot", 2, None, false).await;
+            let cleared = osc_authority_observables(&state, source).await;
+            let public_row = cleared
+                .public_snapshot
+                .sessions
+                .iter()
+                .find(|row| row.session_id.0.as_ref() == source);
+            after == before
+                && cleared.program_status.as_ref().is_some_and(|status| {
+                    status.revision == 2
+                        && status.state.is_none()
+                        && status.native_lease_active == Some(false)
+                })
+                && cleared
+                    .effective_row
+                    .as_ref()
+                    .is_some_and(|row| row.status == Some(AgentStatus::Idle))
+                && public_row == cleared.effective_row.as_ref()
+                && cleared.pane_snapshot == cleared.public_snapshot.pane_statuses
+                && cleared
+                    .public_snapshot
+                    .native_pane_observations
+                    .iter()
+                    .all(|pane| pane.status == AgentStatus::Idle)
+        } else {
+            after == before
+        };
+        complete_contract.push((source, complete_unchanged));
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        observed.push((
+            source,
+            pane.status.clone(),
+            pane.program_display_state(),
+            pane.input_required,
+            pane.canonical_error,
+            pane.canonical_working,
+        ));
+    }
+
+    assert_eq!(
+        complete_contract,
+        vec![
+            ("hook-working", true),
+            ("hook-stop", true),
+            ("hook-attention", true),
+            ("hook-error", true),
+            ("watcher", true),
+            ("progress", true),
+            ("bell", true),
+            ("reset-progress", true),
+        ]
+    );
+    assert_eq!(
+        observed,
+        vec![
+            (
+                "hook-working",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "hook-stop",
+                AgentStatus::Working,
+                Some(ProgramState::Working),
+                false,
+                false,
+                false
+            ),
+            (
+                "hook-attention",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "hook-error",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "watcher",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "progress",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "bell",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+            (
+                "reset-progress",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false,
+                false,
+                false
+            ),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn osc_owned_hooks_preserve_opencode_metadata_but_suppress_provider_failure() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+    use crate::session_registry::ProgramState;
+
+    let state = make_state();
+    start_osc_authority_session(
+        &state,
+        "opencode-owned",
+        CliSource::OpenCode,
+        "opencode",
+        true,
+        None,
+        None,
+    )
+    .await;
+    send_program_status(
+        &state,
+        "opencode-owned",
+        "opencode",
+        1,
+        Some("working"),
+        true,
+    )
+    .await;
+
+    let event = |name: &str, payload: serde_json::Value| {
+        serde_json::json!({"method":"agent_event","params":{
+            "event":name,"cli_source":"opencode","agent_session_id":"opencode-owned",
+            "pane_id":OSC_AUTHORITY_PANE,"payload":payload
+        }})
+    };
+    handle_master_wt_event(
+        &state,
+        event(
+            "agent.session.start",
+            serde_json::json!({"cwd":"C:\\after-start","title":"Started title","running":true}),
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        event(
+            "agent.cwd.changed",
+            serde_json::json!({"new_cwd":"C:\\after-cwd"}),
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        event(
+            "agent.session.renamed",
+            serde_json::json!({"title":"Renamed title"}),
+        ),
+    )
+    .await;
+    handle_master_wt_event(
+        &state,
+        event(
+            "agent.error",
+            serde_json::json!({"error":"provider StopFailure"}),
+        ),
+    )
+    .await;
+
+    let row = state
+        .registry
+        .lookup(&acp::schema::v1::SessionId::new("opencode-owned"))
+        .await
+        .unwrap();
+    assert_eq!(row.pane_session_id.as_deref(), Some(OSC_AUTHORITY_PANE));
+    assert_eq!(row.cwd, PathBuf::from(r"C:\after-cwd"));
+    assert_eq!(row.title.as_deref(), Some("Renamed title"));
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert!(row.last_error.is_none());
+    let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+    assert_eq!(pane.program_display_state(), Some(ProgramState::Working));
+    assert!(!pane.canonical_error);
+}
+
+#[tokio::test]
+async fn osc_owned_non_prompt_retirement_boundaries_start_fresh_lifetimes() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::ProgramState;
+
+    let mut observed = Vec::new();
+    for boundary in [
+        "end",
+        "unbind",
+        "connection-failure",
+        "replacement-session",
+        "higher-mode-epoch",
+        "receiver-generation",
+    ] {
+        let state = make_state();
+        let cli = if boundary == "unbind" {
+            CliSource::OpenCode
+        } else {
+            CliSource::Copilot
+        };
+        let provider = if boundary == "unbind" {
+            "opencode"
+        } else {
+            "copilot"
+        };
+        let receiver_generation = (boundary == "receiver-generation").then_some(7);
+        start_osc_authority_session(
+            &state,
+            boundary,
+            cli.clone(),
+            provider,
+            true,
+            None,
+            receiver_generation,
+        )
+        .await;
+        send_program_status(&state, boundary, provider, 1, Some("working"), true).await;
+        let fresh = format!("{boundary}-fresh");
+        match boundary {
+            "end" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::SessionStopped {
+                        key: boundary.into(),
+                        reason: "complete".into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "unbind" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::SessionUnbound {
+                        key: boundary.into(),
+                        pane_session_id: OSC_AUTHORITY_PANE.into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "connection-failure" => {
+                state
+                    .registry
+                    .apply_event(SessionEvent::ConnectionFailed {
+                        pane_session_id: OSC_AUTHORITY_PANE.into(),
+                        reason: "connection failed".into(),
+                    })
+                    .await;
+            }
+            "replacement-session" => {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::SessionStarted {
+                        key: fresh.clone(),
+                        cli_source: cli.clone(),
+                        pane_session_id: OSC_AUTHORITY_PANE.into(),
+                        cwd: PathBuf::from(r"C:\fresh"),
+                        title: "Fresh".into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            "higher-mode-epoch" | "receiver-generation" => {
+                let mut reset = serde_json::json!({
+                    "pane_id":OSC_AUTHORITY_PANE,"provider_id":provider,
+                    "window_id":7,"tab_id":"tab-7",
+                    "mode_epoch":if boundary == "higher-mode-epoch" { 2 } else { 1 },
+                    "agent_session_id":boundary,"location":"Host",
+                    "kind":"reset","tracking_enabled":true
+                });
+                if boundary == "receiver-generation" {
+                    reset["receiver_generation"] = serde_json::json!(8);
+                }
+                handle_master_wt_event(
+                    &state,
+                    serde_json::json!({"method":"native_agent_observation","params":reset}),
+                )
+                .await;
+            }
+            _ => unreachable!(),
+        }
+
+        let after_boundary = osc_authority_observables(&state, boundary).await;
+        let lifecycle_preserved = match boundary {
+            "end" => after_boundary.effective_row.as_ref().is_some_and(|row| {
+                row.status == Some(AgentStatus::Ended) && row.pane_session_id.is_none()
+            }),
+            "unbind" => after_boundary.effective_row.as_ref().is_some_and(|row| {
+                row.status == Some(AgentStatus::Idle) && row.pane_session_id.is_none()
+            }),
+            "connection-failure" => after_boundary.effective_row.as_ref().is_some_and(|row| {
+                row.status == Some(AgentStatus::Error)
+                    && row.pane_session_id.as_deref() == Some(OSC_AUTHORITY_PANE)
+                    && row.last_error.as_deref() == Some("connection failed")
+            }),
+            "replacement-session" => after_boundary.public_snapshot.sessions.iter().any(|row| {
+                row.session_id.0.as_ref() == fresh
+                    && row.pane_session_id.as_deref() == Some(OSC_AUTHORITY_PANE)
+            }),
+            "higher-mode-epoch" => after_boundary
+                .public_snapshot
+                .native_pane_observations
+                .iter()
+                .any(|pane| pane.mode_epoch == 2),
+            "receiver-generation" => after_boundary
+                .public_snapshot
+                .native_pane_observations
+                .iter()
+                .any(|pane| {
+                    pane.mode_epoch == 1
+                        && pane.agent_session_id.as_deref() == Some("receiver-generation")
+                        && pane.status == AgentStatus::Idle
+                }),
+            _ => unreachable!(),
+        };
+        let projection_retired = after_boundary.program_status.is_none();
+
+        let mut stale = program_status_event(boundary, provider, 2, Some("blocked"), true, true);
+        stale["params"]["mode_epoch"] = serde_json::json!(1);
+        if boundary == "receiver-generation" {
+            stale["params"]["receiver_generation"] = serde_json::json!(7);
+        }
+        handle_master_wt_event(&state, stale).await;
+        let after_stale = osc_authority_observables(&state, boundary).await;
+        let stale_ignored = after_stale == after_boundary;
+
+        let fresh_accepted = if matches!(boundary, "higher-mode-epoch" | "receiver-generation") {
+            let mut fresh_status =
+                program_status_event(boundary, provider, 1, Some("working"), true, true);
+            fresh_status["params"]["mode_epoch"] =
+                serde_json::json!(if boundary == "higher-mode-epoch" {
+                    2
+                } else {
+                    1
+                });
+            if boundary == "receiver-generation" {
+                fresh_status["params"]["receiver_generation"] = serde_json::json!(8);
+            }
+            handle_master_wt_event(&state, fresh_status).await;
+            osc_authority_observables(&state, boundary)
+                .await
+                .program_status
+                .is_some_and(|status| {
+                    status.revision == 1 && status.state == Some(ProgramState::Working)
+                })
+        } else {
+            if boundary != "replacement-session" {
+                handle_session_hook(
+                    &state,
+                    SessionEvent::SessionStarted {
+                        key: fresh.clone(),
+                        cli_source: cli,
+                        pane_session_id: OSC_AUTHORITY_PANE.into(),
+                        cwd: PathBuf::from(r"C:\fresh"),
+                        title: "Fresh".into(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+            }
+            handle_session_hook(
+                &state,
+                SessionEvent::Notification {
+                    key: fresh.clone(),
+                    message: "fresh lifetime".into(),
+                    timestamp_ms: None,
+                },
+                false,
+            )
+            .await
+            .unwrap();
+            let fresh_projection =
+                osc_authority_observables_for_pane(&state, &fresh, OSC_AUTHORITY_PANE).await;
+            fresh_projection.program_status.is_none()
+                && fresh_projection
+                    .effective_row
+                    .as_ref()
+                    .is_some_and(|row| row.status == Some(AgentStatus::Attention))
+                && fresh_projection.pane_snapshot.iter().any(|pane| {
+                    pane.pane_id.eq_ignore_ascii_case(OSC_AUTHORITY_PANE)
+                        && pane.status == AgentStatus::Attention
+                        && pane.input_required
+                })
+        };
+        observed.push((
+            boundary,
+            lifecycle_preserved,
+            projection_retired,
+            stale_ignored,
+            fresh_accepted,
+        ));
+    }
+
+    assert_eq!(
+        observed,
+        vec![
+            ("end", true, true, true, true),
+            ("unbind", true, true, true, true),
+            ("connection-failure", true, true, true, true),
+            ("replacement-session", true, true, true, true),
+            ("higher-mode-epoch", true, true, true, true),
+            ("receiver-generation", true, true, true, true),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn foreground_retirement_clears_transient_osc_projection() {
+    use crate::agent_sessions::{AgentStatus, CliSource};
+
+    let mut transient = Vec::new();
+    for state_name in ["working", "blocked", "error"] {
+        let state = make_state();
+        let session_id = format!("retire-{state_name}");
+        start_osc_authority_session(
+            &state,
+            &session_id,
+            CliSource::Copilot,
+            "copilot",
+            true,
+            None,
+            None,
+        )
+        .await;
+        send_program_status(&state, &session_id, "copilot", 1, Some(state_name), true).await;
+        retire_foreground(&state, &session_id).await;
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        let row = state
+            .registry
+            .lookup_effective(&acp::schema::v1::SessionId::new(session_id))
+            .await
+            .unwrap();
+        transient.push((
+            state_name,
+            row.status,
+            pane.program_status.is_none(),
+            pane.status,
+        ));
+    }
+    assert_eq!(
+        transient,
+        vec![
+            ("working", Some(AgentStatus::Idle), true, AgentStatus::Idle),
+            ("blocked", Some(AgentStatus::Idle), true, AgentStatus::Idle),
+            ("error", Some(AgentStatus::Idle), true, AgentStatus::Idle),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn foreground_retirement_does_not_resurrect_pre_promotion_activity() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+
+    let mut observed = Vec::new();
+    for source in ["hook", "watcher"] {
+        let state = make_state();
+        let session_id = format!("retire-{source}");
+        start_osc_authority_session(
+            &state,
+            &session_id,
+            CliSource::Copilot,
+            "copilot",
+            source == "hook",
+            None,
+            None,
+        )
+        .await;
+        let activity = SessionEvent::ToolStarting {
+            key: session_id.clone(),
+            tool_name: format!("{source}-before-promotion"),
+        };
+        if source == "hook" {
+            handle_session_hook(&state, activity, false).await.unwrap();
+        } else {
+            apply_watcher_event(
+                &state,
+                crate::session_watcher::Emitted {
+                    cli: CliSource::Copilot,
+                    key: session_id.clone(),
+                    event: activity,
+                },
+            )
+            .await;
+        }
+        send_program_status(&state, &session_id, "copilot", 1, Some("blocked"), true).await;
+        retire_foreground(&state, &session_id).await;
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        observed.push((
+            source,
+            pane.status.clone(),
+            pane.program_status.is_none(),
+            pane.canonical_working,
+        ));
+    }
+
+    assert_eq!(
+        observed,
+        vec![
+            ("hook", AgentStatus::Idle, true, false),
+            ("watcher", AgentStatus::Idle, true, false),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn retained_done_and_error_are_presentation_only_in_the_next_lifetime() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::ProgramState;
+
+    for retained in ["done", "error"] {
+        let state = make_state();
+        let session_id = format!("retained-{retained}");
+        start_osc_authority_session(
+            &state,
+            &session_id,
+            CliSource::Copilot,
+            "copilot",
+            true,
+            None,
+            None,
+        )
+        .await;
+        send_program_status(&state, &session_id, "copilot", 1, Some("working"), true).await;
+        send_program_status(&state, &session_id, "copilot", 2, Some(retained), false).await;
+        let retained_pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        let retained_snapshot = retained_pane.program_status.as_ref().unwrap();
+        assert_eq!(retained_snapshot.revision, 2, "{retained}");
+        assert_eq!(
+            retained_snapshot.native_lease_active,
+            Some(false),
+            "{retained}"
+        );
+        assert_eq!(
+            retained_snapshot.state,
+            Some(if retained == "done" {
+                ProgramState::Done
+            } else {
+                ProgramState::Error
+            }),
+            "{retained}"
+        );
+        retire_foreground(&state, &session_id).await;
+        handle_session_hook(
+            &state,
+            SessionEvent::ToolStarting {
+                key: session_id,
+                tool_name: "fresh-lifetime".into(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        assert_eq!(pane.status, AgentStatus::Working, "{retained}");
+        assert_eq!(
+            pane.program_display_state(),
+            Some(ProgramState::Working),
+            "{retained}"
+        );
+        assert_eq!(
+            pane.program_status, retained_pane.program_status,
+            "{retained}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn osc_root_clear_blocks_hook_progress_and_bell_until_retirement() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::session_registry::ProgramState;
+
+    let mut observed = Vec::new();
+    for source in ["progress", "bell", "hook"] {
+        let state = make_state();
+        let session_id = format!("clear-{source}");
+        start_osc_authority_session(
+            &state,
+            &session_id,
+            CliSource::Copilot,
+            "copilot",
+            true,
+            None,
+            None,
+        )
+        .await;
+        send_program_status(&state, &session_id, "copilot", 1, Some("working"), true).await;
+        send_program_status(&state, &session_id, "copilot", 2, None, false).await;
+        if source == "hook" {
+            handle_session_hook(
+                &state,
+                SessionEvent::ToolStarting {
+                    key: session_id,
+                    tool_name: "after-clear".into(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        } else {
+            handle_master_wt_event(
+                &state,
+                serde_json::json!({"method":"native_agent_observation","params":{
+                    "pane_id":OSC_AUTHORITY_PANE,"provider_id":"copilot",
+                    "window_id":7,"tab_id":"tab-7","mode_epoch":1,
+                    "agent_session_id":session_id,"location":"Host",
+                    "kind":source,"progress_state":1
+                }}),
+            )
+            .await;
+        }
+        let pane = master_pane_status(&state, OSC_AUTHORITY_PANE).await;
+        observed.push((
+            source,
+            pane.status.clone(),
+            pane.program_display_state(),
+            pane.input_required,
+        ));
+    }
+
+    assert_eq!(
+        observed,
+        vec![
+            (
+                "progress",
+                AgentStatus::Idle,
+                Some(ProgramState::Idle),
+                false
+            ),
+            ("bell", AgentStatus::Idle, Some(ProgramState::Idle), false),
+            ("hook", AgentStatus::Idle, Some(ProgramState::Idle), false),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -3278,9 +4742,16 @@ async fn native_receiver_birth_preserves_other_backend_with_the_same_session_id(
 fn make_state_with_retirement_pending_timeout(
     retirement_pending_timeout: std::time::Duration,
 ) -> Arc<MasterStateInner> {
+    make_state_with_options(retirement_pending_timeout, None)
+}
+
+fn make_state_with_options(
+    retirement_pending_timeout: std::time::Duration,
+    native_observation_receiver_generation: Option<u64>,
+) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         startup_registry: Arc::new(crate::agent_lifecycle::StartupRegistry::default()),
-        native_observation_receiver_generation: None,
+        native_observation_receiver_generation,
         native_observation_listener_ready: std::sync::atomic::AtomicBool::new(false),
         session_lifecycle_gates: Mutex::new(SessionLifecycleGateTable::default()),
         session_to_helper: Mutex::new(LiveRouteTable::default()),

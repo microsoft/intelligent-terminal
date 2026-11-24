@@ -821,6 +821,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(ShellPromptRetiresCliActivityWithoutDroppingResumeBinding);
         TEST_METHOD(ShellPromptVtSequenceRetiresActiveCli);
+        TEST_METHOD(ShellPromptPublishesContentFreeForegroundRetirement);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
         TEST_METHOD(KeepRunningSnapshotCountsAttachedTerminalTabs);
         TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
@@ -4967,6 +4968,110 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
             VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(page->_GetFocusedTabImpl()->GetActiveTerminalControl()).first);
         });
+    }
+
+    void TabTests::ShellPromptPublishesContentFreeForegroundRetirement()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto detectionEnabled : { true, false })
+        {
+            const winrt::guid paneId{ detectionEnabled ?
+                                         L"{d2f7c0b2-4567-4eab-9cde-891023456789}" :
+                                         L"{d3f7c0b2-4567-4eab-9cde-891023456789}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            Grid host{ nullptr };
+            TestOnUIThread([&]() { host = Grid{}; });
+            auto page = _commonSetup(*connection, host);
+            ::details::Event resetSeen;
+            ::details::Event retirementSeen;
+            ::details::Event rawPromptSeen;
+            Json::Value reset;
+            Json::Value retirement;
+            winrt::event_token token{};
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    page->ProtocolVtSequenceReceived(token);
+                    page->ShutdownPanes();
+                    page = nullptr;
+                });
+            });
+
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+                page->_settings.GlobalSettings().AutoErrorDetectionEnabled(detectionEnabled);
+                page->_settings.GlobalSettings().AutoFixEnabled(false);
+                page->_SyncNativeAgentStatusMode();
+                token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (!Json::parseFromStream(reader, stream, &event, &errors))
+                    {
+                        return;
+                    }
+                    if (event["method"] == "native_agent_observation")
+                    {
+                        const auto& params = event["params"];
+                        if (params["kind"] == "reset")
+                        {
+                            reset = params;
+                            resetSeen.Set();
+                        }
+                        else if (params["kind"] == "foreground_retired")
+                        {
+                            retirement = params;
+                            retirementSeen.Set();
+                        }
+                    }
+                    else if (event["method"] == "vt_sequence" &&
+                             event["params"]["sequence"] == "osc:133;A")
+                    {
+                        rawPromptSeen.Set();
+                    }
+                });
+
+                Json::Value event;
+                event["params"]["pane_id"] = _formatPaneId(paneId);
+                event["params"]["event"] = "agent.session.start";
+                event["params"]["agent_session_id"] = "shell-retirement";
+                event["params"]["agent"] = "copilot";
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                VERIFY_IS_TRUE(page->_activeCliAgentPanes.contains(paneId));
+                VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            });
+
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(resetSeen.m_handle, 10000));
+            const std::u16string_view prompt{ u"\x1b]133;A\x07" };
+            connection->WriteInput({ prompt.data(), prompt.data() + prompt.size() });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(retirementSeen.m_handle, 10000));
+            if (detectionEnabled)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(rawPromptSeen.m_handle, 10000));
+            }
+            else
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_TIMEOUT), WaitForSingleObject(rawPromptSeen.m_handle, 100));
+            }
+
+            TestOnUIThread([&]() {
+                for (const auto field : { "pane_id", "provider_id", "window_id", "tab_id", "mode_epoch",
+                                          "receiver_generation", "agent_session_id", "location" })
+                {
+                    VERIFY_IS_TRUE(retirement.isMember(field));
+                    VERIFY_IS_TRUE(retirement[field] == reset[field]);
+                }
+                VERIFY_ARE_EQUAL(std::string{ "foreground_retired" }, retirement["kind"].asString());
+                VERIFY_ARE_EQUAL(std::string{ "shell_prompt" }, retirement["cause"].asString());
+                for (const auto forbidden : { "sequence", "command", "text", "exit_code" })
+                {
+                    VERIFY_IS_FALSE(retirement.isMember(forbidden));
+                }
+                VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+                VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                VERIFY_ARE_EQUAL(std::string{ "shell-retirement" }, page->_richTabEndedSessionByPaneId.at(paneId));
+            });
+        }
     }
 
     // A pane built by attaching an existing ContentId reports its end state
