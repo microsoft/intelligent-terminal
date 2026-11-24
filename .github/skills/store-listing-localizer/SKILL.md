@@ -1,150 +1,79 @@
 ---
 name: store-listing-localizer
-description: 'Automate Microsoft Store (Partner Center) listing localization for Intelligent Terminal (Store ID 9NMQC2SSJX24). Use when asked to export/import Store listings, localize release notes / descriptions / captions / features into 80+ languages, update listingData CSV, or push Store listing translations without manually clicking through Partner Center. Drives Partner Center export/import via the Playwright MCP and merges per-locale translations into the listingData CSV.'
+description: 'Localize Microsoft Store release notes, descriptions, screenshot captions, and features for Intelligent Terminal. Export/import listingData across Store locales using Playwright MCP with the Edge extension and verify the saved draft.'
 license: Complete terms in LICENSE.txt
 ---
 
 # Store Listing Localizer
 
-End-to-end automation for localizing the Intelligent Terminal Microsoft Store
-listing: **export** the `listingData` CSV from Partner Center, **localize** the
-changed fields (release notes, description, captions, features) into all 80+
-Store locales using the repo's terminology rules, then **import** the result —
-without manually logging into and clicking through the Partner Center web UI.
-
-- Store ID: `9NMQC2SSJX24` ·
-  Overview: `https://partner.microsoft.com/en-us/dashboard/products/9NMQC2SSJX24/overview`
-- The CSV has 89 locale columns × ~450 field rows. See
-  [listing-csv-format.md](./references/listing-csv-format.md).
-
-## When to Use This Skill
-
-- "Export the Store listings and localize the release notes to all languages."
-- "The en-US release note changed — update every locale and re-import."
-- Updating Store description / screenshot captions / features across locales.
-- Any Partner Center listing export → translate → import round trip.
-- The new en-US text may come **from the export CSV** *or* **be given in the
-  prompt** (handled via en-US overrides — see below).
+Update only the requested listing fields, translate them into every target
+locale, and verify the saved Partner Center draft.
 
 ## Prerequisites
 
-- **Playwright MCP** registered as `playwright` in `~/.copilot/mcp-config.json`
-  (`@playwright/mcp`, `--browser msedge`, dedicated `--user-data-dir`,
-  `--output-dir <repo>\Generated Files\playwright-mcp`). Write browser outputs
-  to a per-run subfolder `store-listing-localizer/<YYYY-MM-DD>/…` (pass that as
-  the `filename` subpath). **Restart Copilot CLI** after enabling it, then sign
-  into Partner Center once in the launched Edge window. Full setup + gotchas:
-  [partner-center-mcp-workflow.md](./references/partner-center-mcp-workflow.md).
-- **Node.js** (uses only built-ins; `scripts/` has no npm dependencies).
-- **AppName table** — the per-locale product names ship with the skill at
-  [`references/intelligent-terminal-translations.md`](./references/intelligent-terminal-translations.md),
-  and `apply.mjs` defaults to it. Override with `--appnames <path>` only if you
-  maintain a newer copy elsewhere.
+Examples assume PowerShell on Windows; the current browser workflow uses Edge on Windows.
+
+- Playwright MCP configured with `--extension --browser msedge`, reached through
+  the configured Shared MCP Gateway, and the Playwright extension in Edge.
+- Node.js; the bundled scripts use built-ins only.
+- The bundled [AppName table](./references/intelligent-terminal-translations.md),
+  used by `apply.mjs` for localized product names.
 
 ## Workflow
 
-Track progress with a TODO list; each step links to its reference.
+Track progress with a TODO list. Keep run artifacts under
+`Generated Files\store-listing-localizer\<YYYY-MM-DD>` beneath the repository
+root; copy tool-saved exports into this run folder if output routing saves them
+elsewhere.
 
-1. **Export** the listing CSV from Partner Center —
-   [partner-center-mcp-workflow.md#export](./references/partner-center-mcp-workflow.md).
-   Copy the downloaded `listingData-9NMQC2SSJX24-*.csv` into a clean working dir.
-2. **Build the work order** — lists every translatable field with its en-US
-   source and which locales are stale:
+1. **Connect and export** using the
+   [browser workflow](./references/partner-center-mcp-workflow.md). Initiate the
+   Edge connection before translation work so the user can approve it early.
+   Preserve the current draft as `listing-original.csv`.
+2. **Prepare English first.** Condense the supplied release notes without
+   changing their meaning or qualifications. Confirm the release version
+   against the intended package. Put supplied or revised source fields in
+   `enus.json`, for example `{ "ReleaseNotes": "Version v<x.y.z>\n\n- ..." }`.
+   Keep English release notes around 1,100 characters to allow translation
+   expansion. Omit `--enus` below when using the unchanged exported source.
+3. **Extract and translate.** Run the extraction command below, then follow
+   [localization-rules.md](./references/localization-rules.md) for terminology,
+   locked tokens, product names, translation, and independent review. Write
+   `translations.json` as `{ "<locale>": { "<Field>": "<text>" } }`.
+   Require every target locale from the fresh export; do not accept English
+   fallbacks as completed translations. Preserve the export's convention for
+   English and pseudo-locales.
+4. **Merge and scope.** Run `apply.mjs` below to create `listing-merged.csv`.
+   Copy the original records and replace only the requested fields' locale
+   cells from that merge. Write this scoped result as `listing-import.csv`
+   using `csvlib.mjs`.
+5. **Verify and import `listing-import.csv`.** Check exact locale coverage,
+   unchanged row/column structure and metadata, no unrelated cell changes, and
+   [Store character limits](./references/listing-csv-format.md). Complete the
+   browser reference's import and persisted verification steps. Leave the
+   submission in draft unless the user explicitly authorizes publishing.
 
-   ```bash
-   node scripts/extract.mjs --csv <export.csv> [--enus <overrides.json>] --out work-order.json
-   ```
-3. **Translate** each changed field into every target locale, following
-   [localization-rules.md](./references/localization-rules.md) (locked tokens,
-   `.resw` terminology alignment, RTL handling). Use per-language sub-agents for
-   breadth + a reviewer pass. Emit `translations.json` keyed
-   `{ "<locale>": { "<Field>": "<text>" } }`.
-4. **Merge** (`--appnames` defaults to the bundled
-   `references/intelligent-terminal-translations.md`):
+Run these commands from this skill's directory, using absolute artifact paths:
 
-   ```bash
-   node scripts/apply.mjs --csv <export.csv> [--appnames <translations.md>] \
-     --translations translations.json [--enus overrides.json] \
-     [--changed-fields ReleaseNotes] --out <stem>-localized.csv
-   ```
-5. **Verify** the output (cols/rows unchanged, spot-check locales), then
-   **import** `<stem>-localized.csv` —
-   [partner-center-mcp-workflow.md#import](./references/partner-center-mcp-workflow.md).
-6. Review in the UI and **publish the submission** separately (import only
-   stages the listing).
-
-### en-US supplied in the prompt (not from the CSV)
-
-When the new en-US text is given in the prompt, write it to an overrides file
-and pass it to both scripts:
-
-```json
-// enus.json
-{ "ReleaseNotes": "Version v0.1.1600\n\n- New: ...\n- Fixed: ..." }
+```powershell
+$run = '<absolute run folder>'
+node scripts\extract.mjs --csv "$run\listing-original.csv" --enus "$run\enus.json" --out "$run\work-order.json"
+node scripts\apply.mjs --csv "$run\listing-original.csv" --enus "$run\enus.json" --translations "$run\translations.json" --out "$run\listing-merged.csv"
 ```
 
-`--enus` updates the en-US column *and* marks the field as **changed**, so stale
-per-locale values are never preserved (see Gotchas).
-
-## Scripts
-
-| Script | Purpose |
-|--------|---------|
-| [`scripts/extract.mjs`](./scripts/extract.mjs) | Build a translation work order (what to translate, into which locales). |
-| [`scripts/apply.mjs`](./scripts/apply.mjs) | Merge translations + AppName table into the export → `*-localized.csv`. |
-| [`scripts/fields.mjs`](./scripts/fields.mjs) | Field classification (appname / translate / verbatim) + AppName-table parser. |
-| [`scripts/csvlib.mjs`](./scripts/csvlib.mjs) | Quote-aware CSV parse/serialize (UTF-8 BOM + CRLF, embedded newlines). |
-
-Run any script with `--help` for its options.
+Both scripts support `--help`. When the exported English already contains a
+change, pass `--changed-fields <Field1,Field2>` to mark its translations stale.
 
 ## Gotchas
 
-- **Stale translations are the #1 risk.** When an en-US field changes, every
-  locale still holds the *previous version's* text. `apply.mjs` has an
-  **automatic version-drift safety net**: for any field whose en-US value
-  carries a `v<x.y.z>` token (e.g. ReleaseNotes), a locale whose existing text
-  has a *different* token is treated as stale and refreshed to the new en-US —
-  even if you forget `--changed-fields`. Still pass `--enus` (or
-  `--changed-fields`) for changed fields to be explicit; the guard is a backstop.
-  Verified: without any flag, a German release note that kept `v0.1.1531` while
-  en-US moved to `v0.1.1600` is now auto-refreshed.
-- **The Playwright MCP needs a CLI restart** to load, and a **dedicated** Edge
-  profile dir (never the live `Edge\User Data`, which is locked while Edge runs).
-- **Import ≠ publish.** Importing stages the draft listing; the submission must
-  be published separately.
-- **Never edit the `Field`/`ID`/`Type` columns** or split the CSV on raw
-  newlines — ReleaseNotes/Description contain embedded newlines. Use `csvlib.mjs`.
-- **Locale codes are lowercase** in the CSV (`zh-cn`), mixed-case in `.resw`
-  (`zh-CN`). Match case-insensitively when borrowing terminology.
-- **Version string is locked** (`Version v0.1.1600`) — copy verbatim per locale;
-  only translate the bullet text. Keep brand/tech tokens (`Copilot`, `CLI`,
-  `Agent pane`, `PowerShell`) in English.
-- **Product name IS localized in body text.** `apply.mjs` replaces "Intelligent
-  Terminal" inside Description/ReleaseNotes/Features with the locale's AppName
-  (matching the Title), e.g. de-DE "Intelligentes Terminal", zh-CN "智能终端".
-  This is URL-safe (the `github.com/microsoft/intelligent-terminal` URL is
-  untouched). Don't hand-keep the English name in translated bullets.
-- **ReleaseNotes has a hard 1500-character limit PER LOCALE** (Description
-  10000, ShortDescription 1000). Translations expand vs. English by up to
-  ~1.3–1.4×, so a 1280-char en-US ReleaseNotes produced 1680-char translations
-  that **failed the whole import mid-run** ("Processing failed" → View errors →
-  "ReleaseNotes is too long"). Keep en-US ReleaseNotes ≤ ~1100 chars and tell
-  the translation sub-agents the ≤1400 target explicitly. `apply.mjs` now
-  runs the length guard **before writing** and refuses to emit an over-limit
-  CSV (exits non-zero, no output file) — so a known-bad file can't be imported.
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Playwright (`playwright/*`) MCP tools not available | The Playwright MCP didn't load — restart Copilot CLI; confirm the `playwright` entry in `~/.copilot/mcp-config.json`. |
-| Export lands on a login page | Corp SSO session expired — complete the interactive Microsoft login + MFA in the Edge window, then retry. |
-| Profile-lock / "browser in use" error | `--user-data-dir` points at the live Edge profile; use the dedicated `msstore-playwright-profile` dir. |
-| Import rejected / mojibake | Output must be UTF-8 **BOM** + CRLF with unchanged col/row counts — `apply.mjs` does this; don't re-save the CSV in another editor. |
-| A locale shows the old version number | The field wasn't marked changed — re-run `apply.mjs` with `--enus`/`--changed-fields`. |
+- **`--changed-fields` is not a write-scope filter.** `apply.mjs` also fills
+  unrelated empty cells and applies AppNames. Upload the scoped
+  `listing-import.csv`, not its raw merge output.
+- **Successful import is not sufficient.** Partner Center can reorder existing
+  screenshots. The browser reference owns the checks and restoration procedure.
 
 ## References
 
-- [partner-center-mcp-workflow.md](./references/partner-center-mcp-workflow.md) — Playwright MCP export/import steps, auth, selectors.
+- [partner-center-mcp-workflow.md](./references/partner-center-mcp-workflow.md) — browser connection, export, upload, and persisted verification.
 - [listing-csv-format.md](./references/listing-csv-format.md) — CSV schema and field handling.
 - [localization-rules.md](./references/localization-rules.md) — terminology, locked tokens, `.resw` alignment.

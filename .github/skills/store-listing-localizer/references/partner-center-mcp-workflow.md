@@ -1,91 +1,95 @@
-# Partner Center automation via the Playwright MCP
+# Partner Center browser workflow
 
-The export/import steps drive `https://partner.microsoft.com` in a real Edge
-browser through the **Playwright MCP** (`@playwright/mcp`). Partner Center is
-gated by Microsoft corp SSO + MFA, so automation relies on a **persistent
-browser profile** that holds the signed-in session — you log in once, then every
-later run reuses the cookies. There is no password or secret in this skill.
+Use the configured route:
+**Copilot → Shared MCP Gateway → Playwright MCP → Edge extension → signed-in Edge**.
+MCP remains the control transport; `--extension --browser msedge` selects the
+existing browser instead of launching a separate profile.
 
-## One-time setup
+Product overview:
+`https://partner.microsoft.com/en-us/dashboard/products/9NMQC2SSJX24/overview`.
 
-1. The MCP is registered in `~/.copilot/mcp-config.json` as `playwright` with:
-   - `--browser msedge`
-   - `--user-data-dir C:\Users\<you>\AppData\Local\msstore-playwright-profile`
-     (a **dedicated** profile dir — never your live Edge `User Data`, which is
-     locked while Edge runs).
-   - `--output-dir <repo>\Generated Files\playwright-mcp` (the gitignored
-     `**/Generated Files/` root). This is a **static root** shared by every
-     Playwright use — see **Output location** below for the per-run nesting.
-2. **Restart Copilot CLI** after the config changes — MCP servers load at
-   startup, so a newly-added server is not available mid-session.
-3. First run only: navigate to the dashboard and complete the interactive
-   Microsoft login + MFA in the launched Edge window. The session persists in
-   the profile dir for subsequent runs.
+## Connection preflight
 
-## Output location
+1. Discover the configured Playwright backend and tool schemas through the
+   gateway. Claim its exclusive lease, then **call** `browser_tabs` or
+   `browser_snapshot` to initiate the extension handshake.
+2. If Edge prompts, ask the user to approve the connection and select the
+   Partner Center tab. Chat approval does not approve the browser connection.
+   An already authorized connection may not prompt; confirm actual tab access.
+3. Open the overview and complete any interactive sign-in/MFA while the user is
+   available. Confirm the product and intended draft submission.
 
-`--output-dir` is a **single static root** set at MCP launch, so every Playwright
-purpose would otherwise dump files into the same flat folder. Keep runs isolated
-by passing a **relative subpath** in the `filename` argument of the Playwright
-MCP (`playwright/*`) save tools (e.g. the PDF-save / screenshot tools) — the MCP
-resolves it under the root and creates subdirectories as needed. Convention:
+Do not switch to a new profile, extract credentials, or change global routing.
+Release the lease after browser work. For gateway errors, follow the
+`mcp-gateway-setup` skill's recovery rules; in particular, do not retry, release,
+or bypass an exclusive backend reporting `server_outcome_unknown`. Recovery
+requires coordinating an idle-time restart, not assuming a client reload worked.
 
+## Export
+
+Click **Export listings** and observe the response. The verified UI posts to
+`/exportlistings` and returns a JSON array of column objects, not a Playwright
+download event. Save the response body using the browser network tools.
+The first objects' `field` values are `Field`, `ID`, `Type (Type)`, and `default`,
+followed by locale codes. Check this structure and consistent object keys,
+then transpose:
+
+```javascript
+const keys = Object.keys(columns[0]);
+const records = keys.map(key =>
+  columns.map(column => String(column[key] ?? '')));
 ```
-<output-dir>/<skill-name>/<YYYY-MM-DD>/<file>
-e.g. store-listing-localizer/2026-06-16/listingData.pdf
-```
 
-So a save call uses `filename: "store-listing-localizer/2026-06-16/<file>"`.
-This keeps each skill + execution-date in its own folder under the shared,
-gitignored `Generated Files\playwright-mcp` root.
+Use `csvlib.mjs`'s `indexListing` to validate the records and `writeCsv` to
+produce `listing-original.csv`. Preserve the raw response too. If the UI instead
+downloads a CSV, preserve that download. Use only a fresh export from the
+current draft as the import baseline.
 
-## Gotchas
+Resolve save paths from the current tool schema and output configuration;
+do not assume Downloads or that explicit paths are relative to `--output-dir`.
+Save into the run folder defined by `SKILL.md`.
 
-- **Restart required.** Adding/editing the MCP entry does nothing until Copilot
-  CLI restarts. If the Playwright (`playwright/*`) tools aren't listed, the MCP
-  isn't loaded.
-- **Dedicated profile dir.** Pointing `--user-data-dir` at the live Edge profile
-  (`...\Edge\User Data`) fails with a profile-lock error whenever Edge is open.
-- **Session expiry.** Corp SSO cookies expire (often daily). When a run lands on
-  the login page instead of the dashboard, just complete the interactive login
-  again — the automation can pause for it.
-- **Downloads location.** "Export listings" saves the `.csv` to the browser's
-  configured download folder. With `--output-dir` set (see **Output location**),
-  the MCP writes it under that root (`<repo>\Generated Files\playwright-mcp\…`),
-  **not** `~/Downloads`. Capture the download event or the newest
-  `listingData-9NMQC2SSJX24-*.csv` under the output root and copy it into a
-  clean working dir before processing, so re-runs don't pick up a stale file.
-- **The `Updated`/`Unchanged` pill** on the Store listings row reflects pending
-  edits; after a successful import it flips to `Updated`. Don't treat the pill
-  as a success signal for the *submission* — importing only stages the listing,
-  it does not publish.
+## Import
 
-## Workflow (agent-driven, using the Playwright MCP `playwright/*` tools)
+1. Open **Import listings** and choose **Upload .csv**. Upload only the scoped
+   `listing-import.csv` prepared and verified by `SKILL.md`.
+2. If the picker reports `DOM.setFileInputFiles: Not allowed`, use
+   [extension-compatible upload](#extension-compatible-upload).
+3. Keep the page open until processing reports **Complete**. The UI saves
+   languages sequentially (`Saving N of ... languages`); use bounded waits
+   below the gateway's downstream timeout. Inspect **View errors** on failure.
+4. Perform [persisted verification](#persisted-verification). An **Updated**
+   status alone is not proof that the content saved correctly.
 
-### Export
-1. Navigate (Playwright MCP) to
-   `https://partner.microsoft.com/en-us/dashboard/products/9NMQC2SSJX24/overview`
-   (Store ID `9NMQC2SSJX24`). If redirected to login, complete it interactively.
-2. Locate the **Store listings** section and click the **Export listings** link.
-3. Wait for the `.csv` to finish downloading (under the `--output-dir` root, e.g.
-   `<repo>\Generated Files\playwright-mcp\`).
-4. Copy the newest `listingData-9NMQC2SSJX24-*.csv` into a working dir for
-   processing (keep the original download untouched as a backup).
+### Extension-compatible upload
 
-### Import
-1. From the same overview page, click **Import listings**.
-2. In the file picker, choose the localized CSV
-   (`<stem>-localized.csv`) produced by `apply.mjs`.
-3. Confirm the upload. Verify the Store listings row shows **Updated** and spot
-   check a couple of locales in the UI before publishing the submission.
+Discover `browser_evaluate` and `browser_drop`. Verify the current CSV input in
+the page DOM before reusing the observed ID `listing-import-filename`.
+Add a one-use drop handler on the DOM `main` element (CSS selector `main`,
+not a browser tab handle)
+that prevents the default drop, verifies one file with the expected name,
+assigns `event.dataTransfer.files` to that input, and dispatches a bubbling
+`change` event. Use `browser_drop` on `main` with the exact import file path.
+This invokes the page's normal
+import validation without the unsupported file-picker operation.
 
-> Importing **stages** the localized listings on the draft submission. Review
-> and **publish the submission** separately (in the UI or via StoreBroker /
-> msstore-cli) to push it live.
+## Persisted verification
 
-## Selectors
+Re-export the draft and compare all cells with `listing-import.csv`. Require
+exact requested values and no unrelated changes. Check screenshot positions,
+URLs, and captions as well as text. Spot-check English and representative
+localized release-note controls in the UI, then confirm the submission state.
 
-Partner Center markup changes over time, so prefer **role/text-based** locators
-(`getByRole('link', { name: 'Export listings' })`) over brittle CSS/XPath. The
-three controls on the Store listings row are the links **Add/remove languages**,
-**Export listings**, and **Import listings**.
+### Screenshot-order restoration
+
+CSV import has reordered existing screenshots while preserving image/caption
+pairs. If verification finds only this side effect, restore positions from the
+fresh backup; do not assume a fixed image order or re-import the CSV.
+
+Read each affected locale's current listing and verify its asset/caption set
+matches the expected result before swapping. Use the existing screenshot swap
+operation: POST to the current submission's `/listingasset/swap` with
+`listingId`, `listingAssetId1`, and `listingAssetId2` read from that listing.
+Re-read after each swap, checking the exact order and unchanged listing
+properties. Use small bounded batches; after an interruption, inspect current
+state before resuming. Finally re-export and repeat the full comparison.
