@@ -16918,7 +16918,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 itemImpl->ProgressState(1);
                                 itemImpl->ProgressValue(*summary.progress);
-                                itemImpl->IsProgressRingActive(true);
+                                itemImpl->IsProgressRingActive(::Microsoft::Terminal::ProgressPresentation::HasVisibleProgress(1, *summary.progress));
                                 itemImpl->IsProgressRingIndeterminate(false);
                             }
                             else if (summary.workingPanes != 0)

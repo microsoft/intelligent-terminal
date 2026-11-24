@@ -13957,10 +13957,54 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(owner->TabViewItem().IconSource() == owner->_iconSource);
             VERIFY_ARE_EQUAL(0ull, owner->GetCombinedTaskbarState().Progress());
         });
+        emit(u"\x1b]7501;state=working:progress=0\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Working" &&
+                   owner->GetCombinedTaskbarState().State() == 1 &&
+                   owner->GetCombinedTaskbarState().Progress() == 0;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_IS_NOT_NULL(pane.IconSource());
+            VERIFY_ARE_EQUAL(uint64_t{ 1 }, pane.ProgressState());
+            VERIFY_ARE_EQUAL(0u, pane.ProgressValue());
+            VERIFY_IS_FALSE(pane.IsProgressRingActive());
+            VERIFY_IS_FALSE(pane.IsProgressRingIndeterminate());
+        });
         emit(u"\x1b]7501;state=working:progress=37\x1b\\");
         _waitForContentTransferReviewUI([&]() {
             return owner->_tabStatus.IsProgressRingActive() &&
                    owner->_tabStatus.ProgressValue() == 37;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 1 }, pane.ProgressState());
+            VERIFY_ARE_EQUAL(37u, pane.ProgressValue());
+            VERIFY_IS_TRUE(pane.IsProgressRingActive());
+            VERIFY_IS_FALSE(pane.IsProgressRingIndeterminate());
+        });
+        emit(u"\x1b]7501;state=working\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->GetCombinedTaskbarState().State() == 3;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, pane.ProgressState());
+            VERIFY_IS_TRUE(pane.IsProgressRingActive());
+            VERIFY_IS_TRUE(pane.IsProgressRingIndeterminate());
         });
     }
 
