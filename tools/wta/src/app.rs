@@ -1408,6 +1408,13 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
+/// The exact selected choice whose complete body was painted in the last frame.
+pub(crate) struct RecommendationApproval {
+    pub tab_id: String,
+    pub prompt_id: u64,
+    pub choice: RecommendationChoice,
+}
+
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -1581,6 +1588,7 @@ pub struct App {
     pub autofix_enabled: bool,
     pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
     pub(crate) recommendation_rendered: bool,
+    pub(crate) recommendation_approval: Option<RecommendationApproval>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1925,6 +1933,7 @@ impl App {
             autofix_enabled,
             autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
             recommendation_rendered: false,
+            recommendation_approval: None,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),

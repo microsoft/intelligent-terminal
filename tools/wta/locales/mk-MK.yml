@@ -108,6 +108,7 @@ recommendations.nav_hint: "(↑ ↓ за навигација • ← → за �
 recommendations.button_run_command: "[ Изврши команда ]"
 recommendations.button_insert_in_terminal: "Вметни во Terminal"
 recommendations.button_open_in_new_tab: "Отвори во ново јазиче ↵"
+recommendations.review_required: "Потребен е целосен преглед · зголемете го панелот или откажете"
 recommendations.button_open_in_new_panel: "Отвори во нов панел ↵"
 recommendations.button_open_tab: "Отвори јазиче ↵"
 recommendations.button_open_panel: "Отвори панел ↵"

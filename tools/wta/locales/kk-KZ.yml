@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ шарлау үшін • ← → түйме
 recommendations.button_run_command: "[ Команданы іске қосу ]"
 recommendations.button_insert_in_terminal: "Terminal-ға кірістіру"
 recommendations.button_open_in_new_tab: "Жаңа қойындыда ашу ↵"
+recommendations.review_required: "Толық қарап шығу қажет · панельді үлкейтіңіз немесе бас тартыңыз"
 recommendations.button_open_in_new_panel: "Жаңа панельде ашу ↵"
 recommendations.button_open_tab: "Қойындыны ашу ↵"
 recommendations.button_open_panel: "Панельді ашу ↵"

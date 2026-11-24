@@ -100,6 +100,7 @@ recommendations.nav_hint: "(↑ ↓ per navegar • ← → per canviar accions 
 recommendations.button_run_command: "[ Executa l'ordre ]"
 recommendations.button_insert_in_terminal: "Insereix al Terminal"
 recommendations.button_open_in_new_tab: "Obre en una pestanya nova ↵"
+recommendations.review_required: "Cal una revisió completa · amplieu la subfinestra o cancel·leu"
 recommendations.button_open_in_new_panel: "Obre en un tauler nou ↵"
 recommendations.button_open_tab: "Obre pestanya ↵"
 recommendations.button_open_panel: "Obre tauler ↵"

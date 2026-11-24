@@ -916,6 +916,7 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
+                self.recommendation_approval = None;
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
                 self.queue_control_hits.clear();
@@ -3913,6 +3914,18 @@ impl App {
 
                     // Apply `pane_open` if present.
                     if let Some(open) = params.get("pane_open").and_then(|v| v.as_bool()) {
+                        if (!open
+                            || self
+                                .tab_sessions
+                                .get(&target_tab)
+                                .is_some_and(|tab| tab.pane_open != open))
+                            && self
+                                .recommendation_approval
+                                .as_ref()
+                                .is_some_and(|approval| approval.tab_id == target_tab)
+                        {
+                            self.recommendation_approval = None;
+                        }
                         if target_tab == self.active_tab_key()
                             && self.current_tab().pane_open != open
                         {

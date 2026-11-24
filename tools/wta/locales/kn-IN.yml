@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಲ�
 recommendations.button_run_command: "[ ಕಮಾಂಡ್ ರನ್ ಮಾಡಿ ]"
 recommendations.button_insert_in_terminal: "ಟರ್ಮಿನಲ್‌ನಲ್ಲಿ ಸೇರಿಸಿ"
 recommendations.button_open_in_new_tab: "ಹೊಸ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
+recommendations.review_required: "ಸಂಪೂರ್ಣ ಪರಿಶೀಲನೆ ಅಗತ್ಯವಿದೆ · ಪೇನ್ ದೊಡ್ಡದಾಗಿಸಿ ಅಥವಾ ರದ್ದುಗೊಳಿಸಿ"
 recommendations.button_open_in_new_panel: "ಹೊಸ ಪ್ಯಾನೆಲ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_tab: "ಟ್ಯಾಬ್ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_panel: "ಪ್ಯಾನೆಲ್ ತೆರೆಯಿರಿ ↵"

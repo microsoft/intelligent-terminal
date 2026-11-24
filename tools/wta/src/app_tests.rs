@@ -26067,6 +26067,274 @@ fn flush_error_fix_telemetry_frame(app: &mut App, width: u16, height: u16) -> St
 }
 
 #[test]
+fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
+    use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
+    for hide in [
+        "hidden_render",
+        "event_without_redraw",
+        "state_without_redraw",
+    ] {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        app.current_tab_mut().autofix.pane_id = Some("pane-9".into());
+        if hide == "hidden_render" {
+            app.current_tab_mut().pane_open = false;
+            render_to_text(&mut app, 100, 30);
+            assert!(
+                app.recommendation_approval.is_none(),
+                "hidden paint authorized approval"
+            );
+        } else {
+            render_to_text(&mut app, 100, 30);
+            assert!(app.recommendation_approval.is_some());
+            if hide == "event_without_redraw" {
+                app.handle_event(AppEvent::WtEvent {
+                    method: "set_agent_state".into(),
+                    pane_id: String::new(),
+                    tab_id: Some(DEFAULT_TAB_ID.into()),
+                    params: json!({"tab_id": DEFAULT_TAB_ID, "pane_open": false}),
+                });
+                assert!(
+                    app.recommendation_approval.is_none(),
+                    "hide retained approval"
+                );
+            } else {
+                app.current_tab_mut().pane_open = false;
+            }
+        }
+        app.turn_execute_card("fix-telemetry");
+        app.handle_event(AppEvent::WtEvent {
+            method: "autofix_execute".into(),
+            pane_id: "pane-9".into(),
+            tab_id: Some(DEFAULT_TAB_ID.into()),
+            params: json!({}),
+        });
+        assert!(rx.try_recv().is_err(), "{hide}: hidden card was dispatched");
+        assert!(
+            final_rx.try_recv().is_err(),
+            "{hide}: hidden card was confirmed"
+        );
+        app.handle_event(AppEvent::WtEvent {
+            method: "set_agent_state".into(),
+            pane_id: String::new(),
+            tab_id: Some(DEFAULT_TAB_ID.into()),
+            params: json!({"tab_id": DEFAULT_TAB_ID, "pane_open": true}),
+        });
+        assert!(
+            app.recommendation_approval.is_none(),
+            "reopen needs a new visible frame"
+        );
+        render_to_text(&mut app, 100, 30);
+        assert!(app.recommendation_approval.is_some());
+        app.turn_execute_card("fix-telemetry");
+        assert!(
+            rx.try_recv().is_ok(),
+            "{hide}: reopened visible card did not recover"
+        );
+        assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Confirmed);
+    }
+}
+
+#[test]
+fn recommendation_long_command_keyboard_recovers_after_resize_or_cancels() {
+    use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+    for cancel in [false, true] {
+        for insert_only in [false, true] {
+            let mut app = test_app();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            let command = format!("Write-Output '{}'", "legitimate ".repeat(40));
+            if let TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(set),
+                ..
+            } = &mut app.current_tab_mut().turn
+            {
+                set.choices[0].actions[0] = crate::coordinator::RecommendedAction::Send {
+                    parent: "pane-9".into(),
+                    input: command.clone(),
+                };
+            } else {
+                panic!("expected recommendation");
+            }
+            app.handle_event(AppEvent::Resize(80, 9));
+            render_to_text(&mut app, 80, 9);
+            assert!(app.recommendation_approval.is_none());
+            if insert_only {
+                app.handle_key(key(KeyCode::Right));
+                assert_eq!(app.current_tab().selected_button, 1);
+            }
+            app.handle_key(key(KeyCode::Enter));
+            assert!(rx.try_recv().is_err());
+            assert!(app.current_tab().turn.recommendations().is_some());
+            app.handle_key(key(KeyCode::Down));
+            assert!(app.current_tab().input_has_nav_focus());
+            app.handle_key(key(KeyCode::Char('x')));
+            assert_eq!(app.current_tab().input, "x");
+            app.handle_key(key(KeyCode::Up));
+            assert!(!app.current_tab().input_has_nav_focus());
+            if insert_only {
+                app.handle_key(key(KeyCode::Right));
+            }
+            if cancel {
+                app.handle_key(key(KeyCode::Esc));
+                assert!(app.current_tab().turn.recommendations().is_none());
+                assert!(rx.try_recv().is_err());
+                assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Cancelled);
+            } else {
+                app.handle_event(AppEvent::Resize(120, 30));
+                assert!(app.recommendation_approval.is_none());
+                render_to_text(&mut app, 120, 30);
+                assert!(
+                    app.recommendation_approval.is_some(),
+                    "enlarge-to-fit recovery"
+                );
+                app.handle_key(key(KeyCode::Enter));
+                let execution = rx.try_recv().expect("visible long command must dispatch");
+                assert_eq!(execution.insert_only, insert_only);
+                assert!(matches!(
+                    &execution.choice.actions[..],
+                    [crate::coordinator::RecommendedAction::Send { input, .. }]
+                        if input == &command
+                ));
+                assert_eq!(app.current_tab().input, "x", "preserve typed draft");
+                assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Confirmed);
+            }
+        }
+    }
+}
+
+#[test]
+fn recommendation_confirmation_requires_the_complete_selected_payload() {
+    use crate::coordinator::RecommendedAction;
+    for (width, height) in [(80, 24), (120, 30), (80, 9)] {
+        for insert_only in [false, true] {
+            let mut app = test_app();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            let long_command = format!("echo {} ; echo tail", "first ".repeat(1000));
+            if let TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(set),
+                ..
+            } = &mut app.current_tab_mut().turn
+            {
+                set.choices[0].actions[0] = RecommendedAction::Send {
+                    parent: "pane-9".into(),
+                    input: long_command,
+                };
+            } else {
+                panic!("expected recommendation");
+            }
+            app.current_tab_mut().selected_button = usize::from(insert_only);
+            let text = render_to_text(&mut app, width, height);
+            assert!(
+                text.matches("first").count() < 1000,
+                "negative control: the complete payload cannot fit at {width}x{height}"
+            );
+            assert!(app.recommendation_approval.is_none());
+            app.turn_execute_card("fix-telemetry");
+            app.handle_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Enter,
+                crossterm::event::KeyModifiers::NONE,
+            ));
+            app.current_tab_mut().autofix.pane_id = Some("pane-9".into());
+            app.handle_event(AppEvent::WtEvent {
+                method: "autofix_execute".into(),
+                pane_id: "pane-9".into(),
+                tab_id: Some(DEFAULT_TAB_ID.into()),
+                params: json!({}),
+            });
+            assert!(rx.try_recv().is_err());
+            assert!(
+                final_rx.try_recv().is_err(),
+                "clipped card must remain pending"
+            );
+            assert!(app.current_tab().turn.recommendations().is_some());
+        }
+    }
+}
+
+#[test]
+fn recommendation_confirmation_preserves_visible_run_and_insert() {
+    for (width, height) in [(80, 24), (120, 30), (80, 9)] {
+        for insert_only in [false, true] {
+            let mut app = test_app();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let (proposal_id, mut final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            app.current_tab_mut().selected_button = usize::from(insert_only);
+            assert!(render_to_text(&mut app, width, height).contains("Get-Date"));
+            assert!(app.recommendation_approval.is_some());
+            app.turn_execute_card("fix-telemetry");
+            let execution = rx.try_recv().unwrap();
+            assert_eq!(execution.insert_only, insert_only);
+            assert!(matches!(
+                &execution.choice.actions[..],
+                [crate::coordinator::RecommendedAction::Send { input, .. }]
+                    if input == "Get-Date"
+            ));
+            assert_eq!(
+                final_rx.try_recv().unwrap(),
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+            );
+        }
+    }
+}
+
+#[test]
+fn recommendation_confirmation_invalidates_resize_and_changed_actions() {
+    for change in ["resize", "input", "extra_action", "prompt"] {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        render_to_text(&mut app, 80, 24);
+        assert!(app.recommendation_approval.is_some());
+        if change == "resize" {
+            app.handle_event(AppEvent::Resize(80, 9));
+        } else if let TurnState::Surfaced {
+            outcome: TurnOutcome::Recommendation(set),
+            prompt,
+            ..
+        } = &mut app.current_tab_mut().turn
+        {
+            match change {
+                "input" => {
+                    set.choices[0].actions[0] = crate::coordinator::RecommendedAction::Send {
+                        parent: "pane-9".into(),
+                        input: "echo changed".into(),
+                    };
+                }
+                "extra_action" => {
+                    let extra = set.choices[0].actions[0].clone();
+                    set.choices[0].actions.push(extra);
+                }
+                "prompt" => prompt.id += 1,
+                _ => unreachable!(),
+            }
+        }
+        app.turn_execute_card("fix-telemetry");
+        assert!(rx.try_recv().is_err(), "{change} reused a stale approval");
+        if change == "extra_action" {
+            render_to_text(&mut app, 120, 30);
+            assert!(app.recommendation_approval.is_none());
+            app.turn_execute_card("fix-telemetry");
+            assert!(rx.try_recv().is_err(), "undisplayed action was confirmed");
+        }
+    }
+}
+
+#[test]
 fn error_fix_telemetry_requires_display_then_run_and_deduplicates() {
     use crate::telemetry::capture::{take, Event};
     take();
@@ -26341,10 +26609,12 @@ fn error_fix_telemetry_excludes_generic_actions_and_undisplayed_acceptance() {
             flush_error_fix_telemetry_frame(&mut app, 100, 30);
         }
         app.turn_execute_card("fix-telemetry");
-        let execution = rx
-            .try_recv()
-            .expect("existing execution behavior preserved");
-        assert!(execution.run.is_none());
+        if is_autofix {
+            assert!(rx.try_recv().is_err(), "undisplayed card cannot execute");
+        } else {
+            let execution = rx.try_recv().expect("visible command must execute");
+            assert!(execution.run.is_none());
+        }
         assert!(take().is_empty());
     }
 }
@@ -26576,6 +26846,7 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
     let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     app.recommendation_tx = recommendation_tx;
     let manager = std::sync::Arc::new(
@@ -26593,6 +26864,7 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
         responder: commit_tx,
     });
     assert!(commit_rx.blocking_recv().unwrap());
+    render_to_text(&mut app, 80, 24);
     app.turn_execute_card(session_id);
 
     assert_eq!(
@@ -26619,6 +26891,7 @@ fn executing_committed_recommendation_keeps_compact_summary() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     app.recommendation_tx = recommendation_tx;
     let manager = std::sync::Arc::new(
@@ -26644,6 +26917,7 @@ fn executing_committed_recommendation_keeps_compact_summary() {
         Some(ChatMessage::Agent(text)) if text == "Restart-Service foo"
     ));
 
+    render_to_text(&mut app, 80, 24);
     app.turn_execute_card(session_id);
 
     let turn = &app.session_tab(session_id).completed_turns[0];
@@ -26669,6 +26943,7 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
         for insert_only in [false, true] {
             for end_before_action in [false, true] {
                 let mut app = test_app();
+                app.current_tab_mut().pane_open = true;
                 let (recommendation_tx, mut recommendation_rx) =
                     tokio::sync::mpsc::unbounded_channel();
                 app.recommendation_tx = recommendation_tx;
@@ -26690,6 +26965,7 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
                     app.turn_close(session_id);
                 }
                 app.session_tab_mut(session_id).selected_button = usize::from(insert_only);
+                render_to_text(&mut app, 80, 24);
                 app.turn_execute_card(session_id);
                 assert_eq!(
                     recommendation_rx.try_recv().unwrap().insert_only,
@@ -26732,6 +27008,7 @@ fn disconnected_recommendation_teardown_is_not_user_cancellation() {
     rust_i18n::set_locale("en-US");
     for end_before_action in [false, true] {
         let mut app = test_app();
+        app.current_tab_mut().pane_open = true;
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         app.recommendation_tx = tx;
         drop(rx);
@@ -26752,6 +27029,7 @@ fn disconnected_recommendation_teardown_is_not_user_cancellation() {
         if end_before_action {
             app.turn_close(session);
         }
+        render_to_text(&mut app, 80, 24);
         app.turn_execute_card(session);
         assert_eq!(
             final_rx.try_recv().unwrap(),
@@ -27821,12 +28099,14 @@ fn recommendation_card_cycles_buttons_and_input_with_arrows() {
 fn recommendation_card_enter_wins_over_draft_input() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
     app.state = ConnectionState::Connected;
     app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
     stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
     app.current_tab_mut().input = "/help".into();
     app.current_tab_mut().cursor_pos = "/help".len();
 
+    render_to_text(&mut app, 100, 40);
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert_eq!(
@@ -28021,6 +28301,7 @@ fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
     for insert_only in [false, true] {
         for ended_before_click in [false, true] {
             let mut app = test_app();
+            app.current_tab_mut().pane_open = true;
             app.state = ConnectionState::Connected;
             app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
             app.session_to_tab
@@ -28047,6 +28328,7 @@ fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
                     session_id: DEFAULT_TAB_ID.into(),
                 });
             }
+            render_to_text(&mut app, 80, 24);
             app.turn_execute_card(DEFAULT_TAB_ID);
             assert_eq!(
                 action_rx.try_recv().unwrap().completion,
@@ -28082,6 +28364,7 @@ fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
 fn recommendation_action_handoff_blocks_queue_until_correlated_completion() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
     app.state = ConnectionState::Connected;
     app.tab_id = Some(DEFAULT_TAB_ID.into());
     app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
@@ -28103,6 +28386,7 @@ fn recommendation_action_handoff_blocks_queue_until_correlated_completion() {
     }
     app.current_tab_mut().input = "next queued request".into();
     app.enqueue_input(None);
+    render_to_text(&mut app, 80, 24);
     app.turn_execute_card(DEFAULT_TAB_ID);
     let execution = recommendation_rx
         .try_recv()
@@ -28204,6 +28488,7 @@ fn recommendation_action_failure_pauses_queue_and_retired_completion_is_ignored(
 fn recommendation_action_rejected_locally_is_not_marked_executed() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
     app.state = ConnectionState::Connected;
     app.test_recommendation_rx.take();
     stage_surfaced_recommendation(
@@ -28214,6 +28499,7 @@ fn recommendation_action_rejected_locally_is_not_marked_executed() {
     );
     app.current_tab_mut().input = "wait for confirmed action".into();
     app.enqueue_input(None);
+    render_to_text(&mut app, 80, 24);
     app.turn_execute_card(DEFAULT_TAB_ID);
     assert!(app.current_tab().pending_queue_action.is_none());
     assert!(app.current_tab().turn.is_idle());

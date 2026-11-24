@@ -159,6 +159,7 @@ system.provider_command_blocked_by_policy: "%{command}: Automatic approval is di
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
 # glyphs, do not translate
 recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
+recommendations.review_required: "Full review required · enlarge pane or cancel"  # Approval is unavailable when a card clips its body or contains undisplayed actions.
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"

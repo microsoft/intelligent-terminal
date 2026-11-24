@@ -99,6 +99,7 @@ recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to s
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
+recommendations.review_required: "[!!_Fûĺĺ ŕéṽïéŵ ŕéqûïŕéð · éñĺåŕğé ṗåñé öŕ çåñçéĺ_!!]"
 recommendations.button_open_in_new_panel: "[!!_Open in New Panel ↵_!!]"
 recommendations.button_open_tab: "[!!_Open Tab ↵_!!]"
 recommendations.button_open_panel: "[!!_Open Panel ↵_!!]"

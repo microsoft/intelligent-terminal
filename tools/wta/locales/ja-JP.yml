@@ -95,6 +95,7 @@ recommendations.nav_hint: "(↑ ↓ で移動 • ← → でボタン切り替�
 recommendations.button_run_command: "[ コマンドを実行 ]"
 recommendations.button_insert_in_terminal: "ターミナルに挿入"
 recommendations.button_open_in_new_tab: "新しいタブで開く ↵"
+recommendations.review_required: "全内容の確認が必要です · ペインを拡大するかキャンセルしてください"
 recommendations.button_open_in_new_panel: "新しいパネルで開く ↵"
 recommendations.button_open_tab: "タブを開く ↵"
 recommendations.button_open_panel: "パネルを開く ↵"

@@ -99,6 +99,7 @@ recommendations.nav_hint: "[!! (↑_ ↓ to navigate suggestions • ← → to 
 recommendations.button_run_command: "[!! [ R_un command ] !!]"
 recommendations.button_insert_in_terminal: "[!! Ins_ert in Terminal !!]"
 recommendations.button_open_in_new_tab: "[!! Ope_n in New Tab ↵ !!]"
+recommendations.review_required: "[!! \u202eFul_l review required · enlarge pane or cancel\u202c !!]"
 recommendations.button_open_in_new_panel: "[!! Ope_n in New Panel ↵ !!]"
 recommendations.button_open_tab: "[!! Ope_n Tab ↵ !!]"
 recommendations.button_open_panel: "[!! Ope_n Panel ↵ !!]"

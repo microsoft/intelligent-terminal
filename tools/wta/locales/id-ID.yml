@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk mengganti t
 recommendations.button_run_command: "[ Jalankan perintah ]"
 recommendations.button_insert_in_terminal: "Sisipkan di Terminal"
 recommendations.button_open_in_new_tab: "Buka di Tab Baru ↵"
+recommendations.review_required: "Peninjauan lengkap diperlukan · perbesar panel atau batalkan"
 recommendations.button_open_in_new_panel: "Buka di Panel Baru ↵"
 recommendations.button_open_tab: "Buka Tab ↵"
 recommendations.button_open_panel: "Buka Panel ↵"

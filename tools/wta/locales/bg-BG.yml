@@ -109,6 +109,7 @@ recommendations.nav_hint: "(↑ ↓ за навигация • ← → за п�
 recommendations.button_run_command: "[ Изпълни команда ]"
 recommendations.button_insert_in_terminal: "Вмъкване в Terminal"
 recommendations.button_open_in_new_tab: "Отваряне в нов раздел ↵"
+recommendations.review_required: "Необходим е пълен преглед · увеличете панела или се откажете"
 recommendations.button_open_in_new_panel: "Отваряне в нов панел ↵"
 recommendations.button_open_tab: "Отваряне на раздел ↵"
 recommendations.button_open_panel: "Отваряне на панел ↵"

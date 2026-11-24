@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ navigáláshoz • ← → gombok közötti 
 recommendations.button_run_command: "[ Parancs futtatása ]"
 recommendations.button_insert_in_terminal: "Beszúrás a terminálba"
 recommendations.button_open_in_new_tab: "Megnyitás új lapon ↵"
+recommendations.review_required: "Teljes áttekintés szükséges · növelje az ablaktábla méretét, vagy szakítsa meg"
 recommendations.button_open_in_new_panel: "Megnyitás új panelen ↵"
 recommendations.button_open_tab: "Lap megnyitása ↵"
 recommendations.button_open_panel: "Panel megnyitása ↵"

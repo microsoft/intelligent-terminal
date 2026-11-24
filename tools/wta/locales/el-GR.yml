@@ -100,6 +100,7 @@ recommendations.nav_hint: "(↑ ↓ για πλοήγηση • ← → για �
 recommendations.button_run_command: "[ Εκτέλεση εντολής ]"
 recommendations.button_insert_in_terminal: "Εισαγωγή στο Terminal"
 recommendations.button_open_in_new_tab: "Άνοιγμα σε νέα καρτέλα ↵"
+recommendations.review_required: "Απαιτείται πλήρης έλεγχος · μεγαλώστε το τμήμα παραθύρου ή ακυρώστε"
 recommendations.button_open_in_new_panel: "Άνοιγμα σε νέο πλαίσιο ↵"
 recommendations.button_open_tab: "Άνοιγμα καρτέλας ↵"
 recommendations.button_open_panel: "Άνοιγμα πλαισίου ↵"

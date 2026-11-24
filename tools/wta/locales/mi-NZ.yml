@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
+recommendations.review_required: "Me arotake katoa · whakanuia te papa, whakakore rānei"
 recommendations.button_open_in_new_panel: "Whakatuwherahia i te Papa Hou ↵"
 recommendations.button_open_tab: "Whakatuwhera Ripa ↵"
 recommendations.button_open_panel: "Whakatuwhera Papa ↵"

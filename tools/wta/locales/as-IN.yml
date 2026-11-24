@@ -113,6 +113,7 @@ recommendations.nav_hint: "(↑ ↓ নেভিগেট কৰিবলৈ •
 recommendations.button_run_command: "[ কমাণ্ড চলাওক ]"
 recommendations.button_insert_in_terminal: "টাৰ্মিনেলত সন্নিবেশ কৰক"
 recommendations.button_open_in_new_tab: "নতুন টেবত খোলক ↵"
+recommendations.review_required: "সম্পূৰ্ণ পৰ্যালোচনা প্ৰয়োজন · পেন ডাঙৰ কৰক বা বাতিল কৰক"
 recommendations.button_open_in_new_panel: "নতুন পেনেলত খোলক ↵"
 recommendations.button_open_tab: "টেব খোলক ↵"
 recommendations.button_open_panel: "পেনেল খোলক ↵"

@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ naviguer • ← → changer d’action • 
 recommendations.button_run_command: "[ Exécuter la commande ]"
 recommendations.button_insert_in_terminal: "Insérer dans le terminal"
 recommendations.button_open_in_new_tab: "Ouvrir dans un nouvel onglet ↵"
+recommendations.review_required: "Examen complet requis · agrandissez le volet ou annulez"
 recommendations.button_open_in_new_panel: "Ouvrir dans un nouveau panneau ↵"
 recommendations.button_open_tab: "Ouvrir l'onglet ↵"
 recommendations.button_open_panel: "Ouvrir le panneau ↵"

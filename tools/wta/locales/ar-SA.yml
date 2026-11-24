@@ -113,6 +113,7 @@ recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بي
 recommendations.button_run_command: "[ تشغيل الأمر ]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
+recommendations.review_required: "تلزم مراجعة كاملة · كبّر اللوحة أو ألغِ"
 recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
 recommendations.button_open_tab: "فتح علامة تبويب ↵"
 recommendations.button_open_panel: "فتح لوحة ↵"

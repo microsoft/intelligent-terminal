@@ -108,6 +108,7 @@ recommendations.nav_hint: "(↑ ↓ навігація • ← → переми�
 recommendations.button_run_command: "[ Виконати команду ]"
 recommendations.button_insert_in_terminal: "Вставити в термінал"
 recommendations.button_open_in_new_tab: "Відкрити в новій вкладці ↵"
+recommendations.review_required: "Потрібен повний перегляд · збільште панель або скасуйте"
 recommendations.button_open_in_new_panel: "Відкрити в новій панелі ↵"
 recommendations.button_open_tab: "Відкрити вкладку ↵"
 recommendations.button_open_panel: "Відкрити панель ↵"

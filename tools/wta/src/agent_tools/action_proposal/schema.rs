@@ -23,8 +23,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::coordinator::{
-    validate_recommendation_set, OpenTarget, RecommendationChoice, RecommendationSet,
-    RecommendedAction,
+    validate_recommendation_set, validate_shell_command_input, OpenTarget, RecommendationChoice,
+    RecommendationSet, RecommendedAction,
 };
 
 /// The only wire schema version this build understands. Bumped only on a
@@ -387,6 +387,8 @@ pub fn parse_mcp_action_payload(
                 MAX_RATIONALE_CHARS,
             )?;
             validate_mcp_required_text("command", &wire.command, MAX_INPUT_CHARS)?;
+            validate_shell_command_input(&wire.command)
+                .map_err(|e| ProposalError::PolicyViolation(e.to_string()))?;
             (
                 wire.summary,
                 wire.reason.unwrap_or_default(),
@@ -408,6 +410,10 @@ pub fn parse_mcp_action_payload(
                 wire.command.as_deref(),
                 MAX_INPUT_CHARS,
             )?;
+            if let Some(command) = wire.command.as_deref() {
+                validate_shell_command_input(command)
+                    .map_err(|e| ProposalError::PolicyViolation(e.to_string()))?;
+            }
             validate_mcp_optional_nonempty_text(
                 "working_directory",
                 wire.working_directory.as_deref(),
@@ -560,7 +566,7 @@ fn mcp_command_property(destination: &str) -> serde_json::Value {
         "minLength": 1,
         "pattern": r"\S",
         "maxLength": MAX_INPUT_CHARS,
-        "description": format!("Exact shell command to run {destination}.")
+        "description": format!("Exact single-line shell command to run {destination}, without control characters.")
     })
 }
 
@@ -570,7 +576,7 @@ fn mcp_create_workspace_command_property() -> serde_json::Value {
         "minLength": 1,
         "pattern": r"\S",
         "maxLength": MAX_INPUT_CHARS,
-        "description": "Command to run after creating the workspace. Omit only when the requested outcome is an empty workspace."
+        "description": "Single-line shell command without control characters to run after creating the workspace. Omit only when the requested outcome is an empty workspace."
     })
 }
 
@@ -967,6 +973,115 @@ mod tests {
             &wire.choices[0].actions[0],
             ProposalActionWire::Send { input } if input == "cargo test"
         ));
+    }
+
+    #[test]
+    fn mcp_shell_commands_reject_terminal_controls() {
+        for input in (0..=0x1f)
+            .chain(0x7f..=0x9f)
+            .chain([0x2028, 0x2029])
+            .map(|code| format!("echo first{}echo second", char::from_u32(code).unwrap()))
+            .chain(["git status\r\n".to_string()])
+        {
+            for is_autofix in [false, true] {
+                let payload = serde_json::json!({
+                    "summary": "Review command",
+                    "command": input
+                });
+                assert!(
+                    parse_mcp_action_payload(
+                        McpActionTool::RunCommandInCurrentShell,
+                        &serde_json::to_vec(&payload).unwrap(),
+                        is_autofix,
+                    )
+                    .is_err(),
+                    "accepted {input:?}"
+                );
+            }
+            for placement in ["new_tab", "new_split"] {
+                let payload = serde_json::json!({
+                    "summary": "Review command",
+                    "command": input,
+                    "placement": placement
+                });
+                assert!(
+                    parse_mcp_action_payload(
+                        McpActionTool::CreateWorkspace,
+                        &serde_json::to_vec(&payload).unwrap(),
+                        false,
+                    )
+                    .is_err(),
+                    "accepted workspace command {input:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn command_validation_preserves_ordinary_text_and_multiline_delegate_tasks() {
+        for command in [
+            "git status",
+            "  Write-Output '你好 🌍'  ",
+            r#"Get-Item "C:\path with spaces\file.txt""#,
+            "echo first; echo second",
+            "printf '\\n'",
+        ] {
+            let payload = serde_json::json!({
+                "summary": "Review command",
+                "command": command
+            });
+            let wire = parse_mcp_action_payload(
+                McpActionTool::RunCommandInCurrentShell,
+                &serde_json::to_vec(&payload).unwrap(),
+                false,
+            )
+            .unwrap();
+            let set =
+                build_recommendation_set(&wire, false, None, Some("host-pane"), None).unwrap();
+            assert!(matches!(
+                &set.choices[0].actions[0],
+                RecommendedAction::Send { input, .. } if input == command
+            ));
+        }
+        let task = "Inspect the code.\nExplain the results.";
+        let payload = serde_json::json!({
+            "summary": "Delegate task",
+            "task": task,
+            "placement": "new_tab"
+        });
+        let wire = parse_mcp_action_payload(
+            McpActionTool::DelegateTaskInNewWorkspace,
+            &serde_json::to_vec(&payload).unwrap(),
+            false,
+        )
+        .unwrap();
+        let set = build_recommendation_set(&wire, false, Some("copilot"), None, None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::OpenAndSend { input, agent: Some(_), .. } if input == task
+        ));
+    }
+
+    #[test]
+    fn fallback_shell_commands_reject_line_breaks_for_both_origins() {
+        for mut wire in [terminal_agent_wire(), autofix_wire()] {
+            let is_autofix = wire.origin == ProposalOrigin::Autofix;
+            for input in ["echo first\necho second", "echo first\recho second"] {
+                wire.choices[0].actions[0] = ProposalActionWire::Send {
+                    input: input.into(),
+                };
+                let encoded = serde_json::to_vec(&wire).unwrap();
+                let parsed = parse_proposal_payload(&encoded).unwrap();
+                assert!(build_recommendation_set(
+                    &parsed,
+                    is_autofix,
+                    None,
+                    Some("host-pane"),
+                    None,
+                )
+                .is_err());
+            }
+        }
     }
 
     #[test]

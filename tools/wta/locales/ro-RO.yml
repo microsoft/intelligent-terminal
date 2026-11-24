@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ pentru navigare • ← → pentru comutarea
 recommendations.button_run_command: "[ Rulează comanda ]"
 recommendations.button_insert_in_terminal: "Inserare în Terminal"
 recommendations.button_open_in_new_tab: "Deschide în filă nouă ↵"
+recommendations.review_required: "Este necesară o examinare completă · măriți panoul sau anulați"
 recommendations.button_open_in_new_panel: "Deschide în panou nou ↵"
 recommendations.button_open_tab: "Deschide filă ↵"
 recommendations.button_open_panel: "Deschide panou ↵"

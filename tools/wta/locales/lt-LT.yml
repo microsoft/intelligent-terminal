@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ naršyti • ← → mygtukams perjungti •
 recommendations.button_run_command: "[ Vykdyti komandą ]"
 recommendations.button_insert_in_terminal: "Įterpti į Terminal"
 recommendations.button_open_in_new_tab: "Atidaryti naujame skirtuke ↵"
+recommendations.review_required: "Būtina visa peržiūra · padidinkite sritį arba atšaukite"
 recommendations.button_open_in_new_panel: "Atidaryti naujame skydelyje ↵"
 recommendations.button_open_tab: "Atidaryti skirtuką ↵"
 recommendations.button_open_panel: "Atidaryti skydelį ↵"

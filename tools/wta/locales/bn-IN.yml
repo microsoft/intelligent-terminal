@@ -113,6 +113,7 @@ recommendations.nav_hint: "(↑ ↓ নেভিগেট করুন • ← �
 recommendations.button_run_command: "[ কমান্ড চালান ]"
 recommendations.button_insert_in_terminal: "টার্মিনালে সন্নিবেশ করুন"
 recommendations.button_open_in_new_tab: "নতুন ট্যাবে খুলুন ↵"
+recommendations.review_required: "সম্পূর্ণ পর্যালোচনা প্রয়োজন · পেন বড় করুন বা বাতিল করুন"
 recommendations.button_open_in_new_panel: "নতুন প্যানেলে খুলুন ↵"
 recommendations.button_open_tab: "ট্যাব খুলুন ↵"
 recommendations.button_open_panel: "প্যানেল খুলুন ↵"

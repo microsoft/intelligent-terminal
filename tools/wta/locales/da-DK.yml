@@ -100,6 +100,7 @@ recommendations.nav_hint: "(↑ ↓ for at navigere • ← → for at skifte kn
 recommendations.button_run_command: "[ Kør kommando ]"
 recommendations.button_insert_in_terminal: "Indsæt i Terminal"
 recommendations.button_open_in_new_tab: "Åbn i ny fane ↵"
+recommendations.review_required: "Fuld gennemgang kræves · gør ruden større, eller annuller"
 recommendations.button_open_in_new_panel: "Åbn i nyt panel ↵"
 recommendations.button_open_tab: "Åbn fane ↵"
 recommendations.button_open_panel: "Åbn panel ↵"

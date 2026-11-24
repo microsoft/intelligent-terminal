@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करण्य�
 recommendations.button_run_command: "[ कमांड चालवा ]"
 recommendations.button_insert_in_terminal: "टर्मिनलमध्ये घाला"
 recommendations.button_open_in_new_tab: "नवीन टॅबमध्ये उघडा ↵"
+recommendations.review_required: "संपूर्ण पुनरावलोकन आवश्यक आहे · पेन मोठा करा किंवा रद्द करा"
 recommendations.button_open_in_new_panel: "नवीन पॅनेलमध्ये उघडा ↵"
 recommendations.button_open_tab: "टॅब उघडा ↵"
 recommendations.button_open_panel: "पॅनेल उघडा ↵"

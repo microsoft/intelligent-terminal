@@ -108,6 +108,7 @@ recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje gu
 recommendations.button_run_command: "[ Pokreni naredbu ]"
 recommendations.button_insert_in_terminal: "Umetni u terminal"
 recommendations.button_open_in_new_tab: "Otvori u novoj kartici ↵"
+recommendations.review_required: "Potreban je potpuni pregled · povećajte okno ili odustanite"
 recommendations.button_open_in_new_panel: "Otvori u novom oknu ↵"
 recommendations.button_open_tab: "Otvori karticu ↵"
 recommendations.button_open_panel: "Otvori okno ↵"

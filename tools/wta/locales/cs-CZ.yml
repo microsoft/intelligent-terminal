@@ -109,6 +109,7 @@ recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání t
 recommendations.button_run_command: "[ Spustit příkaz ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"
+recommendations.review_required: "Je nutná úplná kontrola · zvětšete podokno nebo akci zrušte"
 recommendations.button_open_in_new_panel: "Otevřít v novém panelu ↵"
 recommendations.button_open_tab: "Otevřít kartu ↵"
 recommendations.button_open_panel: "Otevřít panel ↵"

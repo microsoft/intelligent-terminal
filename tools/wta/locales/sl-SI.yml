@@ -108,6 +108,7 @@ recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje g
 recommendations.button_run_command: "[ Zaženi ukaz ]"
 recommendations.button_insert_in_terminal: "Vstavi v terminal"
 recommendations.button_open_in_new_tab: "Odpri v novem zavihku ↵"
+recommendations.review_required: "Potreben je celoten pregled · povečajte podokno ali prekličite"
 recommendations.button_open_in_new_panel: "Odpri v novem podoknu ↵"
 recommendations.button_open_tab: "Odpri zavihek ↵"
 recommendations.button_open_panel: "Odpri podokno ↵"

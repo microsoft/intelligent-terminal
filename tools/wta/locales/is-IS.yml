@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ til að fletta • ← → til að skipta um
 recommendations.button_run_command: "[ Keyra skipun ]"
 recommendations.button_insert_in_terminal: "Setja inn í Terminal"
 recommendations.button_open_in_new_tab: "Opna í nýjum flipa ↵"
+recommendations.review_required: "Full yfirferð er nauðsynleg · stækkaðu rúðuna eða hættu við"
 recommendations.button_open_in_new_panel: "Opna í nýju spjaldi ↵"
 recommendations.button_open_tab: "Opna flipa ↵"
 recommendations.button_open_panel: "Opna spjald ↵"

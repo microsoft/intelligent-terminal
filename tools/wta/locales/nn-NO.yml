@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å byte knap
 recommendations.button_run_command: "[ Køyr kommando ]"
 recommendations.button_insert_in_terminal: "Set inn i Terminal"
 recommendations.button_open_in_new_tab: "Opne i ny fane ↵"
+recommendations.review_required: "Full gjennomgang er nødvendig · gjer ruta større eller avbryt"
 recommendations.button_open_in_new_panel: "Opne i nytt panel ↵"
 recommendations.button_open_tab: "Opne fane ↵"
 recommendations.button_open_panel: "Opne panel ↵"

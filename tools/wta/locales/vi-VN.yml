@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ để di chuyển • ← → để chuyển
 recommendations.button_run_command: "[ Chạy lệnh ]"
 recommendations.button_insert_in_terminal: "Chèn vào Terminal"
 recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
+recommendations.review_required: "Cần xem xét toàn bộ · phóng to ngăn hoặc hủy"
 recommendations.button_open_in_new_panel: "Mở trong Bảng mới ↵"
 recommendations.button_open_tab: "Mở Tab ↵"
 recommendations.button_open_panel: "Mở Bảng ↵"

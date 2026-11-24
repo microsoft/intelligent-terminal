@@ -118,6 +118,7 @@ recommendations.nav_hint: "(↑ ↓ նավարկելու համար • ← → 
 recommendations.button_run_command: "[ Գործարկել հրամանը ]"
 recommendations.button_insert_in_terminal: "Տեղադրել տերմինալում"
 recommendations.button_open_in_new_tab: "Բացել նոր ներդիրում ↵"
+recommendations.review_required: "Պահանջվում է ամբողջական վերանայում · մեծացրեք վահանակը կամ չեղարկեք"
 recommendations.button_open_in_new_panel: "Բացել նոր վահանակում ↵"
 recommendations.button_open_tab: "Բացել ներդիր ↵"
 recommendations.button_open_panel: "Բացել վահանակ ↵"

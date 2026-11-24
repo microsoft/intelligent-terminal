@@ -390,6 +390,7 @@ impl App {
                         // straight from it. Clear the snapshot so a later
                         // re-entry re-captures; the lingering Agents view
                         // self-heals to chat on the next chat-toggle open.
+                        self.recommendation_approval = None;
                         let tab = self.tab_mut(&tab_id);
                         tab.pane_open = false;
                         tab.agents_view.search_query.clear();
@@ -844,6 +845,11 @@ impl App {
                     if self.state == ConnectionState::Connected {
                         let session_id = self.current_tab().session_id.clone();
                         if let Some(session_id) = session_id {
+                            if !self.selected_recommendation_choice().is_some_and(|choice| {
+                                self.recommendation_is_reviewed(&session_id, choice)
+                            }) {
+                                return;
+                            }
                             let label_choice = self
                                 .selected_recommendation_choice()
                                 .map(|c| c.choice)

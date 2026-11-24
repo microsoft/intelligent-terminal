@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ เลื่อนเลือก • ← �
 recommendations.button_run_command: "[ เรียกใช้คำสั่ง ]"
 recommendations.button_insert_in_terminal: "แทรกใน Terminal"
 recommendations.button_open_in_new_tab: "เปิดในแท็บใหม่ ↵"
+recommendations.review_required: "ต้องตรวจสอบทั้งหมด · ขยายแผงหรือยกเลิก"
 recommendations.button_open_in_new_panel: "เปิดในแผงใหม่ ↵"
 recommendations.button_open_tab: "เปิดแท็บ ↵"
 recommendations.button_open_panel: "เปิดแผง ↵"

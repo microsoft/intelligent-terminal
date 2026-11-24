@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-bu
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
+recommendations.review_required: "Hemm bżonn reviżjoni sħiħa · kabbar il-panew jew ikkanċella"
 recommendations.button_open_in_new_panel: "Iftaħ f'Pannell Ġdid ↵"
 recommendations.button_open_tab: "Iftaħ Tab ↵"
 recommendations.button_open_panel: "Iftaħ Pannell ↵"

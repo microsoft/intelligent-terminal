@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ לניווט • ← → למעבר בין �
 recommendations.button_run_command: "[ הפעל פקודה ]"
 recommendations.button_insert_in_terminal: "הכנס למסוף"
 recommendations.button_open_in_new_tab: "פתח בכרטיסייה חדשה ↵"
+recommendations.review_required: "נדרשת סקירה מלאה · הגדילו את החלונית או בטלו"
 recommendations.button_open_in_new_panel: "פתח בחלונית חדשה ↵"
 recommendations.button_open_tab: "פתח כרטיסייה ↵"
 recommendations.button_open_panel: "פתח חלונית ↵"

@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ навигация өчен • ← → тө
 recommendations.button_run_command: "[ Боерыкны башкару ]"
 recommendations.button_insert_in_terminal: "Terminal-га кертү"
 recommendations.button_open_in_new_tab: "Яңа табда ачу ↵"
+recommendations.review_required: "Тулысынча карап чыгу кирәк · панельне зурайтыгыз яки баш тартыгыз"
 recommendations.button_open_in_new_panel: "Яңа панельдә ачу ↵"
 recommendations.button_open_tab: "Табны ачу ↵"
 recommendations.button_open_panel: "Панельне ачу ↵"

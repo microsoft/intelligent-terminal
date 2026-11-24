@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arası
 recommendations.button_run_command: "[ Komutu çalıştır ]"
 recommendations.button_insert_in_terminal: "Terminal'e ekle"
 recommendations.button_open_in_new_tab: "Yeni Sekmede Aç ↵"
+recommendations.review_required: "Tam inceleme gerekli · bölmeyi büyütün veya iptal edin"
 recommendations.button_open_in_new_panel: "Yeni Panelde Aç ↵"
 recommendations.button_open_tab: "Sekme Aç ↵"
 recommendations.button_open_panel: "Panel Aç ↵"

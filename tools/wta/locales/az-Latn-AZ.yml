@@ -113,6 +113,7 @@ recommendations.nav_hint: "(↑ ↓ naviqasiya üçün • ← → düymələr a
 recommendations.button_run_command: "[ Əmri icra et ]"
 recommendations.button_insert_in_terminal: "Terminal-a daxil et"
 recommendations.button_open_in_new_tab: "Yeni Sekmədə Aç ↵"
+recommendations.review_required: "Tam nəzərdən keçirmə tələb olunur · paneli böyüdün və ya ləğv edin"
 recommendations.button_open_in_new_panel: "Yeni Paneldə Aç ↵"
 recommendations.button_open_tab: "Sekməni Aç ↵"
 recommendations.button_open_panel: "Paneli Aç ↵"

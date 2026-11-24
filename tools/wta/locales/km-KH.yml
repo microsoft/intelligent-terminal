@@ -105,6 +105,7 @@ recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← �
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
+recommendations.review_required: "ត្រូវពិនិត្យមើលទាំងស្រុង · ពង្រីកផ្ទាំងរង ឬបោះបង់"
 recommendations.button_open_in_new_panel: "បើកក្នុងផ្តាំងថ្មី ↵"
 recommendations.button_open_tab: "បើកផ្ទាំង ↵"
 recommendations.button_open_panel: "បើកផ្តាំង ↵"

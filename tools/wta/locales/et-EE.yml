@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetami
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
+recommendations.review_required: "Vajalik on täielik ülevaatus · suurendage paani või tühistage"
 recommendations.button_open_in_new_panel: "Ava uuel paneelil ↵"
 recommendations.button_open_tab: "Ava vahekaart ↵"
 recommendations.button_open_panel: "Ava paneel ↵"

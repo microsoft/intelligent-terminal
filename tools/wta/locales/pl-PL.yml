@@ -108,6 +108,7 @@ recommendations.nav_hint: "(↑ ↓ do nawigacji • ← → do przełączania p
 recommendations.button_run_command: "[ Uruchom polecenie ]"
 recommendations.button_insert_in_terminal: "Wstaw w terminalu"
 recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
+recommendations.review_required: "Wymagany pełny przegląd · powiększ okienko lub anuluj"
 recommendations.button_open_in_new_panel: "Otwórz w nowym panelu ↵"
 recommendations.button_open_tab: "Otwórz kartę ↵"
 recommendations.button_open_panel: "Otwórz panel ↵"

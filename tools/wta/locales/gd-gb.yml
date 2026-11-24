@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ gus seòladh • ← → gus putanan atharra
 recommendations.button_run_command: "[ Ruith òrdugh ]"
 recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
 recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
+recommendations.review_required: "Tha làn-sgrùdadh a dhìth · meudaich am pana no sguir dheth"
 recommendations.button_open_in_new_panel: "Fosgail ann am Panail Ùr ↵"
 recommendations.button_open_tab: "Fosgail Taba ↵"
 recommendations.button_open_panel: "Fosgail Panail ↵"

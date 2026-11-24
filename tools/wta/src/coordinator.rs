@@ -422,6 +422,10 @@ async fn execute_choice(
     delegate_agents: &[DelegateAgentRuntime],
     event_tx: &mpsc::UnboundedSender<AppEvent>,
 ) -> Result<()> {
+    // Validate the complete choice before the first terminal side effect.
+    for action in &choice.actions {
+        validate_action(action)?;
+    }
     for action in &choice.actions {
         match action {
             RecommendedAction::Send { parent, input } => {
@@ -770,7 +774,7 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
     match action {
         RecommendedAction::Send { parent: _, input } => {
             // parent may be empty for auto-fix actions (filled in at execution time)
-            ensure_non_empty("input", input)?;
+            validate_shell_command_input(input)?;
         }
         RecommendedAction::OpenAndSend {
             parent,
@@ -780,6 +784,9 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             ..
         } => {
             ensure_non_empty("input", input)?;
+            if agent.is_none() {
+                validate_shell_command_input(input)?;
+            }
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
             }
@@ -798,6 +805,19 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Shell recommendations are single-line text, not terminal keystroke streams.
+/// Delegate prompts and the general terminal-input APIs have separate contracts.
+pub(crate) fn validate_shell_command_input(input: &str) -> Result<()> {
+    ensure_non_empty("input", input)?;
+    if input
+        .chars()
+        .any(|ch| ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}'))
+    {
+        bail!("shell commands must be a single line without control characters");
+    }
     Ok(())
 }
 
@@ -2420,6 +2440,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shell_command_controls_are_rejected_before_any_terminal_request() {
+        for input in [
+            "echo first\necho second",
+            "echo first\recho second",
+            "git status\r\n",
+            "git\tstatus",
+            "echo \u{1b}[2Ksecond",
+            "echo \u{7f}second",
+            "echo \u{85}second",
+            "echo first\u{2028}echo second",
+            "echo first\u{2029}echo second",
+        ] {
+            for insert_only in [false, true] {
+                for workspace in [false, true] {
+                    let channel = Arc::new(RecordingWtChannel::default());
+                    let shell_mgr =
+                        ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+                    let (event_tx, _event_rx) = mpsc::unbounded_channel();
+                    let action = if workspace {
+                        RecommendedAction::OpenAndSend {
+                            target: OpenTarget::Tab,
+                            parent: None,
+                            input: input.into(),
+                            agent: None,
+                            cwd: None,
+                            title: None,
+                            direction: None,
+                            profile: None,
+                        }
+                    } else {
+                        RecommendedAction::Send {
+                            parent: "target-pane".into(),
+                            input: input.into(),
+                        }
+                    };
+                    let choice = RecommendationChoice {
+                        choice: 1,
+                        title: "Review command".into(),
+                        rationale: String::new(),
+                        // Even an earlier valid action must not run when the
+                        // choice contains an invalid shell command.
+                        actions: vec![
+                            RecommendedAction::Send {
+                                parent: "target-pane".into(),
+                                input: "echo first".into(),
+                            },
+                            action,
+                        ],
+                    };
+                    let result =
+                        execute_choice(&choice, insert_only, &shell_mgr, &[], &event_tx).await;
+                    assert!(result.is_err(), "accepted {input:?}");
+                    assert!(
+                        channel.requests.lock().unwrap().is_empty(),
+                        "invalid choice reached the terminal: {input:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn recommendation_shell_commands_reject_controls_but_preserve_delegate_tasks() {
+        for control in (0..=0x1f).chain(0x7f..=0x9f) {
+            let input = format!("echo first{}echo second", char::from_u32(control).unwrap());
+            let json = json!({
+                "choices": [{
+                    "choice": 1,
+                    "title": "Review command",
+                    "actions": [{"type": "send", "input": input}]
+                }]
+            });
+            assert!(parse_recommendation_set(&json.to_string()).is_err());
+        }
+        let json = json!({
+            "choices": [{
+                "choice": 1,
+                "title": "Delegate task",
+                "actions": [{
+                    "type": "open_and_send",
+                    "target": "tab",
+                    "agent": "copilot",
+                    "input": "Inspect the code.\nExplain the results."
+                }]
+            }]
+        });
+        assert!(parse_recommendation_set(&json.to_string()).is_ok());
+    }
+
+    #[tokio::test]
     async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
         let channel = Arc::new(RecordingWtChannel::default());
         let shell_mgr = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
@@ -2430,7 +2540,7 @@ mod tests {
             rationale: String::new(),
             actions: vec![RecommendedAction::Send {
                 parent: "target-pane".to_string(),
-                input: "git status\r\n".to_string(),
+                input: "git status".to_string(),
             }],
         };
 

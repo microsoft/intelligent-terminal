@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu
 recommendations.button_run_command: "[ Izpildīt komandu ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
+recommendations.review_required: "Nepieciešama pilnīga pārskatīšana · palieliniet rūti vai atceliet"
 recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
 recommendations.button_open_tab: "Atvērt cilni ↵"
 recommendations.button_open_panel: "Atvērt paneli ↵"

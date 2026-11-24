@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്�
 recommendations.button_run_command: "[ കമാന്‍ഡ് പ്രവര്‍ത്തിപ്പിക്കുക ]"
 recommendations.button_insert_in_terminal: "ടെര്‍മിനലില്‍ ചേര്‍ക്കുക"
 recommendations.button_open_in_new_tab: "പുതിയ ടാബില്‍ തുറക്കുക ↵"
+recommendations.review_required: "പൂർണ്ണമായ അവലോകനം ആവശ്യമാണ് · പേൻ വലുതാക്കുക അല്ലെങ്കിൽ റദ്ദാക്കുക"
 recommendations.button_open_in_new_panel: "പുതിയ പാനലില്‍ തുറക്കുക ↵"
 recommendations.button_open_tab: "ടാബ് തുറക്കുക ↵"
 recommendations.button_open_panel: "പാനല്‍ തുറക്കുക ↵"

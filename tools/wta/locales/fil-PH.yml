@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit 
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
+recommendations.review_required: "Kailangan ng buong pagsusuri · palakihin ang pane o magkansela"
 recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
 recommendations.button_open_tab: "Buksan ang Tab ↵"
 recommendations.button_open_panel: "Buksan ang Panel ↵"

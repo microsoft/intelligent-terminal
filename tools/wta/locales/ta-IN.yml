@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ வழிசெலுத்த • ← → �
 recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
 recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
 recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"
+recommendations.review_required: "முழுமையான மதிப்பாய்வு தேவை · பலகத்தைப் பெரிதாக்கவும் அல்லது ரத்துசெய்யவும்"
 recommendations.button_open_in_new_panel: "புதிய பலகத்தில் திற ↵"
 recommendations.button_open_tab: "தாவலைத் திற ↵"
 recommendations.button_open_panel: "பலகத்தைத் திற ↵"

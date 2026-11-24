@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ navigoidaksesi • ← → vaihtaaksesi pain
 recommendations.button_run_command: "[ Suorita komento ]"
 recommendations.button_insert_in_terminal: "Lisää Terminaliin"
 recommendations.button_open_in_new_tab: "Avaa uudessa välilehdessä ↵"
+recommendations.review_required: "Täydellinen tarkistus vaaditaan · suurenna ruutua tai peruuta"
 recommendations.button_open_in_new_panel: "Avaa uudessa paneelissa ↵"
 recommendations.button_open_tab: "Avaa välilehti ↵"
 recommendations.button_open_panel: "Avaa paneeli ↵"

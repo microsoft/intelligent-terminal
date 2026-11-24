@@ -20,6 +20,7 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.input_dialog_area = None;
     app.queue_control_hits.clear();
     app.recommendation_rendered = false;
+    app.recommendation_approval = None;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -237,7 +238,19 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
     let recommendation_area =
         recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
-    app.recommendation_rendered = recommendation_area.is_some();
+    app.recommendation_rendered = recommendation_area.bounds.is_some();
+    if let Some(choice) = recommendation_area
+        .reviewable_choice
+        .filter(|_| app.current_tab().pane_open)
+    {
+        if let Some(prompt) = app.current_tab().turn.prompt() {
+            app.recommendation_approval = Some(crate::app::RecommendationApproval {
+                tab_id: app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_owned(),
+                prompt_id: prompt.id,
+                choice,
+            });
+        }
+    }
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -294,6 +307,7 @@ fn render_content(frame: &mut Frame, app: &mut App) {
         if let Some(popup_state) = app.command_popup_state() {
             let popup_area = command_popup::render_popup(frame, popup_state, input_area);
             if recommendation_area
+                .bounds
                 .zip(popup_area)
                 .is_some_and(|(card, popup)| card.intersects(popup))
             {
@@ -333,6 +347,9 @@ fn render_content(frame: &mut Frame, app: &mut App) {
         || !app.current_tab().user_input.is_empty()
     {
         app.recommendation_rendered = false;
+    }
+    if !app.recommendation_rendered {
+        app.recommendation_approval = None;
     }
 }
 

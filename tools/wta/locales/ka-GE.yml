@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ ნავიგაციისთვის �
 recommendations.button_run_command: "[ ბრძანების გაშვება ]"
 recommendations.button_insert_in_terminal: "ჩასმა ტერმინალში"
 recommendations.button_open_in_new_tab: "ახალ ჩანართში გახსნა ↵"
+recommendations.review_required: "საჭიროა სრული განხილვა · გაზარდეთ პანელი ან გააუქმეთ"
 recommendations.button_open_in_new_panel: "ახალ პანელში გახსნა ↵"
 recommendations.button_open_tab: "ჩანართის გახსნა ↵"
 recommendations.button_open_panel: "პანელის გახსნა ↵"

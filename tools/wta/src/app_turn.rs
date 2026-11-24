@@ -757,9 +757,24 @@ impl App {
         tab.finish_thought();
     }
 
-    /// User pressed Enter while a card was visible — dispatch the selected
-    /// choice to the coordinator and transition to `Surfaced { Empty, .. }`
-    /// while preserving the ACP single-flight gate.
+    pub(crate) fn recommendation_is_reviewed(
+        &self,
+        session_id: &str,
+        choice: &crate::coordinator::RecommendationChoice,
+    ) -> bool {
+        self.session_tab(session_id).pane_open
+            && self
+                .recommendation_approval
+                .as_ref()
+                .is_some_and(|approval| {
+                    approval.tab_id == self.tab_for_session(session_id)
+                        && Some(approval.prompt_id) == self.session_tab(session_id).turn.prompt_id()
+                        && &approval.choice == choice
+                })
+    }
+
+    /// Dispatch only the exact choice fully displayed for the current prompt.
+    /// Preserve the ACP single-flight gate while transitioning the turn.
     pub fn turn_execute_card(&mut self, session_id: &str) {
         let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
@@ -774,7 +789,11 @@ impl App {
             return;
         };
         let prompt_id = prompt.id;
+        if !self.recommendation_is_reviewed(session_id, &choice) {
+            return;
+        }
         let recommendation_summary = format_recommendations_for_chat(recommendations, None);
+        self.recommendation_approval = None;
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id

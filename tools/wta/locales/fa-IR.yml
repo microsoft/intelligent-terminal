@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای �
 recommendations.button_run_command: "[ اجرای دستور ]"
 recommendations.button_insert_in_terminal: "درج در ترمینال"
 recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
+recommendations.review_required: "بازبینی کامل لازم است · پنل را بزرگ‌تر کنید یا لغو کنید"
 recommendations.button_open_in_new_panel: "باز کردن در پنل جدید ↵"
 recommendations.button_open_tab: "باز کردن زبانه ↵"
 recommendations.button_open_panel: "باز کردن پنل ↵"

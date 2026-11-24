@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ för att navigera • ← → för att växl
 recommendations.button_run_command: "[ Kör kommando ]"
 recommendations.button_insert_in_terminal: "Infoga i Terminal"
 recommendations.button_open_in_new_tab: "Öppna i ny flik ↵"
+recommendations.review_required: "Fullständig granskning krävs · förstora rutan eller avbryt"
 recommendations.button_open_in_new_panel: "Öppna i ny panel ↵"
 recommendations.button_open_tab: "Öppna flik ↵"
 recommendations.button_open_panel: "Öppna panel ↵"

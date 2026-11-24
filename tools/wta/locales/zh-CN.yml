@@ -95,6 +95,7 @@ recommendations.nav_hint: "(↑ ↓ 导航 • ← → 切换按钮 • Enter �
 recommendations.button_run_command: "[ 运行命令 ]"
 recommendations.button_insert_in_terminal: "插入到终端"
 recommendations.button_open_in_new_tab: "在新标签页中打开 ↵"
+recommendations.review_required: "需要完整审阅 · 扩大窗格或取消"
 recommendations.button_open_in_new_panel: "在新面板中打开 ↵"
 recommendations.button_open_tab: "打开标签页 ↵"
 recommendations.button_open_panel: "打开面板 ↵"

@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → c
 recommendations.button_run_command: "[ Rith ordú ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
+recommendations.review_required: "Tá athbhreithniú iomlán ag teastáil · méadaigh an pána nó cealaigh"
 recommendations.button_open_in_new_panel: "Oscail i bPainéal Nua ↵"
 recommendations.button_open_tab: "Oscail Cluaisín ↵"
 recommendations.button_open_panel: "Oscail Painéal ↵"

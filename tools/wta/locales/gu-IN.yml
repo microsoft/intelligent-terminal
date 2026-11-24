@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ નેવિગેટ કરવા • ← �
 recommendations.button_run_command: "[ કમાન્ડ ચલાવો ]"
 recommendations.button_insert_in_terminal: "ટર્મિનલમાં દાખલ કરો"
 recommendations.button_open_in_new_tab: "નવી ટૅબમાં ખોલો ↵"
+recommendations.review_required: "સંપૂર્ણ સમીક્ષા જરૂરી છે · પેન મોટો કરો અથવા રદ કરો"
 recommendations.button_open_in_new_panel: "નવી પૅનલમાં ખોલો ↵"
 recommendations.button_open_tab: "ટૅબ ખોલો ↵"
 recommendations.button_open_panel: "પૅનલ ખોલો ↵"

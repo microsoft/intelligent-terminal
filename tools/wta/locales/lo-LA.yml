@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບ�
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
+recommendations.review_required: "ຕ້ອງກວດສອບທັງໝົດ · ຂະຫຍາຍແຜງ ຫຼື ຍົກເລີກ"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"

@@ -95,6 +95,7 @@ recommendations.nav_hint: "(↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter �
 recommendations.button_run_command: "[ 執行命令 ]"
 recommendations.button_insert_in_terminal: "插入終端機"
 recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"
+recommendations.review_required: "需要完整檢閱 · 放大窗格或取消"
 recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
 recommendations.button_open_tab: "開啟索引標籤 ↵"
 recommendations.button_open_panel: "開啟面板 ↵"

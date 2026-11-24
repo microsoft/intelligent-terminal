@@ -99,6 +99,7 @@ recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • ← → fir Knäpper
 recommendations.button_run_command: "[ Kommando ausféieren ]"
 recommendations.button_insert_in_terminal: "An den Terminal asetzen"
 recommendations.button_open_in_new_tab: "An engem neien Tab opmaachen ↵"
+recommendations.review_required: "Eng vollstänneg Iwwerpréiwung ass néideg · vergréissert de Beräich oder briecht of"
 recommendations.button_open_in_new_panel: "An engem neie Panell opmaachen ↵"
 recommendations.button_open_tab: "Tab opmaachen ↵"
 recommendations.button_open_panel: "Panell opmaachen ↵"

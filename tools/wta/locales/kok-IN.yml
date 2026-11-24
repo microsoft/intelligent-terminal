@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करपाक 
 recommendations.button_run_command: "[ कमांड चलयात ]"
 recommendations.button_insert_in_terminal: "टर्मिनलांत घालात"
 recommendations.button_open_in_new_tab: "नव्या टॅबांत उगडात ↵"
+recommendations.review_required: "पुराय पुनरावलोकन गरजेचें आसा · पेन व्हडलो करात वा रद्द करात"
 recommendations.button_open_in_new_panel: "नव्या पॅनेलांत उगडात ↵"
 recommendations.button_open_tab: "टॅब उगडात ↵"
 recommendations.button_open_panel: "पॅनेल उगडात ↵"

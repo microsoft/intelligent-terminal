@@ -112,6 +112,7 @@ recommendations.nav_hint: "(↑ ↓ نیویگیٹ کرنے کے لیے • ← 
 recommendations.button_run_command: "[ کمانڈ چلائیں ]"
 recommendations.button_insert_in_terminal: "ٹرمینل میں داخل کریں"
 recommendations.button_open_in_new_tab: "نئی ٹیب میں کھولیں ↵"
+recommendations.review_required: "مکمل جائزہ درکار ہے · پین بڑا کریں یا منسوخ کریں"
 recommendations.button_open_in_new_panel: "نئے پینل میں کھولیں ↵"
 recommendations.button_open_tab: "ٹیب کھولیں ↵"
 recommendations.button_open_panel: "پینل کھولیں ↵"
