@@ -61,11 +61,14 @@ review reasoning and the structured report.
 1. Read the caller-generated scope manifest before reading PR content. Verify
    the report will use its PR number, comparison-base SHA, head SHA, repository
    relation, and scope hash exactly.
-2. Inspect the exact immutable patch with `read-security-diff`, passing
-   `paths_json` as a JSON array of at most 20 normalized repository paths
-   (`[]` requests the complete diff). Continue in bounded path groups until
-   every changed hunk has actually been read; do not silently skip truncated
-   output or rely on keyword filters to select findings or discard changes.
+2. Review one changed file at a time from the scope manifest. Use
+   `read-security-diff` with that file's path in `paths_json`, including its old
+   path for a rename or copy. Do not request the whole PR diff at once. If a
+   file's diff is too large to read in full, record it as unreviewed and
+   continue with the remaining files. If any file remains unreviewed, finish
+   as incomplete: name the unreviewed files and ask the author to split oversized
+   changes into smaller PRs. Do not submit a completed report, emit the
+   completion `noop`, or propose a repair on incomplete coverage.
    Summaries such as `--stat`, `--name-only`, and PR prose are discovery aids,
    not review evidence. Use `read-security-source` with `revision: base` or
    `head`, normalized `path`, and positive inclusive `start_line`/`end_line`
