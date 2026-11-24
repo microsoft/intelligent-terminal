@@ -929,11 +929,16 @@ export function publicationDecision(report) {
 
 export const CI_DEFINITION_PATHS = [
   '.github/workflows/pr-ci.yml',
+  '.github/workflows/pr-ci-native.yml',
   '.github/workflows/native-accessibility.yml',
   'build/scripts/Run-Tests.ps1',
   'tools/razzle.cmd',
   'tools/.razzlerc.cmd',
   'build/scripts/ci-security-analysis.mjs',
+  'build/scripts/Invoke-CiPerformanceAnalysis.ps1',
+  '.cargo/config.toml',
+  '.cargo/config',
+  'src/common.build.pre.props',
   'build/config/codeql-accepted-warnings.json',
   'build/scripts/ci-accessibility-scope.mjs',
   'build/scripts/ci-accessibility-payload.py',
@@ -943,9 +948,14 @@ export const CI_DEFINITION_PATHS = [
 ];
 
 export function validateCiDefinition(sourceTree, comparisonBaseTree) {
-  const definitions = [sourceTree, comparisonBaseTree].map(tree => {
+  const trees = [sourceTree, comparisonBaseTree];
+  for (const tree of trees) {
     if (tree?.truncated !== false || !Array.isArray(tree.tree)) fail('CI implementation requires complete immutable trees');
-    return CI_DEFINITION_PATHS.map(path => {
+  }
+  const paths = [...new Set([...CI_DEFINITION_PATHS, ...trees.flatMap(tree =>
+    tree.tree.filter(file => /(^|\/)\.clang-tidy$/.test(file?.path ?? '')).map(file => file.path))])];
+  const definitions = trees.map(tree => {
+    return paths.map(path => {
       const entries = tree.tree.filter(file => file?.path === path);
       if (entries.length > 1 || entries.some(file => file.type !== 'blob' ||
           !['100644', '100755'].includes(file.mode) || !SHA.test(file.sha ?? ''))) {
@@ -954,8 +964,8 @@ export function validateCiDefinition(sourceTree, comparisonBaseTree) {
       return entries.length ? [entries[0].mode, entries[0].type, entries[0].sha] : null;
     });
   });
-  for (const path of CI_DEFINITION_PATHS) {
-    const index = CI_DEFINITION_PATHS.indexOf(path);
+  for (const path of paths) {
+    const index = paths.indexOf(path);
     if (stableJson(definitions[0][index]) !== stableJson(definitions[1][index])) {
       fail('CI implementation differs from the trusted workflow revision; manual review is required');
     }

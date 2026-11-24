@@ -9992,7 +9992,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuCreatedNewTerminalSession",
             TraceLoggingDescription("Event emitted when a new terminal was created via the new tab menu"),
-            TraceLoggingValue(NumberOfTabs(), "NewTabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "NewTabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue(sessionType, "SessionType", "The type of session that was created"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -10293,7 +10293,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("Settings", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingValue(targetAsString, "SettingsTarget", "The target settings file or UI"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -10315,7 +10315,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("CommandPalette", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -10336,7 +10336,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("About", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
