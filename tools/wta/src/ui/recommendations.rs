@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::{Clear, Paragraph, Wrap};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::App;
@@ -7,6 +7,12 @@ use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendedAction};
 use crate::theme;
 use crate::ui::action_panel::{recommendation_card_height, PanelMode};
 use crate::ui::card::{self, CARD_MIN_SIZE};
+
+#[derive(Default)]
+pub(crate) struct RenderedRecommendations {
+    pub bounds: Option<Rect>,
+    pub reviewable_choice: Option<RecommendationChoice>,
+}
 
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
 /// `App::sync_rec_scroll_max` first so `rec_scroll.offset` is already clamped
@@ -22,18 +28,28 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode. Returns the bounds of cards with painted content.
-pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> Option<Rect> {
+pub(crate) fn render(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+    mode: PanelMode,
+) -> RenderedRecommendations {
     let Some(recs) = app.current_tab().turn.recommendations() else {
-        return None;
+        return RenderedRecommendations::default();
     };
     if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
-        return None;
+        return RenderedRecommendations::default();
     }
     if mode == PanelMode::Compact {
-        return render_compact(frame, app, area).then_some(area);
+        let (painted, reviewable) = render_compact(frame, app, area);
+        return RenderedRecommendations {
+            bounds: painted.then_some(area),
+            reviewable_choice: reviewable,
+        };
     }
 
     let mut rendered: Option<Rect> = None;
+    let mut reviewable_choice = None;
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
@@ -64,25 +80,36 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> Opti
                 width: area.width,
                 height: render_h,
             };
-            if render_card(frame, app, card_area, choice, idx) {
+            let (painted, reviewable) = render_card(frame, app, card_area, choice, idx);
+            if painted {
                 rendered = Some(rendered.map_or(card_area, |bounds| bounds.union(card_area)));
+            }
+            if reviewable && idx == app.current_tab().selected_recommendation {
+                reviewable_choice = Some(choice.clone());
             }
         }
         canvas_top += h;
     }
-    rendered
+    RenderedRecommendations {
+        bounds: rendered,
+        reviewable_choice,
+    }
 }
 
-fn render_compact(frame: &mut Frame, app: &App, area: Rect) -> bool {
+fn render_compact(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+) -> (bool, Option<RecommendationChoice>) {
     let Some(recommendations) = app.current_tab().turn.recommendations() else {
-        return false;
+        return (false, None);
     };
     let selected = app
         .current_tab()
         .selected_recommendation
         .min(recommendations.choices.len().saturating_sub(1));
     let Some(choice) = recommendations.choices.get(selected) else {
-        return false;
+        return (false, None);
     };
     let (summary, buttons, body_kind) = extract_card_content(choice);
     let marker = "○";
@@ -94,6 +121,10 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) -> bool {
     let prefix = format!("{marker}{position}");
     let summary_width =
         (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
+    let reviewable = choice.actions.len() == 1
+        && !summary.contains(['\r', '\n'])
+        && UnicodeWidthStr::width(summary.as_str()) <= summary_width
+        && area.height > 1;
     let summary = truncate_compact(&summary.replace(['\r', '\n'], " "), summary_width);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
@@ -119,9 +150,18 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) -> bool {
         let focused = (app.current_tab().recommendation_focus
             == crate::app::RecommendationFocus::Button)
             .then_some(app.current_tab().selected_button);
-        card::render_buttons(frame, button_area, &buttons, focused);
+        if reviewable {
+            card::render_buttons(frame, button_area, &buttons, focused);
+        } else {
+            card::render_buttons(
+                frame,
+                button_area,
+                &[t!("recommendations.review_required").into_owned()],
+                focused.map(|_| 0),
+            );
+        }
     }
-    summary_width > 1
+    (summary_width > 1, reviewable.then(|| choice.clone()))
 }
 
 fn truncate_compact(text: &str, width: usize) -> String {
@@ -171,9 +211,9 @@ fn render_card(
     area: Rect,
     choice: &RecommendationChoice,
     idx: usize,
-) -> bool {
+) -> (bool, bool) {
     if area.width < CARD_MIN_SIZE || area.height < CARD_MIN_SIZE {
-        return false;
+        return (false, false);
     }
 
     // A selected card only paints button focus while recommendation navigation
@@ -188,7 +228,7 @@ fn render_card(
 
     let Some((content_area, button_area)) = card::render_card_shell(frame, area, border_style)
     else {
-        return false;
+        return (false, false);
     };
 
     let (command_text, buttons, body_kind) = extract_card_content(choice);
@@ -197,10 +237,17 @@ fn render_card(
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
     };
     let content_inner = card::inset_horizontal(content_area, 2);
+    let mut reviewable = false;
     if content_inner.width > 0 {
+        let characters_fit = command_text
+            .chars()
+            .all(|ch| UnicodeWidthChar::width(ch).unwrap_or(0) <= content_inner.width as usize);
         let content = Paragraph::new(command_text)
             .style(body_style)
             .wrap(Wrap { trim: false });
+        reviewable = choice.actions.len() == 1
+            && characters_fit
+            && content.line_count(content_inner.width) <= content_inner.height as usize;
         frame.render_widget(content, content_inner);
     }
 
@@ -213,9 +260,134 @@ fn render_card(
         } else {
             None
         };
-        card::render_buttons(frame, button_inner, &buttons, focused);
+        if reviewable {
+            card::render_buttons(frame, button_inner, &buttons, focused);
+        } else {
+            card::render_buttons(
+                frame,
+                button_inner,
+                &[t!("recommendations.review_required").into_owned()],
+                focused.map(|_| 0),
+            );
+        }
     }
-    content_inner.width > 0 && content_inner.height > 0
+    (
+        content_inner.width > 0 && content_inner.height > 0,
+        reviewable,
+    )
+}
+
+/// A read-only viewport over the exact bound payload. Scrolling never changes
+/// the payload, and approval does not depend on visiting any particular row.
+pub(crate) fn render_full_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    let Some(view) = app.recommendation_full_view.as_ref() else {
+        return;
+    };
+    let binding = view.binding.clone();
+    frame.render_widget(Clear, area);
+    // Drop decorative borders first in tiny panes, preserving command and actions.
+    let inner = if area.width >= 6 && area.height >= 7 {
+        let block = super::popup::block(t!("recommendations.review_required").into_owned());
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        inner
+    } else {
+        area
+    };
+    let hint_rows = u16::from(inner.height >= 3);
+    let [body, buttons, hint] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(u16::from(inner.height >= 2)),
+        Constraint::Length(hint_rows),
+    ])
+    .areas(inner);
+    if body.width < 2 || body.height == 0 || buttons.height == 0 {
+        return;
+    }
+    let (display, mut labels, _) = extract_card_content(&binding.choice);
+    let text = match binding.choice.actions.first() {
+        Some(
+            RecommendedAction::Send { input, .. } | RecommendedAction::OpenAndSend { input, .. },
+        ) => input.as_str(),
+        _ => display.as_str(),
+    };
+    if matches!(
+        binding.choice.actions.first(),
+        Some(RecommendedAction::Send { .. })
+    ) {
+        labels = vec![
+            t!("chat.tool_kind.run").into_owned(),
+            t!("chat.tool_kind.insert").into_owned(),
+        ];
+    }
+    let lines = full_command_lines(text, body.width as usize);
+    let Some(view) = app.recommendation_full_view.as_mut() else {
+        return;
+    };
+    view.page_rows = body.height as usize;
+    view.scroll_max = lines.len().saturating_sub(view.page_rows);
+    view.scroll = view.scroll.min(view.scroll_max);
+    frame.render_widget(
+        Paragraph::new(
+            lines
+                .into_iter()
+                .skip(view.scroll)
+                .take(view.page_rows)
+                .map(|line| Line::styled(line, theme::CARD_CODE))
+                .collect::<Vec<_>>(),
+        ),
+        body,
+    );
+    labels.push(t!("recommendations.button_back").into_owned());
+    let selected = app.current_tab().selected_button.min(labels.len() - 1);
+    let labels_width = labels.iter().map(|label| label.width()).sum::<usize>()
+        + 3 * labels.len().saturating_sub(1);
+    if labels_width <= buttons.width as usize {
+        card::render_buttons(frame, buttons, &labels, Some(selected));
+    } else {
+        // Keep the focused action visible even when the labels cannot fit together.
+        card::render_buttons(
+            frame,
+            buttons,
+            &[format!("← {} →", labels[selected])],
+            Some(0),
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(t!("recommendations.full_view_hint").into_owned()).style(theme::DIM),
+        hint,
+    );
+    app.recommendation_rendered = true;
+    app.recommendation_approval = Some(binding);
+}
+
+fn full_command_lines(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    // Cell wrapping, rather than word wrapping, preserves whitespace and long
+    // unbroken shell arguments at every scroll position.
+    for logical_line in text.split('\n') {
+        let mut line = String::new();
+        let mut used = 0;
+        let mut consumed = 0;
+        let span = Span::raw(logical_line);
+        for grapheme in span.styled_graphemes(Style::default()) {
+            let cells = grapheme.symbol.width();
+            if used + cells > width && !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+                used = 0;
+            }
+            // Ratatui filters nonprinting controls during segmentation. Keep
+            // their original bytes rather than rewriting the bound text.
+            let end = grapheme.symbol.as_ptr().addr() - logical_line.as_ptr().addr()
+                + grapheme.symbol.len();
+            line.push_str(&logical_line[consumed..end]);
+            consumed = end;
+            used += cells;
+        }
+        line.push_str(&logical_line[consumed..]);
+        lines.push(line);
+    }
+    lines
 }
 
 enum CardBodyKind {
@@ -316,6 +488,23 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_command_wrap_preserves_spaces_long_tokens_and_unicode() {
+        let command = format!(
+            "  echo '{}你好 e\u{301}👨‍👩‍👧‍👦\u{85}\u{2028}\u{2029}'  ; tail",
+            "x".repeat(300)
+        );
+        for width in [2, 3, 10, 79] {
+            let lines = full_command_lines(&command, width);
+            assert_eq!(lines.concat(), command);
+            assert!(lines.iter().all(|line| Span::raw(line.as_str())
+                .styled_graphemes(Style::default())
+                .map(|grapheme| grapheme.symbol.width())
+                .sum::<usize>()
+                <= width));
+        }
+    }
 
     #[test]
     fn compact_summary_paragraph_right_aligns_for_rtl() {

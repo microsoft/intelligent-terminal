@@ -432,6 +432,17 @@ impl App {
                 return;
             }
         };
+        if !self
+            .current_tab()
+            .session_id
+            .as_deref()
+            .is_some_and(|session_id| {
+                self.selected_recommendation_choice()
+                    .is_some_and(|choice| self.recommendation_is_reviewed(session_id, choice))
+            })
+        {
+            return;
+        }
         let rec = match self.current_tab().turn.recommendations().cloned() {
             Some(r) => r,
             None => {

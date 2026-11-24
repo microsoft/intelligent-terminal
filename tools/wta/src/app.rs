@@ -1408,6 +1408,21 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
+/// The exact selected choice displayed in a card or bound full-command view.
+#[derive(Clone)]
+pub(crate) struct RecommendationApproval {
+    pub tab_id: String,
+    pub prompt_id: u64,
+    pub choice: RecommendationChoice,
+}
+
+pub(crate) struct RecommendationFullView {
+    pub binding: RecommendationApproval,
+    pub scroll: usize,
+    pub scroll_max: usize,
+    pub page_rows: usize,
+}
+
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -1581,6 +1596,8 @@ pub struct App {
     pub autofix_enabled: bool,
     pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
     pub(crate) recommendation_rendered: bool,
+    pub(crate) recommendation_approval: Option<RecommendationApproval>,
+    pub(crate) recommendation_full_view: Option<RecommendationFullView>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1925,6 +1942,8 @@ impl App {
             autofix_enabled,
             autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
             recommendation_rendered: false,
+            recommendation_approval: None,
+            recommendation_full_view: None,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),
@@ -6099,15 +6118,27 @@ impl App {
     }
 
     fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
-        self.tab_sessions
-            .get(target_tab)
-            .map(|tab| tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus())
-            .unwrap_or(false)
+        !self
+            .recommendation_full_view
+            .as_ref()
+            .is_some_and(|view| view.binding.tab_id == target_tab)
+            && self
+                .tab_sessions
+                .get(target_tab)
+                .map(|tab| {
+                    tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus()
+                })
+                .unwrap_or(false)
     }
 
     fn insert_agent_paste(&mut self, target_tab: &str, generation: u64, content: ClipboardPaste) {
         let image_supported = self.agent_supports_image;
-        if self.mode != AppMode::Chat {
+        if self.mode != AppMode::Chat
+            || self
+                .recommendation_full_view
+                .as_ref()
+                .is_some_and(|view| view.binding.tab_id == target_tab)
+        {
             if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
                 if tab.paste_generation == generation {
                     tab.paste_pending = false;
@@ -6117,7 +6148,7 @@ impl App {
                 target: "agent_paste",
                 mode = ?self.mode,
                 tab_id = target_tab,
-                "dropping paste because app is not in chat mode"
+                "dropping paste because the chat input is unavailable"
             );
             return;
         }
@@ -7384,6 +7415,12 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
+        if self.active_tab_key() != new_tab_id {
+            self.recommendation_approval = None;
+            if self.recommendation_full_view.take().is_some() {
+                self.current_tab_mut().selected_button = 0;
+            }
+        }
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
         self.pressed_input_dialog = None;

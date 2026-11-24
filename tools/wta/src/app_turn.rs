@@ -757,9 +757,83 @@ impl App {
         tab.finish_thought();
     }
 
-    /// User pressed Enter while a card was visible — dispatch the selected
-    /// choice to the coordinator and transition to `Surfaced { Empty, .. }`
-    /// while preserving the ACP single-flight gate.
+    pub(crate) fn recommendation_binding_is_current(
+        &self,
+        binding: &RecommendationApproval,
+    ) -> bool {
+        let tab = self.current_tab();
+        self.mode == AppMode::Chat
+            && tab.current_view == View::Chat
+            && tab.pane_open
+            && tab.permission.is_empty()
+            && tab.user_input.is_empty()
+            && !self.help_overlay_visible
+            && self.model_popup_state().is_none()
+            && self.config_popup_state().is_none()
+            && self.agent_popup_state().is_none()
+            && binding.tab_id == self.active_tab_key()
+            && Some(binding.prompt_id) == tab.turn.prompt_id()
+            && self.selected_recommendation_choice() == Some(&binding.choice)
+            && binding.choice.actions.len() == 1
+    }
+
+    pub(crate) fn sync_recommendation_full_view(&mut self) {
+        if self
+            .recommendation_full_view
+            .as_ref()
+            .is_some_and(|view| !self.recommendation_binding_is_current(&view.binding))
+        {
+            self.recommendation_full_view = None;
+            self.recommendation_approval = None;
+            self.current_tab_mut().selected_button = 0;
+        }
+    }
+
+    pub(crate) fn open_recommendation_full_view(&mut self) {
+        let Some(choice) = self.selected_recommendation_choice().cloned() else {
+            return;
+        };
+        let Some(prompt_id) = self.current_tab().turn.prompt_id() else {
+            return;
+        };
+        let binding = RecommendationApproval {
+            tab_id: self.active_tab_key().to_string(),
+            prompt_id,
+            choice,
+        };
+        if !self.recommendation_rendered || !self.recommendation_binding_is_current(&binding) {
+            return;
+        }
+        self.recommendation_approval = None;
+        self.current_tab_mut().selected_button = 0;
+        self.recommendation_full_view = Some(RecommendationFullView {
+            binding,
+            scroll: 0,
+            scroll_max: 0,
+            page_rows: 1,
+        });
+    }
+
+    pub(crate) fn recommendation_is_reviewed(
+        &self,
+        session_id: &str,
+        choice: &crate::coordinator::RecommendationChoice,
+    ) -> bool {
+        self.session_tab(session_id).pane_open
+            && (self.recommendation_full_view.is_none()
+                || self.current_tab().selected_button < self.button_count_for_selected())
+            && self
+                .recommendation_approval
+                .as_ref()
+                .is_some_and(|approval| {
+                    self.recommendation_binding_is_current(approval)
+                        && approval.tab_id == self.tab_for_session(session_id)
+                        && &approval.choice == choice
+                })
+    }
+
+    /// Dispatch only the exact choice displayed for the current prompt.
+    /// Preserve the ACP single-flight gate while transitioning the turn.
     pub fn turn_execute_card(&mut self, session_id: &str) {
         let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
@@ -774,7 +848,12 @@ impl App {
             return;
         };
         let prompt_id = prompt.id;
+        if !self.recommendation_is_reviewed(session_id, &choice) {
+            return;
+        }
         let recommendation_summary = format_recommendations_for_chat(recommendations, None);
+        self.recommendation_approval = None;
+        self.recommendation_full_view = None;
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id

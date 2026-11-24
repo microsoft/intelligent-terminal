@@ -60,6 +60,67 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        self.sync_recommendation_full_view();
+        if self.recommendation_full_view.is_some() {
+            // Read-only modal: no editing, paste, or navigation may reach the draft.
+            if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                self.recommendation_full_view = None;
+                self.recommendation_approval = None;
+                let tab_id = self.active_tab_key().to_string();
+                self.request_turn_cancel_for_tab(&tab_id);
+            } else if key.modifiers.is_empty()
+                || (key.code == KeyCode::BackTab && key.modifiers == KeyModifiers::SHIFT)
+            {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.recommendation_full_view = None;
+                        self.recommendation_approval = None;
+                        self.current_tab_mut().selected_button = 0;
+                    }
+                    KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
+                        let count = self.button_count_for_selected() + 1;
+                        let selected = self.current_tab().selected_button;
+                        self.current_tab_mut().selected_button =
+                            if matches!(key.code, KeyCode::Left | KeyCode::BackTab) {
+                                (selected + count - 1) % count
+                            } else {
+                                (selected + 1) % count
+                            };
+                    }
+                    KeyCode::Enter => {
+                        let back =
+                            self.button_count_for_selected() == self.current_tab().selected_button;
+                        if back {
+                            self.recommendation_full_view = None;
+                            self.recommendation_approval = None;
+                            self.current_tab_mut().selected_button = 0;
+                            return;
+                        }
+                        if self.state == ConnectionState::Connected {
+                            if let Some(session_id) = self.current_tab().session_id.clone() {
+                                self.turn_execute_card(&session_id);
+                            }
+                        }
+                    }
+                    code => {
+                        let Some(view) = self.recommendation_full_view.as_mut() else {
+                            return;
+                        };
+                        view.scroll = match code {
+                            KeyCode::Up => view.scroll.saturating_sub(1),
+                            KeyCode::Down => view.scroll.saturating_add(1),
+                            KeyCode::PageUp => view.scroll.saturating_sub(view.page_rows),
+                            KeyCode::PageDown => view.scroll.saturating_add(view.page_rows),
+                            KeyCode::Home => 0,
+                            KeyCode::End => view.scroll_max,
+                            _ => view.scroll,
+                        }
+                        .min(view.scroll_max);
+                    }
+                }
+            }
+            return;
+        }
         let typing_key = matches!(key.code, KeyCode::Char(ch) if !ch.is_control())
             && modifiers_allow_text_input(key.modifiers);
         if !typing_key || !self.chat_input_has_edit_focus() {
@@ -390,6 +451,7 @@ impl App {
                         // straight from it. Clear the snapshot so a later
                         // re-entry re-captures; the lingering Agents view
                         // self-heals to chat on the next chat-toggle open.
+                        self.recommendation_approval = None;
                         let tab = self.tab_mut(&tab_id);
                         tab.pane_open = false;
                         tab.agents_view.search_query.clear();
@@ -844,6 +906,12 @@ impl App {
                     if self.state == ConnectionState::Connected {
                         let session_id = self.current_tab().session_id.clone();
                         if let Some(session_id) = session_id {
+                            if !self.selected_recommendation_choice().is_some_and(|choice| {
+                                self.recommendation_is_reviewed(&session_id, choice)
+                            }) {
+                                self.open_recommendation_full_view();
+                                return;
+                            }
                             let label_choice = self
                                 .selected_recommendation_choice()
                                 .map(|c| c.choice)

@@ -1,5 +1,8 @@
 param(
-    [Parameter(Mandatory)][string]$LogPath
+    [Parameter(Mandatory)][string]$LogPath,
+    # Optional deterministic payload for full-command review scenarios. Read
+    # for each prompt so a test can compare short and long commands in one app.
+    [string]$CommandPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,6 +35,11 @@ function Invoke-ProposalTool {
             $headers[[string]$header.name] = [string]$header.value
         }
     }
+    $command = if ($CommandPath) {
+        [IO.File]::ReadAllText($CommandPath).TrimEnd("`r", "`n")
+    } else {
+        "echo $Marker"
+    }
     $request = @{
         jsonrpc = '2.0'
         id = 1
@@ -40,7 +48,7 @@ function Invoke-ProposalTool {
             name = 'run_command_in_current_shell'
             arguments = @{
                 summary = "Run echo $Marker"
-                command = "echo $Marker"
+                command = $command
             }
         }
     } | ConvertTo-Json -Depth 12 -Compress
