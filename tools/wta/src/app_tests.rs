@@ -26139,6 +26139,174 @@ fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
 }
 
 #[test]
+fn recommendation_review_followup_one_cell_card_rejects_wide_grapheme() {
+    let mut app = test_app();
+    let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    let command = "#\u{fe0f}";
+    assert_eq!(unicode_width::UnicodeWidthStr::width(command), 2);
+    if let TurnState::Surfaced {
+        outcome: TurnOutcome::Recommendation(set),
+        ..
+    } = &mut app.current_tab_mut().turn
+    {
+        set.choices[0].actions[0] = crate::coordinator::RecommendedAction::Send {
+            parent: "pane-9".into(),
+            input: command.into(),
+        };
+    } else {
+        panic!("expected recommendation");
+    }
+    // Two outer padding, two border and four inset cells leave a one-cell body.
+    let text = render_to_text(&mut app, 9, 30);
+    assert!(
+        app.recommendation_approval.is_none(),
+        "a dropped two-cell grapheme must not authorize a one-cell card:\n{text}"
+    );
+}
+
+#[test]
+fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch() {
+    use crate::agent_tools::action_proposal::channel::{
+        ProposalChannelManager, ProposalFinalStatus,
+    };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+    for actions in [
+        json!([
+            {"type": "send", "input": "echo FIRST_ACTION"},
+            {"type": "send", "input": "echo LAST_ACTION"}
+        ]),
+        json!([
+            {"type": "send", "input": "echo FIRST_ACTION"},
+            {"type": "send", "input": "echo MIDDLE_ACTION"},
+            {"type": "send", "input": "echo LAST_ACTION"}
+        ]),
+        json!([
+            {"type": "open", "target": "tab", "title": "FIRST_WORKSPACE"},
+            {"type": "send", "input": "echo LAST_ACTION"}
+        ]),
+        json!([
+            {"type": "open", "target": "tab", "title": "FIRST_WORKSPACE"},
+            {"type": "open_and_send", "target": "tab", "input": "echo LAST_ACTION"}
+        ]),
+    ] {
+        for insert_only in [false, true] {
+            let supports_insert = actions
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "send");
+            if insert_only && !supports_insert {
+                continue;
+            }
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().pane_open = true;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let manager = Arc::new(ProposalChannelManager::new());
+            app.set_proposal_channels(Arc::clone(&manager));
+            let session_id = "fallback-multiple-actions";
+            stage_proposal_session(&mut app, session_id);
+            submit_proposal_prompt(&mut app, session_id);
+            let mut payload: serde_json::Value =
+                serde_json::from_str(TERMINAL_AGENT_PROPOSAL_PAYLOAD).unwrap();
+            payload["choices"][0]["actions"] = actions.clone();
+            let (proposal_id, mut final_rx) =
+                stage_direct_proposal_payload(&mut app, &manager, session_id, payload.to_string());
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            let expected_choice = match &app.current_tab().turn {
+                TurnState::Surfaced {
+                    outcome: TurnOutcome::Recommendation(set),
+                    ..
+                } => set.choices[0].clone(),
+                _ => panic!("expected recommendation"),
+            };
+            render_to_text(&mut app, 100, 30);
+            assert!(app.recommendation_approval.is_none());
+            app.turn_execute_card(session_id);
+            assert!(
+                rx.try_recv().is_err(),
+                "preview must not dispatch the batch"
+            );
+            app.handle_key(key(KeyCode::Enter));
+            assert!(
+                app.recommendation_full_view.is_some(),
+                "an accepted multi-action CLI proposal must open full review"
+            );
+            assert!(rx.try_recv().is_err());
+            app.handle_key(key(KeyCode::Enter));
+            assert!(
+                rx.try_recv().is_err(),
+                "unpainted full review must not execute"
+            );
+            let text = render_to_text(&mut app, 100, 30);
+            for action in actions.as_array().unwrap() {
+                let expected = action["input"]
+                    .as_str()
+                    .or_else(|| action["title"].as_str())
+                    .unwrap();
+                assert!(text.contains(expected), "{text}");
+            }
+            assert!(app.recommendation_approval.is_some());
+            if insert_only {
+                app.handle_key(key(KeyCode::Right));
+            }
+            app.handle_key(key(KeyCode::Enter));
+            let execution = rx.try_recv().expect("reviewed batch must dispatch");
+            assert_eq!(execution.insert_only, insert_only);
+            assert_eq!(execution.choice, expected_choice);
+            assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Confirmed);
+        }
+    }
+}
+
+#[test]
+fn recommendation_review_followup_later_action_change_invalidates_review() {
+    use crate::agent_tools::action_proposal::channel::ProposalChannelManager;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().pane_open = true;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let manager = Arc::new(ProposalChannelManager::new());
+    app.set_proposal_channels(Arc::clone(&manager));
+    let session_id = "fallback-later-action-change";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let mut payload: serde_json::Value =
+        serde_json::from_str(TERMINAL_AGENT_PROPOSAL_PAYLOAD).unwrap();
+    payload["choices"][0]["actions"] = json!([
+        {"type": "send", "input": "echo FIRST_ACTION"},
+        {"type": "send", "input": "echo LAST_ACTION"}
+    ]);
+    let (proposal_id, _final_rx) =
+        stage_direct_proposal_payload(&mut app, &manager, session_id, payload.to_string());
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    render_to_text(&mut app, 100, 30);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    render_to_text(&mut app, 100, 30);
+    assert!(app.recommendation_approval.is_some());
+    if let TurnState::Surfaced {
+        outcome: TurnOutcome::Recommendation(set),
+        ..
+    } = &mut app.current_tab_mut().turn
+    {
+        set.choices[0].actions[1] = crate::coordinator::RecommendedAction::Send {
+            parent: "pane-9".into(),
+            input: "echo CHANGED_ACTION".into(),
+        };
+    } else {
+        panic!("expected recommendation");
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(rx.try_recv().is_err(), "stale review must not dispatch");
+    assert!(app.recommendation_approval.is_none());
+}
+
+#[test]
 fn recommendation_full_view_runs_or_inserts_without_resize_or_scroll_gate() {
     use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -27008,6 +27176,25 @@ fn stage_direct_proposal(
         crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
     >,
 ) {
+    stage_direct_proposal_payload(
+        app,
+        manager,
+        session_id,
+        TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
+    )
+}
+
+fn stage_direct_proposal_payload(
+    app: &mut App,
+    manager: &std::sync::Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+    session_id: &str,
+    payload: String,
+) -> (
+    String,
+    tokio::sync::oneshot::Receiver<
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
+    >,
+) {
     let channel = manager
         .issue(
             session_id.to_string(),
@@ -27021,7 +27208,7 @@ fn stage_direct_proposal(
     let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::DirectTerminalActionProposal {
         context,
-        payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
+        payload,
         source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
         responder: decision_tx,
     });

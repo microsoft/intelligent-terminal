@@ -1066,7 +1066,10 @@ mod tests {
     fn fallback_shell_commands_reject_line_breaks_for_both_origins() {
         for mut wire in [terminal_agent_wire(), autofix_wire()] {
             let is_autofix = wire.origin == ProposalOrigin::Autofix;
-            for input in ["echo first\necho second", "echo first\recho second"] {
+            for input in [
+                concat!("echo first", "\n", "echo second"),
+                concat!("echo first", "\r", "echo second"),
+            ] {
                 wire.choices[0].actions[0] = ProposalActionWire::Send {
                     input: input.into(),
                 };

@@ -239,14 +239,14 @@ fn render_card(
     let content_inner = card::inset_horizontal(content_area, 2);
     let mut reviewable = false;
     if content_inner.width > 0 {
-        let characters_fit = command_text
-            .chars()
-            .all(|ch| UnicodeWidthChar::width(ch).unwrap_or(0) <= content_inner.width as usize);
+        let graphemes_fit = Span::raw(command_text.as_str())
+            .styled_graphemes(Style::default())
+            .all(|grapheme| grapheme.symbol.width() <= content_inner.width as usize);
         let content = Paragraph::new(command_text)
             .style(body_style)
             .wrap(Wrap { trim: false });
         reviewable = choice.actions.len() == 1
-            && characters_fit
+            && graphemes_fit
             && content.line_count(content_inner.width) <= content_inner.height as usize;
         frame.render_widget(content, content_inner);
     }
@@ -304,23 +304,24 @@ pub(crate) fn render_full_view(frame: &mut Frame, app: &mut App, area: Rect) {
     if body.width < 2 || body.height == 0 || buttons.height == 0 {
         return;
     }
-    let (display, mut labels, _) = extract_card_content(&binding.choice);
-    let text = match binding.choice.actions.first() {
-        Some(
-            RecommendedAction::Send { input, .. } | RecommendedAction::OpenAndSend { input, .. },
-        ) => input.as_str(),
-        _ => display.as_str(),
-    };
-    if matches!(
-        binding.choice.actions.first(),
-        Some(RecommendedAction::Send { .. })
-    ) {
+    let (_, mut labels, _) = extract_card_content(&binding.choice);
+    let text = full_review_text(&binding.choice);
+    // Match the existing choice-level Run/Insert behavior: Insert applies to
+    // Send actions, while workspace actions retain their normal behavior.
+    if binding
+        .choice
+        .actions
+        .iter()
+        .any(|action| matches!(action, RecommendedAction::Send { .. }))
+    {
         labels = vec![
             t!("chat.tool_kind.run").into_owned(),
             t!("chat.tool_kind.insert").into_owned(),
         ];
+    } else if binding.choice.actions.len() > 1 {
+        labels = vec![t!("recommendations.button_execute").into_owned()];
     }
-    let lines = full_command_lines(text, body.width as usize);
+    let lines = full_command_lines(&text, body.width as usize);
     let Some(view) = app.recommendation_full_view.as_mut() else {
         return;
     };
@@ -361,6 +362,31 @@ pub(crate) fn render_full_view(frame: &mut Frame, app: &mut App, area: Rect) {
     app.recommendation_approval = Some(binding);
 }
 
+fn full_review_text(choice: &RecommendationChoice) -> String {
+    if let [action] = choice.actions.as_slice() {
+        return match action {
+            RecommendedAction::Send { input, .. }
+            | RecommendedAction::OpenAndSend { input, .. } => input.clone(),
+            _ => recommendation_action_display_text(action),
+        };
+    }
+    choice
+        .actions
+        .iter()
+        .enumerate()
+        .map(|(index, action)| {
+            let (labels, _) = action_buttons(Some(action));
+            format!(
+                "{}. {}\n{}",
+                index + 1,
+                labels[0],
+                recommendation_action_display_text(action)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn full_command_lines(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     // Cell wrapping, rather than word wrapping, preserves whitespace and long
@@ -397,7 +423,12 @@ enum CardBodyKind {
 
 fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, CardBodyKind) {
     let display = recommendation_display_text(choice);
-    let (buttons, body_kind) = match choice.actions.first() {
+    let (buttons, body_kind) = action_buttons(choice.actions.first());
+    (display, buttons, body_kind)
+}
+
+fn action_buttons(action: Option<&RecommendedAction>) -> (Vec<String>, CardBodyKind) {
+    match action {
         Some(RecommendedAction::Send { .. }) => (
             vec![
                 t!("recommendations.button_run_command").into_owned(),
@@ -423,14 +454,21 @@ fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, 
             vec![t!("recommendations.button_execute").into_owned()],
             CardBodyKind::Description,
         ),
-    };
-    (display, buttons, body_kind)
+    }
 }
 
 pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> String {
-    match choice.actions.first() {
-        Some(RecommendedAction::Send { input, .. }) => input.clone(),
-        Some(RecommendedAction::OpenAndSend { input, agent, .. }) => {
+    choice
+        .actions
+        .first()
+        .map(recommendation_action_display_text)
+        .unwrap_or_else(|| choice.title.clone())
+}
+
+fn recommendation_action_display_text(action: &RecommendedAction) -> String {
+    match action {
+        RecommendedAction::Send { input, .. } => input.clone(),
+        RecommendedAction::OpenAndSend { input, agent, .. } => {
             let fallback = t!("recommendations.agent_fallback").into_owned();
             let agent_label = agent.as_deref().unwrap_or(&fallback);
             t!(
@@ -440,13 +478,13 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
             )
             .into_owned()
         }
-        Some(RecommendedAction::Open {
+        RecommendedAction::Open {
             target,
             cwd,
             title,
             direction,
             ..
-        }) => {
+        } => {
             let kind = match target {
                 OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
                 OpenTarget::Panel => match direction.as_deref() {
@@ -481,7 +519,6 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
                 _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
             }
         }
-        None => choice.title.clone(),
     }
 }
 

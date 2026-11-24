@@ -2442,11 +2442,11 @@ mod tests {
     #[tokio::test]
     async fn shell_command_controls_are_rejected_before_any_terminal_request() {
         for input in [
-            "echo first\necho second",
-            "echo first\recho second",
+            concat!("echo first", "\n", "echo second"),
+            concat!("echo first", "\r", "echo second"),
             "git status\r\n",
             "git\tstatus",
-            "echo \u{1b}[2Ksecond",
+            concat!("echo ", "\u{1b}[2K", "second"),
             "echo \u{7f}second",
         ] {
             for insert_only in [false, true] {

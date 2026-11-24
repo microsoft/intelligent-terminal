@@ -774,7 +774,7 @@ impl App {
             && binding.tab_id == self.active_tab_key()
             && Some(binding.prompt_id) == tab.turn.prompt_id()
             && self.selected_recommendation_choice() == Some(&binding.choice)
-            && binding.choice.actions.len() == 1
+            && !binding.choice.actions.is_empty()
     }
 
     pub(crate) fn sync_recommendation_full_view(&mut self) {
