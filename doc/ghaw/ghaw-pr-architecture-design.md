@@ -1,7 +1,7 @@
 # Architecture and design PR review
 
 The workflow reviews material same-repository PRs using the architecture
-reviewer/skill, native read-only GitHub tools and native gh-aw comment
+reviewer/skill, prepared read-only source evidence and native gh-aw comment
 publication with threat detection. It provides advice, not approval or repairs.
 Trusted `pull_request_target` code authorizes `admin`, `maintainer` and `write`
 actors. Fork PRs and drafts are excluded.
@@ -44,18 +44,18 @@ research method and report contract. The workflow supplies the PR, revisions,
 tools and authorized result destination. Local invocation returns Markdown
 unless the caller authorizes another destination.
 
-Hosted research uses gh-aw's existing GitHub tools: `pull_request_read`,
-`get_file_contents` and `search_code`. There is no custom evidence server,
-Git-fetch preparation, scope file, model-facing shell or candidate checkout.
-Only trusted instructions are checked out at `github.workflow_sha`.
+Before inference, a trusted runner step fetches the exact comparison base and
+PR head without checking either out. It writes the file inventory, patch and
+revision indexes to `Generated Files/architecture-evidence`. The reviewer uses
+its regular read tools: patch line ranges for large diffs, and the indexes for
+source (including unchanged consumers). Regular UTF-8 blobs up to 1 MiB are
+deduplicated by object ID and stored as inert `.txt` files. Other entries are
+marked unavailable. Candidate paths never become executable or configuration
+file paths. Only trusted instructions are checked out at `github.workflow_sha`.
 
-Source reads must specify the exact comparison-base or reviewed-head commit.
-Live PR diff/file reads require matching event head/base metadata. Search is
-for navigation: cited source must be reread at the reviewed revision, since
-code search is not commit-pinned. Missing/truncated patches, rate limits and
-unavailable source are explicit coverage gaps, not evidence that the design
-is clean. Candidate agents, skills, hooks and configuration remain data, never
-active instructions. The workflow does not execute candidate code or run builds.
+The workflow has no custom evidence server, model shell or candidate checkout.
+Missing required evidence is reported with the native incomplete signal rather
+than a PR comment. The publication check fails an incomplete or missing report.
 
 The helper verifies live PR state, repositories, refs and revisions around
 admission. After detection and artifact setup, the same validator checks again
