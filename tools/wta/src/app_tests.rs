@@ -17866,6 +17866,35 @@ mod input_mouse_cursor_tests {
 }
 
 #[test]
+fn chat_input_shift_enter_keeps_a_multiline_draft_until_plain_enter() {
+    for modifier in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+        let mut prompts = app.test_prompt_rx.take().unwrap();
+        app.current_tab_mut().replace_input("abcd".into());
+        app.current_tab_mut().cursor_pos = 2;
+
+        app.handle_event(AppEvent::Key(KeyEvent::new(KeyCode::Enter, modifier)));
+        assert_eq!(app.current_tab().input, "ab\ncd", "{modifier:?}");
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('X'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(app.current_tab().input, "ab\nXcd");
+        assert_eq!(app.current_tab().cursor_pos, "ab\nX".len());
+        let frame = render_to_text(&mut app, 80, 16);
+        let mut rows = frame.lines().skip_while(|row| !row.contains("> ab"));
+        assert!(rows.next().is_some() && rows.next().is_some_and(|row| row.contains("Xcd")));
+        assert!(prompts.try_recv().is_err());
+
+        app.handle_event(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert_eq!(prompts.try_recv().unwrap().text, "ab\nXcd");
+        assert!(prompts.try_recv().is_err());
+    }
+}
+
+#[test]
 fn input_vertical_explicit_rows_preserve_the_edit_position() {
     for (key, start) in [(KeyCode::Up, 27), (KeyCode::Down, 5)] {
         let mut app = test_app();

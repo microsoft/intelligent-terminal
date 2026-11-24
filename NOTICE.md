@@ -1486,7 +1486,7 @@ Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
 Copyright (c) 2023 Jacob Pratt
 Copyright (c) 2023 Jacob Pratt et al.
 Copyright (c) 2023-2025 Sean McArthur
-Copyright (c) 2023-2025 The Ratatui Developers
+Copyright (c) 2023-2026 The Ratatui Developers
 Copyright (c) 2024 Dheepak Krishnamurthy
 Copyright (c) 2024 Jacob Pratt et al.
 Copyright (c) 2024 Josh McKinney

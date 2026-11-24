@@ -1200,6 +1200,14 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SKIPPED/BLOCKED"):
             MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
 
+    def test_no_finding_report_preserves_prepared_runtime_checks(self):
+        report = self.report()
+        data = json.loads(report.read_text())
+        data["runtime_checks"] = []
+        report.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "preserve every prepared runtime check"):
+            MODULE.validate(self.root, self.head, self.head, True, self.prepared, report)
+
     def test_malformed_output_is_rejected(self):
         report = self.root / "report.json"
         report.write_text("{", encoding="utf-8")
@@ -1647,18 +1655,18 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         workflow = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertIn('--summary "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md"', workflow)
-        summary = (root / ".github/workflows/ghaw-accessibility-summary.md").read_text(encoding="utf-8")
         self.assertIn("## Human action and limits", workflow)
         self.assertIn("| Proposed fix commit |", workflow)
         self.assertIn("[commit SHA](COMMIT_URL)", workflow)
         self.assertIn("`${{ github.server_url }}`", workflow)
         self.assertIn("prepared `publication.repository`", workflow)
-        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
+        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/deep-summary.md" >> "$GITHUB_STEP_SUMMARY"', workflow)
         self.assertIn("original PR", workflow)
         self.assertIn("may revert any fix commit", workflow)
         self.assertIn("only once below the table", workflow)
-        self.assertIn("emit empty", workflow)
-        self.assertIn("honest runtime-check statuses", workflow)
+        self.assertIn("keep both empty when none apply", workflow)
+        self.assertIn("complete `runtime_checks`", workflow)
+        self.assertIn("retaining each check's ID, SKIPPED/BLOCKED status and reason", workflow)
         self.assertIn("Include this paragraph only if repair commits exist; otherwise remove it.", workflow)
         self.assertNotIn("summary.push(", workflow)
 
@@ -1672,8 +1680,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("\n  accessibility-report:", compiled)
         self.assertNotIn("\n  native-evidence:", compiled)
         self.assertIn("ci-accessibility-native-", compiled)
-        summary = (root / ".github/workflows/ghaw-accessibility-summary.lock.yml").read_text(encoding="utf-8")
-        self.assertIn('cat "Generated Files/$ACCESSIBILITY_RUN/summary.md" >> "$GITHUB_STEP_SUMMARY"', summary)
 
     def test_support_paths_are_classified_by_trusted_ci_admission(self):
         root = Path(__file__).parents[4]
@@ -1682,7 +1688,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", trigger)
         self.assertNotIn("\n  pull_request:", trigger)
         self.assertIn("verifyCiSecurity({", workflow)
-        self.assertIn("producerJob: 'Native accessibility / Native Axe.Windows smoke'", workflow)
+        self.assertIn("producerJob: 'native / Native accessibility / Native Axe.Windows smoke'", workflow)
         self.assertIn("files.some(f => relevantPath(f.filename)", workflow)
         self.assertIn("relevantPath(f.previous_filename", workflow)
         shared = (root / ".github/skills/ghaw-pr-security/scripts/security-review.mjs").read_text()
@@ -1785,7 +1791,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parents[4]
         caller = (root / ".github/workflows/ghaw-pr-accessibility.md").read_text(encoding="utf-8")
         self.assertNotIn("\n  native-runtime:\n", caller)
-        ci = (root / ".github/workflows/pr-ci.yml").read_text(encoding="utf-8")
+        ci = (root / ".github/workflows/pr-ci-native.yml").read_text(encoding="utf-8")
         self.assertIn("uses: ./.github/workflows/native-accessibility.yml", ci)
         workflow = (root / ".github/workflows/native-accessibility.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: windows-2025-vs2026", workflow)

@@ -1041,7 +1041,7 @@ function accessibilityCiFixture() {
   const artifact = { id: 105, name: 'ci-accessibility-native-91-2', expired: false,
     workflow_run: { id: 91, head_sha: HEAD } };
   const workflow = { id: 7, path: run.path, state: 'active' };
-  const producer = { name: 'Native accessibility / Native Axe.Windows smoke',
+  const producer = { name: 'native / Native accessibility / Native Axe.Windows smoke',
     run_id: 91, run_attempt: 2, head_sha: HEAD, status: 'completed', conclusion: 'success' };
   const jobsEndpoint = 'actions/runs/91/jobs?filter=all&per_page=100&page=1';
   const runsEndpoint = `actions/workflows/7/runs?event=pull_request&head_sha=${HEAD}&per_page=100&page=1`;

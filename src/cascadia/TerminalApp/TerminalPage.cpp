@@ -9993,7 +9993,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuCreatedNewTerminalSession",
             TraceLoggingDescription("Event emitted when a new terminal was created via the new tab menu"),
-            TraceLoggingValue(NumberOfTabs(), "NewTabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "NewTabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue(sessionType, "SessionType", "The type of session that was created"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -10294,7 +10294,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("Settings", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingValue(targetAsString, "SettingsTarget", "The target settings file or UI"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -10316,7 +10316,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("CommandPalette", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -10337,7 +10337,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "NewTabMenuItemClicked",
             TraceLoggingDescription("Event emitted when an item from the new tab menu is invoked"),
-            TraceLoggingValue(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
+            TraceLoggingUInt32(NumberOfTabs(), "TabCount", "The count of tabs currently opened in this window"),
             TraceLoggingValue("About", "ItemType", "The type of item that was clicked in the new tab menu"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
@@ -16056,12 +16056,10 @@ namespace winrt::TerminalApp::implementation
 
         layout.LaunchMode({ mode });
 
-        // Only save the content size because the tab size will be added on load.
-        const auto contentWidth = static_cast<float>(_tabContent.ActualWidth());
-        const auto contentHeight = static_cast<float>(_tabContent.ActualHeight());
-        const winrt::Windows::Foundation::Size windowSize{ contentWidth, contentHeight };
-
-        layout.InitialSize(windowSize);
+        // The page includes the in-page tab row and bottom toolbar. Keep the
+        // separate content size so older versions can still restore this layout.
+        layout.InitialPageSize(winrt::Windows::Foundation::Size{ static_cast<float>(ActualWidth()), static_cast<float>(ActualHeight()) });
+        layout.InitialSize(winrt::Windows::Foundation::Size{ static_cast<float>(_tabContent.ActualWidth()), static_cast<float>(_tabContent.ActualHeight()) });
 
         // We don't actually know our own position. So we have to ask the window
         // layer for that.
@@ -16132,6 +16130,7 @@ namespace winrt::TerminalApp::implementation
             }
             layout.InitialPosition(visibleLayout.InitialPosition());
             layout.InitialSize(visibleLayout.InitialSize());
+            layout.InitialPageSize(visibleLayout.InitialPageSize());
             layout.LaunchMode(visibleLayout.LaunchMode());
         }
         actions.insert(actions.end(), std::make_move_iterator(extraActions.begin()), std::make_move_iterator(extraActions.end()));

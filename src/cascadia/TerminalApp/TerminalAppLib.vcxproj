@@ -101,6 +101,8 @@
   </ItemGroup>
   <!-- ========================= Headers ======================== -->
   <ItemGroup>
+    <ClInclude Include="..\inc\cppwinrt_utils.h" />
+    <ClInclude Include="..\inc\WinrtDependencyProperty.h" />
     <ClInclude Include="App.base.h" />
     <ClInclude Include="AgentSessionTelemetry.h" />
     <ClInclude Include="AgentPolicyTelemetry.h" />
