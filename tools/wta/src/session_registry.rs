@@ -509,7 +509,10 @@ impl PaneAgentStatus {
             ProgramState::Blocked
         } else if self.canonical_working || program.working != 0 {
             ProgramState::Working
-        } else if program.unseen_error != 0 {
+        } else if program.error != 0
+            || program.state == Some(ProgramState::Error)
+            || program.unseen_error != 0
+        {
             ProgramState::Error
         } else if program.unseen_done != 0 {
             ProgramState::Done
@@ -6232,6 +6235,47 @@ mod tests {
             }),
             epoch,
         )
+    }
+
+    #[test]
+    fn program_display_state_preserves_acknowledged_errors() {
+        for (state, error) in [("error", 0), ("idle", 1)] {
+            for unseen_done in [0, 1] {
+                let pane: PaneAgentStatus = serde_json::from_value(serde_json::json!({
+                    "pane_id": "pane", "provider_id": "codex", "status": "Idle",
+                    "program_status": {
+                        "revision": 1, "observed": true, "state": state,
+                        "error": error, "unseen_error": 0, "unseen_done": unseen_done
+                    }
+                }))
+                .unwrap();
+                assert_eq!(pane.program_display_state(), Some(ProgramState::Error));
+            }
+        }
+    }
+
+    #[test]
+    fn program_display_state_work_and_requests_override_acknowledged_errors() {
+        let mut pane: PaneAgentStatus = serde_json::from_value(serde_json::json!({
+            "pane_id": "pane", "provider_id": "codex", "status": "Idle",
+            "program_status": {
+                "revision": 1, "observed": true, "state": "error",
+                "error": 1, "unseen_error": 0, "working": 1
+            }
+        }))
+        .unwrap();
+        assert_eq!(pane.program_display_state(), Some(ProgramState::Working));
+        pane.program_status.as_mut().unwrap().working = 0;
+        pane.canonical_working = true;
+        assert_eq!(pane.program_display_state(), Some(ProgramState::Working));
+        pane.program_status.as_mut().unwrap().blocked = 1;
+        assert_eq!(pane.program_display_state(), Some(ProgramState::Blocked));
+        pane.program_status.as_mut().unwrap().blocked = 0;
+        pane.status = AgentStatus::Attention;
+        assert_eq!(pane.program_display_state(), Some(ProgramState::Blocked));
+        pane.status = AgentStatus::Idle;
+        pane.input_required = true;
+        assert_eq!(pane.program_display_state(), Some(ProgramState::Blocked));
     }
 
     #[tokio::test]
