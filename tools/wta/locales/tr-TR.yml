@@ -108,12 +108,11 @@ commands.agent.summary: "Bu sekme için aracıyı seçin (doğrudan geçmek içi
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arasında geçiş yapmak için • Enter seçmek için • Esc iptal etmek için)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End kaydırmak için • ↑ ↓ gezinmek için • ← → düğmeler arasında geçiş yapmak için • Enter seçmek için • Esc iptal etmek için)"
 recommendations.button_run_command: "[ Komutu çalıştır ]"
 recommendations.button_insert_in_terminal: "Terminal'e ekle"
 recommendations.button_open_in_new_tab: "Yeni Sekmede Aç ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → eylemler · Enter seç · ↑ ↓ / PgUp PgDn kaydır · Esc / Ctrl+C iptal et"
 recommendations.button_open_in_new_panel: "Yeni Panelde Aç ↵"
 recommendations.button_open_tab: "Sekme Aç ↵"
 recommendations.button_open_panel: "Panel Aç ↵"

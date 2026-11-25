@@ -20,12 +20,7 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.input_dialog_area = None;
     app.queue_control_hits.clear();
     app.recommendation_rendered = false;
-    app.recommendation_approval = None;
-    app.sync_recommendation_full_view();
-    if app.recommendation_full_view.is_some() {
-        recommendations::render_review(frame, app, area);
-        return;
-    }
+    app.recommendation_area = None;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -243,7 +238,8 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
     let recommendation_area =
         recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
-    app.recommendation_rendered = recommendation_area.is_some();
+    app.recommendation_rendered = app.current_tab().pane_open && recommendation_area.is_some();
+    app.recommendation_area = recommendation_area;
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -339,9 +335,6 @@ fn render_content(frame: &mut Frame, app: &mut App) {
         || !app.current_tab().user_input.is_empty()
     {
         app.recommendation_rendered = false;
-    }
-    if !app.recommendation_rendered {
-        app.recommendation_approval = None;
     }
 }
 

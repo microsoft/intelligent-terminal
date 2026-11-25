@@ -104,12 +104,11 @@ commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  
 commands.agent.summary: "Wybierz agent dla tej karty (/agent <id>, aby przełączyć bezpośrednio)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ do nawigacji • ← → do przełączania przycisków • Enter aby wybrać • Esc aby anulować)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End do przewijania • ↑ ↓ do nawigacji • ← → do przełączania przycisków • Enter aby wybrać • Esc aby anulować)"
 recommendations.button_run_command: "[ Uruchom polecenie ]"
 recommendations.button_insert_in_terminal: "Wstaw w terminalu"
 recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → akcje · Enter wybierz · ↑ ↓ / PgUp PgDn przewijaj · Esc / Ctrl+C anuluj"
 recommendations.button_open_in_new_panel: "Otwórz w nowym panelu ↵"
 recommendations.button_open_tab: "Otwórz kartę ↵"
 recommendations.button_open_panel: "Otwórz panel ↵"

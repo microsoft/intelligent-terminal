@@ -156,11 +156,9 @@ system.yolo_disable_pending: "the provider has not acknowledged the required non
 system.provider_command_blocked_by_policy: "%{command}: Automatic approval is disabled by your organization's policy."  # {Locked="%{command}"} Shown when AllowAutomaticApproval blocks a provider-advertised privileged command.
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
-# {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
+# {Locked="Enter","Esc","PgUp","PgDn","Home","End","↑","↓","←","→","↵"} - key names and arrow/Return-key
 # glyphs, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → actions · Enter select · ↑ ↓ / PgUp PgDn scroll · Esc / Ctrl+C cancel"  # Default read-only command review. Run/Insert uses the exact command; scrolling is optional. Esc and Ctrl+C cancel the proposal.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End to scroll • ↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"

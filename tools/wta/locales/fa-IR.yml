@@ -108,12 +108,11 @@ commands.agent.summary: "عامل این پنل را انتخاب کنید (/age
 
 # ── پنل پیشنهادات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - نام کلیدها و نماد کلید بازگشت، ترجمه نکنید
-recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای جابه‌جایی بین دکمه‌ها • Enter برای انتخاب • Esc برای لغو)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End برای پیمایش متن • ↑ ↓ برای پیمایش • ← → برای جابه‌جایی بین دکمه‌ها • Enter برای انتخاب • Esc برای لغو)"
 recommendations.button_run_command: "[ اجرای دستور ]"
 recommendations.button_insert_in_terminal: "درج در ترمینال"
 recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → کنش‌ها · Enter انتخاب · ↑ ↓ / PgUp PgDn پیمایش · Esc / Ctrl+C لغو"
 recommendations.button_open_in_new_panel: "باز کردن در پنل جدید ↵"
 recommendations.button_open_tab: "باز کردن زبانه ↵"
 recommendations.button_open_panel: "باز کردن پنل ↵"

@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Kay yanapata wichq'ay"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End kuyuchinapaq • ↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
 recommendations.button_run_command: "[ Kamachiyta purichiy ]"
 recommendations.button_insert_in_terminal: "Terminal nisqaman churay"
 recommendations.button_open_in_new_tab: "Musuq Ripa nisqapi kichay ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ruraykuna · Enter akllay · ↑ ↓ / PgUp PgDn kuyuchiy · Esc / Ctrl+C chinkarichiy"
 recommendations.button_open_in_new_panel: "Musuq K'iti nisqapi kichay ↵"
 recommendations.button_open_tab: "Ripa kichay ↵"
 recommendations.button_open_panel: "K'iti kichay ↵"

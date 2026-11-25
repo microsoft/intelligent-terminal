@@ -104,12 +104,11 @@ commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {
 commands.agent.summary: "Odaberite agent za ovu karticu (/agent <id> za izravno prebacivanje)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje gumba • Enter za odabir • Esc za odustajanje)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End za pomicanje • ↑ ↓ za navigaciju • ← → za prebacivanje gumba • Enter za odabir • Esc za odustajanje)"
 recommendations.button_run_command: "[ Pokreni naredbu ]"
 recommendations.button_insert_in_terminal: "Umetni u terminal"
 recommendations.button_open_in_new_tab: "Otvori u novoj kartici ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → radnje · Enter odabir · ↑ ↓ / PgUp PgDn pomicanje · Esc / Ctrl+C odustajanje"
 recommendations.button_open_in_new_panel: "Otvori u novom oknu ↵"
 recommendations.button_open_tab: "Otvori karticu ↵"
 recommendations.button_open_panel: "Otvori okno ↵"

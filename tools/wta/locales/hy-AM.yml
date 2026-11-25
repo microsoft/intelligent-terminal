@@ -114,12 +114,11 @@ commands.agent.summary: "Ընտրեք գործակալն այս ներդիրի �
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ նավարկելու համար • ← → կոճակների միջև անցնելու համար • Enter ընտրելու համար • Esc չեղարկելու համար)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End ոլորելու համար • ↑ ↓ նավարկելու համար • ← → կոճակների միջև անցնելու համար • Enter ընտրելու համար • Esc չեղարկելու համար)"
 recommendations.button_run_command: "[ Գործարկել հրամանը ]"
 recommendations.button_insert_in_terminal: "Տեղադրել տերմինալում"
 recommendations.button_open_in_new_tab: "Բացել նոր ներդիրում ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → գործողություններ · Enter ընտրել · ↑ ↓ / PgUp PgDn ոլորել · Esc / Ctrl+C չեղարկել"
 recommendations.button_open_in_new_panel: "Բացել նոր վահանակում ↵"
 recommendations.button_open_tab: "Բացել ներդիր ↵"
 recommendations.button_open_panel: "Բացել վահանակ ↵"

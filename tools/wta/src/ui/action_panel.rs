@@ -166,7 +166,7 @@ pub(crate) fn recommendation_card_height(choice: &RecommendationChoice, panel_wi
     let inner_width = card_content_width(panel_width);
     let text = recommendation_display_text(choice);
 
-    let content_lines = wrapped_line_count(&text, inner_width);
+    let content_lines = super::recommendations::full_command_lines(&text, inner_width).len();
     CARD_MIN_SIZE as usize + content_lines.saturating_sub(1) + 1
 }
 

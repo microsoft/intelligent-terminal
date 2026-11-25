@@ -95,12 +95,11 @@ commands.help_close_hint: "[!!_  Esc        Close this help_!!]"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)_!!]"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "[!!_(PgUp/PgDn/Home/End ţö śçŕöĺĺ çåŕď • ↑ ↓ ţö ñåṽïğåţé śûğğéśţïöñś • ← → ţö śŵïţçĥ åçţïöñś • Enter ţö śéĺéçţ • Esc ţö çåñçéĺ)_!!]"
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "[!!_← → åçţïöñś · Enter śéĺéçţ · ↑ ↓ / PgUp PgDn śçŕöĺĺ · Esc / Ctrl+C çåñçéĺ_!!]"
 recommendations.button_open_in_new_panel: "[!!_Open in New Panel ↵_!!]"
 recommendations.button_open_tab: "[!!_Open Tab ↵_!!]"
 recommendations.button_open_panel: "[!!_Open Panel ↵_!!]"

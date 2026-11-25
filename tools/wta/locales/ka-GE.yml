@@ -108,12 +108,11 @@ commands.agent.summary: "აირჩიეთ აგენტი ამ ჩა�
 
 # ── რეკომენდაციების პანელი (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ღილაკების სახელები და Return ღილაკის გლიფი, არ ითარგმნება
-recommendations.nav_hint: "(↑ ↓ ნავიგაციისთვის • ← → ღილაკებს შორის გადასართავად • Enter არჩევისთვის • Esc გაუქმებისთვის)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End გადახვევისთვის • ↑ ↓ ნავიგაციისთვის • ← → ღილაკებს შორის გადასართავად • Enter არჩევისთვის • Esc გაუქმებისთვის)"
 recommendations.button_run_command: "[ ბრძანების გაშვება ]"
 recommendations.button_insert_in_terminal: "ჩასმა ტერმინალში"
 recommendations.button_open_in_new_tab: "ახალ ჩანართში გახსნა ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → მოქმედებები · Enter არჩევა · ↑ ↓ / PgUp PgDn გადახვევა · Esc / Ctrl+C გაუქმება"
 recommendations.button_open_in_new_panel: "ახალ პანელში გახსნა ↵"
 recommendations.button_open_tab: "ჩანართის გახსნა ↵"
 recommendations.button_open_panel: "პანელის გახსნა ↵"

@@ -108,12 +108,11 @@ commands.agent.summary: "આ પેન માટે એજન્ટ પસંદ
 
 # ── ભલામણ પૅનલ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - કી નામો અને Return-કી ગ્લિફ, અનુવાદ કરશો નહીં
-recommendations.nav_hint: "(↑ ↓ નેવિગેટ કરવા • ← → બટન બદલવા • Enter પસંદ કરવા • Esc રદ કરવા)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End સ્ક્રોલ કરો • ↑ ↓ નેવિગેટ કરવા • ← → બટન બદલવા • Enter પસંદ કરવા • Esc રદ કરવા)"
 recommendations.button_run_command: "[ કમાન્ડ ચલાવો ]"
 recommendations.button_insert_in_terminal: "ટર્મિનલમાં દાખલ કરો"
 recommendations.button_open_in_new_tab: "નવી ટૅબમાં ખોલો ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ક્રિયાઓ · Enter પસંદ કરો · ↑ ↓ / PgUp PgDn સ્ક્રોલ કરો · Esc / Ctrl+C રદ કરો"
 recommendations.button_open_in_new_panel: "નવી પૅનલમાં ખોલો ↵"
 recommendations.button_open_tab: "ટૅબ ખોલો ↵"
 recommendations.button_open_panel: "પૅનલ ખોલો ↵"

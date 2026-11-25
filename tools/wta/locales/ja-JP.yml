@@ -91,12 +91,11 @@ commands.help_close_hint: "  Esc        このヘルプを閉じる"  # {Locked=
 
 # ── おすすめパネル (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - キー名と Return キー グリフ、翻訳不要
-recommendations.nav_hint: "(↑ ↓ で移動 • ← → でボタン切り替え • Enter で選択 • Esc でキャンセル)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End でスクロール • ↑ ↓ で移動 • ← → でボタン切り替え • Enter で選択 • Esc でキャンセル)"
 recommendations.button_run_command: "[ コマンドを実行 ]"
 recommendations.button_insert_in_terminal: "ターミナルに挿入"
 recommendations.button_open_in_new_tab: "新しいタブで開く ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → アクション切り替え · Enter 選択 · ↑ ↓ / PgUp PgDn スクロール · Esc / Ctrl+C キャンセル"
 recommendations.button_open_in_new_panel: "新しいパネルで開く ↵"
 recommendations.button_open_tab: "タブを開く ↵"
 recommendations.button_open_panel: "パネルを開く ↵"

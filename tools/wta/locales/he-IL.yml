@@ -108,12 +108,11 @@ commands.agent.summary: "בחר את הסוכן עבור כרטיסייה זו (
 
 # ── לוח המלצות (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - שמות מקשים וסמל מקש Enter, אין לתרגם
-recommendations.nav_hint: "(↑ ↓ לניווט • ← → למעבר בין לחצנים • Enter לבחירה • Esc לביטול)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End לגלילה • ↑ ↓ לניווט • ← → למעבר בין לחצנים • Enter לבחירה • Esc לביטול)"
 recommendations.button_run_command: "[ הפעל פקודה ]"
 recommendations.button_insert_in_terminal: "הכנס למסוף"
 recommendations.button_open_in_new_tab: "פתח בכרטיסייה חדשה ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → פעולות · Enter בחירה · ↑ ↓ / PgUp PgDn גלילה · Esc / Ctrl+C ביטול"
 recommendations.button_open_in_new_panel: "פתח בחלונית חדשה ↵"
 recommendations.button_open_tab: "פתח כרטיסייה ↵"
 recommendations.button_open_panel: "פתח חלונית ↵"

@@ -108,12 +108,11 @@ commands.agent.summary: "Бу панель өчен агент сайлагыз 
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ навигация өчен • ← → төймәләр арасында күчү өчен • Enter сайлау өчен • Esc баш тарту өчен)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End әйләндерү өчен • ↑ ↓ навигация өчен • ← → төймәләр арасында күчү өчен • Enter сайлау өчен • Esc баш тарту өчен)"
 recommendations.button_run_command: "[ Боерыкны башкару ]"
 recommendations.button_insert_in_terminal: "Terminal-га кертү"
 recommendations.button_open_in_new_tab: "Яңа табда ачу ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → гамәлләр · Enter сайлау · ↑ ↓ / PgUp PgDn әйләндерү · Esc / Ctrl+C баш тарту"
 recommendations.button_open_in_new_panel: "Яңа панельдә ачу ↵"
 recommendations.button_open_tab: "Табны ачу ↵"
 recommendations.button_open_panel: "Панельне ачу ↵"

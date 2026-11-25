@@ -321,7 +321,6 @@ impl App {
 
     pub(super) fn chat_input_has_edit_focus(&self) -> bool {
         self.chat_input_context_has_focus()
-            && self.recommendation_full_view.is_none()
             && self.current_tab().current_view == View::Chat
             && self.current_tab().input_has_nav_focus()
     }
@@ -404,7 +403,6 @@ impl App {
             || !tab.input_can_receive_nav_focus()
             || self.help_overlay_visible
             || self.command_popup_visible()
-            || self.recommendation_full_view.is_some()
         {
             return None;
         }
@@ -505,6 +503,12 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        // Backend events may replace the card in a batch before the next paint.
+        // Do not let a queued Enter activate the previous frame's action.
+        let invalidates_card = !matches!(
+            &event,
+            AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick | AppEvent::Mouse(_)
+        );
         self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
@@ -521,7 +525,9 @@ impl App {
             None
         };
         self.handle_event_inner(event);
-        self.sync_recommendation_full_view();
+        if invalidates_card {
+            self.recommendation_rendered = false;
+        }
         self.dispatch_prompt_queues();
         if let Some(owned_input) = owned_input {
             let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
@@ -571,12 +577,6 @@ impl App {
             }
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
-                if self.recommendation_full_view.is_some() {
-                    // The read-only modal owns keys before generic selection/copy.
-                    self.text_selection.clear();
-                    self.handle_key(key);
-                    return;
-                }
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
                     self.current_tab_mut().input_vertical_goal = None;
@@ -632,16 +632,22 @@ impl App {
                     self.current_tab_mut().input_vertical_goal = None;
                 }
             }
-            AppEvent::Mouse(mouse) if self.recommendation_full_view.is_some() => {
-                let view = self.recommendation_full_view.as_mut().unwrap();
-                view.scroll = match mouse.kind {
-                    crossterm::event::MouseEventKind::ScrollUp => view.scroll.saturating_sub(1),
-                    crossterm::event::MouseEventKind::ScrollDown => view.scroll.saturating_add(1),
-                    _ => view.scroll,
-                }
-                .min(view.scroll_max);
-            }
             AppEvent::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::ScrollUp
+                | crossterm::event::MouseEventKind::ScrollDown
+                    if self.recommendation_rendered
+                        && self.recommendation_area.is_some_and(|area| {
+                            area.contains((mouse.column, mouse.row).into())
+                        }) =>
+                {
+                    self.scroll_recommendation_body(
+                        if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
+                            -1
+                        } else {
+                            1
+                        },
+                    );
+                }
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
@@ -934,7 +940,6 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
-                self.recommendation_approval = None;
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
                 self.queue_control_hits.clear();
@@ -3932,18 +3937,6 @@ impl App {
 
                     // Apply `pane_open` if present.
                     if let Some(open) = params.get("pane_open").and_then(|v| v.as_bool()) {
-                        if (!open
-                            || self
-                                .tab_sessions
-                                .get(&target_tab)
-                                .is_some_and(|tab| tab.pane_open != open))
-                            && self
-                                .recommendation_approval
-                                .as_ref()
-                                .is_some_and(|approval| approval.tab_id == target_tab)
-                        {
-                            self.recommendation_approval = None;
-                        }
                         if target_tab == self.active_tab_key()
                             && self.current_tab().pane_open != open
                         {

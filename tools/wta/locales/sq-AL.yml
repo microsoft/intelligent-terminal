@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Mbyll këtë ndihmë"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndërruar butonat • Enter për të zgjedhur • Esc për të anuluar)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End për të lëvizur • ↑ ↓ për të naviguar • ← → për të ndërruar butonat • Enter për të zgjedhur • Esc për të anuluar)"
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → veprimet · Enter përzgjidh · ↑ ↓ / PgUp PgDn lëviz · Esc / Ctrl+C anulo"
 recommendations.button_open_in_new_panel: "Hap në panelin e ri ↵"
 recommendations.button_open_tab: "Hap skedën ↵"
 recommendations.button_open_panel: "Hap panelin ↵"

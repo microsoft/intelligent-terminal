@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Dùin an cuideachadh seo"  # {Locked="Es
 
 # ── Panail mholaidhean (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmean iuchraichean agus samhla iuchair Tilleadh, na eadar-theangaich
-recommendations.nav_hint: "(↑ ↓ gus seòladh • ← → gus putanan atharrachadh • Enter gus taghadh • Esc gus sgur dheth)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End gus sgroladh • ↑ ↓ gus seòladh • ← → gus putanan atharrachadh • Enter gus taghadh • Esc gus sgur dheth)"
 recommendations.button_run_command: "[ Ruith òrdugh ]"
 recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
 recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → gnìomhan · Enter tagh · ↑ ↓ / PgUp PgDn sgrolaich · Esc / Ctrl+C sguir dheth"
 recommendations.button_open_in_new_panel: "Fosgail ann am Panail Ùr ↵"
 recommendations.button_open_tab: "Fosgail Taba ↵"
 recommendations.button_open_panel: "Fosgail Panail ↵"

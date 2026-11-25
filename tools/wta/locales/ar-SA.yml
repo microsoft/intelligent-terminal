@@ -109,12 +109,11 @@ commands.agent.summary: "اختر عامل لعلامة التبويب هذه (/
 
 # ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - أسماء المفاتيح ورمز مفتاح الإدخال، لا تترجمها
-recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بين الأزرار • Enter للتحديد • Esc للإلغاء)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End للتمرير • ↑ ↓ للتنقل • ← → للتبديل بين الأزرار • Enter للتحديد • Esc للإلغاء)"
 recommendations.button_run_command: "[ تشغيل الأمر ]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → الإجراءات · Enter تحديد · ↑ ↓ / PgUp PgDn تمرير · Esc / Ctrl+C إلغاء"
 recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
 recommendations.button_open_tab: "فتح علامة تبويب ↵"
 recommendations.button_open_panel: "فتح لوحة ↵"

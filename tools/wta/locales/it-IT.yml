@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Chiudi questa guida"  # {Locked="Esc"}
 
 # ── Pannello dei suggerimenti (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - nomi dei tasti e glifo del tasto Invio, non tradurre
-recommendations.nav_hint: "(↑ ↓ per navigare • ← → per cambiare azione • Enter per selezionare • Esc per annullare)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End per scorrere • ↑ ↓ per navigare • ← → per cambiare azione • Enter per selezionare • Esc per annullare)"
 recommendations.button_run_command: "[ Esegui comando ]"
 recommendations.button_insert_in_terminal: "Inserisci nel terminale"
 recommendations.button_open_in_new_tab: "Apri in nuova scheda ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → azioni · Enter seleziona · ↑ ↓ / PgUp PgDn scorri · Esc / Ctrl+C annulla"
 recommendations.button_open_in_new_panel: "Apri in nuovo pannello ↵"
 recommendations.button_open_tab: "Apri scheda ↵"
 recommendations.button_open_panel: "Apri pannello ↵"

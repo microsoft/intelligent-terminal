@@ -1408,21 +1408,6 @@ pub struct DispatchedCommand {
 
 // --- App ---
 
-/// The exact selected choice displayed in a card or bound full-command view.
-#[derive(Clone)]
-pub(crate) struct RecommendationApproval {
-    pub tab_id: String,
-    pub prompt_id: u64,
-    pub choice: RecommendationChoice,
-}
-
-pub(crate) struct RecommendationFullView {
-    pub binding: RecommendationApproval,
-    pub scroll: usize,
-    pub scroll_max: usize,
-    pub page_rows: usize,
-}
-
 pub struct App {
     pub mode: AppMode,
     pub setup: Option<SetupState>,
@@ -1596,8 +1581,7 @@ pub struct App {
     pub autofix_enabled: bool,
     pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
     pub(crate) recommendation_rendered: bool,
-    pub(crate) recommendation_approval: Option<RecommendationApproval>,
-    pub(crate) recommendation_full_view: Option<RecommendationFullView>,
+    pub(crate) recommendation_area: Option<Rect>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1942,8 +1926,7 @@ impl App {
             autofix_enabled,
             autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
             recommendation_rendered: false,
-            recommendation_approval: None,
-            recommendation_full_view: None,
+            recommendation_area: None,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),
@@ -6118,27 +6101,15 @@ impl App {
     }
 
     fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
-        !self
-            .recommendation_full_view
-            .as_ref()
-            .is_some_and(|view| view.binding.tab_id == target_tab)
-            && self
-                .tab_sessions
-                .get(target_tab)
-                .map(|tab| {
-                    tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus()
-                })
-                .unwrap_or(false)
+        self.tab_sessions
+            .get(target_tab)
+            .map(|tab| tab.pane_open && tab.current_view == View::Chat && tab.input_has_nav_focus())
+            .unwrap_or(false)
     }
 
     fn insert_agent_paste(&mut self, target_tab: &str, generation: u64, content: ClipboardPaste) {
         let image_supported = self.agent_supports_image;
-        if self.mode != AppMode::Chat
-            || self
-                .recommendation_full_view
-                .as_ref()
-                .is_some_and(|view| view.binding.tab_id == target_tab)
-        {
+        if self.mode != AppMode::Chat {
             if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
                 if tab.paste_generation == generation {
                     tab.paste_pending = false;
@@ -6148,7 +6119,7 @@ impl App {
                 target: "agent_paste",
                 mode = ?self.mode,
                 tab_id = target_tab,
-                "dropping paste because the chat input is unavailable"
+                "dropping paste because app is not in chat mode"
             );
             return;
         }
@@ -7344,8 +7315,8 @@ impl App {
 
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
-    /// `recommendations::render` so the renderer stays `&App` and any
-    /// wheel-driven over-scroll is clamped before paint.
+    /// `recommendations::render` so the selected card is on screen before
+    /// painting its independently scrollable body.
     pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
         let panel_cards_h = panel_height as usize;
         self.current_tab_mut().rec_viewport_height = panel_height;
@@ -7360,16 +7331,24 @@ impl App {
         self.current_tab_mut()
             .rec_scroll
             .set_max(total.saturating_sub(panel_cards_h));
+        self.scroll_rec_to_selected(panel_width);
     }
 
     fn clear_recommendations(&mut self) {
         self.current_tab_mut().clear_recommendations();
     }
 
+    /// Scroll only the selected card's body; preserve card/action selection.
+    fn scroll_recommendation_body(&mut self, delta: isize) {
+        let scroll = &mut self.current_tab_mut().rec_body_scroll;
+        scroll.set(scroll.offset.saturating_add_signed(delta));
+    }
+
     /// Keep the selected recommendation visible without moving a card that
     /// already fits in the full panel viewport. Compact mode renders only the
     /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
+        self.recommendation_rendered = false;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
@@ -7415,12 +7394,6 @@ impl App {
     /// Helpers without an owner (delegate path, legacy `wta` runs) still
     /// follow the active tab.
     fn switch_tab_session(&mut self, new_tab_id: String) {
-        if self.active_tab_key() != new_tab_id {
-            self.recommendation_approval = None;
-            if self.recommendation_full_view.take().is_some() {
-                self.current_tab_mut().selected_button = 0;
-            }
-        }
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
         self.pressed_input_dialog = None;
@@ -7979,12 +7952,18 @@ impl App {
 
     fn focus_next_recommendation_action(&mut self) {
         let button_count = self.button_count_for_selected();
+        if button_count > 1 {
+            self.recommendation_rendered = false;
+        }
         let tab = self.current_tab_mut();
         tab.selected_button = (tab.selected_button + 1) % button_count;
     }
 
     fn focus_previous_recommendation_action(&mut self) {
         let button_count = self.button_count_for_selected();
+        if button_count > 1 {
+            self.recommendation_rendered = false;
+        }
         let tab = self.current_tab_mut();
         tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
     }

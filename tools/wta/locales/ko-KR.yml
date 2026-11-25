@@ -91,12 +91,11 @@ commands.help_close_hint: "  Esc        이 도움말 닫기"  # {Locked="Esc"}
 
 # ── 추천 패널 (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - 키 이름과 Return 키 문자, 번역하지 마세요
-recommendations.nav_hint: "(↑ ↓ 탐색 • ← → 버튼 전환 • Enter 선택 • Esc 취소)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End 스크롤 • ↑ ↓ 탐색 • ← → 버튼 전환 • Enter 선택 • Esc 취소)"
 recommendations.button_run_command: "[ 명령 실행 ]"
 recommendations.button_insert_in_terminal: "터미널에 삽입"
 recommendations.button_open_in_new_tab: "새 탭에서 열기 ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → 작업 전환 · Enter 선택 · ↑ ↓ / PgUp PgDn 스크롤 · Esc / Ctrl+C 취소"
 recommendations.button_open_in_new_panel: "새 패널에서 열기 ↵"
 recommendations.button_open_tab: "탭 열기 ↵"
 recommendations.button_open_panel: "패널 열기 ↵"

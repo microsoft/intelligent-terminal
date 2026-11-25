@@ -104,12 +104,11 @@ commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+
 commands.agent.summary: "Vyberte agent pre túto tablu (/agent <id> na priame prepnutie)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ na navigáciu • ← → na prepínanie tlačidiel • Enter na výber • Esc na zrušenie)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End na posúvanie • ↑ ↓ na navigáciu • ← → na prepínanie tlačidiel • Enter na výber • Esc na zrušenie)"
 recommendations.button_run_command: "[ Spustiť príkaz ]"
 recommendations.button_insert_in_terminal: "Vložiť do terminálu"
 recommendations.button_open_in_new_tab: "Otvoriť v novej karte ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → akcie · Enter vybrať · ↑ ↓ / PgUp PgDn posúvať · Esc / Ctrl+C zrušiť"
 recommendations.button_open_in_new_panel: "Otvoriť v novom paneli ↵"
 recommendations.button_open_tab: "Otvoriť kartu ↵"
 recommendations.button_open_panel: "Otvoriť panel ↵"

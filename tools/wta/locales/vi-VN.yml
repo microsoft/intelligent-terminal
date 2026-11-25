@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Đóng trợ giúp này"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ để di chuyển • ← → để chuyển hành động • Enter để chọn • Esc để hủy)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End để cuộn • ↑ ↓ để di chuyển • ← → để chuyển hành động • Enter để chọn • Esc để hủy)"
 recommendations.button_run_command: "[ Chạy lệnh ]"
 recommendations.button_insert_in_terminal: "Chèn vào Terminal"
 recommendations.button_open_in_new_tab: "Mở trong Tab mới ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → hành động · Enter chọn · ↑ ↓ / PgUp PgDn cuộn · Esc / Ctrl+C hủy"
 recommendations.button_open_in_new_panel: "Mở trong Bảng mới ↵"
 recommendations.button_open_tab: "Mở Tab ↵"
 recommendations.button_open_panel: "Mở Bảng ↵"

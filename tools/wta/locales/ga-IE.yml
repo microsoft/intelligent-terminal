@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Dún an chabhair seo"  # {Locked="Esc"}
 
 # ── Painéal moltaí (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ainmneacha eochracha agus gliof eochair Fillte, ná haistrigh
-recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → chun cnaipí a athrú • Enter chun roghnú • Esc chun cealú)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End chun scrollú • ↑ ↓ chun nascleanúint a dhéanamh • ← → chun cnaipí a athrú • Enter chun roghnú • Esc chun cealú)"
 recommendations.button_run_command: "[ Rith ordú ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → gníomhartha · Enter roghnaigh · ↑ ↓ / PgUp PgDn scrollaigh · Esc / Ctrl+C cealaigh"
 recommendations.button_open_in_new_panel: "Oscail i bPainéal Nua ↵"
 recommendations.button_open_tab: "Oscail Cluaisín ↵"
 recommendations.button_open_panel: "Oscail Painéal ↵"

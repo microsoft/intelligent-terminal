@@ -60,89 +60,6 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
-        self.sync_recommendation_full_view();
-        if self.recommendation_full_view.is_some() {
-            // Command review is always read-only; keys never edit the chat draft.
-            if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-                self.recommendation_full_view = None;
-                self.recommendation_approval = None;
-                let tab_id = self.active_tab_key().to_string();
-                self.request_turn_cancel_for_tab(&tab_id);
-            } else if key.modifiers.is_empty()
-                || (key.code == KeyCode::BackTab && key.modifiers == KeyModifiers::SHIFT)
-            {
-                match key.code {
-                    KeyCode::Esc => {
-                        self.recommendation_full_view = None;
-                        self.recommendation_approval = None;
-                        let tab_id = self.active_tab_key().to_string();
-                        self.request_turn_cancel_for_tab(&tab_id);
-                    }
-                    KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
-                        let count = self.button_count_for_selected();
-                        let selected = self.current_tab().selected_button;
-                        let next = if matches!(key.code, KeyCode::Left | KeyCode::BackTab) {
-                            (selected + count - 1) % count
-                        } else {
-                            (selected + 1) % count
-                        };
-                        if next != selected {
-                            self.current_tab_mut().selected_button = next;
-                            self.recommendation_approval = None;
-                        }
-                    }
-                    KeyCode::Enter => {
-                        if self.state == ConnectionState::Connected {
-                            if let Some(session_id) = self.current_tab().session_id.clone() {
-                                self.turn_execute_card(&session_id);
-                            }
-                        }
-                    }
-                    KeyCode::Up | KeyCode::Down
-                        if self
-                            .current_tab()
-                            .turn
-                            .recommendations()
-                            .is_some_and(|recs| recs.choices.len() > 1) =>
-                    {
-                        let last = self
-                            .current_tab()
-                            .turn
-                            .recommendations()
-                            .unwrap()
-                            .choices
-                            .len()
-                            - 1;
-                        let selected = self.current_tab().selected_recommendation;
-                        self.current_tab_mut().selected_recommendation = if key.code == KeyCode::Up
-                        {
-                            selected.saturating_sub(1)
-                        } else {
-                            selected.saturating_add(1).min(last)
-                        };
-                        self.sync_recommendation_full_view();
-                        let tab_id = self.active_tab_key().to_string();
-                        self.recompute_chip_override(&tab_id);
-                    }
-                    code => {
-                        let Some(view) = self.recommendation_full_view.as_mut() else {
-                            return;
-                        };
-                        view.scroll = match code {
-                            KeyCode::Up => view.scroll.saturating_sub(1),
-                            KeyCode::Down => view.scroll.saturating_add(1),
-                            KeyCode::PageUp => view.scroll.saturating_sub(view.page_rows),
-                            KeyCode::PageDown => view.scroll.saturating_add(view.page_rows),
-                            KeyCode::Home => 0,
-                            KeyCode::End => view.scroll_max,
-                            _ => view.scroll,
-                        }
-                        .min(view.scroll_max);
-                    }
-                }
-            }
-            return;
-        }
         let typing_key = matches!(key.code, KeyCode::Char(ch) if !ch.is_control())
             && modifiers_allow_text_input(key.modifiers);
         if !typing_key || !self.chat_input_has_edit_focus() {
@@ -473,7 +390,6 @@ impl App {
                         // straight from it. Clear the snapshot so a later
                         // re-entry re-captures; the lingering Agents view
                         // self-heals to chat on the next chat-toggle open.
-                        self.recommendation_approval = None;
                         let tab = self.tab_mut(&tab_id);
                         tab.pane_open = false;
                         tab.agents_view.search_query.clear();
@@ -710,6 +626,23 @@ impl App {
         }
 
         match key.code {
+            KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End
+                if key.modifiers.is_empty()
+                    && self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
+            {
+                let page = self
+                    .current_tab()
+                    .rec_viewport_height
+                    .saturating_sub(4)
+                    .max(1) as isize;
+                self.scroll_recommendation_body(match key.code {
+                    KeyCode::Home => isize::MIN,
+                    KeyCode::End => isize::MAX,
+                    KeyCode::PageUp => -page,
+                    _ => page,
+                });
+            }
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
@@ -722,10 +655,12 @@ impl App {
                     tab.recommendation_focus = RecommendationFocus::Button;
                     tab.selected_recommendation = choices_len.saturating_sub(1);
                     tab.selected_button = 0;
+                    tab.rec_body_scroll.reset();
                     self.scroll_rec_to_selected(self.main_area_width());
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 } else if self.current_tab().selected_recommendation > 0 {
+                    self.current_tab_mut().rec_body_scroll.reset();
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
                     self.scroll_rec_to_selected(self.main_area_width());
@@ -751,10 +686,12 @@ impl App {
                     tab.recommendation_focus = RecommendationFocus::Button;
                     tab.selected_recommendation = 0;
                     tab.selected_button = 0;
+                    tab.rec_body_scroll.reset();
                     self.scroll_rec_to_selected(self.main_area_width());
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 } else if self.current_tab().selected_recommendation + 1 < choices_len {
+                    self.current_tab_mut().rec_body_scroll.reset();
                     let default_button = self.default_button_for_selected();
                     self.current_tab_mut().selected_recommendation += 1;
                     self.current_tab_mut().selected_button = default_button;
@@ -922,6 +859,12 @@ impl App {
                 if self.current_tab().turn.recommendations().is_some()
                     && self.current_tab().recommendation_focus == RecommendationFocus::Button
                 {
+                    if !self.recommendation_rendered
+                        || !self.current_tab().pane_open
+                        || self.help_overlay_visible
+                    {
+                        return;
+                    }
                     // A card button owns focus even when the input box already
                     // has draft text. Keep the draft intact and route Enter to
                     // the selected action.

@@ -108,12 +108,11 @@ commands.agent.summary: "ह्या पेना खातीर एजंट 
 
 # ── शिफारस पॅनेल (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - की नांवां आनी Return-की ग्लिफ, अणकार करूं नाका
-recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करपाक • ← → बटणां बदलपाक • Enter निवडपाक • Esc रद्द करपाक)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End स्क्रोल करात • ↑ ↓ नेव्हिगेट करपाक • ← → बटणां बदलपाक • Enter निवडपाक • Esc रद्द करपाक)"
 recommendations.button_run_command: "[ कमांड चलयात ]"
 recommendations.button_insert_in_terminal: "टर्मिनलांत घालात"
 recommendations.button_open_in_new_tab: "नव्या टॅबांत उगडात ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → कृती · Enter निवडात · ↑ ↓ / PgUp PgDn स्क्रोल करात · Esc / Ctrl+C रद्द करात"
 recommendations.button_open_in_new_panel: "नव्या पॅनेलांत उगडात ↵"
 recommendations.button_open_tab: "टॅब उगडात ↵"
 recommendations.button_open_panel: "पॅनेल उगडात ↵"

@@ -108,12 +108,11 @@ commands.agent.summary: "ಈ ಟ್ಯಾಬ್‌ಗಾಗಿ ಏಜೆಂಟ�
 
 # ── ಶಿಫಾರಸುಗಳ ಪ್ಯಾನೆಲ್ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ಕೀ ಹೆಸರುಗಳು ಮತ್ತು Return-ಕೀ ಗ್ಲಿಫ್, ಅನುವಾದಿಸಬೇಡಿ
-recommendations.nav_hint: "(↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಲು • ← → ಬಟನ್‌ಗಳನ್ನು ಬದಲಿಸಲು • Enter ಆಯ್ಕೆಮಾಡಲು • Esc ರದ್ದುಗೊಳಿಸಲು)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End ಸ್ಕ್ರಾಲ್ ಮಾಡಿ • ↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಲು • ← → ಬಟನ್‌ಗಳನ್ನು ಬದಲಿಸಲು • Enter ಆಯ್ಕೆಮಾಡಲು • Esc ರದ್ದುಗೊಳಿಸಲು)"
 recommendations.button_run_command: "[ ಕಮಾಂಡ್ ರನ್ ಮಾಡಿ ]"
 recommendations.button_insert_in_terminal: "ಟರ್ಮಿನಲ್‌ನಲ್ಲಿ ಸೇರಿಸಿ"
 recommendations.button_open_in_new_tab: "ಹೊಸ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ಕ್ರಿಯೆಗಳು · Enter ಆಯ್ಕೆಮಾಡಿ · ↑ ↓ / PgUp PgDn ಸ್ಕ್ರಾಲ್ ಮಾಡಿ · Esc / Ctrl+C ರದ್ದುಗೊಳಿಸಿ"
 recommendations.button_open_in_new_panel: "ಹೊಸ ಪ್ಯಾನೆಲ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_tab: "ಟ್ಯಾಬ್ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_panel: "ಪ್ಯಾನೆಲ್ ತೆರೆಯಿರಿ ↵"

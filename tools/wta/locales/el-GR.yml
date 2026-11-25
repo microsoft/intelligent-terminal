@@ -96,12 +96,11 @@ commands.help_close_hint: "  Esc        Κλείσιμο αυτής της βο�
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ για πλοήγηση • ← → για εναλλαγή κουμπιών • Enter για επιλογή • Esc για ακύρωση)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End για κύλιση • ↑ ↓ για πλοήγηση • ← → για εναλλαγή κουμπιών • Enter για επιλογή • Esc για ακύρωση)"
 recommendations.button_run_command: "[ Εκτέλεση εντολής ]"
 recommendations.button_insert_in_terminal: "Εισαγωγή στο Terminal"
 recommendations.button_open_in_new_tab: "Άνοιγμα σε νέα καρτέλα ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ενέργειες · Enter επιλογή · ↑ ↓ / PgUp PgDn κύλιση · Esc / Ctrl+C ακύρωση"
 recommendations.button_open_in_new_panel: "Άνοιγμα σε νέο πλαίσιο ↵"
 recommendations.button_open_tab: "Άνοιγμα καρτέλας ↵"
 recommendations.button_open_panel: "Άνοιγμα πλαισίου ↵"

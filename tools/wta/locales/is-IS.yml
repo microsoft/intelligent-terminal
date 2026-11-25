@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Loka þessari hjálp"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ til að fletta • ← → til að skipta um hnappa • Enter til að velja • Esc til að hætta við)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End til að skruna • ↑ ↓ til að fletta • ← → til að skipta um hnappa • Enter til að velja • Esc til að hætta við)"
 recommendations.button_run_command: "[ Keyra skipun ]"
 recommendations.button_insert_in_terminal: "Setja inn í Terminal"
 recommendations.button_open_in_new_tab: "Opna í nýjum flipa ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → aðgerðir · Enter velja · ↑ ↓ / PgUp PgDn fletta · Esc / Ctrl+C hætta við"
 recommendations.button_open_in_new_panel: "Opna í nýju spjaldi ↵"
 recommendations.button_open_tab: "Opna flipa ↵"
 recommendations.button_open_panel: "Opna spjald ↵"

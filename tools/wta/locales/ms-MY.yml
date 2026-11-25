@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Tutup bantuan ini"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk menukar tindakan • Enter untuk memilih • Esc untuk membatalkan)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End untuk menatal • ↑ ↓ untuk navigasi • ← → untuk menukar tindakan • Enter untuk memilih • Esc untuk membatalkan)"
 recommendations.button_run_command: "[ Jalankan arahan ]"
 recommendations.button_insert_in_terminal: "Sisipkan dalam Terminal"
 recommendations.button_open_in_new_tab: "Buka dalam Tab Baharu ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → tindakan · Enter pilih · ↑ ↓ / PgUp PgDn tatal · Esc / Ctrl+C batalkan"
 recommendations.button_open_in_new_panel: "Buka dalam Panel Baharu ↵"
 recommendations.button_open_tab: "Buka Tab ↵"
 recommendations.button_open_panel: "Buka Panel ↵"

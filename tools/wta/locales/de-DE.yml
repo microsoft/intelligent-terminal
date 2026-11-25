@@ -96,12 +96,11 @@ commands.help_close_hint: "  Esc        Diese Hilfe schließen"  # {Locked="Esc"
 
 # ── Empfehlungsbereich (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - Tastennamen und Eingabetaste-Symbol, nicht übersetzen
-recommendations.nav_hint: "(↑ ↓ navigieren • ← → Aktion wechseln • Enter auswählen • Esc abbrechen)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End scrollen • ↑ ↓ navigieren • ← → Aktion wechseln • Enter auswählen • Esc abbrechen)"
 recommendations.button_run_command: "[ Befehl ausführen ]"
 recommendations.button_insert_in_terminal: "In Terminal einfügen"
 recommendations.button_open_in_new_tab: "In neuer Registerkarte öffnen ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → Aktionen · Enter auswählen · ↑ ↓ / PgUp PgDn scrollen · Esc / Ctrl+C abbrechen"
 recommendations.button_open_in_new_panel: "In neuem Bereich öffnen ↵"
 recommendations.button_open_tab: "Registerkarte öffnen ↵"
 recommendations.button_open_panel: "Bereich öffnen ↵"

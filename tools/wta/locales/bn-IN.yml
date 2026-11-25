@@ -109,12 +109,11 @@ commands.agent.summary: "এই ট্যাবের জন্য এজেন�
 
 # ── সুপারিশ প্যানেল (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - কী নাম ও Return-কী গ্লিফ, অনুবাদ করবেন না
-recommendations.nav_hint: "(↑ ↓ নেভিগেট করুন • ← → বোতাম পরিবর্তন করুন • Enter নির্বাচন করুন • Esc বাতিল করুন)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End স্ক্রল করুন • ↑ ↓ নেভিগেট করুন • ← → বোতাম পরিবর্তন করুন • Enter নির্বাচন করুন • Esc বাতিল করুন)"
 recommendations.button_run_command: "[ কমান্ড চালান ]"
 recommendations.button_insert_in_terminal: "টার্মিনালে সন্নিবেশ করুন"
 recommendations.button_open_in_new_tab: "নতুন ট্যাবে খুলুন ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → কার্যসমূহ · Enter নির্বাচন করুন · ↑ ↓ / PgUp PgDn স্ক্রল করুন · Esc / Ctrl+C বাতিল করুন"
 recommendations.button_open_in_new_panel: "নতুন প্যানেলে খুলুন ↵"
 recommendations.button_open_tab: "ট্যাব খুলুন ↵"
 recommendations.button_open_panel: "প্যানেল খুলুন ↵"

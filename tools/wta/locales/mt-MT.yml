@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Agħlaq din l-għajnuna"  # {Locked="Esc
 
 # ── Pannell tar-rakkomandazzjonijiet (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ismijiet taċ-ċwievet u glyph taċ-ċavetta Return, tittradux
-recommendations.nav_hint: "(↑ ↓ biex tinnaviga • ← → biex taqleb il-buttuni • Enter biex tagħżel • Esc biex tikkanċella)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End biex tiskrollja • ↑ ↓ biex tinnaviga • ← → biex taqleb il-buttuni • Enter biex tagħżel • Esc biex tikkanċella)"
 recommendations.button_run_command: "[ Ħaddem il-kmand ]"
 recommendations.button_insert_in_terminal: "Daħħal fit-Terminal"
 recommendations.button_open_in_new_tab: "Iftaħ f'Tab Ġdid ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → azzjonijiet · Enter agħżel · ↑ ↓ / PgUp PgDn skrollja · Esc / Ctrl+C ikkanċella"
 recommendations.button_open_in_new_panel: "Iftaħ f'Pannell Ġdid ↵"
 recommendations.button_open_tab: "Iftaħ Tab ↵"
 recommendations.button_open_panel: "Iftaħ Pannell ↵"

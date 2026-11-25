@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        ปิดหน้าต่างช่�
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ เลื่อนเลือก • ← → สลับการกระทำ • Enter เพื่อเลือก • Esc เพื่อยกเลิก)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End เลื่อนเนื้อหา • ↑ ↓ เลื่อนเลือก • ← → สลับการกระทำ • Enter เพื่อเลือก • Esc เพื่อยกเลิก)"
 recommendations.button_run_command: "[ เรียกใช้คำสั่ง ]"
 recommendations.button_insert_in_terminal: "แทรกใน Terminal"
 recommendations.button_open_in_new_tab: "เปิดในแท็บใหม่ ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → การกระทำ · Enter เลือก · ↑ ↓ / PgUp PgDn เลื่อน · Esc / Ctrl+C ยกเลิก"
 recommendations.button_open_in_new_panel: "เปิดในแผงใหม่ ↵"
 recommendations.button_open_tab: "เปิดแท็บ ↵"
 recommendations.button_open_panel: "เปิดแผง ↵"

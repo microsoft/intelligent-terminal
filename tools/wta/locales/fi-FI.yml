@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Sulje tämä ohje"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ navigoidaksesi • ← → vaihtaaksesi painikkeita • Enter valitaksesi • Esc peruuttaaksesi)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End vierittääksesi • ↑ ↓ navigoidaksesi • ← → vaihtaaksesi painikkeita • Enter valitaksesi • Esc peruuttaaksesi)"
 recommendations.button_run_command: "[ Suorita komento ]"
 recommendations.button_insert_in_terminal: "Lisää Terminaliin"
 recommendations.button_open_in_new_tab: "Avaa uudessa välilehdessä ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → toiminnot · Enter valitse · ↑ ↓ / PgUp PgDn vieritä · Esc / Ctrl+C peruuta"
 recommendations.button_open_in_new_panel: "Avaa uudessa paneelissa ↵"
 recommendations.button_open_tab: "Avaa välilehti ↵"
 recommendations.button_open_panel: "Avaa paneeli ↵"

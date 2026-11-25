@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate • ← → to switch actions • Enter to select • Esc to cancel)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End to scroll card • ↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → actions · Enter select · ↑ ↓ / PgUp PgDn scroll · Esc / Ctrl+C cancel"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"

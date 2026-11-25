@@ -95,12 +95,11 @@ commands.help_close_hint: "  Esc        Aizvērt šo palīdzību"  # {Locked="Es
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu pogas • Enter lai izvēlētos • Esc lai atceltu)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End lai ritinātu • ↑ ↓ lai pārvietotos • ← → lai pārslēgtu pogas • Enter lai izvēlētos • Esc lai atceltu)"
 recommendations.button_run_command: "[ Izpildīt komandu ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → darbības · Enter izvēlēties · ↑ ↓ / PgUp PgDn ritināt · Esc / Ctrl+C atcelt"
 recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
 recommendations.button_open_tab: "Atvērt cilni ↵"
 recommendations.button_open_panel: "Atvērt paneli ↵"

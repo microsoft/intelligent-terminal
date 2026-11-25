@@ -101,6 +101,7 @@ impl App {
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
+        tab.rec_body_scroll.reset();
         tab.pending_terminal_action_proposal = None;
         tab.autofix.offer = is_autofix.then(|| super::autofix::ErrorFixOffer {
             id: uuid::Uuid::new_v4(),
@@ -757,88 +758,9 @@ impl App {
         tab.finish_thought();
     }
 
-    pub(crate) fn recommendation_binding_is_current(
-        &self,
-        binding: &RecommendationApproval,
-    ) -> bool {
-        let tab = self.current_tab();
-        self.mode == AppMode::Chat
-            && tab.current_view == View::Chat
-            && tab.pane_open
-            && tab.permission.is_empty()
-            && tab.user_input.is_empty()
-            && !self.help_overlay_visible
-            && self.model_popup_state().is_none()
-            && self.config_popup_state().is_none()
-            && self.agent_popup_state().is_none()
-            && binding.tab_id == self.active_tab_key()
-            && Some(binding.prompt_id) == tab.turn.prompt_id()
-            && self.selected_recommendation_choice() == Some(&binding.choice)
-            && !binding.choice.actions.is_empty()
-    }
-
-    pub(crate) fn sync_recommendation_full_view(&mut self) {
-        // Late events can arrive after the active tab has been removed.
-        // Review synchronization must not materialize or dereference it.
-        if !self.tab_sessions.contains_key(self.active_tab_key()) {
-            self.recommendation_full_view = None;
-            self.recommendation_approval = None;
-            return;
-        }
-        if self
-            .recommendation_full_view
-            .as_ref()
-            .is_some_and(|view| !self.recommendation_binding_is_current(&view.binding))
-        {
-            self.recommendation_full_view = None;
-            self.recommendation_approval = None;
-            self.current_tab_mut().selected_button = 0;
-        }
-        if self.recommendation_full_view.is_some() {
-            return;
-        }
-        let Some(choice) = self.selected_recommendation_choice().cloned() else {
-            return;
-        };
-        let Some(prompt_id) = self.current_tab().turn.prompt_id() else {
-            return;
-        };
-        let binding = RecommendationApproval {
-            tab_id: self.active_tab_key().to_string(),
-            prompt_id,
-            choice,
-        };
-        if !self.recommendation_binding_is_current(&binding) {
-            return;
-        }
-        self.recommendation_approval = None;
-        self.recommendation_full_view = Some(RecommendationFullView {
-            binding,
-            scroll: 0,
-            scroll_max: 0,
-            page_rows: 1,
-        });
-    }
-
-    pub(crate) fn recommendation_is_reviewed(
-        &self,
-        session_id: &str,
-        choice: &crate::coordinator::RecommendationChoice,
-    ) -> bool {
-        self.session_tab(session_id).pane_open
-            && self.current_tab().selected_button < self.button_count_for_selected()
-            && self
-                .recommendation_approval
-                .as_ref()
-                .is_some_and(|approval| {
-                    self.recommendation_binding_is_current(approval)
-                        && approval.tab_id == self.tab_for_session(session_id)
-                        && &approval.choice == choice
-                })
-    }
-
-    /// Dispatch only the exact choice displayed for the current prompt.
-    /// Preserve the ACP single-flight gate while transitioning the turn.
+    /// User pressed Enter while a card was visible — dispatch the selected
+    /// choice to the coordinator and transition to `Surfaced { Empty, .. }`
+    /// while preserving the ACP single-flight gate.
     pub fn turn_execute_card(&mut self, session_id: &str) {
         let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
@@ -853,12 +775,7 @@ impl App {
             return;
         };
         let prompt_id = prompt.id;
-        if !self.recommendation_is_reviewed(session_id, &choice) {
-            return;
-        }
         let recommendation_summary = format_recommendations_for_chat(recommendations, None);
-        self.recommendation_approval = None;
-        self.recommendation_full_view = None;
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id
@@ -953,6 +870,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.active_direct_proposal_id = None;
         tab.rec_scroll.reset();
+        tab.rec_body_scroll.reset();
         let outcome = if end_pending {
             TurnOutcome::ResolvedRecommendation {
                 summary: executed_summary,
@@ -1180,6 +1098,7 @@ impl App {
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
+        tab.rec_body_scroll.reset();
         tab.activity_frame = 0;
         tab.finish_thought();
         // Cancel pending session-MCP clarification responders. The user's
@@ -1297,6 +1216,7 @@ impl App {
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
+        tab.rec_body_scroll.reset();
         tab.selection_visible_pending = true;
         tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
@@ -1435,6 +1355,7 @@ impl App {
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
+        tab.rec_body_scroll.reset();
         tab.activity_frame = 0;
         tab.finish_thought();
         tab.turn = TurnState::Surfaced {

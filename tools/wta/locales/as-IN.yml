@@ -109,12 +109,11 @@ commands.agent.summary: "এই পেনৰ বাবে এজেণ্ট ব
 
 # ── পৰামৰ্শ পেনেল (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - কী নাম আৰু Return-কী গ্লিফ, অনুবাদ নকৰিব
-recommendations.nav_hint: "(↑ ↓ নেভিগেট কৰিবলৈ • ← → বুটাম সলাবলৈ • Enter বাছনি কৰিবলৈ • Esc বাতিল কৰিবলৈ)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End স্ক্ৰ'ল কৰক • ↑ ↓ নেভিগেট কৰিবলৈ • ← → বুটাম সলাবলৈ • Enter বাছনি কৰিবলৈ • Esc বাতিল কৰিবলৈ)"
 recommendations.button_run_command: "[ কমাণ্ড চলাওক ]"
 recommendations.button_insert_in_terminal: "টাৰ্মিনেলত সন্নিবেশ কৰক"
 recommendations.button_open_in_new_tab: "নতুন টেবত খোলক ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → কাৰ্যসমূহ · Enter বাছনি কৰক · ↑ ↓ / PgUp PgDn স্ক্ৰ'ল কৰক · Esc / Ctrl+C বাতিল কৰক"
 recommendations.button_open_in_new_panel: "নতুন পেনেলত খোলক ↵"
 recommendations.button_open_tab: "টেব খোলক ↵"
 recommendations.button_open_panel: "পেনেল খোলক ↵"

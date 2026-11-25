@@ -111,12 +111,11 @@ commands.agent.summary: "بۇ بەت ئۈچۈن ۋاكالەتچى تاللاڭ 
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "(↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇنۇپكىلارنى ئالماشتۇرۇش ئۈچۈن • Enter تاللاش ئۈچۈن • Esc بىكار قىلىش ئۈچۈن)"
+# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
+recommendations.nav_hint: "(PgUp/PgDn/Home/End سىيرىش ئۈچۈن • ↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇنۇپكىلارنى ئالماشتۇرۇش ئۈچۈن • Enter تاللاش ئۈچۈن • Esc بىكار قىلىش ئۈچۈن)"
 recommendations.button_run_command: "[ بۇيرۇقنى ئىجرا قىلىش ]"
 recommendations.button_insert_in_terminal: "تېرمىنالغا قىستۇرۇش"
 recommendations.button_open_in_new_tab: "يېڭى بەتكۈچتە ئېچىش ↵"
-# {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → مەشغۇلاتلار · Enter تاللاش · ↑ ↓ / PgUp PgDn سىيرىش · Esc / Ctrl+C بىكار قىلىش"
 recommendations.button_open_in_new_panel: "يېڭى تاختىدا ئېچىش ↵"
 recommendations.button_open_tab: "بەتكۈچ ئېچىش ↵"
 recommendations.button_open_panel: "تاختا ئېچىش ↵"
