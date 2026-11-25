@@ -26517,6 +26517,50 @@ fn recommendation_review_preserves_wide_grapheme_and_rejects_unusable_viewport()
 }
 
 #[test]
+fn recommendation_review_rejects_grapheme_wider_than_body_before_confirmation() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for (width, height, command) in [
+        (6, 6, "\u{915}\u{94d}\u{937}\u{94d}\u{92e}"),
+        (11, 30, "\u{915}\u{94d}\u{937}\u{94d}\u{92e}\u{94d}\u{915}"),
+    ] {
+        let mut app = test_app();
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        if let TurnState::Surfaced {
+            outcome: TurnOutcome::Recommendation(set),
+            ..
+        } = &mut app.current_tab_mut().turn
+        {
+            set.choices[0].actions[0] = crate::coordinator::RecommendedAction::Send {
+                parent: "pane-9".into(),
+                input: command.into(),
+            };
+        } else {
+            panic!("expected recommendation");
+        }
+        let text = render_to_text(&mut app, width, height);
+        assert!(text.contains("Run"), "{text}");
+        assert!(
+            !app.recommendation_rendered,
+            "an unrenderable command grapheme must not authorize confirmation: {text}"
+        );
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(rx.try_recv().is_err());
+        let text = render_to_text(&mut app, 40, 30);
+        assert!(text.contains(command), "{text}");
+        assert!(app.recommendation_rendered);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(
+            rx.try_recv().unwrap().choice.actions.as_slice(),
+            [crate::coordinator::RecommendedAction::Send { input, .. }] if input == command
+        ));
+    }
+}
+
+#[test]
 fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch() {
     use crate::agent_tools::action_proposal::channel::{
         ProposalChannelManager, ProposalFinalStatus,

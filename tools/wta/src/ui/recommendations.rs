@@ -103,6 +103,7 @@ fn render_compact(frame: &mut Frame, app: &mut App, area: Rect) -> bool {
     let summary_width =
         (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
     let lines = full_command_lines(&summary, summary_width.max(1));
+    let body_fits_width = lines.iter().all(|line| line.width() <= summary_width);
     app.current_tab_mut()
         .rec_body_scroll
         .set_max(lines.len().saturating_sub(1));
@@ -132,7 +133,9 @@ fn render_compact(frame: &mut Frame, app: &mut App, area: Rect) -> bool {
         let focused = (app.current_tab().recommendation_focus
             == crate::app::RecommendationFocus::Button)
             .then_some(app.current_tab().selected_button);
-        return summary_width >= 2 && render_action_buttons(frame, button_area, &buttons, focused);
+        return summary_width >= 2
+            && render_action_buttons(frame, button_area, &buttons, focused)
+            && body_fits_width;
     }
     false
 }
@@ -188,8 +191,12 @@ fn render_card(
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
     };
     let content_inner = card::inset_horizontal(content_area, 2);
+    let mut body_fits_width = false;
     if content_inner.width > 0 {
         let lines = full_command_lines(&command_text, content_inner.width as usize);
+        body_fits_width = lines
+            .iter()
+            .all(|line| line.width() <= content_inner.width as usize);
         let max = lines.len().saturating_sub(content_inner.height as usize);
         let body_offset = if is_selected {
             app.current_tab_mut().rec_body_scroll.set_max(max);
@@ -220,7 +227,8 @@ fn render_card(
         };
         return content_inner.width >= 2
             && content_inner.height > 0
-            && render_action_buttons(frame, button_inner, &buttons, focused);
+            && render_action_buttons(frame, button_inner, &buttons, focused)
+            && body_fits_width;
     }
     false
 }
