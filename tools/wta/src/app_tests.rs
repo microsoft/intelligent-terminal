@@ -26324,6 +26324,8 @@ fn recommendation_review_preserves_delegated_agent_and_exact_shell_payload() {
 
 #[test]
 fn recommendation_review_preserves_wide_grapheme_and_rejects_unusable_viewport() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
     assert!(app.commit_terminal_action_proposal(&proposal_id));
