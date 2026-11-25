@@ -108,10 +108,8 @@ recommendations.nav_hint: "(↑ ↓ навигация • ← → перекл�
 recommendations.button_run_command: "[ Выполнить команду ]"
 recommendations.button_insert_in_terminal: "Вставить в терминал"
 recommendations.button_open_in_new_tab: "Открыть в новой вкладке ↵"
-recommendations.review_required: "Показать команду целиком"
-recommendations.button_back: "Назад"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → действия · Enter выбрать · ↑ ↓ / PgUp PgDn прокрутить · Esc назад · Ctrl+C отменить"
+recommendations.full_view_hint: "← → действия · Enter выбрать · ↑ ↓ / PgUp PgDn прокрутить · Esc / Ctrl+C отменить"
 recommendations.button_open_in_new_panel: "Открыть в новой панели ↵"
 recommendations.button_open_tab: "Открыть вкладку ↵"
 recommendations.button_open_panel: "Открыть панель ↵"

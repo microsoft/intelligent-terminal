@@ -99,10 +99,8 @@ recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to s
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
-recommendations.review_required: "[!!_Ṽïéŵ fûĺĺ çöḿḿåñď_!!]"
-recommendations.button_back: "[!!_Båçķ_!!]"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "[!!_← → åçţïöñś · Enter śéĺéçţ · ↑ ↓ / PgUp PgDn śçŕöĺĺ · Esc ɓåçķ · Ctrl+C çåñçéĺ_!!]"
+recommendations.full_view_hint: "[!!_← → åçţïöñś · Enter śéĺéçţ · ↑ ↓ / PgUp PgDn śçŕöĺĺ · Esc / Ctrl+C çåñçéĺ_!!]"
 recommendations.button_open_in_new_panel: "[!!_Open in New Panel ↵_!!]"
 recommendations.button_open_tab: "[!!_Open Tab ↵_!!]"
 recommendations.button_open_panel: "[!!_Open Panel ↵_!!]"

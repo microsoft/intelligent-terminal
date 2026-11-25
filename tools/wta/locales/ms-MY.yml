@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk menukar tin
 recommendations.button_run_command: "[ Jalankan arahan ]"
 recommendations.button_insert_in_terminal: "Sisipkan dalam Terminal"
 recommendations.button_open_in_new_tab: "Buka dalam Tab Baharu ↵"
-recommendations.review_required: "Lihat arahan penuh"
-recommendations.button_back: "Kembali"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → tindakan · Enter pilih · ↑ ↓ / PgUp PgDn tatal · Esc kembali · Ctrl+C batalkan"
+recommendations.full_view_hint: "← → tindakan · Enter pilih · ↑ ↓ / PgUp PgDn tatal · Esc / Ctrl+C batalkan"
 recommendations.button_open_in_new_panel: "Buka dalam Panel Baharu ↵"
 recommendations.button_open_tab: "Buka Tab ↵"
 recommendations.button_open_panel: "Buka Panel ↵"

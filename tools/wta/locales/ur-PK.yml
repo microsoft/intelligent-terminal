@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ نیویگیٹ کرنے کے لیے • ← 
 recommendations.button_run_command: "[ کمانڈ چلائیں ]"
 recommendations.button_insert_in_terminal: "ٹرمینل میں داخل کریں"
 recommendations.button_open_in_new_tab: "نئی ٹیب میں کھولیں ↵"
-recommendations.review_required: "مکمل کمانڈ دیکھیں"
-recommendations.button_back: "واپس"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → کارروائیاں · Enter منتخب کریں · ↑ ↓ / PgUp PgDn اسکرول کریں · Esc واپس · Ctrl+C منسوخ کریں"
+recommendations.full_view_hint: "← → کارروائیاں · Enter منتخب کریں · ↑ ↓ / PgUp PgDn اسکرول کریں · Esc / Ctrl+C منسوخ کریں"
 recommendations.button_open_in_new_panel: "نئے پینل میں کھولیں ↵"
 recommendations.button_open_tab: "ٹیب کھولیں ↵"
 recommendations.button_open_panel: "پینل کھولیں ↵"

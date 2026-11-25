@@ -100,10 +100,8 @@ recommendations.nav_hint: "(↑ ↓ ለማሰስ • ← → አዝራሮችን 
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
-recommendations.review_required: "ሙሉውን ትዕዛዝ ይመልከቱ"
-recommendations.button_back: "ተመለስ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → እርምጃዎች · Enter ምረጥ · ↑ ↓ / PgUp PgDn ሸብልል · Esc ተመለስ · Ctrl+C ሰርዝ"
+recommendations.full_view_hint: "← → እርምጃዎች · Enter ምረጥ · ↑ ↓ / PgUp PgDn ሸብልል · Esc / Ctrl+C ሰርዝ"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"

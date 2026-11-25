@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ ნავიგაციისთვის �
 recommendations.button_run_command: "[ ბრძანების გაშვება ]"
 recommendations.button_insert_in_terminal: "ჩასმა ტერმინალში"
 recommendations.button_open_in_new_tab: "ახალ ჩანართში გახსნა ↵"
-recommendations.review_required: "სრული ბრძანების ნახვა"
-recommendations.button_back: "უკან"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → მოქმედებები · Enter არჩევა · ↑ ↓ / PgUp PgDn გადახვევა · Esc უკან · Ctrl+C გაუქმება"
+recommendations.full_view_hint: "← → მოქმედებები · Enter არჩევა · ↑ ↓ / PgUp PgDn გადახვევა · Esc / Ctrl+C გაუქმება"
 recommendations.button_open_in_new_panel: "ახალ პანელში გახსნა ↵"
 recommendations.button_open_tab: "ჩანართის გახსნა ↵"
 recommendations.button_open_panel: "პანელის გახსნა ↵"

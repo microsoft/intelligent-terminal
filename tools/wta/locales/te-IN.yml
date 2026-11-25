@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ నావిగేట్ చేయడాన�
 recommendations.button_run_command: "[ కమాండ్ అమలు చేయండి ]"
 recommendations.button_insert_in_terminal: "టెర్మినల్‌లో చొప్పించండి"
 recommendations.button_open_in_new_tab: "కొత్త ట్యాబ్‌లో తెరవండి ↵"
-recommendations.review_required: "పూర్తి కమాండ్ చూడండి"
-recommendations.button_back: "వెనుకకు"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → చర్యలు · Enter ఎంచుకోండి · ↑ ↓ / PgUp PgDn స్క్రోల్ చేయండి · Esc వెనుకకు · Ctrl+C రద్దు చేయండి"
+recommendations.full_view_hint: "← → చర్యలు · Enter ఎంచుకోండి · ↑ ↓ / PgUp PgDn స్క్రోల్ చేయండి · Esc / Ctrl+C రద్దు చేయండి"
 recommendations.button_open_in_new_panel: "కొత్త ప్యానెల్‌లో తెరవండి ↵"
 recommendations.button_open_tab: "ట్యాబ్ తెరవండి ↵"
 recommendations.button_open_panel: "ప్యానెల్ తెరవండి ↵"

@@ -8,12 +8,6 @@ use crate::theme;
 use crate::ui::action_panel::{recommendation_card_height, PanelMode};
 use crate::ui::card::{self, CARD_MIN_SIZE};
 
-#[derive(Default)]
-pub(crate) struct RenderedRecommendations {
-    pub bounds: Option<Rect>,
-    pub reviewable_choice: Option<RecommendationChoice>,
-}
-
 /// Render the recommendations panel. Pure: callers (layout.rs) must call
 /// `App::sync_rec_scroll_max` first so `rec_scroll.offset` is already clamped
 /// when we paint.
@@ -28,28 +22,19 @@ pub(crate) struct RenderedRecommendations {
 /// area, so the user keeps the border, button, and as many content rows as
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode. Returns the bounds of cards with painted content.
-pub(crate) fn render(
-    frame: &mut Frame,
-    app: &App,
-    area: Rect,
-    mode: PanelMode,
-) -> RenderedRecommendations {
+pub(crate) fn render(frame: &mut Frame, app: &App, area: Rect, mode: PanelMode) -> Option<Rect> {
     let Some(recs) = app.current_tab().turn.recommendations() else {
-        return RenderedRecommendations::default();
+        return None;
     };
     if mode == PanelMode::Hidden || area.width == 0 || area.height == 0 {
-        return RenderedRecommendations::default();
+        return None;
     }
     if mode == PanelMode::Compact {
-        let (painted, reviewable) = render_compact(frame, app, area);
-        return RenderedRecommendations {
-            bounds: painted.then_some(area),
-            reviewable_choice: reviewable,
-        };
+        let painted = render_compact(frame, app, area);
+        return painted.then_some(area);
     }
 
     let mut rendered: Option<Rect> = None;
-    let mut reviewable_choice = None;
     let rec_scroll = app.current_tab().rec_scroll.offset;
     let cards_bottom = area.y.saturating_add(area.height);
 
@@ -80,36 +65,26 @@ pub(crate) fn render(
                 width: area.width,
                 height: render_h,
             };
-            let (painted, reviewable) = render_card(frame, app, card_area, choice, idx);
+            let painted = render_card(frame, app, card_area, choice, idx);
             if painted {
                 rendered = Some(rendered.map_or(card_area, |bounds| bounds.union(card_area)));
-            }
-            if reviewable && idx == app.current_tab().selected_recommendation {
-                reviewable_choice = Some(choice.clone());
             }
         }
         canvas_top += h;
     }
-    RenderedRecommendations {
-        bounds: rendered,
-        reviewable_choice,
-    }
+    rendered
 }
 
-fn render_compact(
-    frame: &mut Frame,
-    app: &App,
-    area: Rect,
-) -> (bool, Option<RecommendationChoice>) {
+fn render_compact(frame: &mut Frame, app: &App, area: Rect) -> bool {
     let Some(recommendations) = app.current_tab().turn.recommendations() else {
-        return (false, None);
+        return false;
     };
     let selected = app
         .current_tab()
         .selected_recommendation
         .min(recommendations.choices.len().saturating_sub(1));
     let Some(choice) = recommendations.choices.get(selected) else {
-        return (false, None);
+        return false;
     };
     let (summary, buttons, body_kind) = extract_card_content(choice);
     let marker = "○";
@@ -121,10 +96,6 @@ fn render_compact(
     let prefix = format!("{marker}{position}");
     let summary_width =
         (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
-    let reviewable = choice.actions.len() == 1
-        && !summary.contains(['\r', '\n'])
-        && UnicodeWidthStr::width(summary.as_str()) <= summary_width
-        && area.height > 1;
     let summary = truncate_compact(&summary.replace(['\r', '\n'], " "), summary_width);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
@@ -150,18 +121,9 @@ fn render_compact(
         let focused = (app.current_tab().recommendation_focus
             == crate::app::RecommendationFocus::Button)
             .then_some(app.current_tab().selected_button);
-        if reviewable {
-            card::render_buttons(frame, button_area, &buttons, focused);
-        } else {
-            card::render_buttons(
-                frame,
-                button_area,
-                &[t!("recommendations.review_required").into_owned()],
-                focused.map(|_| 0),
-            );
-        }
+        card::render_buttons(frame, button_area, &buttons, focused);
     }
-    (summary_width > 1, reviewable.then(|| choice.clone()))
+    summary_width > 1
 }
 
 fn truncate_compact(text: &str, width: usize) -> String {
@@ -211,9 +173,9 @@ fn render_card(
     area: Rect,
     choice: &RecommendationChoice,
     idx: usize,
-) -> (bool, bool) {
+) -> bool {
     if area.width < CARD_MIN_SIZE || area.height < CARD_MIN_SIZE {
-        return (false, false);
+        return false;
     }
 
     // A selected card only paints button focus while recommendation navigation
@@ -228,7 +190,7 @@ fn render_card(
 
     let Some((content_area, button_area)) = card::render_card_shell(frame, area, border_style)
     else {
-        return (false, false);
+        return false;
     };
 
     let (command_text, buttons, body_kind) = extract_card_content(choice);
@@ -237,17 +199,10 @@ fn render_card(
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
     };
     let content_inner = card::inset_horizontal(content_area, 2);
-    let mut reviewable = false;
     if content_inner.width > 0 {
-        let graphemes_fit = Span::raw(command_text.as_str())
-            .styled_graphemes(Style::default())
-            .all(|grapheme| grapheme.symbol.width() <= content_inner.width as usize);
         let content = Paragraph::new(command_text)
             .style(body_style)
             .wrap(Wrap { trim: false });
-        reviewable = choice.actions.len() == 1
-            && graphemes_fit
-            && content.line_count(content_inner.width) <= content_inner.height as usize;
         frame.render_widget(content, content_inner);
     }
 
@@ -260,40 +215,20 @@ fn render_card(
         } else {
             None
         };
-        if reviewable {
-            card::render_buttons(frame, button_inner, &buttons, focused);
-        } else {
-            card::render_buttons(
-                frame,
-                button_inner,
-                &[t!("recommendations.review_required").into_owned()],
-                focused.map(|_| 0),
-            );
-        }
+        card::render_buttons(frame, button_inner, &buttons, focused);
     }
-    (
-        content_inner.width > 0 && content_inner.height > 0,
-        reviewable,
-    )
+    content_inner.width > 0 && content_inner.height > 0
 }
 
 /// A read-only viewport over the exact bound payload. Scrolling never changes
 /// the payload, and approval does not depend on visiting any particular row.
-pub(crate) fn render_full_view(frame: &mut Frame, app: &mut App, area: Rect) {
+pub(crate) fn render_review(frame: &mut Frame, app: &mut App, area: Rect) {
     let Some(view) = app.recommendation_full_view.as_ref() else {
         return;
     };
     let binding = view.binding.clone();
     frame.render_widget(Clear, area);
-    // Drop decorative borders first in tiny panes, preserving command and actions.
-    let inner = if area.width >= 6 && area.height >= 7 {
-        let block = super::popup::block(t!("recommendations.review_required").into_owned());
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        inner
-    } else {
-        area
-    };
+    let inner = area;
     let hint_rows = u16::from(inner.height >= 3);
     let [body, buttons, hint] = Layout::vertical([
         Constraint::Min(0),
@@ -339,7 +274,6 @@ pub(crate) fn render_full_view(frame: &mut Frame, app: &mut App, area: Rect) {
         ),
         body,
     );
-    labels.push(t!("recommendations.button_back").into_owned());
     let selected = app.current_tab().selected_button.min(labels.len() - 1);
     let labels_width = labels.iter().map(|label| label.width()).sum::<usize>()
         + 3 * labels.len().saturating_sub(1);

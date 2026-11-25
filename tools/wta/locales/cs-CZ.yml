@@ -109,10 +109,8 @@ recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání t
 recommendations.button_run_command: "[ Spustit příkaz ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"
-recommendations.review_required: "Zobrazit celý příkaz"
-recommendations.button_back: "Zpět"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → akce · Enter vybrat · ↑ ↓ / PgUp PgDn posouvat · Esc zpět · Ctrl+C zrušit"
+recommendations.full_view_hint: "← → akce · Enter vybrat · ↑ ↓ / PgUp PgDn posouvat · Esc / Ctrl+C zrušit"
 recommendations.button_open_in_new_panel: "Otevřít v novém panelu ↵"
 recommendations.button_open_tab: "Otevřít kartu ↵"
 recommendations.button_open_panel: "Otevřít panel ↵"

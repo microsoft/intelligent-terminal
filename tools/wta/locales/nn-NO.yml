@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å byte knap
 recommendations.button_run_command: "[ Køyr kommando ]"
 recommendations.button_insert_in_terminal: "Set inn i Terminal"
 recommendations.button_open_in_new_tab: "Opne i ny fane ↵"
-recommendations.review_required: "Vis heile kommandoen"
-recommendations.button_back: "Tilbake"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → handlingar · Enter vel · ↑ ↓ / PgUp PgDn rull · Esc tilbake · Ctrl+C avbryt"
+recommendations.full_view_hint: "← → handlingar · Enter vel · ↑ ↓ / PgUp PgDn rull · Esc / Ctrl+C avbryt"
 recommendations.button_open_in_new_panel: "Opne i nytt panel ↵"
 recommendations.button_open_tab: "Opne fane ↵"
 recommendations.button_open_panel: "Opne panel ↵"

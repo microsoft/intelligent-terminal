@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu
 recommendations.button_run_command: "[ Izpildīt komandu ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
-recommendations.review_required: "Skatīt visu komandu"
-recommendations.button_back: "Atpakaļ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → darbības · Enter izvēlēties · ↑ ↓ / PgUp PgDn ritināt · Esc atpakaļ · Ctrl+C atcelt"
+recommendations.full_view_hint: "← → darbības · Enter izvēlēties · ↑ ↓ / PgUp PgDn ritināt · Esc / Ctrl+C atcelt"
 recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
 recommendations.button_open_tab: "Atvērt cilni ↵"
 recommendations.button_open_panel: "Atvērt paneli ↵"

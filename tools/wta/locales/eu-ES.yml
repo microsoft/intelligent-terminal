@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ nabigatzeko • ← → ekintzak aldatzeko �
 recommendations.button_run_command: "[ Exekutatu komandoa ]"
 recommendations.button_insert_in_terminal: "Txertatu Terminalean"
 recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
-recommendations.review_required: "Ikusi komando osoa"
-recommendations.button_back: "Atzera"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ekintzak · Enter hautatu · ↑ ↓ / PgUp PgDn korritu · Esc atzera · Ctrl+C utzi bertan behera"
+recommendations.full_view_hint: "← → ekintzak · Enter hautatu · ↑ ↓ / PgUp PgDn korritu · Esc / Ctrl+C utzi bertan behera"
 recommendations.button_open_in_new_panel: "Ireki Panel Berrian ↵"
 recommendations.button_open_tab: "Ireki Fitxa ↵"
 recommendations.button_open_panel: "Ireki Panela ↵"

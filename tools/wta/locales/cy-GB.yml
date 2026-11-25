@@ -100,10 +100,8 @@ recommendations.nav_hint: "(↑ ↓ i lywio • ← → i newid botymau • Ente
 recommendations.button_run_command: "[ Rhedeg gorchymyn ]"
 recommendations.button_insert_in_terminal: "Mewnosod yn y Terfynell"
 recommendations.button_open_in_new_tab: "Agor mewn Tab Newydd ↵"
-recommendations.review_required: "Gweld y gorchymyn llawn"
-recommendations.button_back: "Yn ôl"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → gweithredoedd · Enter dewis · ↑ ↓ / PgUp PgDn sgrolio · Esc yn ôl · Ctrl+C canslo"
+recommendations.full_view_hint: "← → gweithredoedd · Enter dewis · ↑ ↓ / PgUp PgDn sgrolio · Esc / Ctrl+C canslo"
 recommendations.button_open_in_new_panel: "Agor mewn Panel Newydd ↵"
 recommendations.button_open_tab: "Agor Tab ↵"
 recommendations.button_open_panel: "Agor Panel ↵"

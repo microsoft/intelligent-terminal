@@ -108,10 +108,8 @@ recommendations.nav_hint: "(↑ ↓ за навигацију • ← → за �
 recommendations.button_run_command: "[ Покрени команду ]"
 recommendations.button_insert_in_terminal: "Убаци у Terminal"
 recommendations.button_open_in_new_tab: "Отвори у новој картици ↵"
-recommendations.review_required: "Прикажи целу команду"
-recommendations.button_back: "Назад"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → радње · Enter избор · ↑ ↓ / PgUp PgDn померање · Esc назад · Ctrl+C отказивање"
+recommendations.full_view_hint: "← → радње · Enter избор · ↑ ↓ / PgUp PgDn померање · Esc / Ctrl+C отказивање"
 recommendations.button_open_in_new_panel: "Отвори у новом панелу ↵"
 recommendations.button_open_tab: "Отвори картицу ↵"
 recommendations.button_open_panel: "Отвори панел ↵"

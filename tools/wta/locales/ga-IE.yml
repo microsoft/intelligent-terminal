@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ chun nascleanúint a dhéanamh • ← → c
 recommendations.button_run_command: "[ Rith ordú ]"
 recommendations.button_insert_in_terminal: "Ionsáigh i dTeirminéal"
 recommendations.button_open_in_new_tab: "Oscail i gCluaisín Nua ↵"
-recommendations.review_required: "Féach ar an ordú iomlán"
-recommendations.button_back: "Siar"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → gníomhartha · Enter roghnaigh · ↑ ↓ / PgUp PgDn scrollaigh · Esc siar · Ctrl+C cealaigh"
+recommendations.full_view_hint: "← → gníomhartha · Enter roghnaigh · ↑ ↓ / PgUp PgDn scrollaigh · Esc / Ctrl+C cealaigh"
 recommendations.button_open_in_new_panel: "Oscail i bPainéal Nua ↵"
 recommendations.button_open_tab: "Oscail Cluaisín ↵"
 recommendations.button_open_panel: "Oscail Painéal ↵"

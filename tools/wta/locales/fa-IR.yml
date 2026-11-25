@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ برای پیمایش • ← → برای �
 recommendations.button_run_command: "[ اجرای دستور ]"
 recommendations.button_insert_in_terminal: "درج در ترمینال"
 recommendations.button_open_in_new_tab: "باز کردن در زبانه جدید ↵"
-recommendations.review_required: "مشاهدهٔ دستور کامل"
-recommendations.button_back: "بازگشت"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → کنش‌ها · Enter انتخاب · ↑ ↓ / PgUp PgDn پیمایش · Esc بازگشت · Ctrl+C لغو"
+recommendations.full_view_hint: "← → کنش‌ها · Enter انتخاب · ↑ ↓ / PgUp PgDn پیمایش · Esc / Ctrl+C لغو"
 recommendations.button_open_in_new_panel: "باز کردن در پنل جدید ↵"
 recommendations.button_open_tab: "باز کردن زبانه ↵"
 recommendations.button_open_panel: "باز کردن پنل ↵"

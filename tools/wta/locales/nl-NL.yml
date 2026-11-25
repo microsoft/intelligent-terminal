@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen 
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
-recommendations.review_required: "Volledige opdracht bekijken"
-recommendations.button_back: "Terug"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → acties · Enter selecteren · ↑ ↓ / PgUp PgDn scrollen · Esc terug · Ctrl+C annuleren"
+recommendations.full_view_hint: "← → acties · Enter selecteren · ↑ ↓ / PgUp PgDn scrollen · Esc / Ctrl+C annuleren"
 recommendations.button_open_in_new_panel: "Openen in nieuw deelvenster ↵"
 recommendations.button_open_tab: "Tabblad openen ↵"
 recommendations.button_open_panel: "Deelvenster openen ↵"

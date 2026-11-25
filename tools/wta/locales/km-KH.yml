@@ -105,10 +105,8 @@ recommendations.nav_hint: "(↑ ↓ ដើម្បីរុករក • ← �
 recommendations.button_run_command: "[ ដំណើរការពាក្យបញ្ជា ]"
 recommendations.button_insert_in_terminal: "បញ្ចូលក្នុង Terminal"
 recommendations.button_open_in_new_tab: "បើកក្នុងផ្ទាំងថ្មី ↵"
-recommendations.review_required: "មើលពាក្យបញ្ជាទាំងមូល"
-recommendations.button_back: "ត្រឡប់ក្រោយ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → សកម្មភាព · Enter ជ្រើសរើស · ↑ ↓ / PgUp PgDn រមូរ · Esc ត្រឡប់ក្រោយ · Ctrl+C បោះបង់"
+recommendations.full_view_hint: "← → សកម្មភាព · Enter ជ្រើសរើស · ↑ ↓ / PgUp PgDn រមូរ · Esc / Ctrl+C បោះបង់"
 recommendations.button_open_in_new_panel: "បើកក្នុងផ្តាំងថ្មី ↵"
 recommendations.button_open_tab: "បើកផ្ទាំង ↵"
 recommendations.button_open_panel: "បើកផ្តាំង ↵"

@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ नेव्हिगेट करण्य�
 recommendations.button_run_command: "[ कमांड चालवा ]"
 recommendations.button_insert_in_terminal: "टर्मिनलमध्ये घाला"
 recommendations.button_open_in_new_tab: "नवीन टॅबमध्ये उघडा ↵"
-recommendations.review_required: "संपूर्ण कमांड पहा"
-recommendations.button_back: "मागे"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → कृती · Enter निवडा · ↑ ↓ / PgUp PgDn स्क्रोल करा · Esc मागे · Ctrl+C रद्द करा"
+recommendations.full_view_hint: "← → कृती · Enter निवडा · ↑ ↓ / PgUp PgDn स्क्रोल करा · Esc / Ctrl+C रद्द करा"
 recommendations.button_open_in_new_panel: "नवीन पॅनेलमध्ये उघडा ↵"
 recommendations.button_open_tab: "टॅब उघडा ↵"
 recommendations.button_open_panel: "पॅनेल उघडा ↵"

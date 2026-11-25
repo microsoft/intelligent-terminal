@@ -95,10 +95,8 @@ recommendations.nav_hint: "(↑ ↓ 탐색 • ← → 버튼 전환 • Enter �
 recommendations.button_run_command: "[ 명령 실행 ]"
 recommendations.button_insert_in_terminal: "터미널에 삽입"
 recommendations.button_open_in_new_tab: "새 탭에서 열기 ↵"
-recommendations.review_required: "전체 명령 보기"
-recommendations.button_back: "뒤로"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → 작업 전환 · Enter 선택 · ↑ ↓ / PgUp PgDn 스크롤 · Esc 뒤로 · Ctrl+C 취소"
+recommendations.full_view_hint: "← → 작업 전환 · Enter 선택 · ↑ ↓ / PgUp PgDn 스크롤 · Esc / Ctrl+C 취소"
 recommendations.button_open_in_new_panel: "새 패널에서 열기 ↵"
 recommendations.button_open_tab: "탭 열기 ↵"
 recommendations.button_open_panel: "패널 열기 ↵"

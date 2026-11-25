@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ gus seòladh • ← → gus putanan atharra
 recommendations.button_run_command: "[ Ruith òrdugh ]"
 recommendations.button_insert_in_terminal: "Cuir a-steach san Teirmineal"
 recommendations.button_open_in_new_tab: "Fosgail ann an Taba Ùr ↵"
-recommendations.review_required: "Seall an t-òrdugh slàn"
-recommendations.button_back: "Air ais"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → gnìomhan · Enter tagh · ↑ ↓ / PgUp PgDn sgrolaich · Esc air ais · Ctrl+C sguir dheth"
+recommendations.full_view_hint: "← → gnìomhan · Enter tagh · ↑ ↓ / PgUp PgDn sgrolaich · Esc / Ctrl+C sguir dheth"
 recommendations.button_open_in_new_panel: "Fosgail ann am Panail Ùr ↵"
 recommendations.button_open_tab: "Fosgail Taba ↵"
 recommendations.button_open_panel: "Fosgail Panail ↵"

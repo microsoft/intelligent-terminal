@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ fir ze navigéieren • ← → fir Knäpper
 recommendations.button_run_command: "[ Kommando ausféieren ]"
 recommendations.button_insert_in_terminal: "An den Terminal asetzen"
 recommendations.button_open_in_new_tab: "An engem neien Tab opmaachen ↵"
-recommendations.review_required: "Ganze Kommando kucken"
-recommendations.button_back: "Zréck"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → Aktiounen · Enter auswielen · ↑ ↓ / PgUp PgDn scrollen · Esc zréck · Ctrl+C ofbriechen"
+recommendations.full_view_hint: "← → Aktiounen · Enter auswielen · ↑ ↓ / PgUp PgDn scrollen · Esc / Ctrl+C ofbriechen"
 recommendations.button_open_in_new_panel: "An engem neie Panell opmaachen ↵"
 recommendations.button_open_tab: "Tab opmaachen ↵"
 recommendations.button_open_panel: "Panell opmaachen ↵"

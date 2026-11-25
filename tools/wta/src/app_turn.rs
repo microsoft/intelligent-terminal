@@ -787,9 +787,9 @@ impl App {
             self.recommendation_approval = None;
             self.current_tab_mut().selected_button = 0;
         }
-    }
-
-    pub(crate) fn open_recommendation_full_view(&mut self) {
+        if self.recommendation_full_view.is_some() {
+            return;
+        }
         let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
         };
@@ -801,11 +801,10 @@ impl App {
             prompt_id,
             choice,
         };
-        if !self.recommendation_rendered || !self.recommendation_binding_is_current(&binding) {
+        if !self.recommendation_binding_is_current(&binding) {
             return;
         }
         self.recommendation_approval = None;
-        self.current_tab_mut().selected_button = 0;
         self.recommendation_full_view = Some(RecommendationFullView {
             binding,
             scroll: 0,
@@ -820,8 +819,7 @@ impl App {
         choice: &crate::coordinator::RecommendationChoice,
     ) -> bool {
         self.session_tab(session_id).pane_open
-            && (self.recommendation_full_view.is_none()
-                || self.current_tab().selected_button < self.button_count_for_selected())
+            && self.current_tab().selected_button < self.button_count_for_selected()
             && self
                 .recommendation_approval
                 .as_ref()

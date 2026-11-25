@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ para navegar • ← → para cambiar acció
 recommendations.button_run_command: "[ Executar comando ]"
 recommendations.button_insert_in_terminal: "Inserir no Terminal"
 recommendations.button_open_in_new_tab: "Abrir nunha pestana nova ↵"
-recommendations.review_required: "Ver o comando completo"
-recommendations.button_back: "Atrás"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → accións · Enter seleccionar · ↑ ↓ / PgUp PgDn desprazarse · Esc atrás · Ctrl+C cancelar"
+recommendations.full_view_hint: "← → accións · Enter seleccionar · ↑ ↓ / PgUp PgDn desprazarse · Esc / Ctrl+C cancelar"
 recommendations.button_open_in_new_panel: "Abrir nun panel novo ↵"
 recommendations.button_open_tab: "Abrir pestana ↵"
 recommendations.button_open_panel: "Abrir panel ↵"

@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ pentru navigare • ← → pentru comutarea
 recommendations.button_run_command: "[ Rulează comanda ]"
 recommendations.button_insert_in_terminal: "Inserare în Terminal"
 recommendations.button_open_in_new_tab: "Deschide în filă nouă ↵"
-recommendations.review_required: "Vizualizați comanda completă"
-recommendations.button_back: "Înapoi"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → acțiuni · Enter selectare · ↑ ↓ / PgUp PgDn derulare · Esc înapoi · Ctrl+C anulare"
+recommendations.full_view_hint: "← → acțiuni · Enter selectare · ↑ ↓ / PgUp PgDn derulare · Esc / Ctrl+C anulare"
 recommendations.button_open_in_new_panel: "Deschide în panou nou ↵"
 recommendations.button_open_tab: "Deschide filă ↵"
 recommendations.button_open_panel: "Deschide panou ↵"

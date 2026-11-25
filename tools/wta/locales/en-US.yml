@@ -159,10 +159,8 @@ system.provider_command_blocked_by_policy: "%{command}: Automatic approval is di
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
 # glyphs, do not translate
 recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
-recommendations.review_required: "View full command"  # Opens a read-only, scrollable view when the command is truncated.
-recommendations.button_back: "Back"  # Returns from the full-command view to the suggestion without cancelling it.
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → actions · Enter select · ↑ ↓ / PgUp PgDn scroll · Esc back · Ctrl+C cancel"  # Read-only command view; Run/Insert acts on the exact command, not just the visible rows.
+recommendations.full_view_hint: "← → actions · Enter select · ↑ ↓ / PgUp PgDn scroll · Esc / Ctrl+C cancel"  # Default read-only command review. Run/Insert uses the exact command; scrolling is optional. Esc and Ctrl+C cancel the proposal.
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"

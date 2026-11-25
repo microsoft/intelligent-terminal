@@ -95,10 +95,8 @@ recommendations.nav_hint: "(↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter �
 recommendations.button_run_command: "[ 執行命令 ]"
 recommendations.button_insert_in_terminal: "插入終端機"
 recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"
-recommendations.review_required: "檢視完整命令"
-recommendations.button_back: "返回"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → 切換動作 · Enter 選取 · ↑ ↓ / PgUp PgDn 捲動 · Esc 返回 · Ctrl+C 取消"
+recommendations.full_view_hint: "← → 切換動作 · Enter 選取 · ↑ ↓ / PgUp PgDn 捲動 · Esc / Ctrl+C 取消"
 recommendations.button_open_in_new_panel: "在新面板中開啟 ↵"
 recommendations.button_open_tab: "開啟索引標籤 ↵"
 recommendations.button_open_panel: "開啟面板 ↵"

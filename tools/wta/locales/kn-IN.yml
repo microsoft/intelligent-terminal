@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ ನ್ಯಾವಿಗೇಟ್ ಮಾಡಲ�
 recommendations.button_run_command: "[ ಕಮಾಂಡ್ ರನ್ ಮಾಡಿ ]"
 recommendations.button_insert_in_terminal: "ಟರ್ಮಿನಲ್‌ನಲ್ಲಿ ಸೇರಿಸಿ"
 recommendations.button_open_in_new_tab: "ಹೊಸ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
-recommendations.review_required: "ಸಂಪೂರ್ಣ ಕಮಾಂಡ್ ವೀಕ್ಷಿಸಿ"
-recommendations.button_back: "ಹಿಂದೆ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ಕ್ರಿಯೆಗಳು · Enter ಆಯ್ಕೆಮಾಡಿ · ↑ ↓ / PgUp PgDn ಸ್ಕ್ರಾಲ್ ಮಾಡಿ · Esc ಹಿಂದೆ · Ctrl+C ರದ್ದುಗೊಳಿಸಿ"
+recommendations.full_view_hint: "← → ಕ್ರಿಯೆಗಳು · Enter ಆಯ್ಕೆಮಾಡಿ · ↑ ↓ / PgUp PgDn ಸ್ಕ್ರಾಲ್ ಮಾಡಿ · Esc / Ctrl+C ರದ್ದುಗೊಳಿಸಿ"
 recommendations.button_open_in_new_panel: "ಹೊಸ ಪ್ಯಾನೆಲ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_tab: "ಟ್ಯಾಬ್ ತೆರೆಯಿರಿ ↵"
 recommendations.button_open_panel: "ಪ್ಯಾನೆಲ್ ತೆರೆಯಿರಿ ↵"

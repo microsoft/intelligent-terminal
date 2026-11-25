@@ -113,10 +113,8 @@ recommendations.nav_hint: "(↑ ↓ নেভিগেট করুন • ← �
 recommendations.button_run_command: "[ কমান্ড চালান ]"
 recommendations.button_insert_in_terminal: "টার্মিনালে সন্নিবেশ করুন"
 recommendations.button_open_in_new_tab: "নতুন ট্যাবে খুলুন ↵"
-recommendations.review_required: "সম্পূর্ণ কমান্ড দেখুন"
-recommendations.button_back: "ফিরে যান"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → কার্যসমূহ · Enter নির্বাচন করুন · ↑ ↓ / PgUp PgDn স্ক্রল করুন · Esc ফিরে যান · Ctrl+C বাতিল করুন"
+recommendations.full_view_hint: "← → কার্যসমূহ · Enter নির্বাচন করুন · ↑ ↓ / PgUp PgDn স্ক্রল করুন · Esc / Ctrl+C বাতিল করুন"
 recommendations.button_open_in_new_panel: "নতুন প্যানেলে খুলুন ↵"
 recommendations.button_open_tab: "ট্যাব খুলুন ↵"
 recommendations.button_open_panel: "প্যানেল খুলুন ↵"

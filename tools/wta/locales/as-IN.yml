@@ -113,10 +113,8 @@ recommendations.nav_hint: "(↑ ↓ নেভিগেট কৰিবলৈ •
 recommendations.button_run_command: "[ কমাণ্ড চলাওক ]"
 recommendations.button_insert_in_terminal: "টাৰ্মিনেলত সন্নিবেশ কৰক"
 recommendations.button_open_in_new_tab: "নতুন টেবত খোলক ↵"
-recommendations.review_required: "সম্পূৰ্ণ কমাণ্ড চাওক"
-recommendations.button_back: "পিছলৈ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → কাৰ্যসমূহ · Enter বাছনি কৰক · ↑ ↓ / PgUp PgDn স্ক্ৰ'ল কৰক · Esc পিছলৈ · Ctrl+C বাতিল কৰক"
+recommendations.full_view_hint: "← → কাৰ্যসমূহ · Enter বাছনি কৰক · ↑ ↓ / PgUp PgDn স্ক্ৰ'ল কৰক · Esc / Ctrl+C বাতিল কৰক"
 recommendations.button_open_in_new_panel: "নতুন পেনেলত খোলক ↵"
 recommendations.button_open_tab: "টেব খোলক ↵"
 recommendations.button_open_panel: "পেনেল খোলক ↵"

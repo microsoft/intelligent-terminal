@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • ← → tugmalarni alm
 recommendations.button_run_command: "[ Buyruqni bajarish ]"
 recommendations.button_insert_in_terminal: "Terminal-ga kiritish"
 recommendations.button_open_in_new_tab: "Yangi varaqda ochish ↵"
-recommendations.review_required: "To‘liq buyruqni ko‘rish"
-recommendations.button_back: "Orqaga"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → amallar · Enter tanlash · ↑ ↓ / PgUp PgDn aylantirish · Esc orqaga · Ctrl+C bekor qilish"
+recommendations.full_view_hint: "← → amallar · Enter tanlash · ↑ ↓ / PgUp PgDn aylantirish · Esc / Ctrl+C bekor qilish"
 recommendations.button_open_in_new_panel: "Yangi panelda ochish ↵"
 recommendations.button_open_tab: "Varaqni ochish ↵"
 recommendations.button_open_panel: "Panelni ochish ↵"

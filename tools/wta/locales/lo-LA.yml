@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບ�
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
-recommendations.review_required: "ເບິ່ງຄຳສັ່ງທັງໝົດ"
-recommendations.button_back: "ກັບຄືນ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ການກະທຳ · Enter ເລືອກ · ↑ ↓ / PgUp PgDn ເລື່ອນ · Esc ກັບຄືນ · Ctrl+C ຍົກເລີກ"
+recommendations.full_view_hint: "← → ການກະທຳ · Enter ເລືອກ · ↑ ↓ / PgUp PgDn ເລື່ອນ · Esc / Ctrl+C ຍົກເລີກ"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
 recommendations.button_open_panel: "Open Panel ↵"

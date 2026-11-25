@@ -23,7 +23,7 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.recommendation_approval = None;
     app.sync_recommendation_full_view();
     if app.recommendation_full_view.is_some() {
-        recommendations::render_full_view(frame, app, area);
+        recommendations::render_review(frame, app, area);
         return;
     }
 
@@ -243,19 +243,7 @@ fn render_content(frame: &mut Frame, app: &mut App) {
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
     let recommendation_area =
         recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
-    app.recommendation_rendered = recommendation_area.bounds.is_some();
-    if let Some(choice) = recommendation_area
-        .reviewable_choice
-        .filter(|_| app.current_tab().pane_open)
-    {
-        if let Some(prompt) = app.current_tab().turn.prompt() {
-            app.recommendation_approval = Some(crate::app::RecommendationApproval {
-                tab_id: app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_owned(),
-                prompt_id: prompt.id,
-                choice,
-            });
-        }
-    }
+    app.recommendation_rendered = recommendation_area.is_some();
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -312,7 +300,6 @@ fn render_content(frame: &mut Frame, app: &mut App) {
         if let Some(popup_state) = app.command_popup_state() {
             let popup_area = command_popup::render_popup(frame, popup_state, input_area);
             if recommendation_area
-                .bounds
                 .zip(popup_area)
                 .is_some_and(|(card, popup)| card.intersects(popup))
             {

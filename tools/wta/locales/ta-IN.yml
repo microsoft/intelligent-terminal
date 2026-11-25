@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ வழிசெலுத்த • ← → �
 recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
 recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
 recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"
-recommendations.review_required: "முழு கட்டளையைக் காண்க"
-recommendations.button_back: "பின்"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → செயல்கள் · Enter தேர்ந்தெடு · ↑ ↓ / PgUp PgDn உருட்டு · Esc பின் · Ctrl+C ரத்துசெய்"
+recommendations.full_view_hint: "← → செயல்கள் · Enter தேர்ந்தெடு · ↑ ↓ / PgUp PgDn உருட்டு · Esc / Ctrl+C ரத்துசெய்"
 recommendations.button_open_in_new_panel: "புதிய பலகத்தில் திற ↵"
 recommendations.button_open_tab: "தாவலைத் திற ↵"
 recommendations.button_open_panel: "பலகத்தைத் திற ↵"

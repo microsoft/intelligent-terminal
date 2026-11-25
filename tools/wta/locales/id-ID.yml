@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ untuk navigasi • ← → untuk mengganti t
 recommendations.button_run_command: "[ Jalankan perintah ]"
 recommendations.button_insert_in_terminal: "Sisipkan di Terminal"
 recommendations.button_open_in_new_tab: "Buka di Tab Baru ↵"
-recommendations.review_required: "Lihat perintah lengkap"
-recommendations.button_back: "Kembali"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → tindakan · Enter pilih · ↑ ↓ / PgUp PgDn gulir · Esc kembali · Ctrl+C batalkan"
+recommendations.full_view_hint: "← → tindakan · Enter pilih · ↑ ↓ / PgUp PgDn gulir · Esc / Ctrl+C batalkan"
 recommendations.button_open_in_new_panel: "Buka di Panel Baru ↵"
 recommendations.button_open_tab: "Buka Tab ↵"
 recommendations.button_open_panel: "Buka Panel ↵"

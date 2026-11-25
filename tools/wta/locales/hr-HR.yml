@@ -108,10 +108,8 @@ recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje gu
 recommendations.button_run_command: "[ Pokreni naredbu ]"
 recommendations.button_insert_in_terminal: "Umetni u terminal"
 recommendations.button_open_in_new_tab: "Otvori u novoj kartici ↵"
-recommendations.review_required: "Prikaži cijelu naredbu"
-recommendations.button_back: "Natrag"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → radnje · Enter odabir · ↑ ↓ / PgUp PgDn pomicanje · Esc natrag · Ctrl+C odustajanje"
+recommendations.full_view_hint: "← → radnje · Enter odabir · ↑ ↓ / PgUp PgDn pomicanje · Esc / Ctrl+C odustajanje"
 recommendations.button_open_in_new_panel: "Otvori u novom oknu ↵"
 recommendations.button_open_tab: "Otvori karticu ↵"
 recommendations.button_open_panel: "Otvori okno ↵"

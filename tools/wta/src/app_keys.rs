@@ -62,7 +62,7 @@ impl App {
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
         self.sync_recommendation_full_view();
         if self.recommendation_full_view.is_some() {
-            // Read-only modal: no editing, paste, or navigation may reach the draft.
+            // Command review is always read-only; keys never edit the chat draft.
             if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                 self.recommendation_full_view = None;
                 self.recommendation_approval = None;
@@ -75,10 +75,11 @@ impl App {
                     KeyCode::Esc => {
                         self.recommendation_full_view = None;
                         self.recommendation_approval = None;
-                        self.current_tab_mut().selected_button = 0;
+                        let tab_id = self.active_tab_key().to_string();
+                        self.request_turn_cancel_for_tab(&tab_id);
                     }
                     KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
-                        let count = self.button_count_for_selected() + 1;
+                        let count = self.button_count_for_selected();
                         let selected = self.current_tab().selected_button;
                         self.current_tab_mut().selected_button =
                             if matches!(key.code, KeyCode::Left | KeyCode::BackTab) {
@@ -88,14 +89,6 @@ impl App {
                             };
                     }
                     KeyCode::Enter => {
-                        let back =
-                            self.button_count_for_selected() == self.current_tab().selected_button;
-                        if back {
-                            self.recommendation_full_view = None;
-                            self.recommendation_approval = None;
-                            self.current_tab_mut().selected_button = 0;
-                            return;
-                        }
                         if self.state == ConnectionState::Connected {
                             if let Some(session_id) = self.current_tab().session_id.clone() {
                                 self.turn_execute_card(&session_id);
@@ -906,12 +899,6 @@ impl App {
                     if self.state == ConnectionState::Connected {
                         let session_id = self.current_tab().session_id.clone();
                         if let Some(session_id) = session_id {
-                            if !self.selected_recommendation_choice().is_some_and(|choice| {
-                                self.recommendation_is_reviewed(&session_id, choice)
-                            }) {
-                                self.open_recommendation_full_view();
-                                return;
-                            }
                             let label_choice = self
                                 .selected_recommendation_choice()
                                 .map(|c| c.choice)

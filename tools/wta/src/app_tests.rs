@@ -26067,6 +26067,60 @@ fn flush_error_fix_telemetry_frame(app: &mut App, width: u16, height: u16) -> St
 }
 
 #[test]
+fn recommendation_default_complete_view_has_no_preview_navigation() {
+    let _locale_guard = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for command in [
+        "Get-Date".to_string(),
+        format!("Write-Output '{}TAIL'", "x".repeat(1200)),
+    ] {
+        let mut app = test_app();
+        let (_, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+        // Replace the staged single-action payload before it is displayed.
+        let proposal_id = app
+            .current_tab()
+            .pending_terminal_action_proposal
+            .as_ref()
+            .unwrap()
+            .proposal_id
+            .clone();
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        if let TurnState::Surfaced {
+            outcome: TurnOutcome::Recommendation(recs),
+            ..
+        } = &mut app.current_tab_mut().turn
+        {
+            if let RecommendedAction::Send { input, .. } = &mut recs.choices[0].actions[0] {
+                *input = command.clone();
+            }
+        }
+        let text = render_to_text(&mut app, 60, 12);
+        assert!(
+            app.recommendation_full_view.is_some(),
+            "every command defaults to complete review"
+        );
+        assert!(
+            app.recommendation_approval.is_some(),
+            "scrolling is not an approval gate"
+        );
+        assert!(!text.contains("View full command"));
+        assert!(!text.contains("Back"));
+        assert!(text.contains("Run") && text.contains("Insert"));
+        if command == "Get-Date" {
+            assert!(text.contains("Get-Date"));
+        } else {
+            app.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+            assert!(render_to_text(&mut app, 60, 12).contains("TAIL"));
+        }
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(
+            app.current_tab().turn.recommendations().is_none(),
+            "Esc cancels, never returns to a preview"
+        );
+    }
+}
+
+#[test]
 fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
     use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
     for hide in [
@@ -26139,7 +26193,7 @@ fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
 }
 
 #[test]
-fn recommendation_review_followup_one_cell_card_rejects_wide_grapheme() {
+fn recommendation_review_preserves_wide_grapheme_and_rejects_unusable_viewport() {
     let mut app = test_app();
     let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
     assert!(app.commit_terminal_action_proposal(&proposal_id));
@@ -26157,12 +26211,14 @@ fn recommendation_review_followup_one_cell_card_rejects_wide_grapheme() {
     } else {
         panic!("expected recommendation");
     }
-    // Two outer padding, two border and four inset cells leave a one-cell body.
-    let text = render_to_text(&mut app, 9, 30);
+    render_to_text(&mut app, 1, 30);
     assert!(
         app.recommendation_approval.is_none(),
-        "a dropped two-cell grapheme must not authorize a one-cell card:\n{text}"
+        "a viewport narrower than a wide grapheme must not authorize it"
     );
+    let text = render_to_text(&mut app, 2, 30);
+    assert!(text.contains(command), "{text}");
+    assert!(app.recommendation_approval.is_some());
 }
 
 #[test]
@@ -26223,19 +26279,6 @@ fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch(
                 } => set.choices[0].clone(),
                 _ => panic!("expected recommendation"),
             };
-            render_to_text(&mut app, 100, 30);
-            assert!(app.recommendation_approval.is_none());
-            app.turn_execute_card(session_id);
-            assert!(
-                rx.try_recv().is_err(),
-                "preview must not dispatch the batch"
-            );
-            app.handle_key(key(KeyCode::Enter));
-            assert!(
-                app.recommendation_full_view.is_some(),
-                "an accepted multi-action CLI proposal must open full review"
-            );
-            assert!(rx.try_recv().is_err());
             app.handle_key(key(KeyCode::Enter));
             assert!(
                 rx.try_recv().is_err(),
@@ -26286,8 +26329,6 @@ fn recommendation_review_followup_later_action_change_invalidates_review() {
         stage_direct_proposal_payload(&mut app, &manager, session_id, payload.to_string());
     assert!(app.commit_terminal_action_proposal(&proposal_id));
     render_to_text(&mut app, 100, 30);
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    render_to_text(&mut app, 100, 30);
     assert!(app.recommendation_approval.is_some());
     if let TurnState::Surfaced {
         outcome: TurnOutcome::Recommendation(set),
@@ -26335,16 +26376,11 @@ fn recommendation_full_view_runs_or_inserts_without_resize_or_scroll_gate() {
             }
             app.current_tab_mut().input = "draft".into();
             app.handle_event(AppEvent::Resize(width, height));
-            let text = render_to_text(&mut app, width, height);
-            assert!(app.recommendation_approval.is_none());
-            if width >= 24 {
-                assert!(text.contains("View full command"), "{text}");
-            }
             app.handle_key(key(KeyCode::Enter));
             assert!(rx.try_recv().is_err());
             assert!(
                 app.recommendation_full_view.is_some(),
-                "open at {width}x{height}: rendered={} focus={:?}\n{text}",
+                "default review at {width}x{height}: rendered={} focus={:?}",
                 app.recommendation_rendered,
                 app.current_tab().recommendation_focus
             );
@@ -26391,11 +26427,11 @@ fn recommendation_full_view_runs_or_inserts_without_resize_or_scroll_gate() {
 }
 
 #[test]
-fn recommendation_full_view_scroll_back_resize_and_cancel() {
+fn recommendation_full_view_scroll_resize_and_cancel() {
     use crate::coordinator::RecommendedAction;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
-    for leave in ["escape", "back", "cancel"] {
+    for leave in ["escape", "cancel"] {
         let mut app = test_app();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.recommendation_tx = tx;
@@ -26414,14 +26450,9 @@ fn recommendation_full_view_scroll_back_resize_and_cancel() {
         } else {
             panic!("expected recommendation");
         }
-        render_to_text(&mut app, 30, 8);
         assert!(app.recommendation_approval.is_none());
         app.turn_execute_card("fix-telemetry");
-        assert!(
-            rx.try_recv().is_err(),
-            "compact card cannot directly dispatch"
-        );
-        app.handle_key(key(KeyCode::Enter));
+        assert!(rx.try_recv().is_err(), "unpainted review cannot dispatch");
         render_to_text(&mut app, 30, 8);
         assert!(app.recommendation_full_view.is_some());
         let initial_scroll = app.recommendation_full_view.as_ref().unwrap().scroll;
@@ -26453,13 +26484,6 @@ fn recommendation_full_view_scroll_back_resize_and_cancel() {
                 app.handle_key(key(KeyCode::Left));
                 app.handle_key(key(KeyCode::Esc));
             }
-            "back" => {
-                app.handle_key(key(KeyCode::Right));
-                app.handle_key(key(KeyCode::Right));
-                app.turn_execute_card("fix-telemetry");
-                assert!(rx.try_recv().is_err(), "Back must never run the command");
-                app.handle_key(key(KeyCode::Enter));
-            }
             "cancel" => {
                 app.handle_event(AppEvent::Key(KeyEvent::new(
                     KeyCode::Char('a'),
@@ -26479,19 +26503,11 @@ fn recommendation_full_view_scroll_back_resize_and_cancel() {
         assert!(app.recommendation_full_view.is_none());
         assert!(app.recommendation_approval.is_none());
         assert!(rx.try_recv().is_err());
-        if leave == "cancel" {
-            assert!(app.current_tab().turn.recommendations().is_none());
-            assert_eq!(
-                final_rx.try_recv().unwrap(),
-                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
-            );
-        } else {
-            assert_eq!(app.current_tab().selected_button, 0);
-            assert!(final_rx.try_recv().is_err());
-            assert!(app.current_tab().turn.recommendations().is_some());
-            app.handle_key(key(KeyCode::Esc));
-            assert!(app.current_tab().turn.recommendations().is_none());
-        }
+        assert!(app.current_tab().turn.recommendations().is_none());
+        assert_eq!(
+            final_rx.try_recv().unwrap(),
+            crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+        );
     }
 }
 
@@ -26528,8 +26544,6 @@ fn recommendation_full_view_rejects_stale_payload_prompt_tab_and_hidden_confirma
             *input = format!("echo {}TAIL", "long ".repeat(1000));
         }
         app.current_tab_mut().autofix.pane_id = Some("pane-9".into());
-        render_to_text(&mut app, 40, 9);
-        app.handle_key(enter);
         render_to_text(&mut app, 40, 9);
         assert!(app.recommendation_approval.is_some());
         match change {
@@ -26600,8 +26614,8 @@ fn recommendation_full_view_rejects_stale_payload_prompt_tab_and_hidden_confirma
         );
         app.sync_recommendation_full_view();
         assert!(
-            app.recommendation_full_view.is_none(),
-            "{change} retained full view"
+            app.recommendation_approval.is_none(),
+            "{change} retained approval"
         );
         if matches!(change, "hide" | "hidden_render") {
             app.handle_event(AppEvent::WtEvent {
@@ -26612,10 +26626,9 @@ fn recommendation_full_view_rejects_stale_payload_prompt_tab_and_hidden_confirma
             });
             render_to_text(&mut app, 40, 9);
             assert!(
-                app.recommendation_approval.is_none(),
-                "reopen must show compact command"
+                app.recommendation_approval.is_some(),
+                "reopen paints the default complete review"
             );
-            app.handle_key(enter);
             assert!(app.recommendation_full_view.is_some());
             assert_eq!(app.recommendation_full_view.as_ref().unwrap().scroll, 0);
             render_to_text(&mut app, 40, 9);
@@ -26690,9 +26703,12 @@ fn recommendation_confirmation_invalidates_resize_and_changed_actions() {
         assert!(rx.try_recv().is_err(), "{change} reused a stale approval");
         if change == "extra_action" {
             render_to_text(&mut app, 120, 30);
-            assert!(app.recommendation_approval.is_none());
+            assert!(app.recommendation_approval.is_some());
             app.turn_execute_card("fix-telemetry");
-            assert!(rx.try_recv().is_err(), "undisplayed action was confirmed");
+            assert!(
+                rx.try_recv().is_ok(),
+                "fresh complete review must include the new action"
+            );
         }
     }
 }

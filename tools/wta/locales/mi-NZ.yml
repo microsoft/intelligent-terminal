@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ ki te whakatere • ← → ki te whakawhiti
 recommendations.button_run_command: "[ Whakahautia te whakahau ]"
 recommendations.button_insert_in_terminal: "Whakauruhia ki te Teirminara"
 recommendations.button_open_in_new_tab: "Whakatuwherahia i te Ripa Hou ↵"
-recommendations.review_required: "Tirohia te whakahau katoa"
-recommendations.button_back: "Hoki"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → ngā hohenga · Enter kōwhiri · ↑ ↓ / PgUp PgDn panuku · Esc hoki · Ctrl+C whakakore"
+recommendations.full_view_hint: "← → ngā hohenga · Enter kōwhiri · ↑ ↓ / PgUp PgDn panuku · Esc / Ctrl+C whakakore"
 recommendations.button_open_in_new_panel: "Whakatuwherahia i te Papa Hou ↵"
 recommendations.button_open_tab: "Whakatuwhera Ripa ↵"
 recommendations.button_open_panel: "Whakatuwhera Papa ↵"

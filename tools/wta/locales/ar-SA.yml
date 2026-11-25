@@ -113,10 +113,8 @@ recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بي
 recommendations.button_run_command: "[ تشغيل الأمر ]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
-recommendations.review_required: "عرض الأمر بالكامل"
-recommendations.button_back: "رجوع"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → الإجراءات · Enter تحديد · ↑ ↓ / PgUp PgDn تمرير · Esc رجوع · Ctrl+C إلغاء"
+recommendations.full_view_hint: "← → الإجراءات · Enter تحديد · ↑ ↓ / PgUp PgDn تمرير · Esc / Ctrl+C إلغاء"
 recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
 recommendations.button_open_tab: "فتح علامة تبويب ↵"
 recommendations.button_open_panel: "فتح لوحة ↵"

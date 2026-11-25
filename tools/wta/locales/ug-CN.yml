@@ -115,10 +115,8 @@ recommendations.nav_hint: "(↑ ↓ يۆتكىلىش ئۈچۈن • ← → كۇ
 recommendations.button_run_command: "[ بۇيرۇقنى ئىجرا قىلىش ]"
 recommendations.button_insert_in_terminal: "تېرمىنالغا قىستۇرۇش"
 recommendations.button_open_in_new_tab: "يېڭى بەتكۈچتە ئېچىش ↵"
-recommendations.review_required: "تولۇق بۇيرۇقنى كۆرۈش"
-recommendations.button_back: "قايتىش"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → مەشغۇلاتلار · Enter تاللاش · ↑ ↓ / PgUp PgDn سىيرىش · Esc قايتىش · Ctrl+C بىكار قىلىش"
+recommendations.full_view_hint: "← → مەشغۇلاتلار · Enter تاللاش · ↑ ↓ / PgUp PgDn سىيرىش · Esc / Ctrl+C بىكار قىلىش"
 recommendations.button_open_in_new_panel: "يېڭى تاختىدا ئېچىش ↵"
 recommendations.button_open_tab: "بەتكۈچ ئېچىش ↵"
 recommendations.button_open_panel: "تاختا ئېچىش ↵"

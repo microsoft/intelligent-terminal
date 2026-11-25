@@ -108,10 +108,8 @@ recommendations.nav_hint: "(↑ ↓ do nawigacji • ← → do przełączania p
 recommendations.button_run_command: "[ Uruchom polecenie ]"
 recommendations.button_insert_in_terminal: "Wstaw w terminalu"
 recommendations.button_open_in_new_tab: "Otwórz w nowej karcie ↵"
-recommendations.review_required: "Wyświetl całe polecenie"
-recommendations.button_back: "Wstecz"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → akcje · Enter wybierz · ↑ ↓ / PgUp PgDn przewijaj · Esc wstecz · Ctrl+C anuluj"
+recommendations.full_view_hint: "← → akcje · Enter wybierz · ↑ ↓ / PgUp PgDn przewijaj · Esc / Ctrl+C anuluj"
 recommendations.button_open_in_new_panel: "Otwórz w nowym panelu ↵"
 recommendations.button_open_tab: "Otwórz kartę ↵"
 recommendations.button_open_panel: "Otwórz panel ↵"

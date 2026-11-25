@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit 
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"
-recommendations.review_required: "Tingnan ang buong command"
-recommendations.button_back: "Bumalik"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → mga aksyon · Enter pumili · ↑ ↓ / PgUp PgDn mag-scroll · Esc bumalik · Ctrl+C magkansela"
+recommendations.full_view_hint: "← → mga aksyon · Enter pumili · ↑ ↓ / PgUp PgDn mag-scroll · Esc / Ctrl+C magkansela"
 recommendations.button_open_in_new_panel: "Buksan sa Bagong Panel ↵"
 recommendations.button_open_tab: "Buksan ang Tab ↵"
 recommendations.button_open_panel: "Buksan ang Panel ↵"

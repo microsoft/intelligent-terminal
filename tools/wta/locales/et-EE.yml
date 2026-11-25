@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetami
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"
-recommendations.review_required: "Kuva kogu käsk"
-recommendations.button_back: "Tagasi"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → toimingud · Enter vali · ↑ ↓ / PgUp PgDn keri · Esc tagasi · Ctrl+C tühista"
+recommendations.full_view_hint: "← → toimingud · Enter vali · ↑ ↓ / PgUp PgDn keri · Esc / Ctrl+C tühista"
 recommendations.button_open_in_new_panel: "Ava uuel paneelil ↵"
 recommendations.button_open_tab: "Ava vahekaart ↵"
 recommendations.button_open_panel: "Ava paneel ↵"

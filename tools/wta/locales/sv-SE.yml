@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ för att navigera • ← → för att växl
 recommendations.button_run_command: "[ Kör kommando ]"
 recommendations.button_insert_in_terminal: "Infoga i Terminal"
 recommendations.button_open_in_new_tab: "Öppna i ny flik ↵"
-recommendations.review_required: "Visa hela kommandot"
-recommendations.button_back: "Tillbaka"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → åtgärder · Enter välj · ↑ ↓ / PgUp PgDn rulla · Esc tillbaka · Ctrl+C avbryt"
+recommendations.full_view_hint: "← → åtgärder · Enter välj · ↑ ↓ / PgUp PgDn rulla · Esc / Ctrl+C avbryt"
 recommendations.button_open_in_new_panel: "Öppna i ny panel ↵"
 recommendations.button_open_tab: "Öppna flik ↵"
 recommendations.button_open_panel: "Öppna panel ↵"

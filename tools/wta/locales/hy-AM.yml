@@ -118,10 +118,8 @@ recommendations.nav_hint: "(↑ ↓ նավարկելու համար • ← → 
 recommendations.button_run_command: "[ Գործարկել հրամանը ]"
 recommendations.button_insert_in_terminal: "Տեղադրել տերմինալում"
 recommendations.button_open_in_new_tab: "Բացել նոր ներդիրում ↵"
-recommendations.review_required: "Դիտել ամբողջ հրամանը"
-recommendations.button_back: "Հետ"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → գործողություններ · Enter ընտրել · ↑ ↓ / PgUp PgDn ոլորել · Esc հետ · Ctrl+C չեղարկել"
+recommendations.full_view_hint: "← → գործողություններ · Enter ընտրել · ↑ ↓ / PgUp PgDn ոլորել · Esc / Ctrl+C չեղարկել"
 recommendations.button_open_in_new_panel: "Բացել նոր վահանակում ↵"
 recommendations.button_open_tab: "Բացել ներդիր ↵"
 recommendations.button_open_panel: "Բացել վահանակ ↵"

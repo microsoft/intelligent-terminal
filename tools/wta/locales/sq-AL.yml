@@ -99,10 +99,8 @@ recommendations.nav_hint: "(↑ ↓ për të naviguar • ← → për të ndër
 recommendations.button_run_command: "[ Ekzekuto komandën ]"
 recommendations.button_insert_in_terminal: "Fut në Terminal"
 recommendations.button_open_in_new_tab: "Hap në skedën e re ↵"
-recommendations.review_required: "Shiko komandën e plotë"
-recommendations.button_back: "Prapa"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → veprimet · Enter përzgjidh · ↑ ↓ / PgUp PgDn lëviz · Esc prapa · Ctrl+C anulo"
+recommendations.full_view_hint: "← → veprimet · Enter përzgjidh · ↑ ↓ / PgUp PgDn lëviz · Esc / Ctrl+C anulo"
 recommendations.button_open_in_new_panel: "Hap në panelin e ri ↵"
 recommendations.button_open_tab: "Hap skedën ↵"
 recommendations.button_open_panel: "Hap panelin ↵"

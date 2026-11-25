@@ -112,10 +112,8 @@ recommendations.nav_hint: "(↑ ↓ gezinmek için • ← → düğmeler arası
 recommendations.button_run_command: "[ Komutu çalıştır ]"
 recommendations.button_insert_in_terminal: "Terminal'e ekle"
 recommendations.button_open_in_new_tab: "Yeni Sekmede Aç ↵"
-recommendations.review_required: "Komutun tamamını görüntüle"
-recommendations.button_back: "Geri"
 # {Locked="Enter","Esc","Ctrl+C","PgUp","PgDn","←","→","↑","↓"} - literal keyboard key names and arrow glyphs.
-recommendations.full_view_hint: "← → eylemler · Enter seç · ↑ ↓ / PgUp PgDn kaydır · Esc geri · Ctrl+C iptal et"
+recommendations.full_view_hint: "← → eylemler · Enter seç · ↑ ↓ / PgUp PgDn kaydır · Esc / Ctrl+C iptal et"
 recommendations.button_open_in_new_panel: "Yeni Panelde Aç ↵"
 recommendations.button_open_tab: "Sekme Aç ↵"
 recommendations.button_open_panel: "Panel Aç ↵"
