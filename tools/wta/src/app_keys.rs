@@ -629,6 +629,7 @@ impl App {
             KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End
                 if key.modifiers.is_empty()
                     && self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().rec_body_scroll.max > 0
                     && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
             {
                 let page = self

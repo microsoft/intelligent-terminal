@@ -26270,6 +26270,60 @@ fn recommendation_card_scroll_is_per_selected_body_in_compact_and_full_layouts()
 }
 
 #[test]
+fn recommendation_card_fitted_body_preserves_original_chat_paging_and_wheel() {
+    let mut app = test_app();
+    let (id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+    assert!(app.commit_terminal_action_proposal(&id));
+    render_to_text(&mut app, 100, 40);
+    assert_eq!(app.current_tab().rec_body_scroll.max, 0);
+    app.current_tab_mut().chat_scroll.set_max(100);
+    app.current_tab_mut().chat_scroll.set(5);
+    app.handle_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+    let page_offset = app.current_tab().chat_scroll.offset;
+    app.current_tab_mut().chat_scroll.set(5);
+    let card = app.recommendation_area.unwrap();
+    app.handle_event(AppEvent::Mouse(crossterm::event::MouseEvent {
+        kind: crossterm::event::MouseEventKind::ScrollDown,
+        column: card.x,
+        row: card.y,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(
+        (page_offset, app.current_tab().chat_scroll.offset),
+        (15, 2),
+        "a fitted body must leave PageUp and wheel with the original chat scroller"
+    );
+    assert_eq!(app.current_tab().selected_recommendation, 0);
+    assert_eq!(app.current_tab().rec_body_scroll.offset, 0);
+}
+
+#[test]
+fn recommendation_card_hidden_debug_traffic_preserves_painted_keyboard_action() {
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+    assert!(app.commit_terminal_action_proposal(&id));
+    render_to_text(&mut app, 100, 40);
+    let debug = AppEvent::DebugPipeMessage(crate::app_contracts::DebugMessage {
+        timestamp: 0.0,
+        direction: crate::app_contracts::DebugDir::Received,
+        content: "unrelated diagnostic".into(),
+    });
+    assert!(!app.event_requires_redraw(&debug));
+    app.handle_event(debug);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let execution = rx
+        .try_recv()
+        .expect("inert debug traffic must not swallow Enter");
+    assert!(matches!(&execution.choice.actions[0],
+        crate::coordinator::RecommendedAction::Send { input, .. } if input == "Get-Date"));
+}
+
+#[test]
 fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
     use crate::agent_tools::action_proposal::channel::ProposalFinalStatus;
     for hide in [

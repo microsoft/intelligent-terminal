@@ -503,12 +503,13 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
-        // Backend events may replace the card in a batch before the next paint.
+        // Redrawing backend events may replace the card before the next paint.
         // Do not let a queued Enter activate the previous frame's action.
-        let invalidates_card = !matches!(
-            &event,
-            AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick | AppEvent::Mouse(_)
-        );
+        let invalidates_card = self.event_requires_redraw(&event)
+            && !matches!(
+                &event,
+                AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick | AppEvent::Mouse(_)
+            );
         self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
@@ -636,6 +637,7 @@ impl App {
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.recommendation_rendered
+                        && self.current_tab().rec_body_scroll.max > 0
                         && self.recommendation_area.is_some_and(|area| {
                             area.contains((mouse.column, mouse.row).into())
                         }) =>
