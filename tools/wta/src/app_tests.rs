@@ -26595,6 +26595,37 @@ fn recommendation_review_fit_uses_painted_width_for_allowed_control_text() {
 }
 
 #[test]
+fn recommendation_review_paints_complete_arabic_focused_insert_label() {
+    let _locale = crate::test_support::lock_locale();
+    for compact in [false, true] {
+        let mut app = test_app();
+        rust_i18n::set_locale("ar-SA");
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        app.current_tab_mut().selected_button = 1;
+        let run = t!("recommendations.button_run_command").into_owned();
+        let insert = t!("recommendations.button_insert_in_terminal").into_owned();
+        let row_width = unicode_width::UnicodeWidthStr::width(run.as_str())
+            + unicode_width::UnicodeWidthStr::width(insert.as_str())
+            + 3;
+        let text = render_to_text(
+            &mut app,
+            row_width as u16 + if compact { 2 } else { 8 },
+            if compact { 6 } else { 30 },
+        );
+        assert!(app.recommendation_rendered, "{text}");
+        if text.contains(&run) {
+            assert!(text.contains(&insert), "{text}");
+        } else {
+            assert!(
+                text.contains(t!("chat.tool_kind.insert").as_ref()),
+                "{text}"
+            );
+        }
+    }
+}
+
+#[test]
 fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch() {
     use crate::agent_tools::action_proposal::channel::{
         ProposalChannelManager, ProposalFinalStatus,

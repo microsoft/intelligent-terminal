@@ -242,7 +242,10 @@ fn render_action_buttons(
     let Some(_) = labels.get(selected) else {
         return false;
     };
-    let labels_width = labels.iter().map(|label| label.width()).sum::<usize>()
+    let labels_width = labels
+        .iter()
+        .map(|label| painted_text_width(label))
+        .sum::<usize>()
         + 3 * labels.len().saturating_sub(1);
     if labels_width <= buttons.width as usize {
         card::render_buttons(frame, buttons, labels, focused);
@@ -258,8 +261,11 @@ fn render_action_buttons(
         labels.to_vec()
     };
     let label = &short[selected];
-    let short_width =
-        short.iter().map(|label| label.width()).sum::<usize>() + 3 * short.len().saturating_sub(1);
+    let short_width = short
+        .iter()
+        .map(|label| painted_text_width(label))
+        .sum::<usize>()
+        + 3 * short.len().saturating_sub(1);
     if short_width <= buttons.width as usize {
         card::render_buttons(frame, buttons, &short, focused);
     } else {
@@ -270,7 +276,7 @@ fn render_action_buttons(
             focused.map(|_| 0),
         );
     }
-    label.width() <= buttons.width as usize
+    painted_text_width(label) <= buttons.width as usize
 }
 
 pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> String {
@@ -298,13 +304,14 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
 }
 
 fn command_lines_fit_width(lines: &[String], width: usize) -> bool {
-    lines.iter().all(|line| {
-        Span::raw(line.as_str())
-            .styled_graphemes(Style::default())
-            .map(|grapheme| grapheme.symbol.width())
-            .sum::<usize>()
-            <= width
-    })
+    lines.iter().all(|line| painted_text_width(line) <= width)
+}
+
+fn painted_text_width(text: &str) -> usize {
+    Span::raw(text)
+        .styled_graphemes(Style::default())
+        .map(|grapheme| grapheme.symbol.width())
+        .sum()
 }
 
 pub(super) fn full_command_lines(text: &str, width: usize) -> Vec<String> {
