@@ -300,12 +300,13 @@ pub(crate) fn render_review(frame: &mut Frame, app: &mut App, area: Rect) {
         card::render_buttons(frame, buttons, &labels, Some(selected));
     } else {
         // Keep the focused action visible even when the labels cannot fit together.
-        card::render_buttons(
-            frame,
-            buttons,
-            &[format!("← {} →", labels[selected])],
-            Some(0),
-        );
+        let label = &labels[selected];
+        let focused_label = if label.width() + 4 <= buttons.width as usize {
+            format!("← {label} →")
+        } else {
+            label.clone()
+        };
+        card::render_buttons(frame, buttons, &[focused_label], Some(0));
     }
     frame.render_widget(
         Paragraph::new(if multiple_choices {
@@ -317,14 +318,18 @@ pub(crate) fn render_review(frame: &mut Frame, app: &mut App, area: Rect) {
         hint,
     );
     app.recommendation_rendered = true;
-    app.recommendation_approval = Some(binding);
+    if labels[selected].width() <= buttons.width as usize {
+        app.recommendation_approval = Some(binding);
+    }
 }
 
 fn full_review_text(choice: &RecommendationChoice) -> String {
     if let [action] = choice.actions.as_slice() {
         return match action {
             RecommendedAction::Send { input, .. }
-            | RecommendedAction::OpenAndSend { input, .. } => input.clone(),
+            | RecommendedAction::OpenAndSend {
+                input, agent: None, ..
+            } => input.clone(),
             _ => recommendation_action_display_text(action),
         };
     }

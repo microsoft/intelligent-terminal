@@ -81,12 +81,15 @@ impl App {
                     KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
                         let count = self.button_count_for_selected();
                         let selected = self.current_tab().selected_button;
-                        self.current_tab_mut().selected_button =
-                            if matches!(key.code, KeyCode::Left | KeyCode::BackTab) {
-                                (selected + count - 1) % count
-                            } else {
-                                (selected + 1) % count
-                            };
+                        let next = if matches!(key.code, KeyCode::Left | KeyCode::BackTab) {
+                            (selected + count - 1) % count
+                        } else {
+                            (selected + 1) % count
+                        };
+                        if next != selected {
+                            self.current_tab_mut().selected_button = next;
+                            self.recommendation_approval = None;
+                        }
                     }
                     KeyCode::Enter => {
                         if self.state == ConnectionState::Connected {

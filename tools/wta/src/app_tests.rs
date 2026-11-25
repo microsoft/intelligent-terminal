@@ -26102,6 +26102,7 @@ fn recommendation_default_review_preserves_alternative_choice_navigation() {
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     render_to_text(&mut app, 100, 12);
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    render_to_text(&mut app, 100, 12);
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let execution = rx.try_recv().expect("second choice must remain selectable");
     assert_eq!(execution.choice.choice, 2);
@@ -26235,6 +26236,93 @@ fn recommendation_confirmation_requires_open_pane_at_render_and_dispatch() {
 }
 
 #[test]
+fn recommendation_review_requires_complete_focused_action_label() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for selected in [0, 1] {
+        let mut app = test_app();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        let (proposal_id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        app.current_tab_mut().selected_button = selected;
+        render_to_text(&mut app, 2, 30);
+        assert!(
+            app.recommendation_approval.is_none(),
+            "width 2 cannot label either action"
+        );
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(rx.try_recv().is_err());
+    }
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    app.current_tab_mut().selected_button = 0;
+    let text = render_to_text(&mut app, 3, 30);
+    assert!(text.contains("Run"), "{text}");
+    assert!(app.recommendation_approval.is_some());
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert!(
+        app.recommendation_approval.is_none(),
+        "changed focus needs repaint"
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(rx.try_recv().is_err());
+    render_to_text(&mut app, 3, 30);
+    assert!(app.recommendation_approval.is_none(), "Insert does not fit");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(rx.try_recv().is_err());
+    let text = render_to_text(&mut app, 6, 30);
+    assert!(text.contains("Insert"), "{text}");
+    assert!(app.recommendation_approval.is_some());
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(rx.try_recv().unwrap().insert_only);
+}
+
+#[test]
+fn recommendation_review_preserves_delegated_agent_and_exact_shell_payload() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for target in ["tab", "panel"] {
+        for agent in [None, Some("claude")] {
+            let mut app = test_app();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let (proposal_id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            let input = "  echo 'EXACT task'  ";
+            if let TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(set),
+                ..
+            } = &mut app.current_tab_mut().turn
+            {
+                set.choices[0].actions[0] = serde_json::from_value(json!({
+                    "type": "open_and_send", "target": target, "agent": agent,
+                    "input": input, "parent": if target == "panel" { Some("pane-9") } else { None }
+                }))
+                .unwrap();
+            } else {
+                panic!("expected recommendation");
+            }
+            let expected = app.current_tab().turn.recommendations().unwrap().choices[0].clone();
+            let text = render_to_text(&mut app, 120, 30);
+            assert!(text.contains(input), "{text}");
+            if let Some(agent) = agent {
+                assert!(text.contains(agent), "{text}");
+            }
+            assert!(app.recommendation_approval.is_some());
+            // Cycling a one-button choice must preserve its painted approval.
+            app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+            assert!(app.recommendation_approval.is_some());
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            assert_eq!(rx.try_recv().unwrap().choice, expected);
+        }
+    }
+}
+
+#[test]
 fn recommendation_review_preserves_wide_grapheme_and_rejects_unusable_viewport() {
     let mut app = test_app();
     let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
@@ -26259,6 +26347,12 @@ fn recommendation_review_preserves_wide_grapheme_and_rejects_unusable_viewport()
         "a viewport narrower than a wide grapheme must not authorize it"
     );
     let text = render_to_text(&mut app, 2, 30);
+    assert!(text.contains(command), "{text}");
+    assert!(
+        app.recommendation_approval.is_none(),
+        "the action label must also fit"
+    );
+    let text = render_to_text(&mut app, 3, 30);
     assert!(text.contains(command), "{text}");
     assert!(app.recommendation_approval.is_some());
 }
@@ -26337,6 +26431,7 @@ fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch(
             assert!(app.recommendation_approval.is_some());
             if insert_only {
                 app.handle_key(key(KeyCode::Right));
+                render_to_text(&mut app, 100, 30);
             }
             app.handle_key(key(KeyCode::Enter));
             let execution = rx.try_recv().expect("reviewed batch must dispatch");
@@ -26452,6 +26547,7 @@ fn recommendation_full_view_runs_or_inserts_without_resize_or_scroll_gate() {
             assert!(!app.chat_input_has_edit_focus());
             if insert_only {
                 app.handle_key(key(KeyCode::Right));
+                render_to_text(&mut app, width, height);
             }
             app.handle_key(key(KeyCode::Enter));
             let execution = rx.try_recv().expect("expanded long command must dispatch");
