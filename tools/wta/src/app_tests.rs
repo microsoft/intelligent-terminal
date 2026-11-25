@@ -26561,6 +26561,40 @@ fn recommendation_review_rejects_grapheme_wider_than_body_before_confirmation() 
 }
 
 #[test]
+fn recommendation_review_fit_uses_painted_width_for_allowed_control_text() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let command = format!("a\u{85}{}", "b".repeat(51));
+    for (width, height) in [(56, 6), (60, 30)] {
+        let mut app = test_app();
+        let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, false);
+        assert!(app.commit_terminal_action_proposal(&proposal_id));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.recommendation_tx = tx;
+        if let TurnState::Surfaced {
+            outcome: TurnOutcome::Recommendation(set),
+            ..
+        } = &mut app.current_tab_mut().turn
+        {
+            set.choices[0].actions[0] = crate::coordinator::RecommendedAction::Send {
+                parent: "pane-9".into(),
+                input: command.clone(),
+            };
+        } else {
+            panic!("expected recommendation");
+        }
+        let text = render_to_text(&mut app, width, height);
+        assert!(text.contains(&format!("a{}", "b".repeat(51))), "{text}");
+        assert!(app.recommendation_rendered, "{text}");
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(
+            rx.try_recv().unwrap().choice.actions.as_slice(),
+            [crate::coordinator::RecommendedAction::Send { input, .. }] if input == &command
+        ));
+    }
+}
+
+#[test]
 fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch() {
     use crate::agent_tools::action_proposal::channel::{
         ProposalChannelManager, ProposalFinalStatus,

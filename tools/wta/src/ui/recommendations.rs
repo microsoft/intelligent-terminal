@@ -103,7 +103,7 @@ fn render_compact(frame: &mut Frame, app: &mut App, area: Rect) -> bool {
     let summary_width =
         (area.width as usize).saturating_sub(UnicodeWidthStr::width(prefix.as_str()));
     let lines = full_command_lines(&summary, summary_width.max(1));
-    let body_fits_width = lines.iter().all(|line| line.width() <= summary_width);
+    let body_fits_width = command_lines_fit_width(&lines, summary_width);
     app.current_tab_mut()
         .rec_body_scroll
         .set_max(lines.len().saturating_sub(1));
@@ -194,9 +194,7 @@ fn render_card(
     let mut body_fits_width = false;
     if content_inner.width > 0 {
         let lines = full_command_lines(&command_text, content_inner.width as usize);
-        body_fits_width = lines
-            .iter()
-            .all(|line| line.width() <= content_inner.width as usize);
+        body_fits_width = command_lines_fit_width(&lines, content_inner.width as usize);
         let max = lines.len().saturating_sub(content_inner.height as usize);
         let body_offset = if is_selected {
             app.current_tab_mut().rec_body_scroll.set_max(max);
@@ -297,6 +295,16 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn command_lines_fit_width(lines: &[String], width: usize) -> bool {
+    lines.iter().all(|line| {
+        Span::raw(line.as_str())
+            .styled_graphemes(Style::default())
+            .map(|grapheme| grapheme.symbol.width())
+            .sum::<usize>()
+            <= width
+    })
 }
 
 pub(super) fn full_command_lines(text: &str, width: usize) -> Vec<String> {
