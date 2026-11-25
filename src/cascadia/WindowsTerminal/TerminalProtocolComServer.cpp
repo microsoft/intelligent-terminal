@@ -28,8 +28,6 @@
 #include <wintrust.h>
 #include <winver.h>
 
-#pragma comment(lib, "rpcrt4.lib")
-#pragma comment(lib, "wintrust.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "version.lib")
 
