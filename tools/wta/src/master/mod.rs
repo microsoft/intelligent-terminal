@@ -9232,12 +9232,47 @@ struct PendingSidebarResume<'a> {
     identity: crate::session_registry::SessionIdentity,
 }
 
-impl Drop for PendingSidebarResume<'_> {
-    fn drop(&mut self) {
+impl PendingSidebarResume<'_> {
+    fn release(&mut self) {
         self.reservations
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&self.identity);
+    }
+}
+
+async fn release_pending_sidebar_resume_for_binding(
+    state: &MasterStateInner,
+    session_id: &str,
+    pane_session_id: &str,
+) {
+    let session_id = acp::schema::v1::SessionId::new(session_id);
+    let identities = state
+        .pending_sidebar_resumes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .filter(|identity| identity.session_id == session_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let pane_key = crate::agent_sessions::pane_key(pane_session_id);
+    for identity in identities {
+        let binding_matches = state
+            .registry
+            .lookup_identity(&identity)
+            .await
+            .is_some_and(|row| {
+                row.pane_session_id.as_deref().is_some_and(|registered| {
+                    crate::agent_sessions::pane_key(registered) == pane_key
+                })
+            });
+        if binding_matches {
+            state
+                .pending_sidebar_resumes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&identity);
+        }
     }
 }
 
@@ -9627,24 +9662,6 @@ async fn execute_session_activation(
                     ))
                 );
             }
-            let reservation = {
-                let mut pending = state
-                    .pending_sidebar_resumes
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if !pending.insert(parsed.identity.clone()) {
-                    drop(lifecycle_guard);
-                    return respond!(
-                        "resume_cli",
-                        false,
-                        Some("The selected session is already being resumed.".to_string())
-                    );
-                }
-                PendingSidebarResume {
-                    reservations: &state.pending_sidebar_resumes,
-                    identity: parsed.identity.clone(),
-                }
-            };
             row = current;
             let commandline = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => Ok(String::new()),
@@ -9718,6 +9735,24 @@ async fn execute_session_activation(
             if let Some(title) = row.title.as_ref().filter(|title| !title.trim().is_empty()) {
                 params["title"] = serde_json::Value::String(title.clone());
             }
+            let mut reservation = {
+                let mut pending = state
+                    .pending_sidebar_resumes
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !pending.insert(parsed.identity.clone()) {
+                    drop(lifecycle_guard);
+                    return respond!(
+                        "resume_cli",
+                        false,
+                        Some("The selected session is already being resumed.".to_string())
+                    );
+                }
+                PendingSidebarResume {
+                    reservations: &state.pending_sidebar_resumes,
+                    identity: parsed.identity.clone(),
+                }
+            };
             drop(lifecycle_guard);
             match wt.request("create_tab", params).await {
                 Ok(result) => {
@@ -9736,7 +9771,6 @@ async fn execute_session_activation(
                         .filter(|value| !value.is_empty())
                     else {
                         drop(lifecycle_guard);
-                        drop(reservation);
                         return respond!(
                             "resume_cli",
                             false,
@@ -9757,6 +9791,7 @@ async fn execute_session_activation(
                                 && current.pane_session_id.is_none()
                         })
                     {
+                        reservation.release();
                         state.hook_owned.lock().await.remove(&parsed.identity);
                         state.born_bound.lock().await.remove(&row.session_id);
                         drop(lifecycle_guard);
@@ -9817,6 +9852,7 @@ async fn execute_session_activation(
                         state.hook_owned.lock().await.remove(&parsed.identity);
                         state.born_bound.lock().await.insert(row.session_id.clone());
                     }
+                    reservation.release();
                     drop(lifecycle_guard);
                     broadcast_session_status_change(state, None).await;
                     if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
@@ -9845,11 +9881,12 @@ async fn execute_session_activation(
                         ),
                     };
                     response.launched = true;
-                    drop(reservation);
                     response
                 }
                 Err(error) => {
-                    drop(reservation);
+                    if !crate::shell::wt_channel::request_outcome_unknown(&error) {
+                        reservation.release();
+                    }
                     failed("resume_cli", error)
                 }
             }
@@ -9923,9 +9960,24 @@ async fn handle_session_event(
     }
 
     let activity_only = session_event_is_activity_only(&event);
+    let resume_binding = match &event {
+        crate::agent_sessions::SessionEvent::SessionStarted {
+            key,
+            pane_session_id,
+            ..
+        }
+        | crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key,
+            pane_session_id,
+        } => Some((key.clone(), pane_session_id.clone())),
+        _ => None,
+    };
     let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) =
         apply_master_session_event(state, event, is_born_bound, birth_location).await;
+    if let Some((session_id, pane_session_id)) = resume_binding {
+        release_pending_sidebar_resume_for_binding(state, &session_id, &pane_session_id).await;
+    }
     if applied {
         broadcast_session_status_change(
             state,
