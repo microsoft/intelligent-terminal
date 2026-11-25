@@ -13695,23 +13695,44 @@ namespace winrt::TerminalApp::implementation
             summary, text, summary.progress ? _FormatLocalizedPercentValue(*summary.progress) : winrt::hstring{}) };
     }
 
-    static winrt::hstring _ProgramStatusDetails(const Json::Value& snapshot, const ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus* status = nullptr)
+    enum class ProgramStatusDetailsSurface
+    {
+        TabHover,
+        PaneList,
+    };
+
+    static winrt::hstring _ProgramStatusDetails(const Json::Value& snapshot,
+                                              const ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus& status,
+                                              const ProgramStatusDetailsSurface surface)
     {
         using Category = ::Microsoft::Terminal::ProgramStatusPresentation::Category;
+        const auto showSourceLabels = surface == ProgramStatusDetailsSurface::PaneList;
         std::wstring details;
-        if (status && (status->canonicalInput || status->canonicalWorking))
+        if (showSourceLabels && (status.canonicalInput || status.canonicalWorking))
         {
             details.append(L"Hook/ACP: ");
-            details.append(_ProgramStatusLabel(status->canonicalInput ? Category::InputRequest : Category::Working));
-            if (status->canonicalInput && !status->inputMessage.empty())
+            details.append(_ProgramStatusLabel(status.canonicalInput ? Category::InputRequest : Category::Working));
+            if (status.canonicalInput && !status.inputMessage.empty())
             {
                 details.append(L" | \u2068");
-                details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(status->inputMessage));
+                details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(status.inputMessage));
                 details.append(L"\u2069");
             }
-            details.append(L"\n");
         }
-        details.append(L"OSC 7501:");
+        if (showSourceLabels)
+        {
+            if (!details.empty())
+            {
+                details.append(L"\n");
+            }
+            details.append(L"OSC 7501:");
+        }
+        else if (status.canonicalInput && !status.inputMessage.empty())
+        {
+            details.append(L"\u2068");
+            details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(status.inputMessage));
+            details.append(L"\u2069");
+        }
         for (const bool archived : { false, true })
         {
             for (const auto& record : snapshot[archived ? "results" : "records"])
@@ -13725,6 +13746,13 @@ namespace winrt::TerminalApp::implementation
                     continue;
                 }
                 const auto state = record["state"].asString();
+                const auto showResult = state == "done" || state == "error";
+                if (!showSourceLabels &&
+                    ((showResult && !record.get("unread", false).asBool()) ||
+                     (!showResult && record["title"].asString().empty() && record["message"].asString().empty())))
+                {
+                    continue;
+                }
                 const auto category = state == "working" ? Category::Working :
                                       state == "blocked" ? Category::Blocked :
                                       state == "done"    ? Category::Done :
@@ -13734,27 +13762,39 @@ namespace winrt::TerminalApp::implementation
                 {
                     details.append(L"\n");
                 }
-                details.append(L"/");
-                details.append(winrt::to_hstring(record.get("id", "").asString()));
-                details.append(L": ");
+                if (showSourceLabels)
+                {
+                    details.append(L"/");
+                    details.append(winrt::to_hstring(record.get("id", "").asString()));
+                    details.append(L": ");
+                }
                 if (archived)
                 {
                     details.append(RS_(L"ProgramStatusPreviousResult"));
                     details.append(L" - ");
                 }
-                details.append(_ProgramStatusLabel(category));
-                if (record["progress"].isUInt())
+                auto hasText = showSourceLabels || showResult;
+                if (hasText)
+                {
+                    details.append(_ProgramStatusLabel(category));
+                }
+                if (showSourceLabels && record["progress"].isUInt())
                 {
                     details.append(fmt::format(FMT_COMPILE(L" {}%"), record["progress"].asUInt()));
                 }
                 for (const auto* field : { "app", "title", "kind", "message" })
                 {
+                    if (!showSourceLabels && (std::string_view{ field } == "app" || std::string_view{ field } == "kind"))
+                    {
+                        continue;
+                    }
                     if (record[field].isString() && !record[field].asString().empty())
                     {
                         const auto value = winrt::to_hstring(record[field].asString());
-                        details.append(L" | \u2068");
+                        details.append(hasText ? L" | \u2068" : L"\u2068");
                         details.append(::Microsoft::Terminal::ProgramStatusPresentation::DisplayText(std::wstring_view{ value.c_str(), value.size() }));
                         details.append(L"\u2069");
+                        hasText = true;
                     }
                 }
                 if (details.size() > 16384)
@@ -13785,17 +13825,22 @@ namespace winrt::TerminalApp::implementation
                     auto status = _ProgramPaneStatus(snapshot, control);
                     panes.push_back(status);
                     controls.emplace_back(pane->ContentId().value(), control);
-                    if (status.observed)
+                    if (status.observed && details.size() < 32768)
                     {
-                        if (details.size() < 32768)
+                        const auto paneDetails = _ProgramStatusDetails(snapshot, status, ProgramStatusDetailsSurface::TabHover);
+                        if (!paneDetails.empty())
                         {
                             if (!details.empty())
                             {
                                 details.append(L"\n\n");
                             }
-                            details.append(control.Title());
-                            details.append(L"\n");
-                            details.append(_ProgramStatusDetails(snapshot, &status));
+                            const auto title = control.Title();
+                            if (std::wstring_view{ title }.find_first_not_of(L" \t\r\n") != std::wstring_view::npos)
+                            {
+                                details.append(title);
+                                details.append(L"\n");
+                            }
+                            details.append(paneDetails);
                         }
                     }
                 }
@@ -17239,7 +17284,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 appendAutomationSegment(automationName, metadata->accessibilityText);
                             }
-                            const auto details = _ProgramStatusDetails(snapshot, &status);
+                            const auto details = _ProgramStatusDetails(snapshot, status, ProgramStatusDetailsSurface::PaneList);
                             if (!details.empty())
                             {
                                 itemImpl->ProgramStatusDetails(winrt::hstring{ fmt::format(FMT_COMPILE(L"{}\n{}"), pane.Title, details) });

@@ -759,6 +759,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ProgramStatusTaskbarIdentityUnreadRetentionAndNativeFallback);
         TEST_METHOD(ProgramStatusUsesOnlyTheSelectedAgentStatusLine);
         TEST_METHOD(ProgramStatusOverlayRefreshesFinalMetadataPresentation);
+        TEST_METHOD(ProgramStatusTabHoverOmitsSourceLabels);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusColors);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -15841,6 +15842,110 @@ namespace TerminalAppLocalTests
             const auto automationName = Automation::AutomationProperties::GetName(tab->TabViewItem());
             VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(L"Done") != std::wstring_view::npos);
             VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(RS_(L"VerticalTabsHistoryStatusComplete")) == std::wstring_view::npos);
+        });
+    }
+
+    void TabTests::ProgramStatusTabHoverOmitsSourceLabels()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{64931111-2222-3333-4444-555555555555}" }, State::Connected);
+        const auto empty = winrt::make_self<TestConnection>(winrt::guid{ L"{64941111-2222-3333-4444-555555555555}" }, State::Connected);
+        const auto last = winrt::make_self<TestConnection>(winrt::guid{ L"{64951111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            page->_tabStrip.RichTabWorkingDirectoryVisible(false);
+            page->_tabStrip.RichTabBranchVisible(false);
+            page->_tabStrip.RichTabChangesVisible(false);
+            page->_tabStrip.RichTabAgentStatusVisible(true);
+            VERIFY_IS_TRUE(page->_tabStrip.RichTabAgentStatusVisible());
+            const auto emit = [](const auto& connection, const std::u16string_view seq) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ seq.data(), seq.data() + seq.size() });
+            };
+            const auto isObserved = [](const auto& control) {
+                Json::Value snapshot;
+                std::string errors;
+                std::istringstream input{ winrt::to_string(control.ProgramStatusJson()) };
+                return Json::parseFromStream(Json::CharReaderBuilder{}, input, &snapshot, &errors) &&
+                       snapshot["observed"].asBool();
+            };
+            const auto firstControl = tab->GetActiveTerminalControl();
+            emit(first, u"\x1b]7501;state=clear\x1b\\");
+            VERIFY_IS_TRUE(isObserved(firstControl));
+            page->_UpdateProgramStatusForTab(*tab);
+            VERIFY_IS_TRUE(tab->_programStatusDetails.empty());
+
+            emit(first, u"\x1b]7501;state=blocked:app=copilot:kind=question\x1b\\");
+            page->_UpdateProgramStatusForTab(*tab);
+            VERIFY_IS_FALSE(tab->_programStatusText.empty());
+            VERIFY_IS_TRUE(tab->_programStatusDetails.empty());
+
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *empty)));
+            const auto emptyControl = tab->GetActiveTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Down, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *last)));
+            const auto lastControl = tab->GetActiveTerminalControl();
+            page->UpdateLayout();
+            emit(first, u"\x1b]0;First pane\x7\x1b]7501;state=done:msg=UHJldmlvdXM=\x1b\\"
+                        u"\x1b]7501;state=working:progress=37:msg=T1NDIDc1MDE6\x1b\\");
+            emit(empty, u"\x1b]0;Empty pane\x7\x1b]7501;state=clear\x1b\\");
+            emit(last, u"\x1b]0;Last pane\x7\x1b]7501;state=blocked:app=copilot:kind=question\x1b\\");
+
+            VERIFY_IS_TRUE(isObserved(firstControl));
+            VERIFY_IS_TRUE(isObserved(emptyControl));
+            VERIFY_IS_TRUE(isObserved(lastControl));
+            auto& canonical = page->_richTabAgentStatusByPaneId[last->SessionId()];
+            canonical.status = "Attention";
+            canonical.inputRequired = true;
+            canonical.inputMessage = "Information requested";
+            const auto projected = page->_RichTabAgentInfoForControl(lastControl);
+            VERIFY_IS_TRUE(projected.has_value() && projected->inputRequired);
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation provider;
+            provider.text = L"Provider metadata";
+            provider.tooltip = L"Provider tooltip";
+            tab->SetRichTabPresentation(provider);
+            for (const bool vertical : { false, true })
+            {
+                tab->SetVerticalTabLayout(vertical);
+                page->_UpdateProgramStatusForTab(*tab);
+                const std::wstring_view hover{ tab->_richTabTooltipText };
+                VERIFY_IS_TRUE(hover.find(L"\nHook/ACP:") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\nOSC 7501:") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n/") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"37%") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"copilot") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"question") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(RS_(L"ProgramStatusPreviousResult")) != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\u2068Previous\u2069") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"OSC 7501:") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"Information requested") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"Empty pane") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n\nLast pane\n") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n\n\n") == std::wstring_view::npos);
+                VERIFY_ARE_EQUAL(vertical, hover.starts_with(L"Provider tooltip\n"));
+            }
+
+            page->_RefreshTabStripPaneItems(tab);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->DisplayItemForTab(tab->TabViewItem());
+            bool checkedPane = false;
+            for (const auto& pane : display.PaneItems())
+            {
+                if (pane.ContentId() == lastControl.ContentId())
+                {
+                    const auto details = pane.ProgramStatusDetails();
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\nHook/ACP:") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\nOSC 7501:") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\n/: ") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"copilot") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"question") != std::wstring_view::npos);
+                    checkedPane = true;
+                }
+            }
+            VERIFY_IS_TRUE(checkedPane);
         });
     }
 
