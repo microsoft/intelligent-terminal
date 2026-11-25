@@ -293,6 +293,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<hstring> CreateNativeProfileResumeTab(hstring eventJson);
         void _OnResumeInNewAgentTabRequested(hstring eventJson, Json::Value* creationReceipt);
         void OnPaneAgentSessionChanged(hstring eventJson);
+        void OnVerifiedNativeHook(hstring eventJson, winrt::guid paneId, uint64_t rootProcessHandle);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentSessionsRetired(hstring eventJson);
@@ -795,7 +796,7 @@ namespace winrt::TerminalApp::implementation
         // Serialize and raise a `{type:"event", method, params}` envelope on
         // ProtocolVtSequenceReceived. Single source of the wta protocol-event
         // wire shape — callers just supply the method name and a params object.
-        void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
+        bool _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
         // Raises one `connection_state` protocol event. Terminal end states
         // (`closed` / `failed`) must go through `_TryRaiseTerminalEndStateEvent`
         // so only the first producer emits.
@@ -1081,6 +1082,8 @@ namespace winrt::TerminalApp::implementation
             bool canonicalWorking{};
             std::string inputMessage;
             bool launchMetadata{ false };
+            std::optional<uint64_t> oscAuthoritySinceRevision;
+            uint64_t oscAuthorityModeEpoch{ 0 };
         };
         static bool _IsBuiltinAgentProviderId(std::string_view id);
         static bool _ShouldUseIncomingAgentProvider(std::string_view existingProviderId, std::string_view incomingProviderId);
@@ -1111,7 +1114,23 @@ namespace winrt::TerminalApp::implementation
         ::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus _ProgramPaneStatus(const Json::Value& snapshot, const Microsoft::Terminal::Control::TermControl& control);
         static std::optional<::Microsoft::Terminal::ProgramStatusPresentation::PaneStatus> _ParseHistoryProgramStatus(const Json::Value& pane);
         static winrt::hstring _ProgramSummaryText(const ::Microsoft::Terminal::ProgramStatusPresentation::Summary& summary);
-        void _PublishNativeAgentObservation(const Microsoft::Terminal::Control::TermControl& control, std::string_view kind, bool reset = false, std::optional<uint64_t> progressState = std::nullopt, bool birthBeforeReset = false);
+        void _PublishNativeAgentObservation(const Microsoft::Terminal::Control::TermControl& control, std::string_view kind, bool reset = false, std::optional<uint64_t> progressState = std::nullopt, bool birthBeforeReset = false, Json::Value* promptContext = nullptr, uint64_t promptProgressReceipt = 0);
+        void _OnPaneAgentSessionChanged(hstring eventJson, std::optional<uint64_t> verifiedHostContentId);
+        uint64_t _nativeAgentPromptSequence{ 0 };
+        std::optional<uint64_t> _programBadgeDispositionReceiver;
+        struct _ProgramBadgeRetry
+        {
+            Json::Value probe;
+            uint64_t contentId;
+            uint64_t receiver;
+            uint64_t epoch;
+            uint64_t revision;
+            unsigned attempts{ 0 };
+        };
+        std::vector<_ProgramBadgeRetry> _programBadgeRetries;
+        bool _programBadgeRetryScheduled{ false };
+        void _ScheduleProgramBadgeRetry();
+        safe_void_coroutine _RetryProgramBadgeDisposition();
         static std::string _NativeAgentObservationSource(const Microsoft::Terminal::Control::TermControl& control, const winrt::hstring& backend);
         static Json::Value _NativeAgentObservationLocation(std::string_view source);
         std::optional<bool> _lastEffectiveAgentSessionManagementEnabled;
@@ -1313,6 +1332,12 @@ namespace winrt::TerminalApp::implementation
             winrt::hstring resumeCommandline;
             winrt::hstring backend;
             winrt::hstring cwd;
+            struct VerifiedHost
+            {
+                uint64_t contentId;
+                uint64_t afterRevision;
+            };
+            std::optional<VerifiedHost> verifiedHost;
         };
         // Most recent resumable agent session observed in each shell pane.
         // Retained after the CLI exits so a persisted-layout restore can

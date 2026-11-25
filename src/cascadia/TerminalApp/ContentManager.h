@@ -70,13 +70,28 @@ namespace winrt::TerminalApp::implementation
             uint64_t paneCreatedAtMs{ 0 };
             uint64_t paneCreationSequence{ 0 };
             bool locationConfirmed{ false };
+            uint64_t publishedProgramRevision{ 0 };
+            uint64_t retiredProgramRevision{ 0 };
+            std::optional<uint64_t> programBadgeCandidate;
+            std::optional<bool> programBadgeApproved;
+            std::optional<uint64_t> retiredPendingBadgeCandidate;
         };
         void SetExplicitNativeAgentProvider(uint64_t contentId, const winrt::hstring& providerId);
         bool RefineNativeAgentLaunchLocation(uint64_t contentId, const winrt::hstring& providerId, const std::string& location);
         std::optional<NativeAgentObservationIdentity> NativeAgentObservationForContent(uint64_t contentId) const;
+        void RecordNativeAgentProgramPublication(uint64_t contentId, uint64_t modeEpoch, std::optional<uint64_t> revision);
+        bool MatchesNativeAgentProgramAuthority(uint64_t contentId, uint64_t modeEpoch, uint64_t receiverGeneration, uint64_t sinceRevision) const;
+        bool BeginProgramBadgeCandidate(uint64_t contentId, uint64_t modeEpoch, uint64_t revision);
+        void ResolveProgramBadgeCandidate(uint64_t contentId, const NativeAgentObservationIdentity& expected, uint64_t revision, bool approved, bool active);
+        uint64_t NativeAgentProgressReceipt(uint64_t contentId) const;
+        bool ClaimNativeAgentProgressReceipt(uint64_t contentId, uint64_t receipt);
+        void RetireNativeAgentBadge(uint64_t contentId, uint64_t modeEpoch, uint64_t promptProgressReceipt);
+        bool SuppressesNativeAgentLegacyBadge(uint64_t contentId, uint64_t receiverGeneration, bool includeRetiredProgress = true) const;
+        bool SuppressesNativeAgentLegacyPercent(uint64_t contentId) const;
+        bool HasPendingProgramBadgeCandidate(uint64_t contentId, uint64_t receiverGeneration, uint64_t modeEpoch, uint64_t revision) const;
         uint64_t NativeAgentOwnerGenerationForContent(uint64_t contentId) const;
         void ConfirmNativeAgentOwner(uint64_t contentId, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
-        std::optional<NativeAgentObservationIdentity> RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, uint64_t ownerGeneration);
+        std::optional<NativeAgentObservationIdentity> RecordNativeAgentProgress(uint64_t contentId, const winrt::guid& paneId, uint64_t progressState, uint64_t ownerGeneration, uint64_t* receipt = nullptr, bool replacesPercent = false);
         std::optional<uint64_t> NativeAgentProgressForContent(uint64_t contentId) const;
         NativeAgentObservationIdentity AdmitNativeAgentObservation(uint64_t contentId, uint64_t windowId, const std::string& tabId, const std::string& agentSessionId, const std::string& location, bool reset, uint64_t receiverGeneration = 0, const winrt::hstring& hookProviderId = {});
         void RetainQualifiedNativeAgentIdentity(uint64_t contentId, uint64_t modeEpoch, const std::string& sessionId, const std::string& location);
@@ -185,6 +200,15 @@ namespace winrt::TerminalApp::implementation
             AgentCompletionState completion;
             std::optional<winrt::guid> reportedAgentStatusPaneId;
             std::optional<std::pair<winrt::guid, uint64_t>> parsedProgress;
+            uint64_t progressReceipt{ 0 };
+            uint64_t publishedProgressReceipt{ 0 };
+            uint64_t progressValueReceipt{ 0 };
+            std::optional<uint64_t> retiredProgressReceipt;
+            std::optional<uint64_t> pendingRetiredProgressReceipt;
+            std::optional<uint64_t> LegacyProgressFence() const noexcept
+            {
+                return std::max(retiredProgressReceipt, pendingRetiredProgressReceipt);
+            }
             struct ConfirmedOwner
             {
                 winrt::hstring providerId;
@@ -194,6 +218,7 @@ namespace winrt::TerminalApp::implementation
             uint64_t ownerGeneration{ 0 };
             std::optional<uint64_t> observationOwnerGeneration;
         };
+        static void _FenceReplacedNativeAgentProgress(TerminalContent& content);
         static void _ConfirmNativeAgentOwner(TerminalContent& content, const winrt::hstring& providerId, const std::string& sessionId, const std::string& location);
         bool _UsesNativeAgentFallback(const TerminalContent& content) const noexcept;
         std::unordered_map<uint64_t, TerminalContent> _content;

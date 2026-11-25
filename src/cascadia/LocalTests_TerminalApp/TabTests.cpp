@@ -602,6 +602,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentCreationMetadataSurvivesAdmissionLifecycle);
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
+        TEST_METHOD(VerifiedHookHostQualifiesOnlyFreshProgramStatusForExactOwner);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
@@ -29131,6 +29132,68 @@ namespace TerminalAppLocalTests
             page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
             page->_SyncNativeAgentStatusMode();
             VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+        });
+    }
+
+    void TabTests::VerifiedHookHostQualifiesOnlyFreshProgramStatusForExactOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{9c521111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            const auto control = page->_GetFocusedTabImpl()->GetActiveTerminalControl();
+            const auto paneId = connection->SessionId();
+            const auto manager = winrt::get_self<Manager>(page->_manager);
+            const auto emit = [&](const std::u16string_view seq) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ seq.data(), seq.data() + seq.size() });
+            };
+            const auto acceptVerified = [&](std::string_view session, uint64_t contentId) {
+                page->_OnPaneAgentSessionChanged(_keepRunningHook(paneId, "agent.prompt.submit", session), contentId);
+            };
+            std::vector<Json::Value> qualified;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                std::string errors;
+                std::istringstream input{ winrt::to_string(json) };
+                if (Json::parseFromStream(Json::CharReaderBuilder{}, input, &event, &errors) &&
+                    event["method"] == "native_agent_observation" && event["params"]["location"] == "Host")
+                {
+                    qualified.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+
+            page->OnPaneAgentSessionChanged(_keepRunningHook(paneId, "agent.session.start", "owner"));
+            emit(u"\x1b]7501;state=done\x1b\\");
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_IS_TRUE(manager->NativeAgentObservationForContent(control.ContentId())->location.empty());
+            VERIFY_IS_TRUE(qualified.empty());
+            acceptVerified("nested", control.ContentId());
+            acceptVerified("owner", control.ContentId() + 1);
+            VERIFY_IS_TRUE(qualified.empty());
+
+            acceptVerified("owner", control.ContentId());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, qualified.size());
+            VERIFY_ARE_EQUAL(std::string{ "reset" }, qualified.front()["kind"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "owner" }, qualified.front()["agent_session_id"].asString());
+            VERIFY_IS_TRUE(page->_paneAgentSessions.at(paneId).backend.empty());
+            acceptVerified("owner", control.ContentId());
+            page->_PublishNativeAgentObservation(control, "program_status");
+            control.AcknowledgeProgramStatus(std::numeric_limits<uint64_t>::max());
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, qualified.size());
+
+            emit(u"\x1b]7501;state=blocked:kind=question\x1b\\");
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_ARE_EQUAL(size_t{ 2 }, qualified.size());
+            VERIFY_ARE_EQUAL(std::string{ "program_status" }, qualified.back()["kind"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "blocked" }, qualified.back()["program_status"]["state"].asString());
+            VERIFY_ARE_EQUAL(qualified.front()["mode_epoch"].asUInt64(), qualified.back()["mode_epoch"].asUInt64());
         });
     }
 

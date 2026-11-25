@@ -111,6 +111,32 @@ The compatible `pane_statuses` response adds optional `program_status` metadata
 and explicit `input_required`/`canonical_error`/`canonical_working` flags. These
 flags retain real request/error/activity precedence rather than guessing it
 from a program-reported state.
+For a qualified foreground lifetime promoted by WTA, `osc_authority` carries
+the admission epoch and the promotion revision in the existing pane snapshot.
+Receivers that advertise `program_badge_dispositions` in `sessions/list`
+resolve exact managed, active-lease publications through that same snapshot
+channel. Terminal defers only the legacy badge while the disposition is
+pending; rejection releases it, and approval keeps it suppressed even after
+Root Clear. Older receivers use the existing lease and snapshot behavior.
+Current decisions are retained per pane rather than evicted by other panes.
+Terminal retries only after any in-flight read finishes. A content-free
+recovery probe lets WTA resolve a missing publication without replaying Program
+Status or acquiring authority. If the matching Reset was also lost, WTA returns
+a separate inactive rejection for that exact admission and revision; a later
+matching Reset does not make the rejected revision promotable. Omission from a
+snapshot does not mean rejection.
+A matching shell prompt retires ownership without removing the resumable
+binding and fences older authority reports and legacy progress receipts.
+A Program Status redraw is not a new legacy progress receipt, and an update
+that preserves the Core percentage cannot restore a retired badge percentage.
+Managed owner or admission replacement also fences the previous receipt and
+percentage until fresh progress supplies them.
+A newer inactive Done/Error result or Root Clear for that exact retired lifetime can update
+presentation, but not session activity.
+Accepted hook Working or Attention can start another foreground without
+replacing the binding. The typed prompt and its compatibility `vt_sequence`
+share a prompt ID scoped to their admission, so a delayed raw twin cannot end
+that new turn.
 The optional `input_message` carries a real request's description. Program
 snapshots carry the representative `task_id` and `title` alongside `message`,
 allowing local and recent-session rows to produce the same single-line summary

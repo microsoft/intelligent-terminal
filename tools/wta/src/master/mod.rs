@@ -9150,6 +9150,11 @@ where
         }),
         pane_statuses,
     );
+    let mut response: serde_json::Value =
+        serde_json::from_str(raw.get()).expect("serialized sessions response is valid JSON");
+    response["program_badge_dispositions"] =
+        serde_json::json!(state.registry.program_badge_dispositions().await);
+    let raw = serde_json::value::to_raw_value(&response).expect("JSON value serializes");
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
@@ -9843,6 +9848,9 @@ async fn apply_master_session_event(
     is_born_bound: bool,
     birth_location: crate::agent_sessions::SessionLocation,
 ) -> (bool, Option<String>) {
+    use crate::agent_sessions::{pane_key, SessionEvent};
+    use crate::session_registry::{HistoryRowKey, SessionIdentity};
+
     bind_interaction_epoch(&state.interactions, &mut event);
     if let crate::agent_sessions::SessionEvent::QualifiedHook {
         identity,
@@ -10017,6 +10025,22 @@ async fn apply_master_session_event(
 
     if let Some(key) = &refresh_key {
         let sid = acp::schema::v1::SessionId::new(key.clone());
+        let hook_start = match &event {
+            SessionEvent::SessionStarted {
+                cli_source,
+                pane_session_id,
+                ..
+            } if !binding_only => {
+                let identity = SessionIdentity {
+                    session_id: sid.clone(),
+                    history_key: cli_source.canonical_provider_id().and_then(|provider| {
+                        HistoryRowKey::new(provider, birth_location.clone(), key, None)
+                    }),
+                };
+                Some((identity, pane_session_id.as_str()))
+            }
+            _ => None,
+        };
         // Ownership and the reducer transition are one per-session operation.
         // In particular, a direct COM SessionStarted may beat the helper's late
         // ResumePaneAssigned callback. That binding event is then a reducer
@@ -10117,9 +10141,96 @@ async fn apply_master_session_event(
                 },
             );
         } else {
-            // Real hooks are authoritative for binding and activity. The
-            // lifecycle gate keeps the reducer and exact ownership install
-            // atomic with respect to the watcher.
+            if let Some((final_identity, pane_session_id)) = hook_start {
+                let previous = state
+                    .registry
+                    .lookup_active_by_pane(pane_session_id)
+                    .await
+                    .filter(|row| row.session_id == sid)
+                    .map(|row| SessionIdentity::from_info(&row));
+                let applied = state.registry.apply_hook_start(event, birth_location).await;
+                if !applied {
+                    return (false, None);
+                }
+                if state
+                    .registry
+                    .lookup_identity(&final_identity)
+                    .await
+                    .is_some()
+                {
+                    let rekeyed = match previous {
+                        Some(previous) if previous != final_identity => {
+                            (state.registry.lookup_identity(&previous).await.is_none())
+                                .then_some(previous)
+                        }
+                        _ => None,
+                    };
+                    let mut owners = state.hook_owned.lock().await;
+                    if let Some(previous) = rekeyed {
+                        owners.remove(&previous);
+                    }
+                    owners.insert(final_identity);
+                    drop(owners);
+                    state.born_bound.lock().await.remove(&sid);
+                }
+                return (true, refresh_key);
+            }
+
+            if matches!(
+                &event,
+                SessionEvent::SessionStopped { .. }
+                    | SessionEvent::SessionStoppedIfOwner { .. }
+                    | SessionEvent::SessionUnbound { .. }
+            ) {
+                // Legacy helper requests have no qualified key. Resolve under
+                // the raw lifecycle barrier, then retire only the resolved row.
+                let requested = match &event {
+                    SessionEvent::SessionUnbound {
+                        pane_session_id, ..
+                    } => Some(pane_session_id.as_str()),
+                    SessionEvent::SessionStoppedIfOwner {
+                        pane_session_id, ..
+                    } => pane_session_id.as_deref(),
+                    _ => None,
+                };
+                let row = if let Some(pane) = requested {
+                    let Some(owner) = state.registry.lookup_active_by_pane(pane).await else {
+                        return (false, None);
+                    };
+                    if owner.session_id != sid {
+                        return (false, None);
+                    }
+                    Some(owner)
+                } else {
+                    state.registry.lookup(&sid).await
+                };
+                if let Some(row) = row {
+                    let identity = SessionIdentity::from_info(&row);
+                    if let Some(pane) = row.pane_session_id.as_deref() {
+                        if matches!(
+                            &event,
+                            SessionEvent::SessionStoppedIfOwner {
+                                pane_session_id: None,
+                                ..
+                            }
+                        ) {
+                            return (false, None);
+                        }
+                        let applied = state
+                            .registry
+                            .apply_exact_hook_lifecycle(&identity, &pane_key(pane), event)
+                            .await;
+                        if applied {
+                            state.hook_owned.lock().await.insert(identity);
+                            state.born_bound.lock().await.remove(&sid);
+                        }
+                        return (applied, refresh_key);
+                    }
+                }
+            }
+
+            // Legacy activity and unbound lifecycle events still use the raw
+            // reducer. They cannot select among colliding qualified rows.
             //
             // `SessionStopped` deliberately cannot materialize an unseen row
             // (the cwd-basename ghost fix), so do not leave an ownership claim
@@ -10213,8 +10324,8 @@ async fn handle_session_born_bound(
 /// File activity is a status fallback for sessions whose binding is already
 /// known. Bindings come from born-bound launches or real hooks.
 /// Events are routed as:
-///   1. `hook_owned` (a real hook / ACP agent-pane event owns binding AND
-///      activity) → drop; or
+///   1. `hook_owned` (a real hook / ACP agent-pane event owns binding) → drop
+///      the legacy watcher fallback; native activity is arbitrated by the registry;
 ///   2. `born_bound` (already pane-bound) → apply STATUS only, without
 ///      touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
@@ -10224,6 +10335,8 @@ async fn apply_watcher_event(
     emitted: crate::session_watcher::Emitted,
 ) {
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
+    let gate = session_lifecycle_gate(state, &sid).await;
+    let guard = gate.lock().await;
     // Native OFF ownership is qualified registry state, not a raw-id admission
     // into the legacy born-bound map. It also supersedes stale hook ownership.
     if let Some(applied) = state
@@ -10231,6 +10344,7 @@ async fn apply_watcher_event(
         .apply_native_watcher_activity(&emitted.cli, &emitted.key, emitted.event.clone())
         .await
     {
+        drop(guard);
         if applied {
             broadcast_session_status_change(state, None).await;
             try_refresh_title_via_acp(state, &sid).await;
@@ -10240,10 +10354,6 @@ async fn apply_watcher_event(
 
     let activity_only = session_event_is_activity_only(&emitted.event);
     let applied = {
-        // Serialize the ownership check and activity update with resume and
-        // real hooks, so a watcher cannot overwrite a hook that just took over.
-        let gate = session_lifecycle_gate(state, &sid).await;
-        let _guard = gate.lock().await;
         if !state.born_bound.lock().await.contains(&sid) {
             return;
         }
@@ -10270,6 +10380,7 @@ async fn apply_watcher_event(
         }
         state.registry.apply_event(emitted.event).await
     };
+    drop(guard);
     if applied {
         broadcast_session_status_change(
             state,
@@ -11947,7 +12058,8 @@ where
             return false;
         }
     }
-    let gate = session_lifecycle_gate(state, &row.session_id).await;
+    let identity = crate::session_registry::SessionIdentity::from_info(&row);
+    let gate = session_lifecycle_gate(state, &identity.session_id).await;
     let _guard = gate.lock().await;
     if !state
         .registry
@@ -11956,11 +12068,7 @@ where
     {
         return false;
     }
-    state
-        .hook_owned
-        .lock()
-        .await
-        .insert(crate::session_registry::SessionIdentity::from_info(&row));
+    state.hook_owned.lock().await.insert(identity);
     state.born_bound.lock().await.remove(&row.session_id);
     tracing::info!(
         target: "master_wt_event",
@@ -11981,7 +12089,8 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
         Output = Result<bool, crate::session_watcher::copilot_status::ProbeError>,
     >,
 {
-    use crate::agent_sessions::CliSource;
+    use crate::agent_sessions::{CliSource, SessionEvent, SessionLocation};
+    use crate::session_registry::SessionIdentity;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
     if !event.starts_with("agent.") {
@@ -12152,9 +12261,7 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
                 .as_ref()
                 .is_none_or(|location| &row.location == location)
     });
-    let hook_identity = qualified_owner
-        .map(crate::session_registry::SessionIdentity::from_info)
-        .filter(|identity| identity.history_key.is_some());
+    let mut hook_identity = qualified_owner.map(SessionIdentity::from_info);
     let known_row = qualified_owner.or(unique_row.filter(|row| {
         row.cli_source.as_ref() == Some(&cli_source) && row.session_universe.is_none()
     }));
@@ -12176,6 +12283,11 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
         pane_owned_by_other,
     };
     let session_key = facts.key.clone();
+    let sid = acp::schema::v1::SessionId::new(session_key.clone());
+    let location = location
+        .or_else(|| qualified_owner.map(|row| row.location.clone()))
+        .filter(SessionLocation::is_actionable)
+        .unwrap_or(SessionLocation::Host);
     let plan = crate::app::plan_agent_event(event, &payload, &owner_pane, &cli_source, &facts);
     if plan.events.is_empty() {
         return;
@@ -12189,17 +12301,26 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
         if let Some(row) = known_row {
             changed =
                 recover_copilot_prompt(state, row.clone(), &owner_pane, &payload, probe).await;
+            if changed {
+                hook_identity = Some(SessionIdentity::from_info(row));
+            }
         }
     }
-    let activity_only = !changed && plan.events.iter().all(session_event_is_activity_only);
+    // The shared planner still emits ConnectionFailed for the legacy local
+    // consumer. COM provider errors are activity, not transport failures.
+    let activity_only = !changed
+        && plan.events.iter().all(|ev| {
+            session_event_is_activity_only(ev)
+                || (event == "agent.error" && matches!(ev, SessionEvent::ConnectionFailed { .. }))
+        });
 
     let mut refresh_keys = HashSet::new();
     let transition_count = plan.events.len();
     for ev in plan.events {
         let ev = if cli_source == CliSource::OpenCode && event == "agent.session.end" {
             match ev {
-                crate::agent_sessions::SessionEvent::SessionStopped { key, reason } => {
-                    crate::agent_sessions::SessionEvent::SessionStoppedIfOwner {
+                SessionEvent::SessionStopped { key, reason } => {
+                    SessionEvent::SessionStoppedIfOwner {
                         key,
                         pane_session_id: (!owner_pane.is_empty()).then(|| pane_key.clone()),
                         reason,
@@ -12215,36 +12336,81 @@ async fn handle_master_agent_event_with_probe<F, Fut>(
             event = ?ev,
             "received COM agent hook"
         );
-        let ev = if let Some(identity) = hook_identity.as_ref() {
-            ev.qualify_hook(identity.clone(), &owner_pane)
-        } else {
-            ev
+        if let SessionEvent::ConnectionFailed { reason, .. } = &ev {
+            if event == "agent.error" {
+                if let Some(identity) = hook_identity.as_ref() {
+                    let gate = session_lifecycle_gate(state, &identity.session_id).await;
+                    let _guard = gate.lock().await;
+                    changed |= state
+                        .registry
+                        .apply_provider_error(Some(identity), &pane_key, reason)
+                        .await;
+                }
+                continue;
+            }
+        }
+        if let Some(identity) = hook_identity.as_ref() {
+            if matches!(
+                &ev,
+                SessionEvent::SessionStopped { .. }
+                    | SessionEvent::SessionStoppedIfOwner { .. }
+                    | SessionEvent::SessionUnbound { .. }
+                    | SessionEvent::SessionRenamed { .. }
+            ) {
+                let gate = session_lifecycle_gate(state, &identity.session_id).await;
+                let _guard = gate.lock().await;
+                let applied = state
+                    .registry
+                    .apply_exact_hook_lifecycle(identity, &pane_key, ev)
+                    .await;
+                if applied {
+                    state.hook_owned.lock().await.insert(identity.clone());
+                    state.born_bound.lock().await.remove(&sid);
+                }
+                changed |= applied;
+                continue;
+            }
+        }
+        let is_start = matches!(&ev, SessionEvent::SessionStarted { .. });
+        let ev = match hook_identity.as_ref() {
+            Some(identity) if identity.history_key.is_some() => {
+                ev.qualify_hook(identity.clone(), &pane_key)
+            }
+            _ => ev,
         };
-        let (applied, refresh_key) = apply_master_session_event(
-            state,
-            ev,
-            false,
-            crate::agent_sessions::SessionLocation::Host,
-        )
-        .await;
+        let (applied, refresh_key) =
+            apply_master_session_event(state, ev, false, location.clone()).await;
         changed |= applied;
         if let Some(key) = refresh_key {
             refresh_keys.insert(key);
         }
+        if is_start {
+            if !applied {
+                break;
+            }
+            hook_identity = state
+                .registry
+                .lookup_active_by_pane(&pane_key)
+                .await
+                .filter(|row| {
+                    row.session_id == sid
+                        && row.cli_source.as_ref() == Some(&cli_source)
+                        && row.location == location
+                        && row.session_universe.is_none()
+                })
+                .as_ref()
+                .map(SessionIdentity::from_info);
+            if hook_identity.is_none() && !pane_key.is_empty() {
+                // A born-bound or helper-owned pane can reject the binding
+                // even though the start recorded metadata for the session.
+                break;
+            }
+        }
     }
-    if let Some(location) = location {
-        changed |= state
-            .registry
-            .set_location(
-                &acp::schema::v1::SessionId::new(session_key.clone()),
-                location,
-            )
-            .await;
-    }
-    let final_row = state
-        .registry
-        .lookup(&acp::schema::v1::SessionId::new(session_key.clone()))
-        .await;
+    let final_row = match hook_identity {
+        Some(identity) => state.registry.lookup_identity(&identity).await,
+        None => state.registry.lookup(&sid).await,
+    };
     let final_status = final_row.as_ref().and_then(|row| row.status.clone());
     tracing::info!(
         target: "master_wt_event",
@@ -12549,7 +12715,14 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
 
-    if method == "native_agent_observation" {
+    if matches!(method, "native_agent_observation" | "recover_program_badge") {
+        let badge_recovery = method == "recover_program_badge";
+        let badge_candidate = params
+            .get("resolve_program_badge")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+            && params.get("kind").and_then(|v| v.as_str()) == Some("program_status");
+        let prompt_program_revision = params.get("program_revision").and_then(|v| v.as_u64());
         match serde_json::from_value::<crate::session_registry::NativeAgentObservation>(params) {
             Ok(mut event) => {
                 if !native_observation_matches_receiver(state, event.receiver_generation) {
@@ -12558,34 +12731,83 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
                         "native observation rejected before listener readiness or for receiver generation mismatch");
                     return;
                 }
-                let applied = if matches!(
+                if badge_recovery {
+                    if badge_candidate {
+                        state
+                            .registry
+                            .apply_program_badge_candidate(event, false, true)
+                            .await;
+                        crate::wt_protocol_events::send(
+                            crate::wt_protocol_events::session_registry_changed_event(),
+                        );
+                    }
+                    return;
+                }
+                let program_status = matches!(
                     event.event,
                     crate::session_registry::NativeObservationKind::ProgramStatus { .. }
-                ) {
+                );
+                let applied = if program_status
+                    || matches!(
+                        event.event,
+                        crate::session_registry::NativeObservationKind::ForegroundRetired { .. }
+                    ) {
                     let owner = state.registry.lookup_active_by_pane(&event.pane_id).await;
                     if let Some(owner) = owner {
                         let gate = session_lifecycle_gate(state, &owner.session_id).await;
                         let _guard = gate.lock().await;
                         let current = state.registry.lookup_active_by_pane(&event.pane_id).await;
-                        if current.as_ref().is_none_or(|current| {
+                        let same_owner = current.as_ref().is_some_and(|current| {
                             crate::session_registry::SessionIdentity::from_info(current)
-                                != crate::session_registry::SessionIdentity::from_info(&owner)
-                        }) {
+                                == crate::session_registry::SessionIdentity::from_info(&owner)
+                        });
+                        if !same_owner && !badge_candidate {
                             return;
                         }
-                        event.canonical_owned =
-                            state.hook_owned.lock().await.contains(
+                        if program_status {
+                            event.canonical_owned = state.hook_owned.lock().await.contains(
                                 &crate::session_registry::SessionIdentity::from_info(&owner),
                             );
-                        state.registry.apply_native_observation(event).await
+                        }
+                        if badge_candidate {
+                            state
+                                .registry
+                                .apply_program_badge_candidate(event, same_owner, false)
+                                .await
+                        } else {
+                            state
+                                .registry
+                                .apply_native_observation_with_prompt_revision(
+                                    event,
+                                    prompt_program_revision,
+                                )
+                                .await
+                        }
                     } else {
-                        state.registry.apply_native_observation(event).await
+                        if badge_candidate {
+                            state
+                                .registry
+                                .apply_program_badge_candidate(event, true, false)
+                                .await
+                        } else {
+                            state
+                                .registry
+                                .apply_native_observation_with_prompt_revision(
+                                    event,
+                                    prompt_program_revision,
+                                )
+                                .await
+                        }
                     }
                 } else {
                     state.registry.apply_native_observation(event).await
                 };
                 if applied {
                     broadcast_session_status_change(state, None).await;
+                } else if badge_candidate {
+                    crate::wt_protocol_events::send(
+                        crate::wt_protocol_events::session_registry_changed_event(),
+                    );
                 }
             }
             Err(error) => tracing::warn!(
@@ -12741,7 +12963,12 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     }
 
     let shell_prompt = method == "vt_sequence"
-        && params.get("sequence").and_then(|value| value.as_str()) == Some("osc:133;A");
+        && params
+            .get("sequence")
+            .and_then(|value| value.as_str())
+            .and_then(|sequence| sequence.strip_prefix("osc:133;"))
+            .and_then(|payload| payload.split(';').next())
+            == Some("A");
     if method != "connection_state" && !shell_prompt {
         return;
     }
@@ -12759,43 +12986,30 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
     if shell_prompt {
-        // A helper's exit inference can overtake the session-start hook queued
-        // on this COM stream. Reconcile the prompt here too, in broadcast order;
-        // a duplicate PaneClosed is a no-op. Agent panes have no shell beneath
-        // them, so only a bound shell session may be ended by this heuristic.
-        use crate::agent_sessions::{AgentStatus, OriginFilter};
-        let shell_session = state.registry.snapshot().await.into_iter().find(|row| {
-            OriginFilter::ShellOnly.matches_opt(row.origin.as_ref())
-                && matches!(
-                    row.status,
-                    Some(
-                        AgentStatus::Idle
-                            | AgentStatus::Working
-                            | AgentStatus::Attention
-                            | AgentStatus::Error
-                    )
-                )
-                && row.pane_session_id.as_deref().is_some_and(|pane| {
-                    crate::agent_sessions::pane_key(pane)
-                        == crate::agent_sessions::pane_key(&pane_id)
-                })
-        });
-        if let Some(row) = shell_session {
-            let applied = state
-                .registry
-                .apply_event(crate::agent_sessions::SessionEvent::PaneClosed {
-                    pane_session_id: pane_id.clone(),
-                })
-                .await;
-            if applied {
-                tracing::info!(
-                    target: "master_wt_event",
-                    pane_id,
-                    session_key = %row.session_id.0,
-                    "shell prompt ended bound session in COM event order"
-                );
-                broadcast_session_status_change(state, None).await;
+        let context = if let Some(value) = params.get("foreground_retirement") {
+            let Ok(event) = serde_json::from_value::<crate::session_registry::NativeAgentObservation>(
+                value.clone(),
+            ) else {
+                return;
+            };
+            if !native_observation_matches_receiver(state, event.receiver_generation) {
+                return;
             }
+            Some(event)
+        } else {
+            None
+        };
+        if state
+            .registry
+            .reconcile_raw_shell_prompt(&pane_id, context.as_ref())
+            .await
+        {
+            tracing::info!(
+                target: "master_wt_event",
+                pane_id,
+                "shell prompt ended bound session in COM event order"
+            );
+            broadcast_session_status_change(state, None).await;
         }
         return;
     }

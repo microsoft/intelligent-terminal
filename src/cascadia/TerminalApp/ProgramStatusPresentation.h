@@ -41,6 +41,10 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
         std::wstring title;
         std::wstring message;
         std::wstring inputMessage;
+        bool oscOwned{};
+        bool suppressLegacyProgress{};
+
+        bool SuppressesLegacyBadge() const noexcept { return oscOwned || suppressLegacyProgress; }
 
         bool operator==(const PaneStatus&) const = default;
     };

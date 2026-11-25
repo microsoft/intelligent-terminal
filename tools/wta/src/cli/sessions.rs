@@ -43,8 +43,10 @@ pub(crate) async fn run_list(
     include_status: bool,
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
-    let result = local.run_until(fetch_from_master(master, params)).await;
-    let mut snapshot = match result {
+    let result = local
+        .run_until(fetch_with_badge_dispositions(master, params))
+        .await;
+    let (mut snapshot, dispositions) = match result {
         Ok(snapshot) => snapshot,
         Err(error) => {
             if include_status && error.is::<MasterUnavailable>() {
@@ -61,7 +63,11 @@ pub(crate) async fn run_list(
         snapshot
             .history_status
             .context("master does not report history loading status")?;
-        println!("{}", serde_json::to_string(&snapshot)?);
+        let mut output = serde_json::to_value(&snapshot)?;
+        if let Some(dispositions) = dispositions {
+            output["program_badge_dispositions"] = dispositions;
+        }
+        println!("{output}");
     } else if json_mode {
         print!("{}", format_json_lines(&snapshot.sessions)?);
     } else {
@@ -93,6 +99,16 @@ pub(crate) async fn fetch_from_master(
     master: String,
     params: crate::session_registry::SessionsListParams,
 ) -> Result<crate::session_registry::SessionsListResponse> {
+    Ok(fetch_with_badge_dispositions(master, params).await?.0)
+}
+
+async fn fetch_with_badge_dispositions(
+    master: String,
+    params: crate::session_registry::SessionsListParams,
+) -> Result<(
+    crate::session_registry::SessionsListResponse,
+    Option<serde_json::Value>,
+)> {
     let pipe = connect_master_pipe(&master).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
@@ -131,8 +147,14 @@ pub(crate) async fn fetch_from_master(
             .ext_method(req)
             .await
             .context("request sessions/list from wta-master")?;
-        crate::session_registry::parse_sessions_list_response(&resp.0)
-            .context("parse sessions/list response")
+        let snapshot = crate::session_registry::parse_sessions_list_response(&resp.0)
+            .context("parse sessions/list response")?;
+        #[derive(serde::Deserialize)]
+        struct BadgeFacet {
+            program_badge_dispositions: Option<serde_json::Value>,
+        }
+        let facet: BadgeFacet = serde_json::from_str(resp.0.get())?;
+        Ok((snapshot, facet.program_badge_dispositions))
     }
     .await;
     drop(conn);

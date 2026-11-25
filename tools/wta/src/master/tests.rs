@@ -2828,14 +2828,7 @@ async fn program_status_promotion_admission_is_exact_and_qualified() {
             assert_eq!(pane.status, AgentStatus::Attention, "{name}");
             assert!(pane.input_required, "{name}");
             if matches!(case, Case::DuplicateRevision) {
-                assert_eq!(
-                    pane.program_status.as_ref().map(|status| status.revision),
-                    Some(2)
-                );
-                assert_eq!(
-                    pane.program_status.as_ref().and_then(|status| status.state),
-                    Some(ProgramState::Done)
-                );
+                assert!(pane.program_status.is_none(), "{name}");
             }
         }
     }
@@ -3245,7 +3238,7 @@ async fn osc_authority_suppresses_each_competing_visual_source() {
                     .effective_row
                     .as_ref()
                     .is_some_and(|row| row.status == Some(AgentStatus::Idle))
-                && public_row == cleared.effective_row.as_ref()
+                && public_row.is_some_and(|row| row.status == Some(AgentStatus::Idle))
                 && cleared.pane_snapshot == cleared.public_snapshot.pane_statuses
                 && cleared
                     .public_snapshot
@@ -3555,18 +3548,13 @@ async fn osc_owned_non_prompt_retirement_boundaries_start_fresh_lifetimes() {
                 row.session_id.0.as_ref() == fresh
                     && row.pane_session_id.as_deref() == Some(OSC_AUTHORITY_PANE)
             }),
-            "higher-mode-epoch" => after_boundary
+            "higher-mode-epoch" | "receiver-generation" => after_boundary
                 .public_snapshot
-                .native_pane_observations
-                .iter()
-                .any(|pane| pane.mode_epoch == 2),
-            "receiver-generation" => after_boundary
-                .public_snapshot
-                .native_pane_observations
+                .pane_statuses
                 .iter()
                 .any(|pane| {
-                    pane.mode_epoch == 1
-                        && pane.agent_session_id.as_deref() == Some("receiver-generation")
+                    pane.pane_id == OSC_AUTHORITY_PANE
+                        && pane.agent_session_id.as_deref() == Some(boundary)
                         && pane.status == AgentStatus::Idle
                 }),
             _ => unreachable!(),

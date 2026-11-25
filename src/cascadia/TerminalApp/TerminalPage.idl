@@ -227,6 +227,7 @@ namespace TerminalApp
         // Records the known pane/agent binding so a persisted layout can
         // resume the agent CLI even when no agent hook is installed.
         void OnPaneAgentSessionChanged(String eventJson);
+        void OnVerifiedNativeHook(String eventJson, Guid paneId, UInt64 rootProcessHandle);
 
         // Inbound event from WTA carrying
         // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.

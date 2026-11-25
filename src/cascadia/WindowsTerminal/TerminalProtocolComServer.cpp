@@ -21,12 +21,166 @@
 #include <wrl/module.h>
 #include <wil/resource.h>
 #include <oleauto.h>
+#include <rpc.h>
+#include <rpcasync.h>
+#include <tlhelp32.h>
+#include <softpub.h>
+#include <wintrust.h>
+#include <winver.h>
+
+#pragma comment(lib, "rpcrt4.lib")
+#pragma comment(lib, "wintrust.lib")
+#pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "version.lib")
 
 using namespace Microsoft::WRL;
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
 
 namespace Protocol = winrt::Microsoft::Terminal::Protocol;
+
+namespace
+{
+    bool _isSignedNativeCopilot(const std::wstring& image)
+    {
+        const auto name = std::wstring_view{ image }.substr(image.find_last_of(L'\\') + 1);
+        if (CompareStringOrdinal(name.data(), static_cast<int>(name.size()), L"copilot.exe", -1, TRUE) != CSTR_EQUAL)
+        {
+            return false;
+        }
+        const auto versionSize = GetFileVersionInfoSizeW(image.c_str(), nullptr);
+        if (!versionSize || versionSize > 64 * 1024)
+        {
+            return false;
+        }
+        std::vector<std::byte> version(versionSize);
+        void* translations{};
+        UINT size{};
+        if (!GetFileVersionInfoW(image.c_str(), 0, versionSize, version.data()) ||
+            !VerQueryValueW(version.data(), L"\\VarFileInfo\\Translation", &translations, &size) ||
+            size < 2 * sizeof(WORD))
+        {
+            return false;
+        }
+        const auto words = static_cast<const WORD*>(translations);
+        wchar_t productKey[64]{};
+        swprintf_s(productKey, L"\\StringFileInfo\\%04x%04x\\ProductName",
+                   static_cast<unsigned>(words[0]), static_cast<unsigned>(words[1]));
+        void* product{};
+        if (!VerQueryValueW(version.data(), productKey, &product, &size) || !size ||
+            std::wstring_view{ static_cast<const wchar_t*>(product), size - 1 } != L"GitHub Copilot CLI")
+        {
+            return false;
+        }
+        WINTRUST_FILE_INFO file{ sizeof(file) };
+        file.pcwszFilePath = image.c_str();
+        WINTRUST_DATA trust{ sizeof(trust) };
+        trust.dwUIChoice = WTD_UI_NONE;
+        trust.dwUnionChoice = WTD_CHOICE_FILE;
+        trust.pFile = &file;
+        trust.dwStateAction = WTD_STATEACTION_VERIFY;
+        trust.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+        GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+        const auto result = WinVerifyTrust(nullptr, &policy, &trust);
+        const auto close = wil::scope_exit([&] {
+            trust.dwStateAction = WTD_STATEACTION_CLOSE;
+            WinVerifyTrust(nullptr, &policy, &trust);
+        });
+        if (result != ERROR_SUCCESS)
+        {
+            return false;
+        }
+        const auto provider = WTHelperProvDataFromStateData(trust.hWVTStateData);
+        const auto signer = provider ? WTHelperGetProvSignerFromChain(provider, 0, FALSE, 0) : nullptr;
+        const auto cert = signer && signer->csCertChain ? signer->pasCertChain[0].pCert : nullptr;
+        wchar_t publisher[64]{};
+        return cert &&
+               CertGetNameStringW(cert, CERT_NAME_ATTR_TYPE, 0, const_cast<char*>(szOID_ORGANIZATION_NAME),
+                                  publisher, ARRAYSIZE(publisher)) > 1 &&
+               std::wstring_view{ publisher } == L"GitHub, Inc.";
+    }
+
+    uint64_t _creationTime(const HANDLE process) noexcept
+    {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (!process || !GetProcessTimes(process, &created, &exited, &kernel, &user) ||
+            WaitForSingleObject(process, 0) != WAIT_TIMEOUT)
+        {
+            return 0;
+        }
+        return (uint64_t{ created.dwHighDateTime } << 32) | created.dwLowDateTime;
+    }
+}
+
+std::shared_ptr<TerminalProtocolComServer::NativeHookOrigin> TerminalProtocolComServer::_verifyNativeHookOrigin(const Json::Value& params) noexcept
+    try
+    {
+        const auto& event = params["event"];
+        if (params["cli_source"] != "copilot" ||
+            (event != "agent.session.start" && event != "agent.prompt.submit") ||
+            !params["agent_session_id"].isString() || params["agent_session_id"].asString().empty() ||
+            params.isMember("wsl_distro") || params.isMember("agent_backend"))
+        {
+            return {};
+        }
+        RPC_CALL_ATTRIBUTES_V2_W call{};
+        call.Version = 2;
+        call.Flags = RPC_QUERY_CLIENT_PID;
+        if (RpcServerInqCallAttributesW(nullptr, &call) != RPC_S_OK || !call.ClientPID)
+        {
+            return {};
+        }
+        const auto callerId = static_cast<DWORD>(reinterpret_cast<uintptr_t>(call.ClientPID));
+        constexpr auto processAccess = PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE;
+        const wil::unique_handle caller{ OpenProcess(processAccess, FALSE, callerId) };
+        const auto callerCreated = _creationTime(caller.get());
+        if (!callerCreated)
+        {
+            return {};
+        }
+        const wil::unique_handle snapshot{ CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if (snapshot.get() == INVALID_HANDLE_VALUE)
+        {
+            return {};
+        }
+        const auto parentOf = [&](const DWORD pid, const std::wstring_view imageName = {}) {
+            PROCESSENTRY32W entry{ sizeof(entry) };
+            if (Process32FirstW(snapshot.get(), &entry))
+            {
+                do
+                {
+                    if (entry.th32ProcessID == pid)
+                    {
+                                    return imageName.empty() ||
+                                                   CompareStringOrdinal(imageName.data(), static_cast<int>(imageName.size()), entry.szExeFile, -1, TRUE) == CSTR_EQUAL ?
+                                               entry.th32ParentProcessID : DWORD{};
+                    }
+                } while (Process32NextW(snapshot.get(), &entry));
+            }
+            return DWORD{};
+        };
+        const auto agentId = parentOf(callerId, L"wtcli.exe");
+        const auto rootId = parentOf(agentId);
+        wil::unique_handle agent{ OpenProcess(processAccess, FALSE, agentId) };
+        wil::unique_handle root{ OpenProcess(processAccess, FALSE, rootId) };
+        const auto agentCreated = _creationTime(agent.get());
+        const auto rootCreated = _creationTime(root.get());
+        if (!rootCreated || rootCreated > agentCreated || !agentCreated || agentCreated > callerCreated)
+        {
+            return {};
+        }
+        const auto image = wil::QueryFullProcessImageNameW<std::wstring>(agent.get());
+        if (!_isSignedNativeCopilot(image) ||
+            !_creationTime(caller.get()) || !_creationTime(agent.get()) || !_creationTime(root.get()))
+        {
+            return {};
+        }
+        return std::make_shared<NativeHookOrigin>(NativeHookOrigin{ std::move(root), std::move(agent) });
+}
+catch (...)
+{
+    return {};
+}
 
 // Static state — set once before registration, never mutated.
 WindowEmperor* TerminalProtocolComServer::s_emperor = nullptr;
@@ -1397,8 +1551,30 @@ try
         // Hooks publish agent lifecycle events through the broadcast route.
         // Mirror those events into TerminalPage so a persisted layout records
         // the same pane/session binding as WTA's registry.
-        _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
-        s_NotifyEventToComClients(normalized);
+        const auto& params = evt["params"];
+        const auto origin = evt["method"] == "agent_event" && params.isObject() ? _verifyNativeHookOrigin(params) : nullptr;
+        GUID paneId{};
+        bool hasPane = false;
+        if (origin && params["pane_id"].isString())
+        {
+            std::wstring pane = winrt::to_hstring(params["pane_id"].asString()).c_str();
+            if (pane.size() == 36)
+            {
+                pane = L"{" + pane + L"}";
+            }
+            hasPane = SUCCEEDED(CLSIDFromString(pane.c_str(), &paneId));
+        }
+        if (hasPane)
+        {
+            // The registry needs the hook association before a qualified Reset.
+            s_NotifyEventToComClients(normalized);
+            _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized), winrt::guid{ paneId }, origin);
+        }
+        else
+        {
+            _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
+            s_NotifyEventToComClients(normalized);
+        }
         return S_OK;
     }
     default:
@@ -1822,7 +1998,7 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
     }
 }
 
-void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson, const winrt::guid paneId, const std::shared_ptr<NativeHookOrigin>& origin)
 {
     if (!s_emperor)
     {
@@ -1842,10 +2018,17 @@ void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hst
         }
         dispatcher.RunAsync(
             winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-            [page, eventJson]() {
+            [page, eventJson, paneId, origin]() {
                 try
                 {
-                    page.OnPaneAgentSessionChanged(eventJson);
+                    if (origin && WaitForSingleObject(origin->agent.get(), 0) == WAIT_TIMEOUT)
+                    {
+                        page.OnVerifiedNativeHook(eventJson, paneId, reinterpret_cast<uint64_t>(origin->root.get()));
+                    }
+                    else
+                    {
+                        page.OnPaneAgentSessionChanged(eventJson);
+                    }
                 }
                 catch (...)
                 {
