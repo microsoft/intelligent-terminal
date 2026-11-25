@@ -258,6 +258,9 @@ public:
     {
         winrt::TerminalApp::TaskbarState CombinedState;
         std::optional<uint32_t> ContentId;
+        bool StatusOnly{ false };
+
+        bool ShowsHeaderProgress() const { return !StatusOnly && CombinedState.State() != 0; }
     };
     void CollectTaskbarStates(std::vector<TaskbarStateWithContentId>& states);
 

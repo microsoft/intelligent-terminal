@@ -23374,6 +23374,41 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
             });
         }
+
+        _emitOsc(connection, u"\x1b]7501;state=blocked:kind=question\x1b\\");
+        _waitForContentTransferReviewUI([&]() { return tab->GetCombinedTaskbarState().State() == 4; });
+        for (const auto collapsed : { false, true })
+        {
+            TestOnUIThread([&]() {
+                page->_tabStrip.IsRailCollapsed(collapsed);
+                tab->ShowBellIndicator(true);
+                VERIFY_ARE_EQUAL(Visibility::Visible, bell.Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, icon.Visibility());
+                if (collapsed)
+                {
+                    tab->Focus(FocusState::Unfocused);
+                    tab->Focus(FocusState::Programmatic);
+                }
+                else
+                {
+                    tab->ActivateBellIndicatorTimer();
+                    tab->_BellIndicatorTimerTick(nullptr, nullptr);
+                }
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, bell.Visibility());
+                VERIFY_IS_FALSE(display.ShowProgressRing());
+                VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
+                VERIFY_IS_TRUE(tab->TabViewItem().IconSource() == tab->_iconSource);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" },
+                                 icon.Content().as<BitmapIcon>().UriSource().AbsoluteUri());
+                VERIFY_ARE_EQUAL(uint64_t{ 4 }, tab->GetCombinedTaskbarState().State());
+                VERIFY_ARE_EQUAL(uint64_t{ 0 }, tab->GetCombinedTaskbarState().Progress());
+            });
+        }
+        _emitOsc(connection, u"\x1b]7501;state=working:progress=37\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return display.ShowProgressRing() && tab->_tabStatus.ProgressValue() == 37 &&
+                   icon.Visibility() == Visibility::Collapsed;
+        });
     }
 
     void TabTests::ProgressReplacementPreservesIndependentStatusGlyphs()

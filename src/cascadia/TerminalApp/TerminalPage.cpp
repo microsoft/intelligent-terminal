@@ -13876,6 +13876,8 @@ namespace winrt::TerminalApp::implementation
             states.push_back({
                 .CombinedState = winrt::make<implementation::TaskbarState>(state, summary.progress.value_or(0)),
                 .ContentId = contentId,
+                // Synthesized error/paused states are meaningful to the taskbar, but have no progress to draw in the header.
+                .StatusOnly = state == 2 || state == 4,
             });
         }
         tab.SetProgramStatusPresentation(text, winrt::hstring{ details }, std::move(states), StatusId(summary.category), _tabStrip.RichTabAgentStatusVisible());
@@ -17195,7 +17197,7 @@ namespace winrt::TerminalApp::implementation
         size_t groupPaneCount = 0;
         bool headerProgressProjectedToPaneRows = false;
         const auto headerProgressSource = tab->GetCombinedTaskbarStateWithContentId();
-        const auto headerProgressState = headerProgressSource.CombinedState.State();
+        const auto showHeaderProgress = headerProgressSource.ShowsHeaderProgress();
         const auto headerProgressContentId = headerProgressSource.ContentId;
         std::vector<TerminalApp::TabStripPaneItem> items;
         for (const auto& pane : visiblePanes)
@@ -17324,7 +17326,7 @@ namespace winrt::TerminalApp::implementation
             }
             // Only delegate the header to a projected row that actually shows the winning ring.
             headerProgressProjectedToPaneRows = headerProgressProjectedToPaneRows ||
-                (headerProgressState != 0 && headerProgressContentId == pane.ContentId && itemImpl->IsProgressRingActive());
+                (showHeaderProgress && headerProgressContentId == pane.ContentId && itemImpl->IsProgressRingActive());
             itemImpl->AutomationName(winrt::hstring{ automationName });
             items.emplace_back(std::move(item));
         }
