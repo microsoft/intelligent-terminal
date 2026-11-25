@@ -1,7 +1,7 @@
 # Architecture and design PR review
 
 The workflow reviews material same-repository PRs using the architecture
-reviewer/skill, prepared read-only source evidence and native gh-aw comment
+reviewer/skill, read-only Git inspection and native gh-aw comment
 publication with threat detection. It provides advice, not approval or repairs.
 Trusted `pull_request_target` code authorizes `admin`, `maintainer` and `write`
 actors. Fork PRs and drafts are excluded.
@@ -44,16 +44,14 @@ research method and report contract. The workflow supplies the PR, revisions,
 tools and authorized result destination. Local invocation returns Markdown
 unless the caller authorizes another destination.
 
-Before inference, a trusted runner step fetches the exact comparison base and
-PR head without checking either out. It writes the file inventory, patch and
-revision indexes to `Generated Files/architecture-evidence`. The reviewer uses
-its regular read tools: patch line ranges for large diffs, and the indexes for
-source (including unchanged consumers). Regular UTF-8 blobs up to 1 MiB are
-deduplicated by object ID and stored as inert `.txt` files. Other entries are
-marked unavailable. Candidate paths never become executable or configuration
-file paths. Only trusted instructions are checked out at `github.workflow_sha`.
+As in Accessibility Review, trusted workflow code stays checked out and a
+trusted runner step fetches the PR commits separately. It fetches only the two
+exact review revisions, at depth one. The reviewer reads diffs, source and
+unchanged consumers from those Git objects on demand. Git access goes through
+the trusted `review-source.sh` command, mounted read-only. The command handles
+Git flags and revisions itself; the model has no direct Git command grant.
+There is no bulk source export, evidence server or candidate checkout.
 
-The workflow has no custom evidence server, model shell or candidate checkout.
 Missing required evidence is reported with the native incomplete signal rather
 than a PR comment. The publication check fails an incomplete or missing report.
 
