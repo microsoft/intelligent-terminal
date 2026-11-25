@@ -9276,6 +9276,26 @@ async fn release_pending_sidebar_resume_for_binding(
     }
 }
 
+async fn release_pending_sidebar_resume_for_failure(state: &MasterStateInner, session_id: &str) {
+    let session_id = acp::schema::v1::SessionId::new(session_id);
+    let Some(row) = state.registry.lookup(&session_id).await.filter(|row| {
+        row.status.as_ref().is_some_and(|status| {
+            matches!(
+                status,
+                crate::agent_sessions::AgentStatus::Historical
+                    | crate::agent_sessions::AgentStatus::Ended
+            )
+        }) && row.pane_session_id.is_none()
+    }) else {
+        return;
+    };
+    state
+        .pending_sidebar_resumes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&crate::session_registry::SessionIdentity::from_info(&row));
+}
+
 fn encode_session_activation(
     response: &crate::session_registry::SessionActivateResponse,
 ) -> acp::schema::v1::ExtResponse {
@@ -9972,11 +9992,20 @@ async fn handle_session_event(
         } => Some((key.clone(), pane_session_id.clone())),
         _ => None,
     };
+    let resume_failure = match &event {
+        crate::agent_sessions::SessionEvent::ResumeFailed { key, .. } => Some(key.clone()),
+        _ => None,
+    };
     let status_key = session_event_status_key(state, &event).await;
     let (applied, refresh_key) =
         apply_master_session_event(state, event, is_born_bound, birth_location).await;
     if let Some((session_id, pane_session_id)) = resume_binding {
         release_pending_sidebar_resume_for_binding(state, &session_id, &pane_session_id).await;
+    }
+    if applied {
+        if let Some(session_id) = resume_failure {
+            release_pending_sidebar_resume_for_failure(state, &session_id).await;
+        }
     }
     if applied {
         broadcast_session_status_change(
