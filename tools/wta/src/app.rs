@@ -1581,6 +1581,7 @@ pub struct App {
     pub autofix_enabled: bool,
     pub(crate) autofix_policy_state: crate::telemetry::AutoFixPolicyState,
     pub(crate) recommendation_rendered: bool,
+    pub(crate) recommendation_area: Option<Rect>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1925,6 +1926,7 @@ impl App {
             autofix_enabled,
             autofix_policy_state: crate::telemetry::AutoFixPolicyState::default(),
             recommendation_rendered: false,
+            recommendation_area: None,
             tab_sessions,
             pending_session_load: None,
             session_to_tab: HashMap::new(),
@@ -7313,8 +7315,8 @@ impl App {
 
     /// Recompute `rec_scroll.max` from the current card heights and the
     /// panel's available cards region. Called from layout.rs before
-    /// `recommendations::render` so the renderer stays `&App` and any
-    /// wheel-driven over-scroll is clamped before paint.
+    /// `recommendations::render` so the selected card is on screen before
+    /// painting its independently scrollable body.
     pub fn sync_rec_scroll_max(&mut self, panel_width: u16, panel_height: u16) {
         let panel_cards_h = panel_height as usize;
         self.current_tab_mut().rec_viewport_height = panel_height;
@@ -7329,16 +7331,24 @@ impl App {
         self.current_tab_mut()
             .rec_scroll
             .set_max(total.saturating_sub(panel_cards_h));
+        self.scroll_rec_to_selected(panel_width);
     }
 
     fn clear_recommendations(&mut self) {
         self.current_tab_mut().clear_recommendations();
     }
 
+    /// Scroll only the selected card's body; preserve card/action selection.
+    fn scroll_recommendation_body(&mut self, delta: isize) {
+        let scroll = &mut self.current_tab_mut().rec_body_scroll;
+        scroll.set(scroll.offset.saturating_add_signed(delta));
+    }
+
     /// Keep the selected recommendation visible without moving a card that
     /// already fits in the full panel viewport. Compact mode renders only the
     /// selected card, so it never needs a canvas offset.
     fn scroll_rec_to_selected(&mut self, panel_width: u16) {
+        self.recommendation_rendered = false;
         let Some(recs) = self.current_tab().turn.recommendations().cloned() else {
             return;
         };
@@ -7927,10 +7937,10 @@ impl App {
     }
 
     /// Returns the number of buttons for the currently selected choice card.
-    /// Send actions have 2 buttons (Run, Insert); OpenAndSend has 1 button.
+    /// Insert-eligible choices have 2 buttons; all other choices have 1.
     fn button_count_for_selected(&self) -> usize {
         self.selected_recommendation_choice()
-            .map(|c| if self.is_send_choice(c) { 2 } else { 1 })
+            .map(|c| if c.supports_insert() { 2 } else { 1 })
             .unwrap_or(1)
     }
 
@@ -7942,12 +7952,18 @@ impl App {
 
     fn focus_next_recommendation_action(&mut self) {
         let button_count = self.button_count_for_selected();
+        if button_count > 1 {
+            self.recommendation_rendered = false;
+        }
         let tab = self.current_tab_mut();
         tab.selected_button = (tab.selected_button + 1) % button_count;
     }
 
     fn focus_previous_recommendation_action(&mut self) {
         let button_count = self.button_count_for_selected();
+        if button_count > 1 {
+            self.recommendation_rendered = false;
+        }
         let tab = self.current_tab_mut();
         tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
     }

@@ -626,6 +626,24 @@ impl App {
         }
 
         match key.code {
+            KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End
+                if key.modifiers.is_empty()
+                    && self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().rec_body_scroll.max > 0
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button =>
+            {
+                let page = self
+                    .current_tab()
+                    .rec_viewport_height
+                    .saturating_sub(4)
+                    .max(1) as isize;
+                self.scroll_recommendation_body(match key.code {
+                    KeyCode::Home => isize::MIN,
+                    KeyCode::End => isize::MAX,
+                    KeyCode::PageUp => -page,
+                    _ => page,
+                });
+            }
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
@@ -638,10 +656,12 @@ impl App {
                     tab.recommendation_focus = RecommendationFocus::Button;
                     tab.selected_recommendation = choices_len.saturating_sub(1);
                     tab.selected_button = 0;
+                    tab.rec_body_scroll.reset();
                     self.scroll_rec_to_selected(self.main_area_width());
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 } else if self.current_tab().selected_recommendation > 0 {
+                    self.current_tab_mut().rec_body_scroll.reset();
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
                     self.scroll_rec_to_selected(self.main_area_width());
@@ -667,10 +687,12 @@ impl App {
                     tab.recommendation_focus = RecommendationFocus::Button;
                     tab.selected_recommendation = 0;
                     tab.selected_button = 0;
+                    tab.rec_body_scroll.reset();
                     self.scroll_rec_to_selected(self.main_area_width());
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 } else if self.current_tab().selected_recommendation + 1 < choices_len {
+                    self.current_tab_mut().rec_body_scroll.reset();
                     let default_button = self.default_button_for_selected();
                     self.current_tab_mut().selected_recommendation += 1;
                     self.current_tab_mut().selected_button = default_button;
@@ -838,6 +860,12 @@ impl App {
                 if self.current_tab().turn.recommendations().is_some()
                     && self.current_tab().recommendation_focus == RecommendationFocus::Button
                 {
+                    if !self.recommendation_rendered
+                        || !self.current_tab().pane_open
+                        || self.help_overlay_visible
+                    {
+                        return;
+                    }
                     // A card button owns focus even when the input box already
                     // has draft text. Keep the draft intact and route Enter to
                     // the selected action.

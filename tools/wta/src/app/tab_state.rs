@@ -676,6 +676,8 @@ pub struct TabSession {
     pub selected_button: usize,
     pub recommendation_focus: RecommendationFocus,
     pub rec_scroll: Scroll,
+    /// Wrapped body rows within the selected card; the action row never scrolls.
+    pub rec_body_scroll: Scroll,
     pub rec_viewport_height: u16,
 
     /// Last value the helper published for this tab in a
@@ -1235,6 +1237,7 @@ impl TabSession {
         self.selected_button = 0;
         self.recommendation_focus = RecommendationFocus::Button;
         self.rec_scroll.reset();
+        self.rec_body_scroll.reset();
         self.rec_viewport_height = 0;
     }
 

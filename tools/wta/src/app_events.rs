@@ -503,6 +503,13 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        // Redrawing backend events may replace the card before the next paint.
+        // Do not let a queued Enter activate the previous frame's action.
+        let invalidates_card = self.event_requires_redraw(&event)
+            && !matches!(
+                &event,
+                AppEvent::Key(_) | AppEvent::Tick | AppEvent::RevealTick | AppEvent::Mouse(_)
+            );
         self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
@@ -519,6 +526,9 @@ impl App {
             None
         };
         self.handle_event_inner(event);
+        if invalidates_card {
+            self.recommendation_rendered = false;
+        }
         self.dispatch_prompt_queues();
         if let Some(owned_input) = owned_input {
             let owns_input = self.tab_sessions.get(self.active_tab_key()).map(|tab| {
@@ -624,6 +634,22 @@ impl App {
                 }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::ScrollUp
+                | crossterm::event::MouseEventKind::ScrollDown
+                    if self.recommendation_rendered
+                        && self.current_tab().rec_body_scroll.max > 0
+                        && self.recommendation_area.is_some_and(|area| {
+                            area.contains((mouse.column, mouse.row).into())
+                        }) =>
+                {
+                    self.scroll_recommendation_body(
+                        if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
+                            -1
+                        } else {
+                            1
+                        },
+                    );
+                }
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
