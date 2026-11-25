@@ -25176,8 +25176,10 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
     // independent pipe delivered the exit before master had a pane binding.
     let response = handle_session_hook(
         &state,
-        SessionEvent::PaneClosed {
+        SessionEvent::ShellPrompt {
             pane_session_id: pane.into(),
+            key: "queued-shell-session".into(),
+            context: None,
         },
         false,
     )
@@ -25233,6 +25235,53 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
         "duplicate prompt must not broadcast"
     );
     assert!(crate::wt_protocol_events::take_test_published_events().is_empty());
+}
+
+#[tokio::test]
+async fn helper_shell_prompt_fallback_matches_the_observed_binding() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+
+    let state = make_state();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    let pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let sid = acp::schema::v1::SessionId::new("current-shell-session");
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({"method":"agent_event","params":{
+            "event":"agent.session.start","cli_source":"gemini",
+            "agent_session_id":"current-shell-session","pane_id":pane,
+            "payload":{"cwd":"C:\\repo"}
+        }}),
+    )
+    .await;
+
+    for (key, context, applied) in [
+        ("previous-shell-session", None, false),
+        ("current-shell-session", Some(serde_json::json!({})), false),
+        ("current-shell-session", None, true),
+    ] {
+        let response = handle_session_hook(
+            &state,
+            SessionEvent::ShellPrompt {
+                pane_session_id: pane.into(),
+                key: key.into(),
+                context,
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.0.get(), format!(r#"{{"applied":{applied}}}"#));
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(
+            row.status,
+            Some(if applied {
+                AgentStatus::Ended
+            } else {
+                AgentStatus::Idle
+            })
+        );
+    }
 }
 
 #[tokio::test]

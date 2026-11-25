@@ -1427,6 +1427,12 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
+    ShellPrompt {
+        pane_session_id: String,
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<serde_json::Value>,
+    },
     QualifiedHook {
         identity: SessionIdentity,
         pane_session_id: String,
@@ -1618,6 +1624,15 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             SessionEvent::PaneClosed { pane_session_id } => Self::PaneClosed {
                 pane_session_id: pane_session_id.clone(),
             },
+            SessionEvent::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            } => Self::ShellPrompt {
+                pane_session_id: pane_session_id.clone(),
+                key: key.clone(),
+                context: context.clone(),
+            },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
             SessionEvent::ResumeFailed { key, reason } => Self::ResumeFailed {
                 key: key.clone(),
@@ -1738,6 +1753,15 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             SessionHookParams::PaneClosed { pane_session_id } => {
                 Self::PaneClosed { pane_session_id }
             }
+            SessionHookParams::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            } => Self::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            },
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
             SessionHookParams::ResumeFailed { key, reason } => Self::ResumeFailed { key, reason },
             SessionHookParams::ResumePaneAssigned {
@@ -2266,6 +2290,7 @@ pub trait SessionRegistry: Send + Sync {
         &self,
         pane: &str,
         context: Option<&NativeAgentObservation>,
+        helper_key: Option<&str>,
     ) -> bool;
     async fn apply_hook_start(&self, ev: SessionEvent, location: SessionLocation) -> bool;
     async fn apply_exact_hook_lifecycle(
@@ -3317,6 +3342,7 @@ impl SessionRegistry for InMemoryRegistry {
         &self,
         pane: &str,
         context: Option<&NativeAgentObservation>,
+        helper_key: Option<&str>,
     ) -> bool {
         let mut state = self.inner.lock().await;
         let pane = pane_key(pane);
@@ -3351,6 +3377,13 @@ impl SessionRegistry for InMemoryRegistry {
         let Some(owner) = state.active_by_pane.get(&pane).cloned() else {
             return false;
         };
+        // An unordered fallback without admission context cannot safely retire a
+        // managed turn, even when the same session ID is still bound.
+        if helper_key.is_some_and(|key| {
+            owner.session_id.0.as_ref() != key || (context.is_none() && program.is_some())
+        }) {
+            return false;
+        }
         if !state.sessions.get(&owner).is_some_and(|row| {
             crate::agent_sessions::OriginFilter::ShellOnly.matches_opt(row.origin.as_ref())
                 && matches!(
@@ -6282,6 +6315,7 @@ fn apply_event_with_location_at_ms(
             entry.last_activity_at_ms = Some(now);
             true
         }
+        SessionEvent::ShellPrompt { .. } => false,
         SessionEvent::PaneClosed { pane_session_id } => {
             let program_removed = retire_osc_locked(state, &pane_session_id, false)
                 | state.program_panes.remove(&pane_session_id).is_some();

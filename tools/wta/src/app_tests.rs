@@ -2546,9 +2546,7 @@ fn helper_agent_event_for_unknown_session_binds_locally_only() {
     );
 }
 
-/// Keep helper exit inference as a fallback while the master's listener is
-/// unavailable. Master also reconciles prompts in COM order; duplicate
-/// PaneClosed events are harmless once the binding has been removed.
+/// Keep the helper's prompt fallback separate from actual pane closure.
 #[test]
 fn helper_still_publishes_events_it_originates() {
     use crate::agent_sessions::{CliSource, SessionEvent};
@@ -2576,7 +2574,8 @@ fn helper_still_publishes_events_it_originates() {
     assert!(
         matches!(
             rx.try_recv(),
-            Ok(SessionEvent::PaneClosed { ref pane_session_id }) if pane_session_id == pane
+            Ok(SessionEvent::ShellPrompt { ref pane_session_id, ref key, context: None })
+                if pane_session_id == pane && key == "shell-sid"
         ),
         "helper exit inference must remain available as a fallback"
     );
@@ -12171,12 +12170,14 @@ fn trigger_echo_pane_clears_when_state_returns_to_idle() {
 ///
 /// The shell's FinalTerm prompt-start marker (`osc:133;A`) fires when
 /// pwsh redraws its prompt after Gemini releases the foreground —
-/// that's our signal.
+/// the master reconciles that signal; helpers must not synthesize a pane close.
 #[test]
-fn osc133_prompt_start_in_agent_pane_transitions_row_to_ended() {
+fn delayed_osc133_prompt_does_not_close_a_restarted_shell_agent() {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use std::path::PathBuf;
     let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.set_session_hook_tx(tx);
     let pane = "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb";
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "gemini-key".into(),
@@ -12185,9 +12186,17 @@ fn osc133_prompt_start_in_agent_pane_transitions_row_to_ended() {
         cwd: PathBuf::from("/work"),
         title: "t".into(),
     });
-    // Sanity: row is live before the prompt-start arrives.
-    assert!(app.agent_sessions.is_agent_pane(pane));
+    app.agent_sessions.apply(SessionEvent::ToolStarting {
+        key: "gemini-key".into(),
+        tool_name: "test".into(),
+    });
 
+    let context = json!({
+        "kind": "foreground_retired", "cause": "shell_prompt", "prompt_id": 1,
+        "pane_id": pane, "agent_session_id": "gemini-key", "provider_id": "gemini",
+        "window_id": 7, "tab_id": "tab", "mode_epoch": 2, "location": "Host",
+        "program_revision": 5
+    });
     app.handle_event(AppEvent::WtEvent {
         method: "vt_sequence".to_string(),
         pane_id: pane.to_string(),
@@ -12195,6 +12204,7 @@ fn osc133_prompt_start_in_agent_pane_transitions_row_to_ended() {
         params: serde_json::json!({
             "session_id": pane,
             "sequence": "osc:133;A",
+            "foreground_retirement": context.clone(),
         }),
     });
 
@@ -12205,14 +12215,18 @@ fn osc133_prompt_start_in_agent_pane_transitions_row_to_ended() {
         .find(|s| s.key == "gemini-key")
         .expect("row still exists");
     assert!(
-        matches!(row.status, crate::agent_sessions::AgentStatus::Ended),
-        "agent-bound pane seeing osc:133;A must transition to Ended",
+        matches!(row.status, crate::agent_sessions::AgentStatus::Working),
+        "only the master can reconcile a shell prompt against the current turn",
     );
-    // The pane→key binding must be cleared either way.
     assert!(
-        !app.agent_sessions.is_agent_pane(pane),
-        "pane binding should be cleared after close",
+        app.agent_sessions.is_agent_pane(pane),
+        "a delayed prompt must not clear the live binding",
     );
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(SessionEvent::ShellPrompt { pane_session_id, key, context: Some(forwarded) })
+            if pane_session_id == pane && key == "gemini-key" && forwarded == context
+    ));
 }
 
 /// Negative coverage: `osc:133;A` in a normal (non-agent) pane must

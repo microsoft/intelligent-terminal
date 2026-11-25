@@ -9774,6 +9774,21 @@ async fn handle_session_hook(
     event: crate::agent_sessions::SessionEvent,
     is_born_bound: bool,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if let crate::agent_sessions::SessionEvent::ShellPrompt {
+        pane_session_id,
+        key,
+        context,
+    } = &event
+    {
+        let applied = reconcile_master_shell_prompt(
+            state,
+            pane_session_id,
+            context.as_ref(),
+            Some(key),
+        )
+        .await;
+        return Ok(crate::session_registry::build_session_hook_response(applied));
+    }
     handle_session_event(
         state,
         event,
@@ -12986,31 +13001,8 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         return;
     }
     if shell_prompt {
-        let context = if let Some(value) = params.get("foreground_retirement") {
-            let Ok(event) = serde_json::from_value::<crate::session_registry::NativeAgentObservation>(
-                value.clone(),
-            ) else {
-                return;
-            };
-            if !native_observation_matches_receiver(state, event.receiver_generation) {
-                return;
-            }
-            Some(event)
-        } else {
-            None
-        };
-        if state
-            .registry
-            .reconcile_raw_shell_prompt(&pane_id, context.as_ref())
-            .await
-        {
-            tracing::info!(
-                target: "master_wt_event",
-                pane_id,
-                "shell prompt ended bound session in COM event order"
-            );
-            broadcast_session_status_change(state, None).await;
-        }
+        reconcile_master_shell_prompt(state, &pane_id, params.get("foreground_retirement"), None)
+            .await;
         return;
     }
     let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
@@ -13068,6 +13060,36 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
     }
 }
 
+async fn reconcile_master_shell_prompt(
+    state: &Arc<MasterStateInner>,
+    pane: &str,
+    context: Option<&serde_json::Value>,
+    helper_key: Option<&str>,
+) -> bool {
+    let context = match context {
+        Some(value) => {
+            let Ok(event) = serde_json::from_value::<crate::session_registry::NativeAgentObservation>(
+                value.clone(),
+            ) else {
+                return false;
+            };
+            if !native_observation_matches_receiver(state, event.receiver_generation) {
+                return false;
+            }
+            Some(event)
+        }
+        None => None,
+    };
+    let applied = state
+        .registry
+        .reconcile_raw_shell_prompt(pane, context.as_ref(), helper_key)
+        .await;
+    if applied {
+        broadcast_session_status_change(state, None).await;
+    }
+    applied
+}
+
 /// Extract the session key from event variants that carry one. Returns
 /// `None` for pane-only variants (PaneClosed, ConnectionFailed) — those
 /// don't have a stable session id without a reverse lookup, and they
@@ -13092,7 +13114,9 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
         | SessionEvent::ResumeDispatched { key }
         | SessionEvent::ResumeFailed { key, .. }
         | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.as_str()),
-        SessionEvent::PaneClosed { .. } | SessionEvent::ConnectionFailed { .. } => None,
+        SessionEvent::PaneClosed { .. }
+        | SessionEvent::ConnectionFailed { .. }
+        | SessionEvent::ShellPrompt { .. } => None,
     }
 }
 
