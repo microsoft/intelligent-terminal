@@ -327,11 +327,7 @@ enum CardBodyKind {
 
 fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, CardBodyKind) {
     let display = recommendation_display_text(choice);
-    let (buttons, body_kind) = if choice
-        .actions
-        .iter()
-        .any(|action| matches!(action, RecommendedAction::Send { .. }))
-    {
+    let (buttons, body_kind) = if choice.supports_insert() {
         (
             action_buttons(
                 choice

@@ -7937,10 +7937,10 @@ impl App {
     }
 
     /// Returns the number of buttons for the currently selected choice card.
-    /// Send actions have 2 buttons (Run, Insert); OpenAndSend has 1 button.
+    /// Insert-eligible choices have 2 buttons; all other choices have 1.
     fn button_count_for_selected(&self) -> usize {
         self.selected_recommendation_choice()
-            .map(|c| if self.is_send_choice(c) { 2 } else { 1 })
+            .map(|c| if c.supports_insert() { 2 } else { 1 })
             .unwrap_or(1)
     }
 

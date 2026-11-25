@@ -26525,6 +26525,9 @@ fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch(
     let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
     for actions in [
         json!([
+            {"type": "send", "input": "echo SINGLE_ACTION"}
+        ]),
+        json!([
             {"type": "send", "input": "echo FIRST_ACTION"},
             {"type": "send", "input": "echo LAST_ACTION"}
         ]),
@@ -26574,6 +26577,18 @@ fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch(
                 } => set.choices[0].clone(),
                 _ => panic!("expected recommendation"),
             };
+            app.current_tab_mut().selected_button = 2;
+            app.turn_execute_card(session_id);
+            assert!(
+                rx.try_recv().is_err(),
+                "out-of-range approval must not dispatch"
+            );
+            assert!(
+                final_rx.try_recv().is_err(),
+                "out-of-range approval must not confirm"
+            );
+            assert_eq!(app.selected_recommendation_choice(), Some(&expected_choice));
+            app.current_tab_mut().selected_button = 0;
             app.handle_key(key(KeyCode::Enter));
             assert!(
                 rx.try_recv().is_err(),
@@ -26596,6 +26611,80 @@ fn recommendation_review_followup_fallback_reviews_every_action_before_dispatch(
             let execution = rx.try_recv().expect("reviewed batch must dispatch");
             assert_eq!(execution.insert_only, insert_only);
             assert_eq!(execution.choice, expected_choice);
+            assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Confirmed);
+        }
+    }
+}
+
+#[test]
+fn recommendation_mixed_insert_rejects_stale_approval_without_consuming_confirmation() {
+    use crate::agent_tools::action_proposal::channel::{
+        ProposalChannelManager, ProposalFinalStatus,
+    };
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    for delegate in [false, true] {
+        for reverse in [false, true] {
+            let mut actions = vec![
+                json!({"type": "open_and_send", "target": "tab", "input": "echo WORKSPACE"}),
+                json!({"type": "send", "input": "echo ORIGINAL"}),
+            ];
+            actions[0]["delegate"] = json!(delegate);
+            if reverse {
+                actions.reverse();
+            }
+            let mut app = test_app();
+            app.delegate_agents = Some(Arc::new(std::sync::Mutex::new(
+                crate::coordinator::default_delegate_agent_runtimes(Some("copilot"), None, None),
+            )));
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().pane_open = true;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            app.recommendation_tx = tx;
+            let manager = Arc::new(ProposalChannelManager::new());
+            app.set_proposal_channels(Arc::clone(&manager));
+            let session_id = "mixed-insert";
+            stage_proposal_session(&mut app, session_id);
+            submit_proposal_prompt(&mut app, session_id);
+            let mut payload: serde_json::Value =
+                serde_json::from_str(TERMINAL_AGENT_PROPOSAL_PAYLOAD).unwrap();
+            payload["choices"][0]["actions"] = json!(actions);
+            let (proposal_id, mut final_rx) =
+                stage_direct_proposal_payload(&mut app, &manager, session_id, payload.to_string());
+            assert!(app.commit_terminal_action_proposal(&proposal_id));
+            let expected = app.selected_recommendation_choice().unwrap().clone();
+            let text = render_to_text(&mut app, 120, 30);
+            assert!(
+                text.contains("echo WORKSPACE") && text.contains("echo ORIGINAL"),
+                "{text}"
+            );
+            assert!(
+                !text.contains(&t!("recommendations.button_insert_in_terminal").into_owned()),
+                "{text}"
+            );
+            assert_eq!(app.button_count_for_selected(), 1);
+            for code in [KeyCode::Right, KeyCode::Tab] {
+                app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+                assert_eq!(app.current_tab().selected_button, 0);
+            }
+            for invalid_button in [1, 2, usize::MAX] {
+                app.current_tab_mut().selected_button = invalid_button;
+                let active_session = app.current_tab().session_id.clone().unwrap();
+                app.turn_execute_card(&active_session);
+                assert!(rx.try_recv().is_err(), "invalid approval dispatched");
+                assert!(
+                    final_rx.try_recv().is_err(),
+                    "invalid approval consumed confirmation"
+                );
+                assert_eq!(app.selected_recommendation_choice(), Some(&expected));
+                assert!(app.current_tab().pending_queue_action.is_none());
+            }
+            app.current_tab_mut().selected_button = 0;
+            render_to_text(&mut app, 120, 30);
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let execution = rx.try_recv().unwrap();
+            assert!(!execution.insert_only);
+            assert_eq!(execution.choice, expected);
             assert_eq!(final_rx.try_recv().unwrap(), ProposalFinalStatus::Confirmed);
         }
     }

@@ -766,6 +766,11 @@ impl App {
             return;
         };
         let tab = self.session_tab(session_id);
+        let insert_only = match tab.selected_button {
+            0 => false,
+            1 if choice.supports_insert() => true,
+            _ => return,
+        };
         let TurnState::Surfaced {
             outcome: TurnOutcome::Recommendation(recommendations),
             prompt,
@@ -780,8 +785,6 @@ impl App {
             .session_tab(session_id)
             .active_direct_proposal_id
             .clone();
-        let insert_only =
-            self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
         let command_label = if insert_only {
             t!("chat.tool_kind.insert")
         } else {
