@@ -26067,6 +26067,48 @@ fn flush_error_fix_telemetry_frame(app: &mut App, width: u16, height: u16) -> St
 }
 
 #[test]
+fn recommendation_default_review_preserves_alternative_choice_navigation() {
+    let mut app = test_app();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = tx;
+    let (proposal_id, _) = stage_error_fix_telemetry_proposal(&mut app, false);
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+    if let TurnState::Surfaced {
+        outcome: TurnOutcome::Recommendation(recs),
+        ..
+    } = &mut app.current_tab_mut().turn
+    {
+        let mut second = recs.choices[0].clone();
+        second.choice = 2;
+        second.title = "Second choice".into();
+        second.actions[0] = RecommendedAction::Send {
+            parent: "pane-9".into(),
+            input: "echo SECOND".into(),
+        };
+        recs.choices.push(second);
+    }
+    assert!(render_to_text(&mut app, 100, 12).contains("Get-Date"));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        rx.try_recv().is_err(),
+        "changed choice requires its own painted review"
+    );
+    let text = render_to_text(&mut app, 100, 12);
+    assert!(text.contains("SECOND") && text.contains("2/2"), "{text}");
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 0);
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    render_to_text(&mut app, 100, 12);
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let execution = rx.try_recv().expect("second choice must remain selectable");
+    assert_eq!(execution.choice.choice, 2);
+    assert!(execution.insert_only);
+}
+
+#[test]
 fn recommendation_default_complete_view_has_no_preview_navigation() {
     let _locale_guard = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
@@ -26807,7 +26849,7 @@ fn error_fix_telemetry_queues_source_once_and_rejects_stale_identity() {
 }
 
 #[test]
-fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_acceptance() {
+fn error_fix_telemetry_default_review_hides_autocomplete_and_preserves_draft() {
     use crate::telemetry::capture::{take, Event};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -26826,17 +26868,10 @@ fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_accept
     assert_eq!(app.current_tab().selected_button, 0);
 
     let text = flush_error_fix_telemetry_frame(&mut app, 100, 40);
-    let command_row = text
-        .lines()
-        .position(|line| line.contains("Get-Date"))
-        .unwrap();
-    let popup_row = text
-        .lines()
-        .position(|line| line.contains("/help"))
-        .unwrap();
+    assert!(text.contains("Get-Date"));
     assert!(
-        command_row < popup_row,
-        "the card and autocomplete must both be visible"
+        !text.contains("/help"),
+        "the read-only review replaces draft autocomplete"
     );
     assert!(app.command_popup_state().is_some());
     let offer_id = app.current_tab().autofix.offer.as_ref().unwrap().id;
@@ -26868,7 +26903,7 @@ fn error_fix_telemetry_nonoverlapping_autocomplete_allows_offer_and_enter_accept
 }
 
 #[test]
-fn error_fix_telemetry_overlapping_autocomplete_and_clipping_suppress_offer() {
+fn error_fix_telemetry_unusable_review_viewport_suppresses_offer() {
     use crate::telemetry::capture::{take, Event};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -26877,10 +26912,10 @@ fn error_fix_telemetry_overlapping_autocomplete_and_clipping_suppress_offer() {
     let (proposal_id, _final_rx) = stage_error_fix_telemetry_proposal(&mut app, true);
     app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
     assert!(app.commit_terminal_action_proposal(&proposal_id));
-    for (width, height) in [(100, 12), (1, 1)] {
+    for (width, height) in [(1, 1), (1, 12)] {
         assert!(app.command_popup_state().is_some());
         let text = flush_error_fix_telemetry_frame(&mut app, width, height);
-        assert!(!text.contains("Get-Date"), "command is obscured or clipped");
+        assert!(!text.contains("Get-Date"), "command viewport is unusable");
         assert!(!app.recommendation_rendered);
         assert!(take().is_empty(), "no offer at {width}x{height}");
     }

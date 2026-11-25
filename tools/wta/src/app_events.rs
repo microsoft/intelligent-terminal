@@ -633,14 +633,13 @@ impl App {
                 }
             }
             AppEvent::Mouse(mouse) if self.recommendation_full_view.is_some() => {
-                let code = match mouse.kind {
-                    crossterm::event::MouseEventKind::ScrollUp => Some(KeyCode::Up),
-                    crossterm::event::MouseEventKind::ScrollDown => Some(KeyCode::Down),
-                    _ => None,
-                };
-                if let Some(code) = code {
-                    self.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+                let view = self.recommendation_full_view.as_mut().unwrap();
+                view.scroll = match mouse.kind {
+                    crossterm::event::MouseEventKind::ScrollUp => view.scroll.saturating_sub(1),
+                    crossterm::event::MouseEventKind::ScrollDown => view.scroll.saturating_add(1),
+                    _ => view.scroll,
                 }
+                .min(view.scroll_max);
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
                 crossterm::event::MouseEventKind::ScrollUp

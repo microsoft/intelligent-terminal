@@ -778,6 +778,13 @@ impl App {
     }
 
     pub(crate) fn sync_recommendation_full_view(&mut self) {
+        // Late events can arrive after the active tab has been removed.
+        // Review synchronization must not materialize or dereference it.
+        if !self.tab_sessions.contains_key(self.active_tab_key()) {
+            self.recommendation_full_view = None;
+            self.recommendation_approval = None;
+            return;
+        }
         if self
             .recommendation_full_view
             .as_ref()

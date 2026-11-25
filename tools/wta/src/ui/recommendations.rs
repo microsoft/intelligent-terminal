@@ -229,13 +229,32 @@ pub(crate) fn render_review(frame: &mut Frame, app: &mut App, area: Rect) {
     let binding = view.binding.clone();
     frame.render_widget(Clear, area);
     let inner = area;
+    let choice_count = app
+        .current_tab()
+        .turn
+        .recommendations()
+        .map_or(0, |recs| recs.choices.len());
+    let multiple_choices = choice_count > 1;
     let hint_rows = u16::from(inner.height >= 3);
-    let [body, buttons, hint] = Layout::vertical([
+    let [heading, body, buttons, hint] = Layout::vertical([
+        Constraint::Length(u16::from(multiple_choices && inner.height >= 4)),
         Constraint::Min(0),
         Constraint::Length(u16::from(inner.height >= 2)),
         Constraint::Length(hint_rows),
     ])
     .areas(inner);
+    if heading.height > 0 {
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{}/{} · {}",
+                app.current_tab().selected_recommendation + 1,
+                choice_count,
+                binding.choice.title
+            ))
+            .style(theme::CARD_DESCRIPTION),
+            heading,
+        );
+    }
     if body.width < 2 || body.height == 0 || buttons.height == 0 {
         return;
     }
@@ -289,7 +308,12 @@ pub(crate) fn render_review(frame: &mut Frame, app: &mut App, area: Rect) {
         );
     }
     frame.render_widget(
-        Paragraph::new(t!("recommendations.full_view_hint").into_owned()).style(theme::DIM),
+        Paragraph::new(if multiple_choices {
+            t!("recommendations.nav_hint").into_owned()
+        } else {
+            t!("recommendations.full_view_hint").into_owned()
+        })
+        .style(theme::DIM),
         hint,
     );
     app.recommendation_rendered = true;

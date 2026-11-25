@@ -95,6 +95,32 @@ impl App {
                             }
                         }
                     }
+                    KeyCode::Up | KeyCode::Down
+                        if self
+                            .current_tab()
+                            .turn
+                            .recommendations()
+                            .is_some_and(|recs| recs.choices.len() > 1) =>
+                    {
+                        let last = self
+                            .current_tab()
+                            .turn
+                            .recommendations()
+                            .unwrap()
+                            .choices
+                            .len()
+                            - 1;
+                        let selected = self.current_tab().selected_recommendation;
+                        self.current_tab_mut().selected_recommendation = if key.code == KeyCode::Up
+                        {
+                            selected.saturating_sub(1)
+                        } else {
+                            selected.saturating_add(1).min(last)
+                        };
+                        self.sync_recommendation_full_view();
+                        let tab_id = self.active_tab_key().to_string();
+                        self.recompute_chip_override(&tab_id);
+                    }
                     code => {
                         let Some(view) = self.recommendation_full_view.as_mut() else {
                             return;
