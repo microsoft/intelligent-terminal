@@ -10,7 +10,7 @@ terminal connection, not a title, executable name or inferred conversation.
 
 The wire field for explanatory text is `msg` (base64 UTF-8), not `message`.
 It is exposed as `message` in internal snapshots and events. The status line
-appends the current task's message when present, otherwise its title; tooltips
+appends the current task's message when present; otherwise, it uses the title. Tooltips
 retain both.
 
 ## Display and attention
@@ -71,10 +71,10 @@ Ordinary CLIs could previously have no Agent status field at all.
 | Canonical input request, `input_message=Approve command?` | `Attention` | `Waiting for input` | `Waiting for input · Approve command?` |
 | `done`, `msg=Tests passed`, unread | `Idle` | `Idle` | `Completed · Tests passed` |
 | Done replaced by Idle, completion unread, no current message | `Idle` | `Idle` | `Completed` |
-| Done acknowledged, otherwise inactive | `Idle` | `Idle` | `Idle` |
+| Done acknowledged; otherwise inactive | `Idle` | `Idle` | `Idle` |
 | `error`, `msg=Build failed`, unread | `Error` | `Error` | `Error · Build failed` |
 | The same Error report, plus another unread Done | `Error` | `Error` | `Error · Build failed` |
-| Clear removes all records/results, otherwise inactive | `Idle` | `Idle` | `Idle` |
+| Clear removes all records/results; otherwise inactive | `Idle` | `Idle` | `Idle` |
 | Live session in another window, Done unread, `msg=Tests passed` | `Idle` | `Idle · In another window` | `Completed · Tests passed · In another window` |
 
 The composition is `status + optional progress + optional description`, without
