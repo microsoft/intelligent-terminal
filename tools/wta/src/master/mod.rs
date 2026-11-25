@@ -696,6 +696,10 @@ struct MasterStateInner {
     /// operations take the write barrier and conservatively exclude every
     /// qualified operation for that raw ID.
     session_lifecycle_gates: Mutex<SessionLifecycleGateTable>,
+    /// Raw session identities currently being resumed from the sidebar. This
+    /// reservation spans the terminal request without holding a lifecycle
+    /// gate, so hook events can bind the session while tab creation is pending.
+    pending_sidebar_resumes: std::sync::Mutex<HashSet<crate::session_registry::SessionIdentity>>,
     /// Routes inbound traffic from the agent CLI back to the helper
     /// that owns the session. Inserted by the helper's `new_session`
     /// / `load_session` handlers atomically (before responding to
@@ -5397,6 +5401,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         native_observation_receiver_generation,
         native_observation_listener_ready: std::sync::atomic::AtomicBool::new(false),
         session_lifecycle_gates: Mutex::new(SessionLifecycleGateTable::default()),
+        pending_sidebar_resumes: std::sync::Mutex::new(HashSet::new()),
         session_to_helper: Mutex::new(LiveRouteTable::default()),
         session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
         session_mcp_capabilities: session_mcp::CapabilityRegistry::default(),
@@ -9222,6 +9227,20 @@ struct SessionActivationReceipt {
     response: crate::session_registry::SessionActivateResponse,
 }
 
+struct PendingSidebarResume<'a> {
+    reservations: &'a std::sync::Mutex<HashSet<crate::session_registry::SessionIdentity>>,
+    identity: crate::session_registry::SessionIdentity,
+}
+
+impl Drop for PendingSidebarResume<'_> {
+    fn drop(&mut self) {
+        self.reservations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.identity);
+    }
+}
+
 fn encode_session_activation(
     response: &crate::session_registry::SessionActivateResponse,
 ) -> acp::schema::v1::ExtResponse {
@@ -9539,9 +9558,9 @@ async fn execute_session_activation(
                     Some("The selected session provider is blocked by policy.".to_string())
                 );
             }
-            // Reserve this session before creating a tab. Activation IDs only
-            // deduplicate retries of the same request; distinct activations
-            // for this session must serialize on its lifecycle gate.
+            // Serialize the reservation with hooks, but do not hold the
+            // lifecycle gate over create_tab: a session-start hook can arrive
+            // while the terminal is creating the pane and must be able to bind.
             let lifecycle_gate = session_lifecycle_gate(state, &row.session_id).await;
             let lifecycle_guard = lifecycle_gate.lock().await;
             let Some(current) = state.registry.lookup_identity(&parsed.identity).await else {
@@ -9551,24 +9570,81 @@ async fn execute_session_activation(
                     Some("The selected session is no longer available.".to_string())
                 );
             };
-            if let Some(pane_session_id) = current
-                .pane_session_id
-                .as_ref()
-                .filter(|pane_session_id| !pane_session_id.is_empty())
+            let current_status = current.status.clone().unwrap_or(AgentStatus::Historical);
+            if let crate::session_mgmt::Liveness::Live {
+                pane_session_id: Some(pane_session_id),
+            } = liveness_from_status(&current_status, current.pane_session_id.clone())
             {
-                let pane_session_id = pane_session_id.clone();
-                drop(lifecycle_guard);
-                return focus(pane_session_id).await;
+                if !pane_session_id.is_empty() {
+                    drop(lifecycle_guard);
+                    return focus(pane_session_id).await;
+                }
             }
-            if current.status.as_ref().is_some_and(|status| {
-                !matches!(status, AgentStatus::Historical | AgentStatus::Ended)
-            }) {
+            let current_origin = current
+                .origin
+                .clone()
+                .unwrap_or(SessionOrigin::Unknown);
+            let mut current_action = decide_enter_action(&RowSnapshot {
+                origin: current_origin.clone(),
+                liveness: liveness_from_status(
+                    &current_status,
+                    current.pane_session_id.clone(),
+                ),
+                key: current.session_id.to_string(),
+                cli_source: current.cli_source.clone().unwrap_or_else(|| cli_source.clone()),
+                load_session_capability: crate::session_mgmt::LoadSessionCapability::Unknown,
+                cli_supports_resume_flag: host_custom_profile
+                    || matches!(current.location, crate::agent_sessions::SessionLocation::Host)
+                    || profile.is_some_and(|profile| !profile.resume_flag.is_empty()),
+                cli_can_resume_acp_sessions: profile
+                    .is_some_and(|profile| profile.cli_can_resume_acp_sessions),
+                is_wsl: current.location.is_wsl(),
+            });
+            if matches!(
+                current_action,
+                EnterAction::NotResumable {
+                    reason: crate::session_mgmt::NotResumableReason::LiveWithoutPane
+                }
+            ) && current_origin == SessionOrigin::Unknown
+                && (matches!(current.location, crate::agent_sessions::SessionLocation::Host)
+                    || profile.is_some_and(|profile| !profile.resume_flag.is_empty()))
+            {
+                current_action = EnterAction::ResumeCliFlag {
+                    key: current.session_id.to_string(),
+                    cli: current.cli_source.clone().unwrap_or_else(|| cli_source.clone()),
+                };
+            }
+            if !matches!(current_action, EnterAction::ResumeCliFlag { .. }) {
                 return respond!(
-                    "resume_cli",
+                    "not_resumable",
                     false,
-                    Some("The selected session is already being resumed.".to_string())
+                    Some(format!(
+                        "The selected session cannot be activated: {:?}.",
+                        match current_action {
+                            EnterAction::NotResumable { reason } => reason,
+                            _ => crate::session_mgmt::NotResumableReason::LiveWithoutPane,
+                        }
+                    ))
                 );
             }
+            let reservation = {
+                let mut pending = state
+                    .pending_sidebar_resumes
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !pending.insert(parsed.identity.clone()) {
+                    drop(lifecycle_guard);
+                    return respond!(
+                        "resume_cli",
+                        false,
+                        Some("The selected session is already being resumed.".to_string())
+                    );
+                }
+                PendingSidebarResume {
+                    reservations: &state.pending_sidebar_resumes,
+                    identity: parsed.identity.clone(),
+                }
+            };
             row = current;
             let commandline = match &row.location {
                 crate::agent_sessions::SessionLocation::Host => Ok(String::new()),
@@ -9642,8 +9718,10 @@ async fn execute_session_activation(
             if let Some(title) = row.title.as_ref().filter(|title| !title.trim().is_empty()) {
                 params["title"] = serde_json::Value::String(title.clone());
             }
+            drop(lifecycle_guard);
             match wt.request("create_tab", params).await {
                 Ok(result) => {
+                    let lifecycle_guard = lifecycle_gate.lock().await;
                     let Some(pane_session_id) = result
                         .get("session_id")
                         .or_else(|| result.get("SessionId"))
@@ -9657,6 +9735,8 @@ async fn execute_session_activation(
                         })
                         .filter(|value| !value.is_empty())
                     else {
+                        drop(lifecycle_guard);
+                        drop(reservation);
                         return respond!(
                             "resume_cli",
                             false,
@@ -9709,6 +9789,7 @@ async fn execute_session_activation(
                                 })
                             })
                     {
+                        drop(lifecycle_guard);
                         return respond!(
                             "resume_cli",
                             false,
@@ -9747,8 +9828,6 @@ async fn execute_session_activation(
                     ) {
                         crate::wt_protocol_events::send(binding);
                     }
-                    // Only this History activation preserves the sidebar: background
-                    // creation followed by focus of the exact newly returned pane.
                     let mut response = match wt
                         .request(
                             "focus_pane",
@@ -9766,9 +9845,13 @@ async fn execute_session_activation(
                         ),
                     };
                     response.launched = true;
+                    drop(reservation);
                     response
                 }
-                Err(error) => failed("resume_cli", error),
+                Err(error) => {
+                    drop(reservation);
+                    failed("resume_cli", error)
+                }
             }
         }
         EnterAction::NotResumable { reason } => respond!(
