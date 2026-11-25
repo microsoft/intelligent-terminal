@@ -331,6 +331,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _revokers.VtSequenceReceived = _core.VtSequenceReceived(winrt::auto_revoke, { get_weak(), &TermControl::_bubbleVtSequenceReceived });
         _revokers.ShowNotification = _core.ShowNotification(winrt::auto_revoke, { get_weak(), &TermControl::_bubbleShowNotification });
         _revokers.WindowSizeChanged = _core.WindowSizeChanged(winrt::auto_revoke, { get_weak(), &TermControl::_bubbleWindowSizeChanged });
+        _revokers.ProgramStatusChanged = _core.ProgramStatusChanged(winrt::auto_revoke, { get_weak(), &TermControl::_bubbleProgramStatusChanged });
         _revokers.WriteToClipboard = _core.WriteToClipboard(winrt::auto_revoke, { get_weak(), &TermControl::_bubbleWriteToClipboard });
 
         _revokers.PasteFromClipboard = _interactivity.PasteFromClipboard(winrt::auto_revoke, { get_weak(), &TermControl::_bubblePasteFromClipboard });
@@ -1568,6 +1569,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             return;
         }
+        _acknowledgeProgramStatusForUserInput();
 
         const auto ch = e.Character();
         const auto keyStatus = e.KeyStatus();
@@ -1597,6 +1599,30 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                    const winrt::Microsoft::Terminal::Core::ControlKeyStates modifiers)
     {
         return _core.SendCharEvent(character, scanCode, modifiers);
+    }
+
+    void TermControl::_acknowledgeProgramStatusForUserInput(const bool requireFocus)
+    {
+        if (!Feature_ProgramStatusProtocol::IsEnabled() || _IsClosing() || !IsLoaded() ||
+            (requireFocus && (!_focused || (_searchBox && _searchBox->ContainsFocus()))))
+        {
+            return;
+        }
+        const auto hwnd = reinterpret_cast<HWND>(OwningHwnd());
+        if (!hwnd || !IsWindowVisible(hwnd) || GetForegroundWindow() != GetAncestor(hwnd, GA_ROOT))
+        {
+            return;
+        }
+        for (auto element = get_strong().as<Windows::UI::Xaml::DependencyObject>(); element;
+             element = Windows::UI::Xaml::Media::VisualTreeHelper::GetParent(element))
+        {
+            if (const auto ui = element.try_as<Windows::UI::Xaml::UIElement>();
+                ui && ui.Visibility() != Windows::UI::Xaml::Visibility::Visible)
+            {
+                return;
+            }
+        }
+        get_self<ControlCore>(_core)->AcknowledgeProgramStatusForUserInput();
     }
 
     void TermControl::RawWriteString(const winrt::hstring& text)
@@ -1684,6 +1710,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             if (keyDown)
             {
+                _acknowledgeProgramStatusForUserInput();
                 _interactivity.RequestPasteTextFromClipboard();
             }
             return true;
@@ -1989,6 +2016,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                        const ControlKeyStates modifiers,
                                        const bool keyDown)
     {
+        if (keyDown && vkey != VK_SHIFT && vkey != VK_LSHIFT && vkey != VK_RSHIFT &&
+            vkey != VK_CONTROL && vkey != VK_LCONTROL && vkey != VK_RCONTROL &&
+            vkey != VK_MENU && vkey != VK_LMENU && vkey != VK_RMENU)
+        {
+            _acknowledgeProgramStatusForUserInput();
+        }
         // Broadcast the key  to all listeners
         // only broadcast if there's an actual listener. Saves the overhead of some object creation.
         if (KeySent)
@@ -2073,6 +2106,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             Focus(FocusState::Pointer);
         }
+        _acknowledgeProgramStatusForUserInput(false);
 
         // Mark that this pointer event actually started within our bounds.
         // We'll need this later, for PointerMoved events.
@@ -2701,6 +2735,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - Initiate a paste operation.
     void TermControl::PasteTextFromClipboard()
     {
+        _acknowledgeProgramStatusForUserInput(false);
         _interactivity.RequestPasteTextFromClipboard();
     }
 
@@ -3233,6 +3268,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             SetForegroundWindow(hwnd);
         }
+        _acknowledgeProgramStatusForUserInput(false);
 
         const auto weak = get_weak();
 
@@ -4066,6 +4102,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _core.OwningHwnd();
     }
 
+    hstring TermControl::ProgramStatusJson()
+    {
+        return _core.ProgramStatusJson();
+    }
+
+    void TermControl::AcknowledgeProgramStatus(const uint64_t revision)
+    {
+        _core.AcknowledgeProgramStatus(revision);
+    }
+
     void TermControl::PreviewInput(const winrt::hstring& text)
     {
         get_self<ControlCore>(_core)->PreviewInput(text);
@@ -4313,6 +4359,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::_PasteCommandHandler(const IInspectable& /*sender*/,
                                            const IInspectable& /*args*/)
     {
+        _acknowledgeProgramStatusForUserInput(false);
         _interactivity.RequestPasteTextFromClipboard();
         ContextMenu().Hide();
         SelectionContextMenu().Hide();

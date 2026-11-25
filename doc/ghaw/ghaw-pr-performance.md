@@ -17,6 +17,11 @@ The agent writes the findings table, including each proposal's actual commit
 link. No script builds a second findings summary, and no JSON report/card
 protocol is required.
 
+CI warning level does not set review importance. The reviewer starts from the
+PR diff and affected callers, uses diagnostics as evidence, and reports only
+introduced or worsened HIGH/MEDIUM costs as findings. LOW advice and unchanged
+baseline warnings are grouped in checks, not repeated as a diagnostic backlog.
+
 ## Autofix policy
 
 Only high-confidence HIGH findings supported by relevant scenario evidence
@@ -35,10 +40,9 @@ Budgets sum every parent-to-fix-commit diff and count the union of touched files
 not merely the final net change; later commits cannot hide an oversized rewrite.
 C++ source can be reviewed, but corrections require manual handoff.
 
-**The workflow does not build or test proposals before push.** Neither a
-compiler, native toolchain, existing focused selector nor completed analyzer run
-is a publication prerequisite. Available analyzer/measurement evidence can
-support review, but missing coverage is recorded honestly.
+**The workflow does not build or test proposals before push.** Successful PR CI
+is required for the original reviewed head, not for later proposal commits.
+The original reviewer still owns validation of those proposals.
 
 The summary contains one shared notice below the findings table:
 
@@ -50,16 +54,23 @@ as verified or tested fixes.
 
 ## Workflow
 
-1. The controller runs on ordinary `pull_request` events only for non-draft PRs
-   whose head repository ID matches this repository. Fork PRs are skipped and
+1. The controller starts only after `PR CI` completes successfully for the
+   current head of a non-draft, same-repository PR targeting the default branch.
+   Failed, cancelled, pending, stale and foreign CI results cannot launch review.
+   Fork PRs are skipped and
    do not dispatch a guidance worker or publish a performance report.
    It loads its scripts from GitHub's automatic `github.workflow_sha` revision,
    independently of the PR's age. For eligible PRs it fetches the immutable head,
    resolves the merge base from the PR's recorded base and skips agent execution
    when no performance-sensitive source changed. No commit ID is hardcoded.
-   With `pull_request`, the workflow revision can be the PR merge commit:
-   same-repository branch authors are trusted to change the workflow itself,
-   as required by the repository's same-repository-only automation policy.
+   Controller and worker use the default-branch workflow revision. Admission
+   reuses the security workflow's CI identity and unchanged-definition checks.
+   The native jobs are a same-repository reusable workflow so GitHub records
+   their immutable revision. Admission checks that revision and its helper
+   definitions, merge parents, successful native jobs and original default-target
+   context. Mutable PR associations alone do not prove which CI ran.
+   PRs changing CI implementation require manual review, not self-attested CI.
+   Documentation-only PRs excluded by PR CI do not start this review.
 2. The repair worker inspects source and callers, creates a separate local
    commit for each eligible HIGH finding, then writes the shared summary
    template with those commit links to the framework's pre-created
@@ -86,6 +97,52 @@ pull-request context. The worker independently verifies the live PR identity,
 immutable revisions and same-repository status before preparing a proposal.
 The shared performance-review agent and skill retain their read-only review
 capabilities for use outside this automated same-repository flow.
+
+## CI performance evidence
+
+PR CI retains head/run/attempt-bound raw C++ and Rust diagnostics alongside its
+normal production builds and unit tests. C++ reuses those Debug outputs for
+`PerformanceAnalysis=Extended` / `ClangTidy`, bounded to 20 changed production
+inputs, 2,000 changed lines and three directly declared projects. Evaluated
+membership is checked; unsupported/shared-header consumers remain explicit
+coverage gaps. Changed WTA Rust inputs use the same size bound and the existing
+`cargo wta-perf-extended` Windows-target alias after build/tests, with the same
+target outputs. Unchanged languages and dedicated test-only changes skip the
+extra analyzer invocation.
+
+CI keeps shallow checkouts. A read-only API job resolves the immutable merge
+base, then each build job fetches that one commit before executing PR code.
+The analyzer itself does not fetch or receive fetch credentials. Receipts bind
+the comparison base as well as head/run/attempt so a different scope is rejected.
+CI analysis tools are checked out from the recorded native-workflow revision,
+not inferred from a later PR target change.
+
+Performance warnings remain advisory: the C++ analyzer explicitly uses
+`ClangTidyExtraArgs=-Wno-error` without changing the normal build's warning
+policy. The extra CI Clippy pass disables the default Clippy group, enables
+the official `clippy::perf` group and retains the alias's individual extra
+checks. `clippy::correctness` remains fatal; normal build/test checks are
+unchanged. Rust compiler diagnostics may still accompany the lint output and
+are not automatically performance findings. Compiler/parser errors, missing
+tools and analyzer execution failures still fail CI and prevent review kickoff.
+There is no second native build job in the performance reviewer.
+
+The worker checks CI identity again and downloads only matching performance artifacts
+before inference, then confirms run/attempt identity again. Missing, stale,
+failed or malformed evidence stops admission rather than looking clean.
+Before inference, the existing collector uses immutable Git change hunks and
+native diagnostic locations to write `pr-diagnostics.json`. Only warnings
+overlapping added/replaced PR lines enter that default input; duplicate
+emissions are removed. Excluded counts stay visible without repeating the
+backlog text, and original raw logs remain unchanged.
+
+This is input scoping, not a severity classifier or proof that outside-line
+warnings are unrelated. The agent reviews changed callers and can retrieve
+relevant raw diagnostics when a change worsens an unchanged implementation.
+It does not read or re-triage the full excluded backlog by default.
+The agent inspects selected warnings in source, compares with the original base and
+continues intelligent diff/caller review even with no diagnostics. Head-only
+warnings do not establish a newly introduced regression or a HIGH finding.
 
 ## Review coverage and recovery
 
@@ -140,6 +197,12 @@ actionlint -shellcheck= -pyflakes= -ignore 'unknown permission scope "copilot-re
 
 These are development checks of the automation, not builds/tests performed on
 an autofix before push. No new tooling or paid model trial is required by them.
+
+To exercise the CI producer with real Windows Clang-Tidy and Clippy, run
+`node --test build\scripts\ci-performance-analysis.test.mjs` from a VS x64
+developer shell with `PERFORMANCE_NATIVE_PROOF=1`. For nested local worktrees,
+set `PERFORMANCE_NATIVE_FIXTURE_ROOT` to a `Generated Files` directory beneath
+only one repository `.cargo` configuration; nested Cargo array aliases merge.
 
 ## Historical evidence
 

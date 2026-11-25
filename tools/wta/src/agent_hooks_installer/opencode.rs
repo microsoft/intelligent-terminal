@@ -1080,6 +1080,60 @@ mod tests {
     }
 
     #[test]
+    fn current_version_wrong_api_is_repaired_and_then_skipped_in_both_directions() {
+        for (from, to, detected_version) in [
+            (ApiVariant::V1, ApiVariant::V2, "2.2.6"),
+            (ApiVariant::V2, ApiVariant::V1, "1.18.16"),
+        ] {
+            let fixture = Fixture::new();
+            let home = &fixture.0;
+            copy_bundle(&source(), home, from).unwrap();
+            let support = opencode_support_dir(home);
+            let sentinel = support.join("user.txt");
+            fs::write(&sentinel, "preserve").unwrap();
+            let version = read_version_field(&support.join(OPENCODE_MANIFEST))
+                .map(|version| version.to_string());
+            assert!(complete(home));
+            let mut status = opencode_status(true, None, Some(home));
+            status.installed_version = installed_version_from_disk(CliKind::OpenCode, Some(home))
+                .map(|version| version.to_string());
+            status.bundle_version.clone_from(&version);
+            apply_detected(
+                &mut status,
+                installed_variant(home),
+                Some(Ok((detected_version.into(), to))),
+            );
+            assert_eq!(status.installed_version, version);
+            assert_eq!(
+                decide_install_action(CliKind::OpenCode, &status, None),
+                InstallAction::Install
+            );
+            copy_bundle(&source(), home, to).unwrap();
+            let mut status = opencode_status(true, None, Some(home));
+            status.installed_version = installed_version_from_disk(CliKind::OpenCode, Some(home))
+                .map(|version| version.to_string());
+            status.bundle_version.clone_from(&version);
+            apply_detected(
+                &mut status,
+                installed_variant(home),
+                Some(Ok((detected_version.into(), to))),
+            );
+            assert_eq!(status.installed_version, version);
+            assert!(complete(home));
+            assert_eq!(installed_variant(home), Some(to));
+            assert_eq!(
+                opencode_plugins_dir(home).join(OPENCODE_PLUGIN_JS).exists(),
+                to == ApiVariant::V1
+            );
+            assert_eq!(
+                decide_install_action(CliKind::OpenCode, &status, None),
+                InstallAction::Skip
+            );
+            assert_eq!(fs::read_to_string(sentinel).unwrap(), "preserve");
+        }
+    }
+
+    #[test]
     fn compatibility_uses_provider_neutral_status_fields() {
         for (installed, detected, enabled, reason) in [
             (

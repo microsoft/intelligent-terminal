@@ -18,6 +18,7 @@
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
 - [Features](#features)
+  - [Sidebar](#sidebar)
   - [Agent Status Bar](#agent-status-bar)
   - [Agent Pane](#agent-pane)
   - [Agent Management](#agent-management)
@@ -51,7 +52,7 @@ Read the [announcement blog post](https://devblogs.microsoft.com/commandline/ann
 ## Installing and running Intelligent Terminal
 
 > [!NOTE]
-> Intelligent Terminal requires Windows 10 2004 (19041) or later. You also need a supported agent CLI and subscription. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default.
+> Intelligent Terminal requires Windows 10 2004 (19041) or later and a supported agent CLI. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default. Account, subscription, and API-key requirements depend on your agent and model provider. Local models are also supported through compatible agents.
 
 ### Microsoft Store (recommended)
 
@@ -80,7 +81,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agents on your machine (Copilot/Claude/Codex/Gemini/OpenCode/Antigravity). Antigravity uses its separately installed native ACP server, not the ordinary `agy` CLI. If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
+1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agents on your machine (Copilot/Claude/Codex/Gemini/OpenCode/Antigravity). If no agents are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
 2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
 3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
 
@@ -103,6 +104,8 @@ All shortcuts are customizable through Intelligent Terminal settings.
 | <kbd>Ctrl+Shift+I</kbd> | Switch focus to/from the agent pane |
 | <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
+| <kbd>Ctrl+Shift+S</kbd> | Show or hide the sidebar |
+| <kbd>Ctrl+Shift+G</kbd> | Toggle the sidebar's Agents-only filter |
 | <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
 | <kbd>Alt+Shift+B</kbd> | Open an interactive delegate-agent tab with no startup prompt |
 | <kbd>Alt+V</kbd> | Paste a clipboard image into the agent pane |
@@ -111,29 +114,37 @@ All shortcuts are customizable through Intelligent Terminal settings.
 
 ## Configuration
 
-Everything is configurable through Intelligent Terminal settings, under "Agent" settings.
+Configure agent features under **Settings > Agents**. The agent pane and command palette have separate agent selections.
 
-| Setting | Options |
-|---------|---------|
-| Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
-| Custom providers (BYOK) | Bring your own provider credentials and model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL, Model ID, and optional API key, then select it from `/model`. API keys are stored in Windows Credential Manager; keyless local endpoints such as Ollama remain supported. |
-| Pane placement | Top, Bottom (default), Left, Right |
-| Error detection | Allows Intelligent Terminal to automatically detect command failures |
-| Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
-| Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
-| Token usage display | Show or hide token usage and cost in the agent status bar |
+| Setting | Options | Shortcut / command |
+|---------|---------|--------------------|
+| Agent | Choose the agent for the agent pane. GitHub Copilot is the default; other built-in agents and custom ACP-compatible commands are supported. | `/agent` |
+| Model | Choose the agent pane's model. Configure agent-provided session options or select a configured BYOK model for the current pane. | `/config`, `/model` |
+| Custom endpoint or local model | Add an OpenAI-compatible Chat Completions endpoint for GitHub Copilot or OpenCode, with a Base URL, Model ID, and optional API key. Keys are stored in Windows Credential Manager. Keyless local endpoints such as Ollama are supported. | `/model` to select an added model |
+| Pane position | Top, Bottom (default), Left, or Right. | `/move left\|right\|up\|down` |
+| Error detection | **Off**, **Detect errors** (default), or **Detect and fix errors**. Detect errors stays local; Detect and fix errors automatically sends failure context to your agent for suggested fixes. | <kbd>Ctrl+Alt+.</kbd> to analyze an error; `/fix` for manual diagnosis |
+| Sessions | Track running agents and sessions that need your attention. Enabled by default. | <kbd>Ctrl+Shift+/</kbd> or `/sessions` to open agent management |
+| Token usage | Show remaining context and session cost when your agent reports them. Enabled by default. | |
+| Markdown formatting | Format agent replies after streaming stops, including replies loaded from saved history. Enabled by default. | |
+| Automatic approval | Let the agent run with the full permissions its CLI provides. Off by default; availability depends on the agent and organization policy. Terminal action cards still require your confirmation. | |
+| Command palette > Agent CLI | Choose the agent used for command-palette delegation and new interactive delegate tabs. | <kbd>Alt+Shift+/</kbd> to open agent prompt mode; <kbd>Alt+Shift+B</kbd> for a new interactive agent tab |
+
+These shortcuts open or use the feature; they don't toggle its setting. All key bindings are customizable.
 
 You can also pin a specific agent to a profile. Open a profile in Settings (for example, "PowerShell" or "Ubuntu") and set the agent you want its agent pane to use. For a WSL profile, the picker also lists agents installed inside that distro, so an Ubuntu profile can run a Linux-side agent. Profiles you don't configure keep using the global agent.
 
 Installed Windows agent CLIs also appear as individual profiles in the new-tab dropdown, alongside shells and with their own agent icons. These launch the agent's native interactive interface, independently of the built-in agent pane. Configure their working directory, appearance, and supported agent options in the profile editor. To change the default split target, edit the profile's `defaultSplitProfile` in `settings.json`; this setting is not available in the profile editor. See [Native agent profiles](doc/agent-profiles.md).
 
 Google Antigravity is supported in the agent pane on Windows and inside WSL.
-Install the native ACP package for the selected source and keep its server directory
-on that source's `PATH`; see [Antigravity setup](./doc/installing-dependencies.md#google-antigravity-acp-windows-and-wsl).
-Authentication, model selection, and permission modes use the server's ACP APIs.
-Install the separate `agy` CLI for interactive delegation and shell-session hooks.
-ACP conversations and CLI conversations retain their own source and resume path;
-the upstream ACP interface does not enumerate the CLI's cold-start history.
+With the `agy` CLI installed in the selected source, Intelligent Terminal automatically
+downloads and prepares the supported ACP server when you connect or load its models
+in Settings. You can also install ACP manually.
+See [Antigravity setup](./doc/installing-dependencies.md#google-antigravity-acp-windows-and-wsl).
+
+Authentication, model selection, and permission modes are provided through ACP.
+Interactive delegation and shell-session hooks use the `agy` CLI.
+ACP and CLI conversations have separate resume paths; ACP does not list the CLI's
+cold-start history.
 
 When **Settings > Agents > Sessions** is off, session management shows a subtle reminder below its title to turn it on for the best experience. Existing hooks are not removed and may continue to report activity; the setting controls their installation and updates. The reminder disappears when Sessions is enabled and is not shown when organization policy prevents enabling it.
 
@@ -141,13 +152,33 @@ When **Settings > Agents > Sessions** is off, session management shows a subtle 
 
 ## Features
 
+### Sidebar
+
+<p align="center">
+  <img src="./images/intelligent-terminal-sidebar.png" alt="Screenshot of the sidebar showing terminal tabs, agent status, and recent agent sessions">
+</p>
+
+Manage terminal tabs and agent sessions from the sidebar. Press <kbd>Ctrl+Shift+S</kbd>
+to show or hide it. Use the sidebar's display-options menu to filter agent tabs and show recent agent sessions.
+
+- **Tabs** shows your terminal tabs, with display options for details such as working directory, Git branch, and agent status.
+- **Agents only** filters open tabs to agent tabs. Press <kbd>Ctrl+Shift+G</kbd> to toggle this filter.
+- **Search** finds open tabs and recent agent sessions, including items hidden by the current display filters.
+- **Recent agent sessions** lets you return to supported conversations. Collapse the section to hide its rows without closing agents or deleting sessions.
+
+To return to horizontal tabs, right-click a tab and change the tab layout.
+
 ### Agent Status Bar
 
 <p align="center">
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the error detection icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your current token usage and cost as you work; toggle this on or off in Agent settings.
+The agent status bar sits at the bottom of the window. On the left are the agent pane toggle (<kbd>Ctrl+Shift+.</kbd>) and the error detection icon (<kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected.
+
+In horizontal tab mode, the sessions icon appears at the bottom right and opens agent management (<kbd>Ctrl+Shift+/</kbd>). In sidebar mode, this icon is hidden; use the sidebar's **Recent agent sessions** section instead.
+
+The status bar can also display your remaining context and session cost when available; toggle this on or off in **Settings > Agents > Token usage**.
 
 ### Agent Pane
 
@@ -185,7 +216,7 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 
 #### Custom Providers (BYOK)
 
-Run your agent against your own provider or a model on your machine. BYOK is supported through GitHub Copilot and OpenCode using an OpenAI-compatible Chat Completions endpoint. Under Agent settings, add a provider with a Base URL, Model ID, and optional API key, then pick it from the `/model` picker (configured models show as `modelId (BYOK)`). API keys are stored in Windows Credential Manager; a local Ollama model still works with no key:
+Run your agent against your own provider or a model on your machine. BYOK is supported through GitHub Copilot and OpenCode using an OpenAI-compatible Chat Completions endpoint. Under Agents settings, add a provider with a Base URL, Model ID, and optional API key, then pick it from the `/model` picker (configured models show as `modelId (BYOK)`). API keys are stored in Windows Credential Manager; a local Ollama model still works with no key:
 
 ```text
 Base URL:  http://localhost:11434/v1
@@ -199,7 +230,7 @@ API key:   <optional>
   <img src="./images/intelligent-terminal-agent-management.png" alt="Screenshot of agent management panel showing active agents and past sessions">
 </p>
 
-View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. Click the agent management icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
+View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. In horizontal tab mode, click the sessions icon at the bottom right or press <kbd>Ctrl+Shift+/</kbd> to open agent management. In sidebar mode, use **Recent agent sessions**.
 
 While a tracked built-in agent session is live, its terminal pane uses the agent's icon. Vertical pane rows show their own icons; tab headers in both layouts follow the focused terminal pane. Focusing the AI helper keeps its associated terminal pane as the source. When the session ends, or the provider is custom or unknown, the profile icon is used instead. This works whether or not Agent status is selected as visible tab metadata.
 

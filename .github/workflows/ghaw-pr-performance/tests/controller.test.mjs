@@ -48,7 +48,7 @@ function publicationQueue() {
     assert.ok(group(publisher));
     assert.notEqual(group(review), group(publisher), 'review preemption must not cancel publication');
     assert.match(group(publisher), /\$\{\{\s*github\.repository\s*\}\}/);
-    assert.match(group(publisher), /\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/);
+    assert.match(group(publisher), /\$\{\{\s*needs\.performance-review\.outputs\.pr_number\s*\}\}/);
     assert.doesNotMatch(group(publisher), /run_id|run_attempt|sha|ref/);
     assert.doesNotMatch(review, /github\.rest\.issues\.(?:createComment|updateComment)/);
     assert.match(publisher, /github\.rest\.issues\.createComment/);
@@ -61,6 +61,31 @@ function publicationQueue() {
         return result;
     };
 }
+
+test('stale CI completions cannot preempt a different admitted run or attempt', () => {
+    const group = workflowJob('performance-review').match(/^ {6}group: (.+)$/m)?.[1];
+    assert.ok(group);
+    const resolve = (id, attempt) => group.replace(/\$\{\{\s*([\s\S]*?)\s*\}\}/g, (_, source) =>
+        expression(source, { github: { repository: 'owner/repo',
+            event: { workflow_run: { id, run_attempt: attempt, head_branch: 'same-branch' } } } }));
+    assert.notEqual(resolve(99, 1), resolve(100, 1));
+    assert.notEqual(resolve(100, 1), resolve(100, 2));
+    assert.equal(resolve(100, 2), resolve(100, 2), 'duplicate deliveries of one CI attempt may coalesce');
+});
+
+test('stale dispatches cannot cancel a different CI worker before its admission checks', () => {
+    const worker = fs.readFileSync(new URL('../../../workflows/ghaw-pr-performance.md', import.meta.url), 'utf8');
+    const group = worker.match(/^  group: (.+)$/m)?.[1];
+    assert.ok(group);
+    const resolve = (id, attempt) => group.replace(/\$\{\{\s*([\s\S]*?)\s*\}\}/g, (_, source) =>
+        expression(source, { github: { event: { inputs: {
+            pr_number: '42', ci_run_id: String(id), ci_run_attempt: String(attempt),
+        } } } }));
+    const current = resolve(100, 2);
+    assert.notEqual(resolve(99, 1), current, 'older runs must not share the active worker cancellation group');
+    assert.notEqual(resolve(100, 1), current, 'older attempts must not share the active worker cancellation group');
+    assert.equal(resolve(100, 2), current, 'duplicate dispatches of the same CI identity may coalesce');
+});
 
 function temporaryDirectory(prefix) {
     const generated = path.join(process.cwd(), 'Generated Files');
@@ -110,8 +135,8 @@ test('controller loads its helper from the workflow revision when the PR base pr
     assert.deepEqual(scope.identity, { prNumber: 42, baseSha: base, headSha: head });
     assert.deepEqual(scope.candidates.map(file => file.filename), ['tools/wta/src/lib.rs']);
     assert.equal(git(['rev-parse', 'HEAD']), trusted);
-    assert.match(workflow, /BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
-    assert.match(workflow, /HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+    assert.match(workflow, /BASE_SHA: \$\{\{ steps\.admission\.outputs\.base_sha \}\}/);
+    assert.match(workflow, /HEAD_SHA: \$\{\{ steps\.admission\.outputs\.head_sha \}\}/);
 });
 
 test('repair worker collects the agent-written report from its pre-created output directory', t => {
@@ -298,12 +323,12 @@ test('publication handles failed reviews but skips cancelled, skipped and inappl
     }
     const condition = workflowJob('performance-review').match(/^ {4}if: (.+)$/m)?.[1];
     assert.ok(condition);
-    for (const cancelled of [false, true]) {
-        for (const draft of [false, true]) {
+    for (const conclusion of ['success', 'failure', 'cancelled']) {
+        for (const event of ['pull_request', 'push']) {
             for (const headId of [1, 2]) {
-                assert.equal(expression(condition, { cancelled, github: {
-                    repository_id: 1, event: { pull_request: { draft, head: { repo: { id: headId } } } },
-                } }), !cancelled && !draft && headId === 1);
+                assert.equal(expression(condition, { github: {
+                    event: { repository: { id: 1 }, workflow_run: { conclusion, event, head_repository: { id: headId } } },
+                } }), conclusion === 'success' && event === 'pull_request' && headId === 1);
             }
         }
     }
@@ -332,6 +357,7 @@ test('publication has its own trusted checkout and receives producer outputs rat
     assert.ok(env);
     const producer = { result: 'failure', outputs: {
         worker_run_id: '101', worker_run_url: 'worker-url', worker_conclusion: 'failure',
+        head_sha: 'a'.repeat(40), pr_number: '42',
     } };
     const github = { event: { pull_request: { head: { sha: 'a'.repeat(40) }, number: 42 } },
         server_url: 'https://github.com', repository: 'owner/repo', run_id: '100', token: 'fixture' };
@@ -468,7 +494,9 @@ async function workerRun({ readErrors = {}, jobsSequence, runSequence, dispatchE
     const warnings = [];
     const waits = [];
     const reads = { list: 0, run: 0, jobs: 0 };
+    const workflowSha = 'd'.repeat(40);
     const run = { id: 101, display_title: `Performance repair ${dispatchId}`,
+        head_sha: workflowSha, path: '.github/workflows/ghaw-pr-performance.lock.yml',
         created_at: new Date().toISOString(), status: 'completed', conclusion: 'success',
         html_url: 'https://github.com/owner/repo/actions/runs/101' };
     const agent = { name: 'agent', conclusion: 'success',
@@ -501,7 +529,13 @@ async function workerRun({ readErrors = {}, jobsSequence, runSequence, dispatchE
             if (cancelError) throw Object.assign(new Error('Cancellation failed'), { status: cancelError });
         },
         listJobsForWorkflowRun: 'jobs',
-    } }, async paginate(method, value) {
+    }, pulls: { async get() {
+        return { data: { number: 42, state: 'open', draft: false,
+            head: { sha: head, ref: 'feature', repo: { full_name: 'owner/repo' } },
+            base: { sha: base, ref: 'main' } } };
+    } }, git: { async getRef() {
+        return { data: { ref: 'refs/heads/main', object: { type: 'commit', sha: workflowSha } } };
+    } } }, async paginate(method, value) {
         assert.equal(method, 'jobs');
         assert.equal(value.run_id, 101);
         const index = read('jobs');
@@ -510,9 +544,10 @@ async function workerRun({ readErrors = {}, jobsSequence, runSequence, dispatchE
     let error;
     try {
         await dispatch(github, { repo: { owner: 'owner', repo: 'repo' }, runId: 100,
-            payload: { pull_request: { number: 42 } } },
+            payload: { repository: { default_branch: 'main' } } },
         { setOutput(name, value) { outputs[name] = value; }, warning(message) { warnings.push(message); } },
-        { env: { GITHUB_RUN_ATTEMPT: '2', EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
+        { env: { GITHUB_RUN_ATTEMPT: '2', PR_NUMBER: '42', CI_RUN_ID: '99', CI_RUN_ATTEMPT: '3',
+            EXPECTED_HEAD_SHA: head, EXPECTED_BASE_SHA: base,
             COMPARISON_BASE_SHA: mergeBase, HEAD_REF: 'feature', BASE_REF: 'main', HEAD_REPO: 'owner/repo' } },
         (callback, delay) => { waits.push(delay); callback(); });
     } catch (caught) { error = caught; }
@@ -532,6 +567,9 @@ test('controller dispatches only the repair worker with immutable pull-request c
     assert.equal(inputs.head_repo, 'owner/repo');
     assert.equal(inputs.expected_head_sha, head);
     assert.equal(inputs.expected_base_sha, base);
+    assert.equal(inputs.expected_workflow_sha, 'd'.repeat(40));
+    assert.equal(inputs.ci_run_id, '99');
+    assert.equal(inputs.ci_run_attempt, '3');
     assert.equal(inputs.comparison_base_sha, mergeBase);
     assert.deepEqual(JSON.parse(inputs.aw_context), {
         run_id: '100', workflow_id: 'ghaw-pr-performance-controller',

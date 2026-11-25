@@ -87,14 +87,16 @@ CI/harness changes require manual review until installed on the default branch.
 Triage writes `triage.md`: Related, None or Uncertain with a short explanation
 and candidate changed paths. None skips deep review only; it does not skip
 independent CI or mean accessibility passed. Uncertain is forwarded faithfully.
-Deep review writes actual `final.json`, `deep-summary.md` and `native-checks.md`;
-the final model consumes original handoffs and authoritative job outcomes.
+The triage job displays its validated original Markdown verbatim. Deep review
+writes `final.json`, `deep-summary.md` and `native-checks.md`; its job displays
+the delivered Markdown verbatim without a second model or report renderer.
 Stage artifacts have stable per-run names for retained successful producers.
 Missing/empty/invalid files or failed/crashed required producers are **No result**,
-not fabricated None/Pass. Complete handoffs remain evidence if later validation
-or publication fails; accepted findings are not erased by delivery failures.
-An unavailable final model leaves existing Actions diagnostics, not a generated
-replacement report. Native framework session logs need no custom receipts.
+not fabricated None/Pass. The Actions job/step outcomes and existing diagnostics
+distinguish missing delivery from a successful None route. Complete handoffs
+remain evidence if later validation or publication fails. Original-head PR CI
+and the safe-output job remain authoritative for native checks and publication,
+respectively. Native framework session logs need no custom receipts.
 
 The source agent does not execute candidate code or load candidate instructions.
 Trusted preparation and patch validation remain outside the model. Only the
@@ -104,12 +106,13 @@ source, preserving encoding and line endings. No resource edits, literal names,
 MEDIUM/LOW repairs or unrelated hunks are allowed. Each fixed HIGH has its own
 commit, linked from its table row; bundle publication preserves those IDs.
 Report-only runs use noop. Non-fast-forward push fails with no fallback PR.
-The summary distinguishes local commits from confirmed published tips and
-includes one shared unbuilt/untested reviewer-ownership/revert notice.
+The review describes proposed commits as local and includes one shared
+unbuilt/untested reviewer-ownership/revert notice. See the safe-output job for
+confirmed publication.
 
 ## Maintenance
 
-Use gh-aw v0.87.10; compile and validate the three accessibility workflows and
+Use gh-aw v0.87.10; compile and validate both accessibility workflows and
 `ghaw-pr-security` after shared-boundary changes. Run:
 
 ```powershell

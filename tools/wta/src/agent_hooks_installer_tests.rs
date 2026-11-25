@@ -1599,6 +1599,26 @@ fn antigravity_hooks_preserve_permissions_in_native_windows_dispatch() {
 }
 
 #[test]
+fn antigravity_hooks_preserve_permissions_in_cmd_shell_dispatch() {
+    let manifest: Value =
+        serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
+    for (event, command) in antigravity_hook_commands(&manifest) {
+        for candidate in [
+            command.to_string(),
+            command.replace("wtcli.exe", MISSING_BRIDGE),
+        ] {
+            let output = std::process::Command::new("cmd.exe")
+                .args(["/d", "/s", "/c", &candidate])
+                .env_remove("WT_COM_CLSID")
+                .env_remove("WT_SESSION")
+                .output()
+                .expect("cmd.exe should start");
+            assert_antigravity_hook_response(&output, &candidate, event);
+        }
+    }
+}
+
+#[test]
 fn antigravity_wsl_hooks_preserve_permissions_when_tracking_is_unavailable() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity-wsl/hooks.json")).unwrap();
@@ -2265,12 +2285,12 @@ fn native_hook_bundle_versions_match_their_marketplaces() {
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
         (
             "antigravity-wsl",
             include_str!("../wt-agent-hooks/antigravity-wsl/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
     ];
     for (provider, manifest, expected_release) in manifests {

@@ -85,7 +85,7 @@ namespace winrt::TerminalApp::implementation
 
     void HighlightedTextControl::_InitializeProperties()
     {
-        static auto [[maybe_unused]] registered = [] {
+        [[maybe_unused]] static auto registered = [] {
             _TextProperty = DependencyProperty::Register(
                 L"Text",
                 xaml_typename<winrt::hstring>(),

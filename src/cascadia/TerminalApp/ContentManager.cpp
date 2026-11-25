@@ -83,6 +83,22 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    bool ContentManager::_UsesNativeAgentFallback(const TerminalContent& content) const noexcept
+    {
+        const auto& provider = content.explicitNativeAgentProviderId.empty() ?
+                                   content.nativeAgentProviderId :
+                                   content.explicitNativeAgentProviderId;
+        return !content.agentHelper && !provider.empty() &&
+               (!_nativeAgentSessionEventsEnabled || !::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsSessionHooks(provider));
+    }
+
+    bool ContentManager::UsesNativeAgentFallback(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it != _content.end() && _UsesNativeAgentFallback(it->second);
+    }
+
     std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::NativeAgentObservationForContent(const uint64_t contentId) const
     {
         std::lock_guard lock{ _mutex };
@@ -312,7 +328,7 @@ namespace winrt::TerminalApp::implementation
             it->second.reportedAgentStatusPaneId.reset();
             it->second.parsedProgress.reset();
             it->second.lastConfirmedOwner = {};
-            if (!_nativeAgentSessionEventsEnabled)
+            if (_UsesNativeAgentFallback(it->second))
             {
                 it->second.explicitNativeAgentProviderId = winrt::hstring{};
                 _agentBindings.erase(contentId);
@@ -354,19 +370,16 @@ namespace winrt::TerminalApp::implementation
     bool ContentManager::AcceptsAgentSessionEvents(const winrt::guid& paneId) const
     {
         std::lock_guard lock{ _mutex };
-        if (_nativeAgentSessionEventsEnabled)
-        {
-            return true;
-        }
         for (const auto& [id, content] : _content)
         {
             const auto connection = content.core.Core().Connection();
             if (connection && connection.SessionId() == paneId)
             {
-                return content.agentHelper;
+                return content.agentHelper ||
+                       (_nativeAgentSessionEventsEnabled && !_UsesNativeAgentFallback(content));
             }
         }
-        return false;
+        return _nativeAgentSessionEventsEnabled;
     }
 
     void ContentManager::UpdateAgentCompletion(
@@ -416,6 +429,22 @@ namespace winrt::TerminalApp::implementation
         return false;
     }
 
+    ContentManager::UnreadAgentCompletionKind ContentManager::UnreadAgentCompletion(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && it->second.completion.HasUnread())
+        {
+            const auto& completion = it->second.completion;
+            const auto connection = it->second.core.Core().Connection();
+            if (connection && connection.SessionId() == completion.paneId)
+            {
+                return completion.UnreadKind();
+            }
+        }
+        return UnreadAgentCompletionKind::None;
+    }
+
     bool ContentManager::HasUnreadAgentCompletion(
         const winrt::guid& paneId, const std::string_view sessionId, const std::string_view providerId) const
     {
@@ -423,7 +452,7 @@ namespace winrt::TerminalApp::implementation
         for (const auto& [id, content] : _content)
         {
             const auto& completion = content.completion;
-            if (completion.unread && completion.paneId == paneId &&
+            if (completion.HasUnread() && completion.paneId == paneId &&
                 completion.sessionId == sessionId && completion.providerId == providerId)
             {
                 const auto connection = content.core.Core().Connection();
@@ -439,9 +468,9 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> changed;
         {
             std::lock_guard lock{ _mutex };
-            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.unread)
+            if (const auto it = _content.find(contentId); it != _content.end() && it->second.completion.HasUnread())
             {
-                it->second.completion.unread = false;
+                it->second.completion.MarkRead();
                 changed = it->second.completion.paneId;
             }
         }
@@ -541,7 +570,7 @@ namespace winrt::TerminalApp::implementation
                 std::lock_guard lock{ _mutex };
                 if (const auto found = _content.find(contentId); found != _content.end())
                 {
-                    if (!_nativeAgentSessionEventsEnabled && !found->second.agentHelper && found->second.observation.modeEpoch != 0)
+                    if (_UsesNativeAgentFallback(found->second) && found->second.observation.modeEpoch != 0)
                     {
                         retired = found->second.observation;
                     }
@@ -707,17 +736,32 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab)
+    KeptWindowGeometry ContentManager::CaptureKeptWindowGeometry(const winrt::TerminalApp::TerminalPage& owner)
+    {
+        _CheckThread();
+        THROW_HR_IF(E_INVALIDARG, !owner);
+        KeptWindowGeometry geometry;
+        geometry.bounds = { 0, 0, static_cast<float>(owner.ActualWidth()), static_cast<float>(owner.ActualHeight()) };
+        geometry.captureOrdinal = ++_keptGeometryCaptureOrdinal;
+        const auto request = winrt::make<LaunchPositionRequest>();
+        winrt::get_self<TerminalPage>(owner)->RequestLaunchPosition.raise(owner, request);
+        const auto position = request.Position();
+        if (position.X && position.Y)
+        {
+            geometry.position = position;
+        }
+        return geometry;
+    }
+
+    void ContentManager::KeepTab(const winrt::TerminalApp::TerminalPage& owner, const winrt::TerminalApp::Tab& tab, const KeptWindowGeometry* geometry)
     {
         _CheckThread();
         THROW_HR_IF(E_INVALIDARG, !owner || !tab);
         const auto impl = winrt::get_self<Tab>(tab);
         const winrt::guid id{ impl->StableId() };
         THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !impl->KeepRunning() || _keptGroups.contains(id));
-        const winrt::Windows::Foundation::Rect bounds{
-            0, 0, static_cast<float>(owner.ActualWidth()), static_cast<float>(owner.ActualHeight())
-        };
-        _keptGroups.emplace(id, KeptGroup{ owner, tab, bounds, false, SharedWta::Instance().AcquireKeepRunningLease() });
+        const auto snapshot = geometry ? *geometry : CaptureKeptWindowGeometry(owner);
+        _keptGroups.emplace(id, KeptGroup{ owner, tab, snapshot, false, SharedWta::Instance().AcquireKeepRunningLease() });
         _NotifyKeptSessionsChanged();
     }
 
@@ -810,6 +854,23 @@ namespace winrt::TerminalApp::implementation
         return it == _keptGroups.end() ? nullptr : it->second.owner;
     }
 
+    void ContentManager::MarkKeptGroupSelectedOnWindowClose(const winrt::TerminalApp::TerminalPage& owner, const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        if (it != _keptGroups.end() && it->second.owner == owner && !it->second.restoring)
+        {
+            it->second.selectedOnWindowClose = true;
+        }
+    }
+
+    bool ContentManager::WasKeptGroupSelectedOnWindowClose(const winrt::guid& groupId)
+    {
+        _CheckThread();
+        const auto it = _keptGroups.find(groupId);
+        return it != _keptGroups.end() && !it->second.restoring && it->second.selectedOnWindowClose;
+    }
+
     winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> ContentManager::KeptPanes()
     {
         _CheckThread();
@@ -844,7 +905,39 @@ namespace winrt::TerminalApp::implementation
         _CheckThread();
         const auto it = _keptGroups.find(groupId);
         THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
-        return it->second.bounds;
+        return it->second.geometry.bounds;
+    }
+
+    winrt::TerminalApp::WindowRequestedArgs ContentManager::KeptWindowRequest(const winrt::Windows::Foundation::Collections::IVectorView<winrt::guid>& groups)
+    {
+        _CheckThread();
+        THROW_HR_IF(E_INVALIDARG, !groups || groups.Size() == 0);
+        winrt::Windows::Foundation::Rect bounds{};
+        const KeptWindowGeometry* newestPosition{};
+        winrt::guid newestGroup{};
+        for (const auto& groupId : groups)
+        {
+            const auto it = _keptGroups.find(groupId);
+            THROW_HR_IF(E_INVALIDARG, it == _keptGroups.end());
+            THROW_HR_IF(E_ILLEGAL_METHOD_CALL, it->second.restoring);
+            const auto& saved = it->second.geometry;
+            bounds.Width = std::max(bounds.Width, saved.bounds.Width);
+            bounds.Height = std::max(bounds.Height, saved.bounds.Height);
+            if (saved.position &&
+                (!newestPosition || saved.captureOrdinal > newestPosition->captureOrdinal ||
+                 (saved.captureOrdinal == newestPosition->captureOrdinal && groupId < newestGroup)))
+            {
+                newestPosition = &saved;
+                newestGroup = groupId;
+            }
+        }
+        winrt::TerminalApp::WindowRequestedArgs request{ winrt::hstring{}, winrt::hstring{}, bounds };
+        request.KeptGroupIds(winrt::single_threaded_vector<winrt::guid>(wil::to_vector(groups)));
+        if (newestPosition)
+        {
+            request.KeptLaunchPosition(newestPosition->position);
+        }
+        return request;
     }
 
     void ContentManager::CompleteKeptGroupReattach(const winrt::guid& groupId, const bool committed)

@@ -155,7 +155,9 @@ namespace TerminalApp
         UInt32 TabCount { get; };
 
         void SetStartupKeptGroups(Windows.Foundation.Collections.IVectorView<Guid> groups,
-                                  Windows.Foundation.IReference<Windows.Foundation.Rect> bounds);
+                                  Windows.Foundation.IReference<Windows.Foundation.Rect> bounds,
+                                  Windows.Foundation.IReference<Microsoft.Terminal.Settings.Model.LaunchPosition> position);
+        Boolean HasStartupKeptPosition { get; };
 
         Microsoft.Terminal.Settings.Model.WindowLayout GetStartupRestoreLayout();
         void WindowMoved();

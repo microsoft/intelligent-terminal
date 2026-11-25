@@ -64,6 +64,18 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
         .or_else(|| std::env::var_os("PATH"))
         .unwrap_or_default();
 
+    if profile.id == agent_registry::OPENCODE_AGENT_ID {
+        return match std::env::current_dir().and_then(|cwd| {
+            find_opencode_in_path(&path_var, &cwd, |candidate| Ok(candidate.is_file()))
+        }) {
+            Ok(path) => path.map(|path| path.to_string_lossy().into_owned()),
+            Err(error) => {
+                tracing::warn!(target: "agent_check", %error, "cannot resolve OpenCode executable");
+                None
+            }
+        };
+    }
+
     if profile.id == agent_registry::CLAUDE_AGENT_ID {
         return find_claude_executable_in_path(
             &path_var,
@@ -113,6 +125,27 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+/// OpenCode's hook API depends on the selected CLI major. Keep the first PATH
+/// directory's executable identity, including npm shims, through probe and launch.
+pub(crate) fn find_opencode_in_path(
+    path: &OsStr,
+    cwd: &Path,
+    is_file: impl Fn(&Path) -> std::io::Result<bool>,
+) -> std::io::Result<Option<PathBuf>> {
+    for directory in
+        std::env::split_paths(path).filter(|directory| !directory.as_os_str().is_empty())
+    {
+        let directory = std::path::absolute(cwd.join(directory))?;
+        for name in ["opencode.exe", "opencode.cmd"] {
+            let candidate = directory.join(name);
+            if is_file(&candidate)? {
+                return Ok(Some(candidate));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Find the native executable required by the ACP entry point, independently
@@ -1104,6 +1137,48 @@ fn expand_env_vars(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opencode_resolution_pins_effective_path_before_the_child_cwd() {
+        let cwd = Path::new(r"C:\Terminal parent");
+        let path = OsStr::new(r#";"relative & npm";;C:\inherited old;"#);
+        let shim = cwd.join(r"relative & npm\opencode.cmd");
+        let old_exe = Path::new(r"C:\inherited old\opencode.exe");
+        assert_eq!(
+            find_opencode_in_path(path, cwd, |candidate| Ok(
+                candidate == shim || candidate == old_exe
+            ))
+            .unwrap(),
+            Some(shim.clone())
+        );
+        let same_directory_exe = shim.with_extension("exe");
+        assert_eq!(
+            find_opencode_in_path(path, cwd, |candidate| Ok(
+                candidate == shim || candidate == same_directory_exe
+            ))
+            .unwrap(),
+            Some(same_directory_exe)
+        );
+        assert!(find_opencode_in_path(OsStr::new(";;"), cwd, |_| {
+            panic!("empty segments must not discover cwd executables")
+        })
+        .unwrap()
+        .is_none());
+        assert!(find_opencode_in_path(path, cwd, |candidate| Ok(matches!(
+            candidate.extension().and_then(OsStr::to_str),
+            Some("ps1" | "bat" | "com")
+        )))
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            find_opencode_in_path(path, cwd, |_| Err(
+                std::io::ErrorKind::PermissionDenied.into()
+            ))
+            .unwrap_err()
+            .kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+    }
 
     #[test]
     fn antigravity_cli_present_acp_missing_is_installable() {

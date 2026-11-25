@@ -149,6 +149,8 @@ agents.status.waiting_for_input: "រង់ចាំការបញ្ចូល"
 agents.status.error: "កំហុស"
 # Status badge when agent session has no active work
 agents.status.idle: "ទំនេរ"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "បានបញ្ចប់"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "កំពុងប្រើប្រាស់"
 
