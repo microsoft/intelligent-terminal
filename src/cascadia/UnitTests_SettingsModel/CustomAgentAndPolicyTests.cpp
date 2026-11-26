@@ -34,6 +34,9 @@
 #include "../TerminalApp/AgentProviderTelemetry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AcpAgentCatalog.h"
+#include "../inc/AcpModelUtils.h"
+#include "../inc/CustomAcpAgentCommands.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "../inc/AgentProfileUtils.h"
 #include "../inc/ProfileSplitPolicy.h"
@@ -71,6 +74,11 @@ namespace SettingsModelUnitTests
 
         // Round-trip tests
         TEST_METHOD(CustomAcpAgentRoundtrips);
+        TEST_METHOD(InstalledAcpCatalogDiscovery);
+        TEST_METHOD(InstalledAcpCatalogProjection);
+        TEST_METHOD(InstalledAcpCatalogSelectionAndPolicy);
+        TEST_METHOD(InstalledAcpCatalogSnapshotLifecycle);
+        TEST_METHOD(InstalledAcpCatalogLaunchResolution);
         TEST_METHOD(AgentProfileSettingsRoundtrip);
         TEST_METHOD(AgentProfileAntigravitySettingsRoundtrip);
         TEST_METHOD(AgentProfileCommandQuoting);
@@ -181,6 +189,7 @@ namespace SettingsModelUnitTests
             // Defense in depth: never leave a test snapshot lying around
             // for the next test class to inherit.
             implementation::GlobalAppSettings::_TestHookResetAgentPolicy();
+            implementation::GlobalAppSettings::_TestHookResetAcpAgentCatalog();
             return true;
         }
 
@@ -189,6 +198,7 @@ namespace SettingsModelUnitTests
             // Every test that calls const auto settings = MakeSettings({}); SetPolicy() should be followed by a
             // reset so the next test isn't poisoned by stale state.
             implementation::GlobalAppSettings::_TestHookResetAgentPolicy();
+            implementation::GlobalAppSettings::_TestHookResetAcpAgentCatalog();
             return true;
         }
 
@@ -237,6 +247,322 @@ namespace SettingsModelUnitTests
             implementation::GlobalAppSettings::_TestHookSetAgentPolicy(std::move(snap));
         }
     };
+
+    void CustomAgentAndPolicyTests::InstalledAcpCatalogDiscovery()
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::current_path() / (L"Installed ACP " + Utils::GuidToString(guid));
+        std::filesystem::create_directory(root);
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto add = [&](const wchar_t* name) { std::ofstream{ root / name }.put('\n'); };
+        // Inert files only. Discovery must never run these "executables".
+        for (const auto name : { L"node.exe", L"npx.cmd", L"python.exe", L"uvx.exe", L"unknown-agent.exe" })
+        {
+            add(name);
+        }
+        VERIFY_IS_TRUE(Catalog::Discover(root.c_str()).empty());
+        std::filesystem::create_directory(root / L"cline.exe");
+        VERIFY_IS_TRUE(Catalog::Discover(root.c_str()).empty());
+        add(L"cline.cmd");
+        add(L"bob.exe");
+        add(L"amp-acp.exe");
+        add(L"pi-acp.cmd");
+        auto installed = Catalog::Discover(root.c_str());
+        // Adapter alone is insufficient when its provider executable is needed.
+        VERIFY_ARE_EQUAL(size_t{ 2 }, installed.size());
+        const auto cline = Catalog::Find(L"custom:acp-registry:cline");
+        VERIFY_IS_NULL(Catalog::Find(L"custom:acp-registry-cline"));
+        VERIFY_IS_NOT_NULL(cline);
+        const auto argv = ParseFullCommandLine(Catalog::Command(*cline, root.c_str()));
+        VERIFY_ARE_EQUAL(size_t{ 2 }, argv.size());
+        VERIFY_ARE_EQUAL((root / L"cline.cmd").native(), argv[0]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"--acp" }, argv[1]);
+        add(L"amp.cmd");
+        add(L"pi.exe");
+        installed = Catalog::Discover(root.c_str());
+        VERIFY_ARE_EQUAL(size_t{ 4 }, installed.size());
+        std::filesystem::remove(root / L"cline.cmd");
+        VERIFY_IS_TRUE(Catalog::Command(*cline, root.c_str()).empty());
+        const auto poolside = Catalog::Find(L"custom:acp-registry:poolside");
+        VERIFY_IS_NOT_NULL(poolside);
+        const auto archiveName = std::wstring{ Catalog::PoolsideArchiveExecutable } + L".exe";
+        const auto wrongArchiveName = Catalog::PoolsideArchiveExecutable == L"pool-windows-arm64" ?
+                                          L"pool-windows-amd64.exe" :
+                                          L"pool-windows-arm64.exe";
+        add(wrongArchiveName);
+        VERIFY_IS_TRUE(Catalog::Command(*poolside, root.c_str()).empty());
+        add(archiveName.c_str());
+        VERIFY_ARE_EQUAL((root / archiveName).native(), ParseFullCommandLine(Catalog::Command(*poolside, root.c_str()))[0]);
+        add(L"pool.cmd");
+        const auto poolArguments = ParseFullCommandLine(Catalog::Command(*poolside, root.c_str()));
+        VERIFY_ARE_EQUAL((root / L"pool.cmd").native(), poolArguments[0]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"acp" }, poolArguments[1]);
+        installed = Catalog::Discover(root.c_str());
+        VERIFY_ARE_EQUAL(ptrdiff_t{ 1 }, std::ranges::count_if(installed, [&](const auto& agent) { return agent.metadata == poolside; }));
+        std::filesystem::remove(root / L"pool.cmd");
+        std::filesystem::remove(root / archiveName);
+        VERIFY_IS_TRUE(Catalog::Command(*poolside, root.c_str()).empty());
+        for (const auto& agent : Catalog::Agents)
+        {
+            VERIFY_IS_FALSE(::Microsoft::Terminal::Settings::Model::AgentRegistry::SupportsSessionHooks(Catalog::Id(agent)));
+        }
+    }
+
+    void CustomAgentAndPolicyTests::InstalledAcpCatalogProjection()
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        const auto globals = MakeSettings({})->GlobalSettings();
+        SetPolicy(MakePolicy());
+        size_t detections = 0;
+        implementation::GlobalAppSettings::_TestHookSetAcpAgentDetector([&]() {
+            ++detections;
+            std::vector<Catalog::InstalledAgent> installed;
+            for (const auto& agent : Catalog::Agents)
+            {
+                installed.push_back({ &agent, L"\"C:\\inert fixture\\" + std::wstring{ agent.executable } + L".exe\"" });
+            }
+            return installed;
+        });
+        globals.InitializeAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(30u, globals.InstalledAcpAgents().Size());
+        Json::Value settings{ Json::objectValue };
+        settings["acpCustomCommands"].append("user-owned-agent --stdio");
+        settings["acpCustomCommands"].append("acp-registry-cline.cmd --manual");
+        settings["acpAgent"] = "custom:acp-registry:cline";
+        const auto before = settings.toStyledString();
+        const auto commands = ::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings);
+        VERIFY_ARE_EQUAL(2u, commands.size());
+        VERIFY_ARE_EQUAL(std::string{ "user-owned-agent --stdio" }, commands["custom:user-owned-agent"].asString());
+        VERIFY_ARE_EQUAL(std::string{ "acp-registry-cline.cmd --manual" }, commands["custom:acp-registry-cline"].asString());
+        // All choices are visible, but none becomes an implicit runtime/history
+        // initialization candidate. The selected pane carries its trusted command.
+        for (const auto& agent : Catalog::Agents)
+        {
+            VERIFY_IS_FALSE(commands.isMember(winrt::to_string(Catalog::Id(agent))));
+        }
+        VERIFY_ARE_EQUAL(before, settings.toStyledString());
+        VERIFY_IS_FALSE(settings.isMember("acpNamedCustomCommands"));
+        VERIFY_IS_FALSE(settings.isMember("profiles"));
+        for (size_t poll = 0; poll < 20; ++poll)
+        {
+            VERIFY_ARE_EQUAL(2u, ::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings).size());
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, detections);
+    }
+
+    void CustomAgentAndPolicyTests::InstalledAcpCatalogSnapshotLifecycle()
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        const auto globals = MakeSettings(R"("acpAgent":"custom:acp-registry:bob")")->GlobalSettings();
+        const auto anotherSettingsOwner = MakeSettings(R"("acpAgent":"custom:acp-registry:bob")")->GlobalSettings();
+        SetPolicy(MakePolicy());
+        size_t detections = 0;
+        bool bobInstalled = false;
+        const auto bob = Catalog::Find(L"custom:acp-registry:bob");
+        const auto cline = Catalog::Find(L"custom:acp-registry:cline");
+        implementation::GlobalAppSettings::_TestHookSetAcpAgentDetector([&]() {
+            ++detections;
+            std::vector<Catalog::InstalledAgent> installed{ { cline, L"\"C:\\inert\\cline.cmd\" --acp" } };
+            if (bobInstalled)
+            {
+                installed.push_back({ bob, L"\"C:\\inert\\bob.exe\" acp" });
+            }
+            return installed;
+        });
+        // Properties cannot lazily start discovery, even before startup.
+        VERIFY_ARE_EQUAL(winrt::hstring{ Catalog::Id(*bob) }, globals.EffectiveAcpAgent());
+        VERIFY_ARE_EQUAL(0u, globals.InstalledAcpAgents().Size());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, detections);
+        globals.InitializeAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(size_t{ 1 }, detections);
+        // Other settings clones/windows, repeated startup and new-tab consumers
+        // all address the same SettingsModel process owner, not their own cache.
+        for (size_t tab = 0; tab < 8; ++tab)
+        {
+            anotherSettingsOwner.InitializeAcpAgentCatalog();
+            VERIFY_ARE_EQUAL(1u, anotherSettingsOwner.InstalledAcpAgents().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ Catalog::Id(*bob) }, anotherSettingsOwner.EffectiveAcpAgent());
+        }
+        VERIFY_ARE_EQUAL(size_t{ 1 }, detections);
+        // Genuine entry invokes the same gate used by MainPage navigation.
+        Catalog::RefreshOnAgentsPageEntry(false, [&]() { globals.RefreshAcpAgentCatalog(); });
+        VERIFY_ARE_EQUAL(size_t{ 2 }, detections);
+        bobInstalled = true;
+        Json::Value config{ Json::objectValue };
+        config["acpCustomCommands"].append("user-owned-agent --stdio");
+        for (size_t interaction = 0; interaction < 20; ++interaction)
+        {
+            // Dropdown/property reads and the exact existing configuration
+            // projection used by wtcli do not observe a newly installed agent.
+            VERIFY_ARE_EQUAL(1u, globals.InstalledAcpAgents().Size());
+            VERIFY_ARE_EQUAL(winrt::hstring{ Catalog::Id(*bob) }, globals.EffectiveAcpAgent());
+            VERIFY_IS_TRUE(globals.EffectiveAcpCustomCommand().empty());
+            VERIFY_ARE_EQUAL(1u, ::Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(config).size());
+        }
+        VERIFY_ARE_EQUAL(size_t{ 2 }, detections);
+        // Actual MainPage entry gate: reload (including failed TryUpdateSettings)
+        // and Reset reconstruct Agents while it is still the current frame page.
+        Catalog::RefreshOnAgentsPageEntry(true, [&]() { globals.RefreshAcpAgentCatalog(); });
+        Catalog::RefreshOnAgentsPageEntry(true, [&]() { anotherSettingsOwner.RefreshAcpAgentCatalog(); });
+        VERIFY_ARE_EQUAL(size_t{ 2 }, detections);
+        VERIFY_ARE_EQUAL(1u, globals.InstalledAcpAgents().Size());
+        // Navigate away/reenter Agents: the installation is now discovered once.
+        Catalog::RefreshOnAgentsPageEntry(false, [&]() { anotherSettingsOwner.RefreshAcpAgentCatalog(); });
+        VERIFY_ARE_EQUAL(size_t{ 3 }, detections);
+        VERIFY_ARE_EQUAL(2u, globals.InstalledAcpAgents().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ Catalog::Id(*bob) }, globals.EffectiveAcpAgent());
+        const auto command = globals.EffectiveAcpCustomCommand();
+        bobInstalled = false;
+        VERIFY_ARE_EQUAL(command, anotherSettingsOwner.EffectiveAcpCustomCommand());
+        anotherSettingsOwner.InitializeAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(size_t{ 3 }, detections);
+        // Uninstall also takes effect only at the next permitted refresh.
+        globals.RefreshAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(size_t{ 4 }, detections);
+        globals.AcpCustomCommand(L"unrelated-command --stdio");
+        VERIFY_ARE_EQUAL(winrt::hstring{ Catalog::Id(*bob) }, globals.EffectiveAcpAgent());
+        VERIFY_IS_TRUE(globals.EffectiveAcpCustomCommand().empty());
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::Blocked));
+        globals.RefreshAcpAgentCatalog();
+        VERIFY_IS_TRUE(globals.InstalledAcpAgents().Size() == 0);
+        VERIFY_ARE_EQUAL(size_t{ 4 }, detections);
+    }
+
+    void CustomAgentAndPolicyTests::InstalledAcpCatalogLaunchResolution()
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        namespace Models = ::Microsoft::Terminal::AcpModels;
+        SetPolicy(MakePolicy());
+        const auto globals = MakeSettings(R"("acpAgent":"custom:acp-registry:bob")")->GlobalSettings();
+        const auto bob = Catalog::Find(L"custom:acp-registry:bob");
+        bool installed = false;
+        implementation::GlobalAppSettings::_TestHookSetAcpAgentDetector([&]() {
+            std::vector<Catalog::InstalledAgent> agents;
+            if (installed)
+            {
+                agents.push_back({ bob, L"\"C:\\inert\\bob.exe\" acp" });
+            }
+            return agents;
+        });
+        globals.InitializeAcpAgentCatalog();
+        size_t fallbacks = 0;
+        size_t builtinCommands = 0;
+        const auto resolve = [&]() {
+            return Models::ResolveEffectiveCommandLine(
+                std::wstring_view{ globals.EffectiveAcpAgent() },
+                std::wstring_view{ globals.EffectiveAcpCustomCommand() },
+                [&]() {
+                    ++fallbacks;
+                    return std::wstring{ L"copilot" };
+                },
+                [&](const std::wstring_view id) {
+                    ++builtinCommands;
+                    return Models::BuildAgentCommandLine(id);
+                });
+        };
+        // Actual production launch resolver, not just a property assertion:
+        // an unavailable explicit choice must not auto-detect another provider.
+        globals.AcpCustomCommand(L"unrelated-command --stdio");
+        VERIFY_IS_TRUE(resolve().empty());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, fallbacks);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, builtinCommands);
+        installed = true;
+        globals.RefreshAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(std::wstring{ L"\"C:\\inert\\bob.exe\" acp" }, resolve());
+        VERIFY_ARE_EQUAL(resolve(), Models::BuildProbeCommandLine(globals.EffectiveAcpCustomCommand()));
+        installed = false;
+        globals.RefreshAcpAgentCatalog();
+        VERIFY_IS_TRUE(resolve().empty());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, fallbacks);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, builtinCommands);
+        // A saved ID from a newer/removed catalog is still an explicit catalog
+        // choice, not a handwritten command or an executable to probe.
+        for (const auto id : { L"custom:acp-registry:unknown-future-agent", L"custom:acp-registry:" })
+        {
+            globals.AcpAgent(id);
+            globals.AcpModel(L"saved-catalog-model");
+            VERIFY_ARE_EQUAL(winrt::hstring{ id }, globals.EffectiveAcpAgent());
+            VERIFY_IS_TRUE(globals.EffectiveAcpCustomCommand().empty());
+            VERIFY_IS_TRUE(resolve().empty());
+            VERIFY_IS_TRUE(Models::BuildProbeCommandLine(globals.EffectiveAcpAgent()).empty());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"saved-catalog-model" }, globals.AcpModel());
+        }
+        VERIFY_IS_TRUE(Models::BuildProbeCommandLine(L"custom:acp-registry:bob").empty());
+        // A similarly named original handwritten ID is not in the namespace.
+        globals.AcpAgent(L"custom:acp-registry-bob");
+        VERIFY_ARE_EQUAL(std::wstring{ L"unrelated-command --stdio" }, resolve());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, fallbacks);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, builtinCommands);
+        // No selection still uses the existing allowed built-in fallback.
+        globals.AcpAgent(L"");
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio" }, resolve());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, fallbacks);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, builtinCommands);
+        globals.AcpAgent(L"gemini");
+        VERIFY_ARE_EQUAL(std::wstring{ L"gemini --acp" }, resolve());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, fallbacks);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, builtinCommands);
+    }
+
+    void CustomAgentAndPolicyTests::InstalledAcpCatalogSelectionAndPolicy()
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        GUID guid;
+        THROW_IF_FAILED(CoCreateGuid(&guid));
+        const auto root = std::filesystem::current_path() / (L"ACP Selection " + Utils::GuidToString(guid));
+        std::filesystem::create_directory(root);
+        const auto cleanup = wil::scope_exit([&]() { std::filesystem::remove_all(root); });
+        const auto originalPath = wil::TryGetEnvironmentVariableW<std::wstring>(L"PATH");
+        const auto restorePath = wil::scope_exit([&]() { SetEnvironmentVariableW(L"PATH", originalPath.c_str()); });
+        THROW_IF_WIN32_BOOL_FALSE(SetEnvironmentVariableW(L"PATH", root.c_str()));
+        std::ofstream{ root / L"stakpak.exe" }.put('\n');
+        const auto settings = MakeSettings(R"("acpAgent":"custom:acp-registry:stakpak","agentSessionManagementEnabled":false)");
+        // Hook policy and an empty BUILT-IN allowlist must not require new hooks
+        // or inadvertently promote catalog IDs to built-ins.
+        SetPolicy(MakePolicy(std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{},
+                             AgentPolicy::PolicyState::NotConfigured,
+                             AgentPolicy::PolicyState::NotConfigured,
+                             AgentPolicy::PolicyState::NotConfigured,
+                             AgentPolicy::PolicyState::Blocked));
+        const auto globals = settings->GlobalSettings();
+        globals.InitializeAcpAgentCatalog();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:acp-registry:stakpak" }, globals.EffectiveAcpAgent());
+        const auto command = globals.EffectiveAcpCustomCommand();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"\"" + (root / L"stakpak.exe").native() + L"\" acp" }, command);
+        VERIFY_IS_TRUE(globals.AcpCustomCommand().empty());
+        VERIFY_ARE_EQUAL(0u, globals.AcpCustomCommands().Size());
+        std::vector<winrt::com_ptr<implementation::Profile>> profiles;
+        AgentProfileGenerator generator{ winrt::get_self<implementation::GlobalAppSettings>(globals) };
+        generator.GenerateProfiles(profiles);
+        VERIFY_IS_TRUE(std::ranges::none_of(profiles, [](const auto& profile) {
+            return std::wstring_view{ profile->AgentProfileId() }.starts_with(L"custom:acp-registry:");
+        }));
+        SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_TRUE(globals.EffectiveAcpAgent().empty());
+        VERIFY_IS_TRUE(globals.EffectiveAcpCustomCommand().empty());
+        SetPolicy(MakePolicy());
+        std::filesystem::remove(root / L"stakpak.exe");
+        // The old command remains stable until the explicit Agents-page refresh.
+        VERIFY_ARE_EQUAL(command, globals.EffectiveAcpCustomCommand());
+        globals.RefreshAcpAgentCatalog();
+        const auto originalDirectory = std::filesystem::current_path();
+        const auto restoreDirectory = wil::scope_exit([&]() { std::filesystem::current_path(originalDirectory); });
+        const auto uninstalledDirectory = root / L"Not On PATH";
+        std::filesystem::create_directory(uninstalledDirectory);
+        std::ofstream{ uninstalledDirectory / L"stakpak.exe" }.put('\n');
+        std::filesystem::current_path(uninstalledDirectory);
+        VERIFY_IS_TRUE(Catalog::Executable(L"stakpak", L"").empty());
+        VERIFY_IS_TRUE(Catalog::Executable(L"stakpak", L";").empty());
+        globals.AcpCustomCommand(L"wrong-unrelated-command --stdio");
+        // A matching file in a workspace is not an installed agent. A saved
+        // unavailable selection must not resolve it or a stale custom command.
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:acp-registry:stakpak" }, globals.EffectiveAcpAgent());
+        VERIFY_IS_TRUE(globals.EffectiveAcpCustomCommand().empty());
+        globals.AcpAgent(L"custom:user-owned-agent");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"wrong-unrelated-command --stdio" }, globals.EffectiveAcpCustomCommand());
+    }
 
     void CustomAgentAndPolicyTests::AgentTelemetryProviderBuckets()
     {

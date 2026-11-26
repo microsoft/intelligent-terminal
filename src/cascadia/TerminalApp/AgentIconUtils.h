@@ -4,11 +4,17 @@
 #pragma once
 
 #include "../inc/AgentRegistry.h"
+#include "../inc/AcpAgentCatalog.h"
 
 namespace Microsoft::Terminal::UI::AgentIcons
 {
     inline winrt::hstring IconPathForProvider(const std::wstring_view providerId)
     {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        if (const auto agent = Catalog::Find(providerId))
+        {
+            return winrt::hstring{ Catalog::IconPath(*agent) };
+        }
         for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
         {
             if (::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(agent.id, providerId))
@@ -29,6 +35,14 @@ namespace Microsoft::Terminal::UI::AgentIcons
             return {};
         }
         const auto id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        for (const auto& agent : Catalog::Agents)
+        {
+            if (Catalog::IconPath(agent) == path)
+            {
+                return winrt::hstring{ Catalog::IconPath(agent, true) };
+            }
+        }
         if (id != L"generic" && std::ranges::none_of(::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
                                                     [&](const auto& agent) { return agent.id == id; }))
         {

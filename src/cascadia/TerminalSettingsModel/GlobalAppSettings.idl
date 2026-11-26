@@ -209,5 +209,14 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, SidebarCollapsed);
 
         INHERITABLE_SETTING(Boolean, AgentProfileStartingDirectoryMigrationCompleted);
+
+        String EffectiveAcpCustomCommand { get; };
+
+        // Explicit process startup / Agents-page navigation boundaries.
+        // Reading selections or the list never performs executable discovery.
+        // Append-only: preserve every preexisting default-interface slot.
+        void InitializeAcpAgentCatalog();
+        void RefreshAcpAgentCatalog();
+        Windows.Foundation.Collections.IVectorView<String> InstalledAcpAgents { get; };
     }
 }

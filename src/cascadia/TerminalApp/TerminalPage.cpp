@@ -1818,46 +1818,19 @@ namespace winrt::TerminalApp::implementation
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
         const std::function<winrt::hstring()>& detectFallback)
     {
-        // Use the policy-aware getter — returns empty if the selected agent
-        // is blocked by GPO, ensuring we never launch a disallowed agent.
-        const auto acpAgent = globals.EffectiveAcpAgent();
-        if (acpAgent.empty())
-        {
-            // The user's selection is blocked or absent. Try auto-detection
-            // which will itself only pick a policy-allowed agent.
-            if (detectFallback)
-            {
-                const auto detected = detectFallback();
-                if (!detected.empty())
-                {
-                    const auto model = _IsAgentByokConfigured(detected, globals) ?
+        // Policy-blocked/no selection retains existing default discovery.
+        // An unavailable explicit catalog ID remains distinct and fails closed.
+        return winrt::hstring{
+            ::Microsoft::Terminal::AcpModels::ResolveEffectiveCommandLine(
+                std::wstring_view{ globals.EffectiveAcpAgent() },
+                std::wstring_view{ globals.EffectiveAcpCustomCommand() },
+                [&]() { return detectFallback ? std::wstring{ detectFallback() } : std::wstring{}; },
+                [&](const std::wstring_view agent) {
+                    const auto model = _IsAgentByokConfigured(winrt::hstring{ agent }, globals) ?
                                            winrt::hstring{} :
                                            globals.AcpModel();
-                    return winrt::hstring{
-                        ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
-                            std::wstring_view{ detected },
-                            std::wstring_view{ model })
-                    };
-                }
-            }
-            return winrt::hstring{};
-        }
-
-        // Custom agents: use the stored custom command directly.
-        if (_IsCustomAgentId(acpAgent))
-        {
-            const auto customCmd = globals.AcpCustomCommand();
-            if (!customCmd.empty())
-                return customCmd;
-        }
-
-        const auto model = _IsAgentByokConfigured(acpAgent, globals) ?
-                               winrt::hstring{} :
-                               globals.AcpModel();
-        return winrt::hstring{
-            ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
-                std::wstring_view{ acpAgent },
-                std::wstring_view{ model })
+                    return ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(agent, std::wstring_view{ model });
+                })
         };
     }
 
@@ -2119,7 +2092,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto& globals = _settings.GlobalSettings();
         return _IsCustomAgentId(globals.EffectiveAcpAgent()) ?
-                   globals.AcpCustomCommand() :
+                   globals.EffectiveAcpCustomCommand() :
                    winrt::hstring{};
     }
 
@@ -2549,7 +2522,7 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
-            std::wstring{ globals.AcpCustomCommand() },
+            std::wstring{ globals.EffectiveAcpCustomCommand() },
             _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals) ?
                 std::wstring{} :
                 std::wstring{ globals.AcpModel() },
@@ -4505,7 +4478,7 @@ namespace winrt::TerminalApp::implementation
             tab->AgentModelOverride(),
             globals.EffectiveAcpAgent());
 
-        if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
+        if ((hasAgentOverride || hasProfileBackend || !effectiveAgentId.empty()) && agentCliPath.empty())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: explicit agent selection cannot be launched");
             return false;

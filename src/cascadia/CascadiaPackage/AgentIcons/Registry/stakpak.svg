@@ -1,0 +1,6 @@
+<!-- Derived from agentclientprotocol/registry 2a27ff18b5816f47d7ec538e22943ff194e05131/stakpak/icon.svg.
+     Modified for Intelligent Terminal: currentColor resolved for theme; geometry unchanged.
+     Registry license: Apache-2.0; see LICENSE-ACP-Registry.txt and NOTICE.txt. No trademark permission implied. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#FFFFFF" d="M6.53 4.412h5.883v3.587H9.471v3.588H3.588V7.999H6.53Z"/>
+</svg>
