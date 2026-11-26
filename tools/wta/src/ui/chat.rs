@@ -2082,7 +2082,7 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
         .recommendations()
         .and_then(|set| set.choices.get(tab.selected_recommendation))
     {
-        let text = super::recommendations::recommendation_display_text(choice);
+        let text = super::recommendations::recommendation_full_display_text(choice);
         lines.extend(
             text.split('\n')
                 .map(|line| Line::from(Span::styled(line.to_owned(), theme::CARD_CODE))),

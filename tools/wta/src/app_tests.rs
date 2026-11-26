@@ -26862,9 +26862,25 @@ async fn dispatch_chat_projection_mcp_proposal(
 #[tokio::test(flavor = "current_thread")]
 async fn mcp_chat_projection_line_break_feedback_and_single_line_retry() {
     use crate::agent_tools::action_proposal::channel::ProposalChannelManager;
-    let expected = "Terminal action request rejected: malformed payload: This command contains a line break. Provide a single-line command, or, if the task needs multiple steps and the tool is available, propose delegating it with `delegate_task_in_new_workspace`.";
+    let line_break_expected = "Terminal action request rejected: malformed payload: This command contains a line break. Provide a single-line command, or, if the task needs multiple steps and the tool is available, propose delegating it with `delegate_task_in_new_workspace`.";
+    let control_expected = "Terminal action request rejected: malformed payload: shell commands must not contain ASCII control characters (U+0000–U+001F or U+007F)";
+    let separators = ["\r", "\n", "\r\n"]
+        .into_iter()
+        .map(str::to_string)
+        .chain(
+            (0u8..=0x1f)
+                .chain(std::iter::once(0x7f))
+                .filter(|ch| !matches!(ch, b'\r' | b'\n'))
+                .map(|ch| char::from(ch).to_string()),
+        )
+        .collect::<Vec<_>>();
     for tool in ["run_command_in_current_shell", "create_workspace"] {
-        for (label, separator) in [("CR", "\r"), ("LF", "\n"), ("CRLF", "\r\n")] {
+        for separator in &separators {
+            let expected = if separator.contains(['\r', '\n']) {
+                line_break_expected
+            } else {
+                control_expected
+            };
             let mut app = test_app();
             app.state = ConnectionState::Connected;
             app.current_tab_mut().pane_open = true;
@@ -26887,13 +26903,13 @@ async fn mcp_chat_projection_line_break_feedback_and_single_line_retry() {
             let response =
                 dispatch_chat_projection_mcp_proposal(&mut app, &manager, tool, arguments.clone())
                     .await;
-            println!("{tool} {label}: {response}");
+            println!("{tool} {separator:?}: {response}");
+            assert_eq!(response["result"]["structuredContent"]["retryable"], true);
             assert_eq!(response["result"]["content"][0]["text"], expected);
             assert_eq!(
                 response["result"]["structuredContent"]["status"],
                 "rejected"
             );
-            assert_eq!(response["result"]["structuredContent"]["retryable"], true);
             assert_eq!(response["result"]["isError"], true);
             assert!(app.current_tab().pending_terminal_action_proposal.is_none());
             assert!(app.current_tab().turn.recommendations().is_none());
@@ -26906,7 +26922,7 @@ async fn mcp_chat_projection_line_break_feedback_and_single_line_retry() {
             arguments["command"] = json!("echo corrected");
             let response =
                 dispatch_chat_projection_mcp_proposal(&mut app, &manager, tool, arguments).await;
-            println!("{tool} {label} corrected: {response}");
+            println!("{tool} {separator:?} corrected: {response}");
             assert_eq!(
                 response["result"]["structuredContent"]["status"],
                 "accepted"

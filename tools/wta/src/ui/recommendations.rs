@@ -328,6 +328,14 @@ fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, 
 }
 
 pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> String {
+    choice
+        .actions
+        .first()
+        .map(recommendation_action_display_text)
+        .unwrap_or_else(|| choice.title.clone())
+}
+
+pub(super) fn recommendation_full_display_text(choice: &RecommendationChoice) -> String {
     if choice.actions.is_empty() {
         return choice.title.clone();
     }
@@ -400,6 +408,41 @@ fn recommendation_action_display_text(action: &RecommendedAction) -> String {
 mod tests {
     use super::*;
 
+    fn primary_card_choice() -> RecommendationChoice {
+        RecommendationChoice {
+            choice: 1,
+            title: "summary".into(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "pane-9".into(),
+                input: "  echo '你好 e\u{301} 👩‍💻'  ".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn recommendation_primary_card_display_ignores_large_second_legacy_action() {
+        let mut choice = primary_card_choice();
+        let primary = recommendation_display_text(&choice);
+        choice.actions.push(RecommendedAction::Send {
+            parent: "pane-9".into(),
+            input: "SECOND_ACTION ".repeat(500),
+        });
+        assert_eq!(recommendation_display_text(&choice), primary);
+        assert_eq!(extract_card_content(&choice).0, primary);
+    }
+
+    #[test]
+    fn recommendation_primary_card_height_ignores_large_second_legacy_action() {
+        let mut choice = primary_card_choice();
+        let primary_height = recommendation_card_height(&choice, 40);
+        choice.actions.push(RecommendedAction::Send {
+            parent: "pane-9".into(),
+            input: "SECOND_ACTION ".repeat(500),
+        });
+        assert_eq!(recommendation_card_height(&choice, 40), primary_height);
+    }
+
     #[test]
     fn baseline_feasibility_shared_formatter_preserves_exact_action_text() {
         let inputs = [
@@ -418,7 +461,10 @@ mod tests {
                 })
                 .collect(),
         };
-        assert_eq!(recommendation_display_text(&choice), inputs.join("\n\n"));
+        assert_eq!(
+            recommendation_full_display_text(&choice),
+            inputs.join("\n\n")
+        );
     }
 
     #[test]

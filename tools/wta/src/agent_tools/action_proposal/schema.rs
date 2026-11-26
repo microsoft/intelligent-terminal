@@ -859,7 +859,9 @@ fn convert_terminal_agent_action(
 
 fn validate_proposal_shell_command(input: &str) -> Result<(), ProposalError> {
     validate_shell_command_input(input).map_err(|error| {
-        if input.contains(['\r', '\n']) {
+        if input.contains(['\r', '\n'])
+            || (!input.trim().is_empty() && input.chars().any(|ch| ch.is_ascii_control()))
+        {
             ProposalError::Malformed(error.to_string())
         } else {
             ProposalError::PolicyViolation(error.to_string())
@@ -1922,12 +1924,14 @@ mod tests {
             for is_autofix in [false, true] {
                 let payload = serde_json::json!({"summary": "Review command", "command": input});
                 assert!(
-                    parse_mcp_action_payload(
-                        McpActionTool::RunCommandInCurrentShell,
-                        &serde_json::to_vec(&payload).unwrap(),
-                        is_autofix,
-                    )
-                    .is_err(),
+                    matches!(
+                        parse_mcp_action_payload(
+                            McpActionTool::RunCommandInCurrentShell,
+                            &serde_json::to_vec(&payload).unwrap(),
+                            is_autofix,
+                        ),
+                        Err(ProposalError::Malformed(_))
+                    ),
                     "accepted {input:?}"
                 );
             }
@@ -1936,15 +1940,36 @@ mod tests {
                     "summary": "Review command", "command": input, "placement": placement
                 });
                 assert!(
-                    parse_mcp_action_payload(
-                        McpActionTool::CreateWorkspace,
-                        &serde_json::to_vec(&payload).unwrap(),
-                        false,
-                    )
-                    .is_err(),
+                    matches!(
+                        parse_mcp_action_payload(
+                            McpActionTool::CreateWorkspace,
+                            &serde_json::to_vec(&payload).unwrap(),
+                            false,
+                        ),
+                        Err(ProposalError::Malformed(_))
+                    ),
                     "accepted workspace command {input:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn empty_shell_command_preserves_policy_classification() {
+        for input in ["", " ", "\t", "\u{b}", "\u{c}", " \t\u{b}\u{c} "] {
+            assert!(
+                matches!(
+                    validate_proposal_shell_command(input),
+                    Err(ProposalError::PolicyViolation(_))
+                ),
+                "changed empty input classification for {input:?}"
+            );
+        }
+        for input in ["\r", "\n", " \r\n\t"] {
+            assert!(matches!(
+                validate_proposal_shell_command(input),
+                Err(ProposalError::Malformed(_))
+            ));
         }
     }
 
