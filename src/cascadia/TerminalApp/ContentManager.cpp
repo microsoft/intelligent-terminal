@@ -117,11 +117,183 @@ namespace winrt::TerminalApp::implementation
         return it == _content.end() ? 0 : it->second.ownerGeneration;
     }
 
+    void ContentManager::RecordNativeAgentProgramPublication(const uint64_t contentId, const uint64_t modeEpoch, const std::optional<uint64_t> revision)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && it->second.observation.modeEpoch == modeEpoch)
+        {
+            auto& identity = it->second.observation;
+            if (revision)
+            {
+                identity.publishedProgramRevision = std::max(identity.publishedProgramRevision, *revision);
+            }
+            else
+            {
+                // Fence even an in-flight sessions/list response for the retired foreground.
+                identity.retiredProgramRevision = identity.publishedProgramRevision;
+            }
+        }
+    }
+
+    bool ContentManager::MatchesNativeAgentProgramAuthority(const uint64_t contentId, const uint64_t modeEpoch, const uint64_t receiverGeneration, const uint64_t sinceRevision) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        if (it == _content.end())
+        {
+            return false;
+        }
+        const auto& content = it->second;
+        const auto& identity = content.observation;
+        return modeEpoch != 0 && identity.modeEpoch == modeEpoch &&
+               identity.receiverGeneration == receiverGeneration &&
+               content.observationOwnerGeneration == content.ownerGeneration &&
+               sinceRevision > identity.retiredProgramRevision;
+    }
+
+    bool ContentManager::BeginProgramBadgeCandidate(const uint64_t contentId, const uint64_t modeEpoch, const uint64_t revision)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end())
+        {
+            auto& identity = it->second.observation;
+            if (identity.modeEpoch == modeEpoch && revision > identity.retiredProgramRevision &&
+                (!identity.programBadgeCandidate || revision > *identity.programBadgeCandidate))
+            {
+                identity.programBadgeCandidate = revision;
+                identity.programBadgeApproved.reset();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void ContentManager::ResolveProgramBadgeCandidate(const uint64_t contentId, const NativeAgentObservationIdentity& expected, const uint64_t revision, const bool approved, const bool active)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end())
+        {
+            auto& content = it->second;
+            auto& identity = content.observation;
+            if (it->second.observationOwnerGeneration == it->second.ownerGeneration &&
+                identity.modeEpoch == expected.modeEpoch && identity.receiverGeneration == expected.receiverGeneration)
+            {
+                if (identity.programBadgeCandidate == revision && revision > identity.retiredProgramRevision)
+                {
+                    identity.programBadgeApproved = active;
+                }
+                if (identity.retiredPendingBadgeCandidate == revision)
+                {
+                    identity.retiredPendingBadgeCandidate.reset();
+                    if (approved)
+                    {
+                        content.retiredProgressReceipt = content.LegacyProgressFence();
+                    }
+                    content.pendingRetiredProgressReceipt.reset();
+                }
+            }
+        }
+    }
+
+    uint64_t ContentManager::NativeAgentProgressReceipt(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        return it == _content.end() ? 0 : it->second.progressReceipt;
+    }
+
+    bool ContentManager::ClaimNativeAgentProgressReceipt(const uint64_t contentId, const uint64_t receipt)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId);
+            it != _content.end() && receipt > it->second.publishedProgressReceipt &&
+            receipt > it->second.LegacyProgressFence().value_or(0))
+        {
+            it->second.publishedProgressReceipt = receipt;
+            return true;
+        }
+        return false;
+    }
+
+    void ContentManager::RetireNativeAgentBadge(const uint64_t contentId, const uint64_t modeEpoch, const uint64_t promptProgressReceipt)
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end() && it->second.observation.modeEpoch == modeEpoch)
+        {
+            auto& content = it->second;
+            auto& identity = content.observation;
+            if (identity.programBadgeCandidate && identity.programBadgeApproved != false)
+            {
+                if (identity.programBadgeApproved.has_value())
+                {
+                    content.retiredProgressReceipt = promptProgressReceipt;
+                    content.pendingRetiredProgressReceipt.reset();
+                }
+                else
+                {
+                    content.pendingRetiredProgressReceipt = promptProgressReceipt;
+                }
+                if (content.progressReceipt == promptProgressReceipt)
+                {
+                    content.parsedProgress.reset();
+                }
+                identity.retiredPendingBadgeCandidate = identity.programBadgeApproved.has_value() ? std::nullopt : identity.programBadgeCandidate;
+            }
+            identity.programBadgeCandidate.reset();
+            identity.programBadgeApproved.reset();
+        }
+    }
+
+    bool ContentManager::SuppressesNativeAgentLegacyBadge(const uint64_t contentId, const uint64_t receiverGeneration, const bool includeRetiredProgress) const
+    {
+        std::lock_guard lock{ _mutex };
+        if (const auto it = _content.find(contentId); it != _content.end())
+        {
+            const auto& content = it->second;
+            const auto& identity = content.observation;
+            return (includeRetiredProgress && content.LegacyProgressFence() == content.progressReceipt) ||
+                   (identity.receiverGeneration == receiverGeneration &&
+                    content.observationOwnerGeneration == content.ownerGeneration &&
+                    identity.programBadgeCandidate && identity.programBadgeApproved != false);
+        }
+        return false;
+    }
+
+    bool ContentManager::SuppressesNativeAgentLegacyPercent(const uint64_t contentId) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        if (it != _content.end())
+        {
+            const auto fence = it->second.LegacyProgressFence();
+            return fence && it->second.progressValueReceipt <= *fence;
+        }
+        return false;
+    }
+
+    bool ContentManager::HasPendingProgramBadgeCandidate(const uint64_t contentId, const uint64_t receiverGeneration, const uint64_t modeEpoch, const uint64_t revision) const
+    {
+        std::lock_guard lock{ _mutex };
+        const auto it = _content.find(contentId);
+        if (it == _content.end())
+        {
+            return false;
+        }
+        const auto& content = it->second;
+        const auto& identity = content.observation;
+        return identity.receiverGeneration == receiverGeneration && identity.modeEpoch == modeEpoch &&
+               content.observationOwnerGeneration == content.ownerGeneration &&
+               ((identity.programBadgeCandidate == revision && !identity.programBadgeApproved.has_value()) ||
+                identity.retiredPendingBadgeCandidate == revision);
+    }
+
     std::optional<ContentManager::NativeAgentObservationIdentity> ContentManager::RecordNativeAgentProgress(
         const uint64_t contentId,
         const winrt::guid& paneId,
         const uint64_t progressState,
-        const uint64_t ownerGeneration)
+        const uint64_t ownerGeneration,
+        uint64_t* const receipt,
+        const bool replacesPercent)
     {
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId);
@@ -131,6 +303,15 @@ namespace winrt::TerminalApp::implementation
             if (const auto connection = it->second.core.Core().Connection();
                 connection && connection.SessionId() == paneId)
             {
+                ++it->second.progressReceipt;
+                if (replacesPercent)
+                {
+                    it->second.progressValueReceipt = it->second.progressReceipt;
+                }
+                if (receipt)
+                {
+                    *receipt = it->second.progressReceipt;
+                }
                 it->second.parsedProgress = std::pair{ paneId, progressState };
                 if (it->second.observation.modeEpoch != 0 &&
                     it->second.observationOwnerGeneration == it->second.ownerGeneration)
@@ -210,6 +391,19 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void ContentManager::_FenceReplacedNativeAgentProgress(TerminalContent& content)
+    {
+        const auto& identity = content.observation;
+        if (content.LegacyProgressFence() ||
+            (identity.programBadgeCandidate && identity.programBadgeApproved != false))
+        {
+            // An old masked receipt and its value cannot become the replacement's progress.
+            content.retiredProgressReceipt = content.progressReceipt;
+            content.pendingRetiredProgressReceipt.reset();
+            content.parsedProgress.reset();
+        }
+    }
+
     void ContentManager::_ConfirmNativeAgentOwner(
         TerminalContent& content,
         const winrt::hstring& providerId,
@@ -227,6 +421,7 @@ namespace winrt::TerminalApp::implementation
                               (!owner.location.empty() && !location.empty() && owner.location != location));
         if (changed)
         {
+            _FenceReplacedNativeAgentProgress(content);
             content.parsedProgress.reset();
             ++content.ownerGeneration;
         }
@@ -272,6 +467,10 @@ namespace winrt::TerminalApp::implementation
                 identity.agentSessionId != agentSessionId || identity.location != observationLocation ||
                 identity.receiverGeneration != receiverGeneration)
             {
+                if (identity.modeEpoch != 0 && it->second.observationOwnerGeneration == it->second.ownerGeneration)
+                {
+                    _FenceReplacedNativeAgentProgress(it->second);
+                }
                 const auto retainQualified = identity.providerId == provider &&
                     (agentSessionId.empty() ? identity.agentSessionId.empty() : identity.qualifiedSessionId == agentSessionId) &&
                     (observationLocation.empty() || identity.qualifiedLocation == observationLocation);
@@ -308,6 +507,7 @@ namespace winrt::TerminalApp::implementation
         std::lock_guard lock{ _mutex };
         if (const auto it = _content.find(contentId); it != _content.end())
         {
+            _FenceReplacedNativeAgentProgress(it->second);
             it->second.observation = {};
         }
     }
@@ -322,6 +522,7 @@ namespace winrt::TerminalApp::implementation
                                                                    std::chrono::system_clock::now().time_since_epoch())
                                                                    .count());
             it->second.paneCreationSequence = ++_nativeAgentPaneCreationSequence;
+            _FenceReplacedNativeAgentProgress(it->second);
             it->second.observation = {};
             it->second.observationAdmitted = false;
             it->second.completion = {};
@@ -344,6 +545,7 @@ namespace winrt::TerminalApp::implementation
         {
             for (auto& [id, content] : _content)
             {
+                _FenceReplacedNativeAgentProgress(content);
                 content.observation = {};
                 content.completion = {};
             }

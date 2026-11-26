@@ -4029,68 +4029,18 @@ impl App {
                     }
                 }
 
-                // Detect agent CLI exit when the pane stays alive (e.g. user
-                // typed `gemini` inside their pwsh/cmd shell, then `/exit`):
-                // the shell emits `osc:133;A` (FinalTerm prompt-start) when
-                // it returns to its own prompt. If the pane is currently
-                // bound to an agent session, treat that as the agent's
-                // teardown signal and transition the row to Ended.
-                //
-                // We deliberately do NOT depend on the agent's own SessionEnd
-                // hook here because:
-                //   * Gemini has no reliable hook on `/exit`
-                //     (`agent.session.end` is "Hook cancelled" most of the time)
-                //   * Even when the hook fires, it races with our event loop
-                //
-                // The shell's prompt-start marker is the most reliable
-                // cross-CLI signal that the agent process has released the
-                // foreground.
-                if method == "vt_sequence" {
-                    let seq = params
-                        .get("sequence")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    // Gate OSC 133;A → PaneClosed on the bound
-                    // session's ORIGIN, not just "is_agent_pane".
-                    //
-                    // Background: this handler exists to detect agent
-                    // exit in SHELL panes (user typed `gemini` in pwsh,
-                    // agent ran, user `/exit`'d, shell returns to its
-                    // prompt → OSC 133;A fires → we treat that as the
-                    // agent's teardown signal). For those sessions
-                    // origin is `Unknown`.
-                    //
-                    // For agent panes proper (origin AgentPane) there
-                    // is NO shell underneath the conpty — the helper
-                    // TUI is the direct child. Yet WT itself can
-                    // emit OSC 133;A around focus/window-switch on
-                    // arbitrary panes (observed in `wtcli focus-pane`
-                    // round trips). The previous gate
-                    // `is_agent_pane(pane_id)` matched any pane with
-                    // ANY bound session and demoted the row to Ended
-                    // even though the agent CLI was happily still
-                    // streaming notifications — the user sees this as
-                    // "session management Enter on a Live row spawned a new pane
-                    // instead of focusing the existing one" because
-                    // the row demoted between snapshot and Enter.
-                    //
-                    // Restrict to origin=Unknown so the heuristic
-                    // keeps working for its original shell-pane use
-                    // case without nuking agent panes.
-                    let origin = self.agent_sessions.origin_for_pane(&pane_id);
-                    let is_shell_agent =
-                        matches!(origin, Some(crate::agent_sessions::SessionOrigin::Unknown));
-                    if seq == "osc:133;A" && is_shell_agent {
-                        tracing::info!(
-                            target: "agent_session_registry",
-                            pane_id = %pane_id,
-                            "shell prompt-start in agent-bound pane: treating as agent exit",
-                        );
-                        let event = crate::agent_sessions::SessionEvent::PaneClosed {
+                // Forward the fallback without mutating the local binding.
+                if method == "vt_sequence"
+                    && params.get("sequence").and_then(|v| v.as_str()) == Some("osc:133;A")
+                    && self.agent_sessions.origin_for_pane(&pane_id)
+                        == Some(crate::agent_sessions::SessionOrigin::Unknown)
+                {
+                    if let Some(key) = self.agent_sessions.key_for_pane(&pane_id) {
+                        self.publish_session_hook(crate::agent_sessions::SessionEvent::ShellPrompt {
                             pane_session_id: pane_id.clone(),
-                        };
-                        self.agent_sessions.apply(event.clone());
-                        self.publish_session_hook(event);
+                            key,
+                            context: params.get("foreground_retirement").cloned(),
+                        });
                     }
                 }
 

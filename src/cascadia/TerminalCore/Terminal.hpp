@@ -269,6 +269,7 @@ public:
 
     const size_t GetTaskbarState() const noexcept;
     const size_t GetTaskbarProgress() const noexcept;
+    bool TaskbarUpdateReplacesProgress() const noexcept { return _taskbarUpdateReplacesProgress; }
 
     void ColorSelection(const TextAttribute& attr, winrt::Microsoft::Terminal::Core::MatchMode matchMode);
     void PreviewText(std::wstring_view input);
@@ -402,6 +403,7 @@ private:
 
     size_t _taskbarState = 0;
     size_t _taskbarProgress = 0;
+    bool _taskbarUpdateReplacesProgress = false;
 
     size_t _hyperlinkPatternId = 0;
 

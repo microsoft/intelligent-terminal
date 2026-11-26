@@ -743,6 +743,7 @@ namespace winrt::TerminalApp::implementation
         const auto sameStates = std::equal(
             states.begin(), states.end(), _programTaskbarStates.begin(), _programTaskbarStates.end(), [](const auto& left, const auto& right) {
                 return left.ContentId == right.ContentId &&
+                       left.StatusOnly == right.StatusOnly &&
                        left.CombinedState.State() == right.CombinedState.State() &&
                        left.CombinedState.Progress() == right.CombinedState.Progress();
             });
@@ -1699,12 +1700,13 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_UpdateProgressState()
     {
-        const auto state{ GetCombinedTaskbarState() };
+        const auto winner = GetCombinedTaskbarStateWithContentId();
+        const auto& state = winner.CombinedState;
 
         const auto taskbarState = state.State();
         // Mirror the tab's aggregate progress state. Individual pane rows in
         // the vertical rail project their own raw progress separately.
-        if (taskbarState > 0)
+        if (winner.ShowsHeaderProgress())
         {
             if (taskbarState == 3)
             {

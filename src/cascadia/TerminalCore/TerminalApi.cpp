@@ -300,6 +300,10 @@ void Terminal::SetTaskbarProgress(const ::Microsoft::Console::VirtualTerminal::D
     }
 
     _taskbarState = static_cast<size_t>(state);
+    _taskbarUpdateReplacesProgress = state == DispatchTypes::TaskbarState::Clear ||
+                                     state == DispatchTypes::TaskbarState::Set ||
+                                     ((state == DispatchTypes::TaskbarState::Error || state == DispatchTypes::TaskbarState::Paused) &&
+                                      progress != 0);
 
     switch (state)
     {

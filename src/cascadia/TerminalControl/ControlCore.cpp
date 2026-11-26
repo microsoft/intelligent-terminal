@@ -410,7 +410,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                     if (self->_programStatusPublication.load() == publication &&
                         self->_programStatusGeneration.load() == generation && !self->_closing.load())
                     {
-                        self->TaskbarProgressChanged.raise(*self, winrt::box_value(self->TaskbarState()));
+                        // Redraw ordinary consumers, but do not manufacture a parsed OSC 9;4 receipt.
+                        self->TaskbarProgressChanged.raise(*self, nullptr);
                     }
                 }
             });
@@ -658,7 +659,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         std::wstring json{ root.Stringify() };
         // Windows.Data.Json represents numbers as double. Preserve the revision's
         // exact UInt64 digits while leaving all untrusted text escaping to it.
-        json.insert(1, L"\"revision\":" + std::to_wstring(snapshot.revision) + L",");
+        json.insert(1, L"\"revision\":" + std::to_wstring(snapshot.revision) +
+                           L",\"report_revision\":" + std::to_wstring(snapshot.reportRevision) + L",");
         const hstring result{ json };
         auto previousRevision = _lastProgramStatusSnapshotRevision.load();
         while (previousRevision < snapshot.revision &&
@@ -2049,7 +2051,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlCore::_terminalTaskbarProgressChanged()
     {
         // The callback owns the terminal lock; retain this parsed value before dispatch.
-        TaskbarProgressChanged.raise(*this, winrt::box_value(static_cast<uint64_t>(_terminal->GetTaskbarState())));
+        const uint64_t update[]{ _terminal->GetTaskbarState(), _terminal->TaskbarUpdateReplacesProgress() };
+        TaskbarProgressChanged.raise(*this, Windows::Foundation::PropertyValue::CreateUInt64Array(update));
     }
 
     void ControlCore::_terminalShowWindowChanged(bool showOrHide)

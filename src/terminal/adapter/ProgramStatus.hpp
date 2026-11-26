@@ -62,6 +62,8 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         bool nativeLeaseActive = false;
         // Monotonic even across reset, so an old acknowledgment cannot see a new result.
         uint64_t revision = 0;
+        // Latest state report, independent of the selected record and UI acknowledgments.
+        uint64_t reportRevision = 0;
         std::vector<Record> records;
         // Latest Done/Error per id, including results superseded by live activity.
         std::vector<Result> results;
@@ -117,6 +119,7 @@ namespace Microsoft::Console::VirtualTerminal::ProgramStatus
         std::vector<Entry> _records;
         std::vector<StoredResult> _results;
         uint64_t _revision = 0;
+        uint64_t _reportRevision = 0;
         uint64_t _clock = 0;
         bool _observed = false;
         bool _nativeLeaseActive = false;

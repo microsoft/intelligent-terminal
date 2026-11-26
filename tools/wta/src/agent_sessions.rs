@@ -499,6 +499,11 @@ pub enum SessionEvent {
     PaneClosed {
         pane_session_id: String,
     },
+    ShellPrompt {
+        pane_session_id: String,
+        key: AgentKey,
+        context: Option<serde_json::Value>,
+    },
     /// Optimistic transition: a resume command for this key was just dispatched.
     /// Bumps a Historical/Ended row to Idle so a rapid second Enter on the same
     /// row doesn't dispatch another `wtcli split-pane` and create a duplicate
@@ -1351,6 +1356,7 @@ impl AgentSessionRegistry {
                 }
             }
 
+            SessionEvent::ShellPrompt { .. } => {}
             SessionEvent::ConnectionFailed {
                 pane_session_id,
                 reason,
@@ -1688,16 +1694,6 @@ impl AgentSessionRegistry {
         self.sessions.get(key)
     }
 
-    /// Look up the [`SessionOrigin`] of whatever session is currently
-    /// bound to `pane_session_id`, if any. Returns `None` for panes
-    /// that aren't tracked.
-    ///
-    /// Used by the helper's OSC 133;A handler to distinguish between
-    /// "agent running inside a shell pane (origin Unknown) — shell
-    /// prompt-start really does mean the agent exited" and "agent
-    /// pane (origin AgentPane) — there's no shell underneath, so any
-    /// OSC 133;A is spurious (likely a focus/window-switch artifact
-    /// emitted by WT itself) and must NOT trigger PaneClosed".
     pub fn origin_for_pane(&self, pane_session_id: &str) -> Option<SessionOrigin> {
         let key = self.active_by_pane.get(&pane_key(pane_session_id))?;
         self.sessions.get(key).map(|s| s.origin.clone())

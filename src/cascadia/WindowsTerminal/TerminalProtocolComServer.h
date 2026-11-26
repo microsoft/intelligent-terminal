@@ -10,9 +10,15 @@
 
 #include <wrl/implements.h>
 #include <wrl/client.h>
+#include <wil/resource.h>
 
 #include "ITerminalProtocol.h"
 #include "../inc/BoundedDispatchQueue.h"
+
+namespace Json
+{
+    class Value;
+}
 
 // Per-brand CLSIDs — same pattern as CTerminalHandoff. Reused unchanged from the
 // previous WinRT/MBM server, so WT_COM_CLSID discovery on the client is identical.
@@ -144,7 +150,13 @@ private:
     static void _dispatchAgentContextMenuToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
-    static void _dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson);
+    struct NativeHookOrigin
+    {
+        wil::unique_handle root;
+        wil::unique_handle agent;
+    };
+    static std::shared_ptr<NativeHookOrigin> _verifyNativeHookOrigin(const Json::Value& params) noexcept;
+    static void _dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson, winrt::guid paneId = {}, const std::shared_ptr<NativeHookOrigin>& origin = {});
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentSessionsRetiredToPage(const winrt::hstring& eventJson);

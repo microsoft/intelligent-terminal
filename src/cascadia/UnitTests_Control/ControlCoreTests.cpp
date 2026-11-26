@@ -88,6 +88,7 @@ namespace ControlUnitTests
 
         TEST_METHOD(TestSimpleClickSelection);
         TEST_METHOD(ProgramStatusJsonAndTaskbar);
+        TEST_METHOD(ProgramStatusFreshnessDoesNotDependOnRepresentative);
         TEST_METHOD(ProgramStatusResultsAndAcknowledgment);
         TEST_METHOD(ProgramStatusConnectionLifecycle);
         TEST_METHOD(ProgramStatusCoalescesInvalidations);
@@ -210,6 +211,37 @@ namespace ControlUnitTests
         json = Json::JsonObject::Parse(core->ProgramStatusJson());
         VERIFY_IS_TRUE(json.GetNamedBoolean(L"observed"));
         VERIFY_IS_FALSE(json.GetNamedBoolean(L"native_lease_active"));
+    }
+
+    void ControlCoreTests::ProgramStatusFreshnessDoesNotDependOnRepresentative()
+    {
+        const auto settings = winrt::make_self<MockControlSettings>();
+        const auto conn = winrt::make_self<ProgramStatusConnection>();
+        const auto core = createCore(*settings, *conn);
+        _standardInit(core);
+        core->_terminal->SetProgramStatusEnabled(true);
+        conn->Emit(L"\x1b]7501;id=approval:state=blocked:kind=permission\x7");
+        auto json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        for (const auto* report : { L"\x1b]7501;id=job:state=working\x7", L"\x1b]7501;id=job:state=working\x7" })
+        {
+            const auto baseline = json.GetNamedNumber(L"revision");
+            conn->Emit(report);
+            json = Json::JsonObject::Parse(core->ProgramStatusJson());
+            VERIFY_ARE_EQUAL(L"approval", json.GetNamedString(L"task_id"));
+            VERIFY_IS_TRUE(json.GetNamedNumber(L"report_revision") > baseline);
+        }
+
+        conn->Emit(L"\x1b]7501;id=finished:state=done\x7");
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        const auto reportRevision = json.GetNamedNumber(L"report_revision");
+        core->AcknowledgeProgramStatusForUserInput();
+        json = Json::JsonObject::Parse(core->ProgramStatusJson());
+        VERIFY_ARE_EQUAL(0.0, json.GetNamedNumber(L"unseen_done"));
+        VERIFY_ARE_EQUAL(reportRevision, json.GetNamedNumber(L"report_revision"));
+        conn->Emit(L"\x1b]7501;?\x7");
+        VERIFY_ARE_EQUAL(reportRevision, Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedNumber(L"report_revision"));
+        conn->Emit(L"\x1b" L"c");
+        VERIFY_ARE_EQUAL(0.0, Json::JsonObject::Parse(core->ProgramStatusJson()).GetNamedNumber(L"report_revision"));
     }
 
     void ControlCoreTests::ProgramStatusResultsAndAcknowledgment()

@@ -52,6 +52,12 @@ Describe 'Feature: OSC 7501 shell prompt lifecycle' -Tag @('Feature', 'ProgramSt
                 "$($events[$_].params.pane_id)" -eq "$sid" -and
                 "$($events[$_].params.sequence)" -match '(?i)osc:133;A(\b|;|$)'
             } | Select-Object -First 1
+            $foregroundRetired = 0..($events.Count - 1) | Where-Object {
+                $events[$_].method -eq 'native_agent_observation' -and
+                "$($events[$_].params.pane_id)" -eq "$sid" -and
+                $events[$_].params.kind -eq 'foreground_retired' -and
+                $events[$_].params.cause -eq 'shell_prompt'
+            }
             $released = 0..($events.Count - 1) | Where-Object {
                 $events[$_].method -eq 'program_status_changed' -and
                 "$($events[$_].params.pane_id)" -eq "$sid" -and
@@ -61,6 +67,7 @@ Describe 'Feature: OSC 7501 shell prompt lifecycle' -Tag @('Feature', 'ProgramSt
 
             $commandFinished | Should -Not -BeNullOrEmpty
             $promptStarted | Should -Not -BeNullOrEmpty
+            @($foregroundRetired).Count | Should -Be 0
             $released | Should -Not -BeNullOrEmpty
             $commandFinished | Should -BeLessThan $promptStarted
             $promptStarted | Should -BeLessOrEqual $released

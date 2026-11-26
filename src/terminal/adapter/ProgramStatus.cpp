@@ -51,6 +51,7 @@ bool Store::Apply(const Command& command)
         return changed;
     }
 
+    _reportRevision = ++_revision;
     if (!_nativeLeaseActive)
     {
         _nativeLeaseActive = true;
@@ -67,7 +68,7 @@ bool Store::Apply(const Command& command)
         changed |= !sameRecord(entry->record, command.record);
         if (!changed)
         {
-            return false;
+            return true;
         }
     }
     else
@@ -88,7 +89,7 @@ bool Store::Apply(const Command& command)
     }
     entry->record = command.record;
     entry->record.effectiveApp.reset();
-    entry->record.revision = ++_revision;
+    entry->record.revision = _reportRevision;
     entry->finalizedEffectiveApp.reset();
     entry->effectiveAppFinalized = false;
     if (isResult(entry->record.state))
@@ -178,6 +179,7 @@ bool Store::Reset()
     }
     _observed = false;
     _nativeLeaseActive = false;
+    _reportRevision = 0;
     _records.clear();
     _results.clear();
     // Revisions deliberately survive RIS/connection replacement, so a queued
@@ -206,7 +208,7 @@ std::optional<std::string> Store::_EffectiveApp(std::string_view id) const
 
 Snapshot Store::GetSnapshot() const
 {
-    Snapshot snapshot{ _observed, _nativeLeaseActive, _revision };
+    Snapshot snapshot{ _observed, _nativeLeaseActive, _revision, _reportRevision };
     snapshot.records.reserve(_records.size());
     for (const auto& entry : _records)
     {

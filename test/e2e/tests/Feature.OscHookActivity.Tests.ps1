@@ -304,6 +304,34 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
                 return $event
             }
         }
+        function Send-ProgramActivity {
+            param(
+                $Fixture,
+                [ValidateSet('program_status', 'program_clear', 'prompt')][string]$Kind,
+                [ValidateSet('idle', 'working', 'blocked', 'done', 'error')][string]$State = 'idle'
+            )
+            $token = [guid]::NewGuid().ToString('N')
+            $request = @{ token = $token; kind = $Kind }
+            if ($Kind -eq 'program_status') { $request.state = $State }
+            $temp = Join-Path $Fixture.Inbox "$token.pending"
+            $path = Join-Path $Fixture.Inbox "$token.request.json"
+            $before = $script:listener.Events.Count
+            $request | ConvertTo-Json | Set-Content -LiteralPath $temp
+            Move-Item -LiteralPath $temp -Destination $path
+            Wait-Until -TimeoutSec 15 -Because "the native child completed the $Kind stdout action" -Condition {
+                Test-Path -LiteralPath (Join-Path $Fixture.Inbox "$token.reply.json")
+            } | Out-Null
+            if ($Kind -eq 'prompt') {
+                return Wait-Until -TimeoutSec 15 -Because 'OSC 133 A publishes content-free foreground retirement' -Condition {
+                    @(Get-WtEvents -Listener $script:listener | Select-Object -Skip $before | Where-Object {
+                        $_.method -eq 'native_agent_observation' -and
+                        $_.params.kind -eq 'foreground_retired' -and
+                        $_.params.cause -eq 'shell_prompt' -and
+                        [guid]$_.params.pane_id -eq [guid]$Fixture.Pane
+                    }) | Select-Object -Last 1
+                }
+            }
+        }
         function Assert-ActivityStable {
             param($Fixture, [string]$Status)
             $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -369,6 +397,43 @@ Describe 'Feature: native hook and OSC activity arbitration' -Tag @('Feature', '
         Assert-ActivityStable $a Idle
         Send-ActivityOsc $a 0 | Out-Null
         Wait-Activity $a Idle -Spinner $false | Out-Null
+    }
+
+    It 'OSC 7501 authority lasts through root Clear and retires at the next shell prompt' -Tag 'ProgramStatusAuthority' {
+        $a = New-ActivityFixture program-authority
+        Send-ActivityHook $a 'agent.prompt.submit'
+        Wait-Activity $a Working -Spinner $false | Out-Null
+
+        Send-ProgramActivity $a program_status working
+        Wait-Activity $a Working -Spinner $true | Out-Null
+
+        Send-ActivityHook $a 'agent.notification' -Extra @{
+            notification_type = 'permission_prompt'
+            message = 'hook must not replace OSC Working'
+        }
+        Send-ActivityHook $a 'agent.stop'
+        Assert-ActivityStable $a Working
+
+        Send-ProgramActivity $a program_status blocked
+        Wait-Activity $a Attention -Spinner $false | Out-Null
+        Send-ActivityHook $a 'agent.stop'
+        Assert-ActivityStable $a Attention
+
+        Send-ProgramActivity $a program_clear
+        Wait-Activity $a Idle -Spinner $false | Out-Null
+        Send-ActivityOsc $a 3 | Out-Null
+        Send-ActivityHook $a 'agent.prompt.submit'
+        Assert-ActivityStable $a Idle
+
+        $retirement = Send-ProgramActivity $a prompt
+        $retirement.params.PSObject.Properties.Name | Should -Not -Contain sequence
+        $retirement.params.PSObject.Properties.Name | Should -Not -Contain command
+        $retirement.params.PSObject.Properties.Name | Should -Not -Contain exit_code
+        Send-ActivityHook $a 'agent.prompt.submit'
+        Wait-Activity $a Working -Spinner $false | Out-Null
+
+        Send-ProgramActivity $a program_status working
+        Wait-Activity $a Working -Spinner $true | Out-Null
     }
 
     It 'OSC activity preserves attention errors and ended sessions' {

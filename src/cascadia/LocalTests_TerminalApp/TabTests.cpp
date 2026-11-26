@@ -605,6 +605,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(NativeAgentCreationOwnsProviderBeforeHooks);
         TEST_METHOD(NativeAgentCreationMetadataSurvivesAdmissionLifecycle);
         TEST_METHOD(NativeAgentLaunchSourceRefinesOnlyDeclaredPane);
+        TEST_METHOD(VerifiedHookHostQualifiesOnlyFreshProgramStatusForExactOwner);
         TEST_METHOD(NativeAgentOnUnbindClearsMatchingTemporaryResumeProvider);
         TEST_METHOD(NativeAgentSessionsOffStatusIsPaneLocal);
         TEST_METHOD(NativeAgentSessionsOnPublishesProgressForHookOwner);
@@ -761,6 +762,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ProgramStatusTaskbarIdentityUnreadRetentionAndNativeFallback);
         TEST_METHOD(ProgramStatusUsesOnlyTheSelectedAgentStatusLine);
         TEST_METHOD(ProgramStatusOverlayRefreshesFinalMetadataPresentation);
+        TEST_METHOD(ProgramStatusTabHoverOmitsSourceLabels);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusDelta);
         TEST_METHOD(VerticalTabHistoryOtherWindowStatusColors);
         TEST_METHOD(VerticalTabHistoryRefreshPreservesScroll);
@@ -824,6 +826,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(ShellPromptRetiresCliActivityWithoutDroppingResumeBinding);
         TEST_METHOD(ShellPromptVtSequenceRetiresActiveCli);
+        TEST_METHOD(ShellPromptPublishesContentFreeForegroundRetirement);
         TEST_METHOD(KeepRunningAcceptsPlainTerminalTabs);
         TEST_METHOD(KeepRunningSnapshotCountsAttachedTerminalTabs);
         TEST_METHOD(PinnedTabMenuReordersWithoutStealingSelection);
@@ -5181,6 +5184,110 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
             VERIFY_IS_FALSE(page->_RichTabAgentCwdForControl(page->_GetFocusedTabImpl()->GetActiveTerminalControl()).first);
         });
+    }
+
+    void TabTests::ShellPromptPublishesContentFreeForegroundRetirement()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        for (const auto detectionEnabled : { true, false })
+        {
+            const winrt::guid paneId{ detectionEnabled ?
+                                         L"{d2f7c0b2-4567-4eab-9cde-891023456789}" :
+                                         L"{d3f7c0b2-4567-4eab-9cde-891023456789}" };
+            const auto connection = winrt::make_self<TestConnection>(paneId, State::Connected);
+            Grid host{ nullptr };
+            TestOnUIThread([&]() { host = Grid{}; });
+            auto page = _commonSetup(*connection, host);
+            ::details::Event resetSeen;
+            ::details::Event retirementSeen;
+            ::details::Event rawPromptSeen;
+            Json::Value reset;
+            Json::Value retirement;
+            winrt::event_token token{};
+            const auto cleanup = wil::scope_exit([&]() {
+                TestOnUIThread([&]() {
+                    page->ProtocolVtSequenceReceived(token);
+                    page->ShutdownPanes();
+                    page = nullptr;
+                });
+            });
+
+            TestOnUIThread([&]() {
+                page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+                page->_settings.GlobalSettings().AutoErrorDetectionEnabled(detectionEnabled);
+                page->_settings.GlobalSettings().AutoFixEnabled(false);
+                page->_SyncNativeAgentStatusMode();
+                token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder reader;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (!Json::parseFromStream(reader, stream, &event, &errors))
+                    {
+                        return;
+                    }
+                    if (event["method"] == "native_agent_observation")
+                    {
+                        const auto& params = event["params"];
+                        if (params["kind"] == "reset")
+                        {
+                            reset = params;
+                            resetSeen.Set();
+                        }
+                        else if (params["kind"] == "foreground_retired")
+                        {
+                            retirement = params;
+                            retirementSeen.Set();
+                        }
+                    }
+                    else if (event["method"] == "vt_sequence" &&
+                             event["params"]["sequence"] == "osc:133;A")
+                    {
+                        rawPromptSeen.Set();
+                    }
+                });
+
+                Json::Value event;
+                event["params"]["pane_id"] = _formatPaneId(paneId);
+                event["params"]["event"] = "agent.session.start";
+                event["params"]["agent_session_id"] = "shell-retirement";
+                event["params"]["agent"] = "copilot";
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+                VERIFY_IS_TRUE(page->_activeCliAgentPanes.contains(paneId));
+                VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+            });
+
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(resetSeen.m_handle, 10000));
+            const std::u16string_view prompt{ u"\x1b]133;A\x07" };
+            connection->WriteInput({ prompt.data(), prompt.data() + prompt.size() });
+            VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(retirementSeen.m_handle, 10000));
+            if (detectionEnabled)
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(rawPromptSeen.m_handle, 10000));
+            }
+            else
+            {
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_TIMEOUT), WaitForSingleObject(rawPromptSeen.m_handle, 100));
+            }
+
+            TestOnUIThread([&]() {
+                for (const auto field : { "pane_id", "provider_id", "window_id", "tab_id", "mode_epoch",
+                                          "receiver_generation", "agent_session_id", "location" })
+                {
+                    VERIFY_IS_TRUE(retirement.isMember(field));
+                    VERIFY_IS_TRUE(retirement[field] == reset[field]);
+                }
+                VERIFY_ARE_EQUAL(std::string{ "foreground_retired" }, retirement["kind"].asString());
+                VERIFY_ARE_EQUAL(std::string{ "shell_prompt" }, retirement["cause"].asString());
+                for (const auto forbidden : { "sequence", "command", "text", "exit_code" })
+                {
+                    VERIFY_IS_FALSE(retirement.isMember(forbidden));
+                }
+                VERIFY_IS_FALSE(page->_activeCliAgentPanes.contains(paneId));
+                VERIFY_IS_TRUE(page->_paneAgentSessions.contains(paneId));
+                VERIFY_ARE_EQUAL(std::string{ "shell-retirement" }, page->_richTabEndedSessionByPaneId.at(paneId));
+            });
+        }
     }
 
     // A pane built by attaching an existing ContentId reports its end state
@@ -14286,6 +14393,48 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(pane.IsProgressRingActive());
             VERIFY_IS_TRUE(pane.IsProgressRingIndeterminate());
         });
+
+        emit(u"\x1b]7501;state=clear\x1b\\");
+        TestOnUIThread([&]() {
+            const auto emitOnUIThread = [&](const std::u16string_view sequence) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ sequence.data(), sequence.data() + sequence.size() });
+            };
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto contentId = control.ContentId();
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            const auto identity = manager->AdmitNativeAgentObservation(contentId, 1, "tab", "agent-session", "Host", true, 0, L"copilot");
+            VERIFY_ARE_NOT_EQUAL(0ull, identity.modeEpoch);
+            VERIFY_IS_TRUE(manager->BeginProgramBadgeCandidate(contentId, identity.modeEpoch, 1));
+            manager->ResolveProgramBadgeCandidate(contentId, identity, 1, true, true);
+            emitOnUIThread(u"\x1b]9;4;1;73\a");
+            VERIFY_ARE_EQUAL(73ull, control.TaskbarProgress());
+            const auto promptReceipt = manager->NativeAgentProgressReceipt(contentId);
+            VERIFY_ARE_NOT_EQUAL(0ull, promptReceipt);
+            manager->RetireNativeAgentBadge(contentId, identity.modeEpoch, promptReceipt);
+
+            const auto verifyProgress = [&](const uint64_t state, const uint32_t value, const bool ringActive) {
+                VERIFY_ARE_EQUAL(state, control.TaskbarState());
+                page->_RefreshTabStripPaneItems(owner);
+                const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+                VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+                const auto pane = display.PaneItems().GetAt(0);
+                VERIFY_IS_NOT_NULL(pane.IconSource());
+                VERIFY_ARE_EQUAL(state, pane.ProgressState());
+                VERIFY_ARE_EQUAL(value, pane.ProgressValue());
+                VERIFY_ARE_EQUAL(ringActive, pane.IsProgressRingActive());
+            };
+            emitOnUIThread(u"\x1b]9;4;2;0\a");
+            VERIFY_ARE_EQUAL(73ull, control.TaskbarProgress());
+            VERIFY_IS_TRUE(manager->NativeAgentProgressReceipt(contentId) > promptReceipt);
+            VERIFY_IS_TRUE(manager->SuppressesNativeAgentLegacyPercent(contentId));
+            verifyProgress(2, 0, false);
+            emitOnUIThread(u"\x1b]9;4;4;0\a");
+            verifyProgress(4, 0, false);
+            emitOnUIThread(u"\x1b]9;4;3\a");
+            verifyProgress(3, 0, true);
+            emitOnUIThread(u"\x1b]9;4;1;42\a");
+            verifyProgress(1, 42, true);
+        });
     }
 
     void TabTests::PureOscNonActivePaneProjectsUnread()
@@ -16033,6 +16182,110 @@ namespace TerminalAppLocalTests
             const auto automationName = Automation::AutomationProperties::GetName(tab->TabViewItem());
             VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(L"Done") != std::wstring_view::npos);
             VERIFY_IS_TRUE(std::wstring_view{ automationName }.find(RS_(L"VerticalTabsHistoryStatusComplete")) == std::wstring_view::npos);
+        });
+    }
+
+    void TabTests::ProgramStatusTabHoverOmitsSourceLabels()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        const auto first = winrt::make_self<TestConnection>(winrt::guid{ L"{64931111-2222-3333-4444-555555555555}" }, State::Connected);
+        const auto empty = winrt::make_self<TestConnection>(winrt::guid{ L"{64941111-2222-3333-4444-555555555555}" }, State::Connected);
+        const auto last = winrt::make_self<TestConnection>(winrt::guid{ L"{64951111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*first, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            page->_tabStrip.RichTabWorkingDirectoryVisible(false);
+            page->_tabStrip.RichTabBranchVisible(false);
+            page->_tabStrip.RichTabChangesVisible(false);
+            page->_tabStrip.RichTabAgentStatusVisible(true);
+            VERIFY_IS_TRUE(page->_tabStrip.RichTabAgentStatusVisible());
+            const auto emit = [](const auto& connection, const std::u16string_view seq) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ seq.data(), seq.data() + seq.size() });
+            };
+            const auto isObserved = [](const auto& control) {
+                Json::Value snapshot;
+                std::string errors;
+                std::istringstream input{ winrt::to_string(control.ProgramStatusJson()) };
+                return Json::parseFromStream(Json::CharReaderBuilder{}, input, &snapshot, &errors) &&
+                       snapshot["observed"].asBool();
+            };
+            const auto firstControl = tab->GetActiveTerminalControl();
+            emit(first, u"\x1b]7501;state=clear\x1b\\");
+            VERIFY_IS_TRUE(isObserved(firstControl));
+            page->_UpdateProgramStatusForTab(*tab);
+            VERIFY_IS_TRUE(tab->_programStatusDetails.empty());
+
+            emit(first, u"\x1b]7501;state=blocked:app=copilot:kind=question\x1b\\");
+            page->_UpdateProgramStatusForTab(*tab);
+            VERIFY_IS_FALSE(tab->_programStatusText.empty());
+            VERIFY_IS_TRUE(tab->_programStatusDetails.empty());
+
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *empty)));
+            const auto emptyControl = tab->GetActiveTerminalControl();
+            VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Down, 0.5f, page->_MakeTerminalPane(NewTerminalArgs{}, nullptr, *last)));
+            const auto lastControl = tab->GetActiveTerminalControl();
+            page->UpdateLayout();
+            emit(first, u"\x1b]0;First pane\x7\x1b]7501;state=done:msg=UHJldmlvdXM=\x1b\\"
+                        u"\x1b]7501;state=working:progress=37:msg=T1NDIDc1MDE6\x1b\\");
+            emit(empty, u"\x1b]0;Empty pane\x7\x1b]7501;state=clear\x1b\\");
+            emit(last, u"\x1b]0;Last pane\x7\x1b]7501;state=blocked:app=copilot:kind=question\x1b\\");
+
+            VERIFY_IS_TRUE(isObserved(firstControl));
+            VERIFY_IS_TRUE(isObserved(emptyControl));
+            VERIFY_IS_TRUE(isObserved(lastControl));
+            auto& canonical = page->_richTabAgentStatusByPaneId[last->SessionId()];
+            canonical.status = "Attention";
+            canonical.inputRequired = true;
+            canonical.inputMessage = "Information requested";
+            const auto projected = page->_RichTabAgentInfoForControl(lastControl);
+            VERIFY_IS_TRUE(projected.has_value() && projected->inputRequired);
+
+            ::Microsoft::Terminal::RichTab::Provider::Presentation provider;
+            provider.text = L"Provider metadata";
+            provider.tooltip = L"Provider tooltip";
+            tab->SetRichTabPresentation(provider);
+            for (const bool vertical : { false, true })
+            {
+                tab->SetVerticalTabLayout(vertical);
+                page->_UpdateProgramStatusForTab(*tab);
+                const std::wstring_view hover{ tab->_richTabTooltipText };
+                VERIFY_IS_TRUE(hover.find(L"\nHook/ACP:") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\nOSC 7501:") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n/") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"37%") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"copilot") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"question") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(RS_(L"ProgramStatusPreviousResult")) != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\u2068Previous\u2069") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"OSC 7501:") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"Information requested") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"Empty pane") == std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n\nLast pane\n") != std::wstring_view::npos);
+                VERIFY_IS_TRUE(hover.find(L"\n\n\n") == std::wstring_view::npos);
+                VERIFY_ARE_EQUAL(vertical, hover.starts_with(L"Provider tooltip\n"));
+            }
+
+            page->_RefreshTabStripPaneItems(tab);
+            const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
+            const auto display = strip->DisplayItemForTab(tab->TabViewItem());
+            bool checkedPane = false;
+            for (const auto& pane : display.PaneItems())
+            {
+                if (pane.ContentId() == lastControl.ContentId())
+                {
+                    const auto details = pane.ProgramStatusDetails();
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\nHook/ACP:") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\nOSC 7501:") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"\n/: ") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"copilot") != std::wstring_view::npos);
+                    VERIFY_IS_TRUE(std::wstring_view{ details }.find(L"question") != std::wstring_view::npos);
+                    checkedPane = true;
+                }
+            }
+            VERIFY_IS_TRUE(checkedPane);
         });
     }
 
@@ -23461,6 +23714,41 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
             });
         }
+
+        _emitOsc(connection, u"\x1b]7501;state=blocked:kind=question\x1b\\");
+        _waitForContentTransferReviewUI([&]() { return tab->GetCombinedTaskbarState().State() == 4; });
+        for (const auto collapsed : { false, true })
+        {
+            TestOnUIThread([&]() {
+                page->_tabStrip.IsRailCollapsed(collapsed);
+                tab->ShowBellIndicator(true);
+                VERIFY_ARE_EQUAL(Visibility::Visible, bell.Visibility());
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, icon.Visibility());
+                if (collapsed)
+                {
+                    tab->Focus(FocusState::Unfocused);
+                    tab->Focus(FocusState::Programmatic);
+                }
+                else
+                {
+                    tab->ActivateBellIndicatorTimer();
+                    tab->_BellIndicatorTimerTick(nullptr, nullptr);
+                }
+                VERIFY_ARE_EQUAL(Visibility::Collapsed, bell.Visibility());
+                VERIFY_IS_FALSE(display.ShowProgressRing());
+                VERIFY_ARE_EQUAL(Visibility::Visible, icon.Visibility());
+                VERIFY_IS_TRUE(tab->TabViewItem().IconSource() == tab->_iconSource);
+                VERIFY_ARE_EQUAL(winrt::hstring{ L"ms-appx:///AgentIcons/copilot.svg" },
+                                 icon.Content().as<BitmapIcon>().UriSource().AbsoluteUri());
+                VERIFY_ARE_EQUAL(uint64_t{ 4 }, tab->GetCombinedTaskbarState().State());
+                VERIFY_ARE_EQUAL(uint64_t{ 0 }, tab->GetCombinedTaskbarState().Progress());
+            });
+        }
+        _emitOsc(connection, u"\x1b]7501;state=working:progress=37\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return display.ShowProgressRing() && tab->_tabStatus.ProgressValue() == 37 &&
+                   icon.Visibility() == Visibility::Collapsed;
+        });
     }
 
     void TabTests::ProgressReplacementPreservesIndependentStatusGlyphs()
@@ -29324,6 +29612,68 @@ namespace TerminalAppLocalTests
             page->_settings.GlobalSettings().AgentSessionManagementEnabled(false);
             page->_SyncNativeAgentStatusMode();
             VERIFY_IS_FALSE(manager->NativeAgentObservationForContent(control.ContentId()).has_value());
+        });
+    }
+
+    void TabTests::VerifiedHookHostQualifiesOnlyFreshProgramStatusForExactOwner()
+    {
+        using State = winrt::Microsoft::Terminal::TerminalConnection::ConnectionState;
+        using Manager = winrt::TerminalApp::implementation::ContentManager;
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{9c521111-2222-3333-4444-555555555555}" }, State::Connected);
+        auto page = _commonSetup(*connection, nullptr, std::nullopt, true);
+        const auto cleanup = wil::scope_exit([&]() { RunOnUIThread([&]() { page = nullptr; }); });
+        TestOnUIThread([&]() {
+            page->_settings.GlobalSettings().AgentSessionManagementEnabled(true);
+            page->_SyncNativeAgentStatusMode();
+            const auto control = page->_GetFocusedTabImpl()->GetActiveTerminalControl();
+            const auto paneId = connection->SessionId();
+            const auto manager = winrt::get_self<Manager>(page->_manager);
+            const auto emit = [&](const std::u16string_view seq) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ seq.data(), seq.data() + seq.size() });
+            };
+            const auto acceptVerified = [&](std::string_view session, uint64_t contentId) {
+                page->_OnPaneAgentSessionChanged(_keepRunningHook(paneId, "agent.prompt.submit", session), contentId);
+            };
+            std::vector<Json::Value> qualified;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& json) {
+                Json::Value event;
+                std::string errors;
+                std::istringstream input{ winrt::to_string(json) };
+                if (Json::parseFromStream(Json::CharReaderBuilder{}, input, &event, &errors) &&
+                    event["method"] == "native_agent_observation" && event["params"]["location"] == "Host")
+                {
+                    qualified.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+
+            page->OnPaneAgentSessionChanged(_keepRunningHook(paneId, "agent.session.start", "owner"));
+            emit(u"\x1b]7501;state=done\x1b\\");
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_IS_TRUE(manager->NativeAgentObservationForContent(control.ContentId())->location.empty());
+            VERIFY_IS_TRUE(qualified.empty());
+            acceptVerified("nested", control.ContentId());
+            acceptVerified("owner", control.ContentId() + 1);
+            VERIFY_IS_TRUE(qualified.empty());
+
+            acceptVerified("owner", control.ContentId());
+            VERIFY_ARE_EQUAL(size_t{ 1 }, qualified.size());
+            VERIFY_ARE_EQUAL(std::string{ "reset" }, qualified.front()["kind"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "owner" }, qualified.front()["agent_session_id"].asString());
+            VERIFY_IS_TRUE(page->_paneAgentSessions.at(paneId).backend.empty());
+            acceptVerified("owner", control.ContentId());
+            page->_PublishNativeAgentObservation(control, "program_status");
+            control.AcknowledgeProgramStatus(std::numeric_limits<uint64_t>::max());
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_ARE_EQUAL(size_t{ 1 }, qualified.size());
+
+            emit(u"\x1b]7501;state=blocked:kind=question\x1b\\");
+            page->_PublishNativeAgentObservation(control, "program_status");
+            VERIFY_ARE_EQUAL(size_t{ 2 }, qualified.size());
+            VERIFY_ARE_EQUAL(std::string{ "program_status" }, qualified.back()["kind"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "blocked" }, qualified.back()["program_status"]["state"].asString());
+            VERIFY_ARE_EQUAL(qualified.front()["mode_epoch"].asUInt64(), qualified.back()["mode_epoch"].asUInt64());
         });
     }
 

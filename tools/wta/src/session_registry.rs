@@ -15,7 +15,7 @@
 //! here to avoid mixing a lock refactor into the routing change.
 
 use agent_client_protocol as acp;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -492,7 +492,65 @@ pub struct PaneAgentStatus {
     #[serde(default)]
     pub canonical_working: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub osc_authority: Option<OscAuthorityPresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_message: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct OscAuthorityPresentation {
+    pub mode_epoch: u64,
+    pub since_revision: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct ProgramBadgeDisposition {
+    pane_id: String,
+    provider_id: String,
+    window_id: u64,
+    tab_id: String,
+    mode_epoch: u64,
+    receiver_generation: Option<u64>,
+    agent_session_id: String,
+    location: SessionLocation,
+    revision: u64,
+    approved: bool,
+    active: bool,
+}
+
+impl ProgramBadgeDisposition {
+    fn new(
+        pane_id: String,
+        event: &NativeAgentObservation,
+        revision: u64,
+        approved: bool,
+        active: bool,
+    ) -> Option<Self> {
+        Some(Self {
+            pane_id,
+            provider_id: event.provider_id.clone(),
+            window_id: event.window_id,
+            tab_id: event.tab_id.clone(),
+            mode_epoch: event.mode_epoch,
+            receiver_generation: event.receiver_generation,
+            agent_session_id: event.agent_session_id.clone()?,
+            location: event.location.clone()?,
+            revision,
+            approved,
+            active,
+        })
+    }
+
+    fn matches_admission(&self, pane: &str, event: &NativeAgentObservation) -> bool {
+        self.pane_id == pane
+            && self.provider_id.eq_ignore_ascii_case(&event.provider_id)
+            && self.window_id == event.window_id
+            && self.tab_id == event.tab_id
+            && self.mode_epoch == event.mode_epoch
+            && self.receiver_generation == event.receiver_generation
+            && event.agent_session_id.as_ref() == Some(&self.agent_session_id)
+            && event.location.as_ref() == Some(&self.location)
+    }
 }
 
 impl PaneAgentStatus {
@@ -646,7 +704,18 @@ pub enum NativeObservationKind {
     ProgramStatus {
         program_status: ProgramStatusSnapshot,
     },
+    ForegroundRetired {
+        cause: ForegroundRetirementCause,
+        #[serde(default)]
+        prompt_id: Option<u64>,
+    },
     Removed,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForegroundRetirementCause {
+    ShellPrompt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -685,6 +754,18 @@ struct NativePaneState {
 struct ProgramPaneState {
     admission: NativeAgentObservation,
     snapshot: Option<ProgramStatusSnapshot>,
+    last_seen_revision: Option<u64>,
+    rejected_recovery_through: Option<u64>,
+    osc_authority: Option<OscAuthority>,
+    prompt_retired_owner: Option<SessionIdentity>,
+    retired_prompt_id: Option<u64>,
+    protect_retired_binding: bool,
+}
+
+#[derive(Clone)]
+struct OscAuthority {
+    owner: SessionIdentity,
+    since_revision: u64,
 }
 
 struct NativeListingEvidence {
@@ -1349,6 +1430,12 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum SessionHookParams {
+    ShellPrompt {
+        pane_session_id: String,
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<serde_json::Value>,
+    },
     QualifiedHook {
         identity: SessionIdentity,
         pane_session_id: String,
@@ -1540,6 +1627,15 @@ impl From<&crate::agent_sessions::SessionEvent> for SessionHookParams {
             SessionEvent::PaneClosed { pane_session_id } => Self::PaneClosed {
                 pane_session_id: pane_session_id.clone(),
             },
+            SessionEvent::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            } => Self::ShellPrompt {
+                pane_session_id: pane_session_id.clone(),
+                key: key.clone(),
+                context: context.clone(),
+            },
             SessionEvent::ResumeDispatched { key } => Self::ResumeDispatched { key: key.clone() },
             SessionEvent::ResumeFailed { key, reason } => Self::ResumeFailed {
                 key: key.clone(),
@@ -1660,6 +1756,15 @@ impl From<SessionHookParams> for crate::agent_sessions::SessionEvent {
             SessionHookParams::PaneClosed { pane_session_id } => {
                 Self::PaneClosed { pane_session_id }
             }
+            SessionHookParams::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            } => Self::ShellPrompt {
+                pane_session_id,
+                key,
+                context,
+            },
             SessionHookParams::ResumeDispatched { key } => Self::ResumeDispatched { key },
             SessionHookParams::ResumeFailed { key, reason } => Self::ResumeFailed { key, reason },
             SessionHookParams::ResumePaneAssigned {
@@ -2042,6 +2147,22 @@ pub trait SessionRegistry: Send + Sync {
         false
     }
 
+    async fn apply_native_observation_with_prompt_revision(
+        &self,
+        event: NativeAgentObservation,
+        _prompt_program_revision: Option<u64>,
+    ) -> bool {
+        self.apply_native_observation(event).await
+    }
+
+    async fn apply_program_badge_candidate(
+        &self,
+        event: NativeAgentObservation,
+        apply: bool,
+        recovery: bool,
+    ) -> bool;
+    async fn program_badge_dispositions(&self) -> Vec<ProgramBadgeDisposition>;
+
     async fn refine_native_launch_source(
         &self,
         _pane: &str,
@@ -2168,6 +2289,25 @@ pub trait SessionRegistry: Send + Sync {
 
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
+    async fn reconcile_raw_shell_prompt(
+        &self,
+        pane: &str,
+        context: Option<&NativeAgentObservation>,
+        helper_key: Option<&str>,
+    ) -> bool;
+    async fn apply_hook_start(&self, ev: SessionEvent, location: SessionLocation) -> bool;
+    async fn apply_exact_hook_lifecycle(
+        &self,
+        identity: &SessionIdentity,
+        pane: &str,
+        ev: SessionEvent,
+    ) -> bool;
+    async fn apply_provider_error(
+        &self,
+        identity: Option<&SessionIdentity>,
+        pane: &str,
+        reason: &str,
+    ) -> bool;
 
     /// Clear interaction-owned Attention only when the exact master epoch still owns it.
     async fn finish_interaction_attention(&self, _identity: &SessionIdentity, _epoch: u64) -> bool {
@@ -2338,12 +2478,25 @@ struct RegistryState {
     native_panes: HashMap<String, NativePaneState>,
     native_retired_epochs: HashMap<uuid::Uuid, u64>,
     program_panes: HashMap<String, ProgramPaneState>,
+    program_badge_publications: HashMap<String, ProgramBadgePublications>,
+    // Transport-only negatives for lost admissions. They never occupy a live receipt slot.
+    unadmitted_program_badge_receipts: VecDeque<ProgramBadgeDisposition>,
     hook_pane_progress: HashMap<String, NativeAgentObservation>,
     next_cwd_revision: u64,
     known_raw_ids: HashSet<String>,
     native_listing_completed_at: HashMap<(String, SessionLocation), u64>,
     native_listing_evidence: HashMap<HistoryRowKey, NativeListingEvidence>,
 }
+
+#[derive(Default)]
+struct ProgramBadgePublications {
+    current: Option<(NativeAgentObservation, bool)>,
+    retired: Option<(NativeAgentObservation, bool)>,
+    last_prompt_id: Option<u64>,
+    prompt_revision: Option<u64>,
+}
+
+const MAX_UNADMITTED_PROGRAM_BADGE_RECEIPTS: usize = 256;
 
 #[derive(Default)]
 pub struct InMemoryRegistry {
@@ -2693,13 +2846,24 @@ impl SessionRegistry for InMemoryRegistry {
     ) -> Option<bool> {
         let mut state = self.inner.lock().await;
         if state.program_panes.iter().any(|(pane, program)| {
-            program
-                .snapshot
-                .as_ref()
-                .is_some_and(|snapshot| snapshot.state.is_some())
+            osc_owner(&state, pane).is_some_and(|identity| {
+                identity.session_id.0.as_ref() == key
+                    && state.sessions.get(identity).is_some_and(|row| {
+                        row.location == SessionLocation::Host && row.session_universe.is_none()
+                    })
+                    && cli
+                        .canonical_provider_id()
+                        .as_deref()
+                        .is_some_and(|provider| {
+                            provider.eq_ignore_ascii_case(&program.admission.provider_id)
+                        })
+            }) || (program.osc_authority.is_none()
+                && program.snapshot.as_ref().is_some_and(|snapshot| {
+                    snapshot.native_lease_active() && snapshot.state.is_some()
+                })
                 && cli.canonical_provider_id().is_some_and(|provider| {
                     provider.eq_ignore_ascii_case(&program.admission.provider_id)
-                })
+                }))
                 && state
                     .active_by_pane
                     .get(pane)
@@ -2757,11 +2921,20 @@ impl SessionRegistry for InMemoryRegistry {
     }
 
     async fn apply_native_observation(&self, event: NativeAgentObservation) -> bool {
+        self.apply_native_observation_with_prompt_revision(event, None)
+            .await
+    }
+
+    async fn apply_native_observation_with_prompt_revision(
+        &self,
+        event: NativeAgentObservation,
+        prompt_program_revision: Option<u64>,
+    ) -> bool {
         let pane_id = uuid::Uuid::parse_str(&event.pane_id).ok();
         let window_id = event.window_id;
         let mode_epoch = event.mode_epoch;
         let mut state = self.inner.lock().await;
-        let applied = apply_native_observation_locked(&mut state, event);
+        let applied = apply_native_observation_locked(&mut state, event, prompt_program_revision);
         if !applied {
             tracing::debug!(
                 target: "session_registry",
@@ -2770,6 +2943,141 @@ impl SessionRegistry for InMemoryRegistry {
             );
         }
         applied
+    }
+
+    async fn apply_program_badge_candidate(
+        &self,
+        event: NativeAgentObservation,
+        apply: bool,
+        recovery: bool,
+    ) -> bool {
+        let NativeObservationKind::ProgramStatus { program_status } = &event.event else {
+            return false;
+        };
+        if !program_status.is_valid()
+            || !exact_program_owner_envelope(&event, &event)
+            || uuid::Uuid::parse_str(&event.pane_id).is_err()
+            || (recovery
+                && (event.mode_epoch == 0
+                    || event.provider_id.trim().is_empty()
+                    || event.tab_id.is_empty()
+                    || event.agent_session_id.as_deref() == Some("")))
+        {
+            return false;
+        }
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(&event.pane_id);
+        let revision = program_status.revision;
+        let admission = state.program_panes.get(&pane);
+        let refused =
+            admission.is_some_and(|program| rejects_recovered_revision(program, &event, revision));
+        if state
+            .unadmitted_program_badge_receipts
+            .iter()
+            .any(|receipt| receipt.revision == revision && receipt.matches_admission(&pane, &event))
+            || (!recovery && refused)
+        {
+            return false;
+        }
+        if state
+            .program_badge_publications
+            .get(&pane)
+            .is_some_and(|publications| {
+                publications.current.iter().chain(publications.retired.iter()).any(|(old, _)| {
+                program_transport_matches(old, &event)
+                    && matches!(&old.event, NativeObservationKind::ProgramStatus { program_status }
+                        if program_status.revision == revision)
+            })
+            })
+        {
+            return false;
+        }
+        if recovery
+            && (refused
+                || !admission.is_some_and(|program| {
+                    program_transport_matches(&program.admission, &event)
+                        && exact_program_owner_envelope(&program.admission, &event)
+                }))
+        {
+            // Master awaits each ordered COM event. Such a probe can follow a
+            // dropped original, but cannot overtake one still queued for delivery.
+            if let Some(receipt) =
+                ProgramBadgeDisposition::new(pane, &event, revision, false, false)
+            {
+                let receipts = &mut state.unadmitted_program_badge_receipts;
+                if receipts.len() == MAX_UNADMITTED_PROGRAM_BADGE_RECEIPTS {
+                    receipts.pop_front();
+                }
+                receipts.push_back(receipt);
+            }
+            return false;
+        }
+        // A recovery probe never replays OSC state. Record the decision under
+        // the same lock so a subsequently delayed original cannot apply it.
+        let applied =
+            apply && !recovery && apply_native_observation_locked(&mut state, event.clone(), None);
+        let approved = has_program_badge_authority(&state, &pane, &event, revision);
+        // A live pane's latest decision must not be evicted by another pane.
+        // Retain a separate prompt decision until the pane/epoch is replaced.
+        let publications = state.program_badge_publications.entry(pane).or_default();
+        let pre_prompt = publications
+            .prompt_revision
+            .is_some_and(|cutoff| revision <= cutoff);
+        let slot = if pre_prompt {
+            &mut publications.retired
+        } else {
+            &mut publications.current
+        };
+        if slot.as_ref().is_some_and(|(old, _)| {
+            matches!(&old.event, NativeObservationKind::ProgramStatus { program_status }
+                if (old.receiver_generation, old.mode_epoch, program_status.revision)
+                    >= (event.receiver_generation, event.mode_epoch, revision))
+        }) {
+            return applied;
+        }
+        let previously_approved = pre_prompt
+            && slot
+                .as_ref()
+                .is_some_and(|(old, approved)| *approved && program_transport_matches(old, &event));
+        let mut publication = event;
+        publication.launch_cwd = None;
+        if let NativeObservationKind::ProgramStatus { program_status } = &mut publication.event {
+            program_status.message = None;
+            program_status.title = None;
+            program_status.task_id = None;
+        }
+        *slot = Some((publication, approved || previously_approved));
+        applied
+    }
+
+    async fn program_badge_dispositions(&self) -> Vec<ProgramBadgeDisposition> {
+        let state = self.inner.lock().await;
+        state
+            .program_badge_publications
+            .values()
+            .flat_map(|publications| {
+                publications
+                    .current
+                    .iter()
+                    .chain(publications.retired.iter())
+            })
+            .filter_map(|(event, approved)| {
+                let NativeObservationKind::ProgramStatus { program_status } = &event.event else {
+                    return None;
+                };
+                let pane = pane_key(&event.pane_id);
+                let active =
+                    has_program_badge_authority(&state, &pane, event, program_status.revision);
+                ProgramBadgeDisposition::new(
+                    pane,
+                    event,
+                    program_status.revision,
+                    *approved,
+                    active,
+                )
+            })
+            .chain(state.unadmitted_program_badge_receipts.iter().cloned())
+            .collect()
     }
 
     async fn native_pane_observations(&self) -> Vec<NativePaneObservation> {
@@ -2827,8 +3135,10 @@ impl SessionRegistry for InMemoryRegistry {
                         canonical_error: owner.is_some_and(|owner| {
                             owner.status == Some(AgentStatus::Error) && owner.last_error.is_some()
                         }),
-                        canonical_working: owner
-                            .is_some_and(|owner| session_canonical_working(owner, hook_owners)),
+                        canonical_working: osc_owner(&state, &pane).is_none()
+                            && owner
+                                .is_some_and(|owner| session_canonical_working(owner, hook_owners)),
+                        osc_authority: osc_authority_presentation(&state, &pane),
                         input_message: owner.and_then(|owner| owner.attention_reason.clone()),
                     },
                 )
@@ -2904,7 +3214,9 @@ impl SessionRegistry for InMemoryRegistry {
                     input_required: session_input_required(row),
                     canonical_error: row.status == Some(AgentStatus::Error)
                         && row.last_error.is_some(),
-                    canonical_working: session_canonical_working(row, hook_owners),
+                    canonical_working: osc_owner(&state, pane).is_none()
+                        && session_canonical_working(row, hook_owners),
+                    osc_authority: osc_authority_presentation(&state, pane),
                     input_message: row.attention_reason.clone(),
                 },
             );
@@ -3022,7 +3334,138 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
+        if let SessionEvent::PaneClosed { pane_session_id } = &ev {
+            let pane = pane_key(pane_session_id);
+            guard.program_badge_publications.remove(&pane);
+            guard
+                .unadmitted_program_badge_receipts
+                .retain(|receipt| receipt.pane_id != pane);
+        }
         apply_event_locked(&mut guard, ev, None)
+    }
+
+    async fn reconcile_raw_shell_prompt(
+        &self,
+        pane: &str,
+        context: Option<&NativeAgentObservation>,
+        helper_key: Option<&str>,
+    ) -> bool {
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane);
+        let program = state.program_panes.get(&pane);
+        if let Some(context) = context {
+            let NativeObservationKind::ForegroundRetired {
+                prompt_id: Some(prompt_id),
+                ..
+            } = context.event
+            else {
+                return false;
+            };
+            let Some(program) = program else {
+                return false;
+            };
+            let admission = &program.admission;
+            if pane_key(&context.pane_id) != pane
+                || !exact_program_owner_envelope(admission, context)
+                || !program_transport_matches(admission, context)
+                || program_owner(&state, &pane, admission, context).is_none()
+                || program.retired_prompt_id.is_some_and(|id| prompt_id <= id)
+            {
+                return false;
+            }
+        }
+        if osc_owner(&state, &pane).is_some()
+            || (program.is_some_and(|program| program.protect_retired_binding)
+                && prompt_retired_owner(&state, &pane).is_some())
+        {
+            return false;
+        }
+        let Some(owner) = state.active_by_pane.get(&pane).cloned() else {
+            return false;
+        };
+        // An unordered fallback without admission context cannot safely retire a
+        // managed turn, even when the same session ID is still bound.
+        if helper_key.is_some_and(|key| {
+            owner.session_id.0.as_ref() != key || (context.is_none() && program.is_some())
+        }) {
+            return false;
+        }
+        if !state.sessions.get(&owner).is_some_and(|row| {
+            crate::agent_sessions::OriginFilter::ShellOnly.matches_opt(row.origin.as_ref())
+                && matches!(
+                    row.status,
+                    Some(
+                        AgentStatus::Idle
+                            | AgentStatus::Working
+                            | AgentStatus::Attention
+                            | AgentStatus::Error
+                    )
+                )
+                && row
+                    .pane_session_id
+                    .as_deref()
+                    .is_some_and(|id| pane_key(id) == pane)
+        }) {
+            return false;
+        }
+        apply_event_locked(
+            &mut state,
+            SessionEvent::PaneClosed {
+                pane_session_id: pane,
+            },
+            None,
+        )
+    }
+
+    async fn apply_hook_start(&self, ev: SessionEvent, location: SessionLocation) -> bool {
+        let mut state = self.inner.lock().await;
+        apply_start_at_location_locked(&mut state, ev, location)
+    }
+
+    async fn apply_exact_hook_lifecycle(
+        &self,
+        identity: &SessionIdentity,
+        pane: &str,
+        ev: SessionEvent,
+    ) -> bool {
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane);
+        if state.active_by_pane.get(&pane) != Some(identity)
+            || !matches!(
+                ev,
+                SessionEvent::SessionStopped { .. }
+                    | SessionEvent::SessionStoppedIfOwner { .. }
+                    | SessionEvent::SessionUnbound { .. }
+                    | SessionEvent::SessionRenamed { .. }
+            )
+        {
+            return false;
+        }
+        apply_event_qualified_at_ms(&mut state, ev, Some(identity), now_ms())
+    }
+
+    async fn apply_provider_error(
+        &self,
+        identity: Option<&SessionIdentity>,
+        pane: &str,
+        reason: &str,
+    ) -> bool {
+        let mut state = self.inner.lock().await;
+        let pane = pane_key(pane);
+        let Some(owner) = state.active_by_pane.get(&pane).cloned() else {
+            return false;
+        };
+        if identity.is_some_and(|identity| identity != &owner)
+            || osc_owner(&state, &pane).is_some()
+            || state.native_panes.contains_key(&pane)
+            || matches!(
+                state.pane_connections.get(&pane),
+                Some(PaneConnectionState::Failed { .. })
+            )
+        {
+            return false;
+        }
+        apply_connection_failure_locked(&mut state, &pane, reason, now_ms())
     }
 
     async fn finish_interaction_attention(&self, identity: &SessionIdentity, epoch: u64) -> bool {
@@ -3204,18 +3647,33 @@ impl SessionRegistry for InMemoryRegistry {
                 };
             }
         }
-        let sid = match &ev {
-            SessionEvent::SessionStarted { key, .. } => {
-                Some(acp::schema::v1::SessionId::new(key.clone()))
+        let applied = if preserve_live_binding {
+            if let SessionEvent::SessionStarted {
+                pane_session_id,
+                key,
+                ..
+            } = &ev
+            {
+                if matches!(location, SessionLocation::Wsl { .. }) {
+                    if let Some(owner) = state
+                        .active_by_pane
+                        .get(&pane_key(pane_session_id))
+                        .filter(|owner| owner.session_id.0.as_ref() == key)
+                        .cloned()
+                    {
+                        rekey_location_locked(&mut state, &owner, location)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
             }
-            _ => None,
+        } else {
+            apply_start_at_location_locked(&mut state, ev, location)
         };
-        let mut applied = !preserve_live_binding && apply_event_locked(&mut state, ev, None);
-        if matches!(location, SessionLocation::Wsl { .. }) {
-            if let Some(sid) = sid {
-                applied |= set_location_locked(&mut state, &sid, location);
-            }
-        }
         BornBoundEventResult {
             applied,
             native_pane_owned: false,
@@ -3606,6 +4064,7 @@ fn register_native_born_binding_locked(
         }
         // Explicit foreground replacement is not evidence of process exit.
         // Detach before assignment, whose normal resume path ends competitors.
+        retire_osc_identity_locked(state, previous);
         state.active_by_pane.remove(&pane);
         if let Some(row) = state.sessions.get_mut(previous) {
             row.pane_session_id = None;
@@ -3668,13 +4127,31 @@ fn set_location_locked(
     let Some(identity) = unique_identity_for_raw(state, sid) else {
         return false;
     };
-    let Some(mut entry) = remove_identity_locked(state, &identity) else {
+    rekey_location_locked(state, &identity, location)
+}
+
+fn rekey_location_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+    location: SessionLocation,
+) -> bool {
+    let Some(mut entry) = state.sessions.get(identity).cloned() else {
         return false;
     };
-    let changed = entry.location != location;
+    if entry.location == location {
+        return false;
+    }
     entry.location = location;
+    let destination = SessionIdentity::from_info(&entry);
+    if &destination != identity && state.sessions.contains_key(&destination) {
+        return false;
+    }
+    retire_osc_identity_locked(state, identity);
+    if let Some(row) = remove_identity_locked(state, identity) {
+        entry.status = row.status;
+    }
     upsert_locked(state, entry);
-    changed
+    true
 }
 
 fn native_bound_identity(
@@ -3721,23 +4198,256 @@ fn native_bound_identity(
     Some(identity)
 }
 
+fn osc_owner<'a>(state: &'a RegistryState, pane: &str) -> Option<&'a SessionIdentity> {
+    let owner = &state.program_panes.get(pane)?.osc_authority.as_ref()?.owner;
+    (state.active_by_pane.get(pane) == Some(owner)).then_some(owner)
+}
+
+fn osc_authority_presentation(
+    state: &RegistryState,
+    pane: &str,
+) -> Option<OscAuthorityPresentation> {
+    osc_owner(state, pane)?;
+    let program = state.program_panes.get(pane)?;
+    Some(OscAuthorityPresentation {
+        mode_epoch: program.admission.mode_epoch,
+        since_revision: program.osc_authority.as_ref()?.since_revision,
+    })
+}
+
+fn has_program_badge_authority(
+    state: &RegistryState,
+    pane: &str,
+    event: &NativeAgentObservation,
+    revision: u64,
+) -> bool {
+    state.program_panes.get(pane).is_some_and(|program| {
+        exact_program_owner_envelope(&program.admission, event)
+            && program_transport_matches(&program.admission, event)
+            && program.osc_authority.as_ref().is_some_and(|authority| {
+                authority.since_revision <= revision
+                    && program_owner(state, pane, &program.admission, event)
+                        == Some(&authority.owner)
+            })
+    })
+}
+
+fn prompt_retired_owner<'a>(state: &'a RegistryState, pane: &str) -> Option<&'a SessionIdentity> {
+    let owner = state
+        .program_panes
+        .get(pane)?
+        .prompt_retired_owner
+        .as_ref()?;
+    (state.active_by_pane.get(pane) == Some(owner)).then_some(owner)
+}
+
+fn inactive_retained_result(snapshot: &ProgramStatusSnapshot) -> bool {
+    snapshot.observed
+        && !snapshot.native_lease_active()
+        && snapshot.working == 0
+        && snapshot.blocked == 0
+        && (snapshot.unseen_done > 0 || snapshot.unseen_error > 0)
+}
+
+fn begin_hook_foreground_locked(state: &mut RegistryState, identity: &SessionIdentity) {
+    let Some(pane) = state
+        .sessions
+        .get(identity)
+        .and_then(|row| row.pane_session_id.as_deref())
+        .map(pane_key)
+    else {
+        return;
+    };
+    if prompt_retired_owner(state, &pane) == Some(identity) {
+        if let Some(program) = state.program_panes.get_mut(&pane) {
+            program.protect_retired_binding = false;
+        }
+    }
+}
+
+fn inactive_empty_program(snapshot: &ProgramStatusSnapshot) -> bool {
+    !snapshot.native_lease_active()
+        && snapshot.state.is_none()
+        && [
+            snapshot.working,
+            snapshot.blocked,
+            snapshot.done,
+            snapshot.error,
+            snapshot.unseen_done,
+            snapshot.unseen_error,
+        ] == [0; 6]
+}
+
+fn retire_osc_locked(state: &mut RegistryState, pane: &str, keep_results: bool) -> bool {
+    let Some(program) = state.program_panes.get_mut(pane) else {
+        return false;
+    };
+    let owner = program
+        .osc_authority
+        .take()
+        .map(|authority| authority.owner);
+    if owner.is_none() && (keep_results || program.prompt_retired_owner.is_none()) {
+        return false;
+    }
+    if keep_results {
+        program.snapshot = program.snapshot.take().filter(inactive_retained_result);
+        program.prompt_retired_owner = owner.clone();
+        program.protect_retired_binding = true;
+    } else {
+        // A replacement Reset may already have installed a new admission.
+        if state
+            .hook_pane_progress
+            .get(pane)
+            .is_some_and(|progress| program_transport_matches(&program.admission, progress))
+        {
+            state.hook_pane_progress.remove(pane);
+        }
+        state.program_panes.remove(pane);
+    }
+    if let Some(owner) = owner {
+        if let Some(native) = state.native_panes.get_mut(pane) {
+            native.observation.status = AgentStatus::Idle;
+        }
+        if let Some(row) = state.sessions.get_mut(&owner) {
+            row.status = Some(AgentStatus::Idle);
+        }
+    }
+    true
+}
+
+fn retire_osc_identity_locked(state: &mut RegistryState, identity: &SessionIdentity) {
+    if let Some(pane) = state
+        .sessions
+        .get(identity)
+        .and_then(|row| row.pane_session_id.as_deref())
+        .map(pane_key)
+    {
+        if osc_owner(state, &pane) == Some(identity)
+            || prompt_retired_owner(state, &pane) == Some(identity)
+        {
+            retire_osc_locked(state, &pane, false);
+        }
+    }
+}
+
 fn apply_native_observation_locked(
     state: &mut RegistryState,
-    event: NativeAgentObservation,
+    mut event: NativeAgentObservation,
+    prompt_program_revision: Option<u64>,
 ) -> bool {
     let pane = pane_key(&event.pane_id);
+    let reset = matches!(event.event, NativeObservationKind::Reset { .. });
+    if let Some(program) = state.program_panes.get(&pane) {
+        if event.receiver_generation < program.admission.receiver_generation
+            || (reset && event.mode_epoch < program.admission.mode_epoch)
+        {
+            return false;
+        }
+    }
+    if matches!(
+        state.pane_connections.get(&pane),
+        Some(PaneConnectionState::Failed { .. })
+    ) && !matches!(event.event, NativeObservationKind::Removed)
+    {
+        // Generation-less legacy OFF resets reconcile failed native bindings
+        // without installing any Program Status admission.
+        if event.receiver_generation.is_none()
+            && matches!(
+                event.event,
+                NativeObservationKind::Reset {
+                    tracking_enabled: false
+                }
+            )
+        {
+            return apply_legacy_native_observation_locked(state, event, false);
+        }
+        return false;
+    }
     if let NativeObservationKind::ProgramStatus { program_status } = &event.event {
         return apply_program_observation_locked(state, &event, program_status);
+    }
+    if let NativeObservationKind::ForegroundRetired {
+        cause: ForegroundRetirementCause::ShellPrompt,
+        prompt_id,
+    } = event.event
+    {
+        let matches = |program: &ProgramPaneState| {
+            exact_program_owner_envelope(&program.admission, &event)
+                && program_transport_matches(&program.admission, &event)
+                && prompt_id
+                    .zip(program.retired_prompt_id)
+                    .is_none_or(|(id, retired)| id > retired)
+        };
+        let Some(program) = state
+            .program_panes
+            .get(&pane)
+            .filter(|program| matches(program))
+        else {
+            return false;
+        };
+        let owner = program_owner(state, &pane, &program.admission, &event);
+        let retired = owner.is_some()
+            && owner
+                == program
+                    .osc_authority
+                    .as_ref()
+                    .map(|authority| &authority.owner);
+        let duplicate = program.protect_retired_binding
+            && owner.is_some()
+            && owner == program.prompt_retired_owner.as_ref();
+        let prompt_program_revision =
+            prompt_program_revision.filter(|revision| *revision <= (1_u64 << 53) - 1);
+        if let Some(revision) = prompt_program_revision {
+            // The sender may already have published a candidate that has not
+            // arrived here. An old pre-prompt publication cannot start a turn.
+            if let Some(program) = state.program_panes.get_mut(&pane) {
+                program.last_seen_revision =
+                    Some(program.last_seen_revision.unwrap_or(0).max(revision));
+            }
+        }
+        if prompt_program_revision.is_some() || state.program_badge_publications.contains_key(&pane)
+        {
+            let publications = state
+                .program_badge_publications
+                .entry(pane.clone())
+                .or_default();
+            if prompt_id
+                .zip(publications.last_prompt_id)
+                .is_none_or(|(id, last)| id > last)
+            {
+                if publications.current.as_ref().is_some_and(|(candidate, _)| {
+                    program_transport_matches(candidate, &event)
+                        && matches!(&candidate.event, NativeObservationKind::ProgramStatus { program_status }
+                            if prompt_program_revision.is_none_or(|cutoff| program_status.revision <= cutoff))
+                }) {
+                    publications.retired = publications.current.take();
+                }
+                publications.last_prompt_id = prompt_id;
+                publications.prompt_revision = prompt_program_revision;
+            }
+        }
+        if !retired && !duplicate {
+            return false;
+        }
+        if retired {
+            retire_osc_locked(state, &pane, true);
+        }
+        if let Some(program) = state.program_panes.get_mut(&pane) {
+            program.retired_prompt_id = prompt_id.or(program.retired_prompt_id);
+        }
+        return retired;
     }
     if matches!(
         event.event,
         NativeObservationKind::Progress { .. } | NativeObservationKind::Bell
-    ) && state.program_panes.get(&pane).is_some_and(|program| {
-        program
-            .snapshot
-            .as_ref()
-            .is_some_and(ProgramStatusSnapshot::native_lease_active)
-    }) {
+    ) && (osc_owner(state, &pane).is_some()
+        || state.program_panes.get(&pane).is_some_and(|program| {
+            program
+                .snapshot
+                .as_ref()
+                .is_some_and(ProgramStatusSnapshot::native_lease_active)
+        }))
+    {
         return false;
     }
     let removed = matches!(event.event, NativeObservationKind::Removed);
@@ -3746,21 +4456,94 @@ fn apply_native_observation_locked(
             .program_panes
             .get(&pane)
             .is_some_and(|program| program_transport_matches(&program.admission, &event));
-    let reset = matches!(event.event, NativeObservationKind::Reset { .. });
-    let applied = apply_legacy_native_observation_locked(state, event.clone());
+    let receiver_replaced = reset
+        && state.program_panes.get(&pane).is_some_and(|program| {
+            matches!((program.admission.receiver_generation, event.receiver_generation),
+            (Some(old), Some(new)) if new > old)
+        });
+    let had_authority = osc_owner(state, &pane).is_some();
+    if reset && had_authority {
+        event.current_progress_state = None;
+    }
+    let applied = apply_legacy_native_observation_locked(state, event.clone(), receiver_replaced);
     if applied && reset {
+        if let Some(publications) = state.program_badge_publications.get_mut(&pane) {
+            publications.current = publications
+                .current
+                .take()
+                .filter(|(candidate, _)| program_transport_matches(&event, candidate));
+            publications.retired = None;
+            publications.last_prompt_id = None;
+            publications.prompt_revision = None;
+            if publications.current.is_none() {
+                state.program_badge_publications.remove(&pane);
+            }
+        }
+        if had_authority {
+            retire_osc_locked(state, &pane, false);
+        }
+        // A later matching Reset may replay the same Core snapshot. Preserve the
+        // refusal for that revision even after the detached receipt is evicted.
+        let rejected_recovery_through = state
+            .unadmitted_program_badge_receipts
+            .iter()
+            .filter(|receipt| receipt.matches_admission(&pane, &event))
+            .map(|receipt| receipt.revision)
+            .chain(state.program_panes.get(&pane).and_then(|program| {
+                (program_transport_matches(&program.admission, &event)
+                    && exact_program_owner_envelope(&program.admission, &event))
+                .then_some(program.rejected_recovery_through)
+                .flatten()
+            }))
+            .max();
         state.program_panes.insert(
             pane.clone(),
             ProgramPaneState {
                 admission: event,
                 snapshot: None,
+                last_seen_revision: None,
+                rejected_recovery_through,
+                osc_authority: None,
+                prompt_retired_owner: None,
+                retired_prompt_id: None,
+                protect_retired_binding: false,
             },
         );
     }
     if removed && (applied || admitted_removal) {
+        state.program_badge_publications.remove(&pane);
+        state
+            .unadmitted_program_badge_receipts
+            .retain(|receipt| receipt.pane_id != pane);
+        retire_osc_locked(state, &pane, false);
         state.program_panes.remove(&pane);
     }
     applied || admitted_removal
+}
+
+fn exact_program_owner_envelope(
+    admission: &NativeAgentObservation,
+    event: &NativeAgentObservation,
+) -> bool {
+    event.agent_session_id.is_some()
+        && event.agent_session_id == admission.agent_session_id
+        && event
+            .location
+            .as_ref()
+            .is_some_and(SessionLocation::is_actionable)
+        && event.location == admission.location
+}
+
+fn rejects_recovered_revision(
+    program: &ProgramPaneState,
+    event: &NativeAgentObservation,
+    revision: u64,
+) -> bool {
+    program
+        .rejected_recovery_through
+        .is_some_and(|cutoff| revision <= cutoff)
+        && program_transport_matches(&program.admission, event)
+        && exact_program_owner_envelope(&program.admission, event)
 }
 
 fn program_transport_matches(
@@ -3768,6 +4551,7 @@ fn program_transport_matches(
     event: &NativeAgentObservation,
 ) -> bool {
     admission.mode_epoch == event.mode_epoch
+        && admission.receiver_generation == event.receiver_generation
         && admission
             .provider_id
             .eq_ignore_ascii_case(event.provider_id.trim())
@@ -3783,25 +4567,12 @@ fn program_transport_matches(
             .is_none_or(|location| admission.location.as_ref() == Some(location))
 }
 
-fn apply_program_observation_locked(
-    state: &mut RegistryState,
+fn program_owner<'a>(
+    state: &'a RegistryState,
+    pane: &str,
+    admission: &NativeAgentObservation,
     event: &NativeAgentObservation,
-    snapshot: &ProgramStatusSnapshot,
-) -> bool {
-    let pane = pane_key(&event.pane_id);
-    let Some(program) = state.program_panes.get(&pane) else {
-        return false;
-    };
-    if !snapshot.is_valid()
-        || !program_transport_matches(&program.admission, event)
-        || program
-            .snapshot
-            .as_ref()
-            .is_some_and(|old| snapshot.revision <= old.revision)
-    {
-        return false;
-    }
-    let admission = program.admission.clone();
+) -> Option<&'a SessionIdentity> {
     let unambiguous = state
         .sessions
         .values()
@@ -3815,12 +4586,17 @@ fn apply_program_observation_locked(
         .take(2)
         .count()
         == 1;
-    let identity = state.active_by_pane.get(&pane).cloned().filter(|identity| {
+    state.active_by_pane.get(pane).filter(|identity| {
         unambiguous
-            && state.sessions.get(identity).is_some_and(|row| {
+            && state.sessions.get(*identity).is_some_and(|row| {
                 active_source_pane_session(row)
+                    && row
+                        .pane_session_id
+                        .as_deref()
+                        .is_some_and(|id| pane_key(id) == pane)
                     && row.origin != Some(SessionOrigin::AgentPane)
-                    && row.born_bound_pane
+                    && (row.born_bound_pane || exact_program_owner_envelope(admission, event))
+                    && row.session_universe.is_none()
                     && row.provider_id.as_deref().is_some_and(|provider| {
                         provider.eq_ignore_ascii_case(&admission.provider_id)
                     })
@@ -3833,15 +4609,105 @@ fn apply_program_observation_locked(
                         .as_ref()
                         .is_none_or(|location| row.location == *location)
             })
-    });
+    })
+}
+
+fn apply_program_observation_locked(
+    state: &mut RegistryState,
+    event: &NativeAgentObservation,
+    snapshot: &ProgramStatusSnapshot,
+) -> bool {
+    let pane = pane_key(&event.pane_id);
+    let Some(program) = state.program_panes.get(&pane) else {
+        return false;
+    };
+    if !snapshot.is_valid()
+        || !program_transport_matches(&program.admission, event)
+        || rejects_recovered_revision(program, event, snapshot.revision)
+        || program
+            .last_seen_revision
+            .is_some_and(|revision| snapshot.revision <= revision)
+    {
+        return false;
+    }
+    let qualified_report = exact_program_owner_envelope(&program.admission, event);
+    let identity = program_owner(state, &pane, &program.admission, event).cloned();
+    let retained = inactive_retained_result(snapshot);
+    if program.osc_authority.is_none()
+        && (retained || inactive_empty_program(snapshot))
+        && qualified_report
+        && identity.is_some()
+        && identity.as_ref() == prompt_retired_owner(state, &pane)
+    {
+        // Core's prompt cleanup can be published after the retirement event.
+        // Keep only its presentation; do not touch authority or row activity.
+        if let Some(program) = state.program_panes.get_mut(&pane) {
+            let changed = retained || program.snapshot.is_some();
+            program.snapshot = retained.then(|| snapshot.clone());
+            program.last_seen_revision = Some(snapshot.revision);
+            return changed;
+        }
+        return false;
+    }
     let status = match snapshot.state {
         Some(ProgramState::Blocked) => AgentStatus::Attention,
         Some(ProgramState::Working) => AgentStatus::Working,
         Some(ProgramState::Error) => AgentStatus::Error,
         Some(ProgramState::Idle | ProgramState::Done) | None => AgentStatus::Idle,
     };
+    let eligible = matches!(
+        program.admission.provider_id.to_ascii_lowercase().as_str(),
+        "copilot" | "claude" | "codex" | "opencode" | "antigravity"
+    );
+    let promotion_owner = identity
+        .as_ref()
+        .filter(|owner| owner.history_key.is_some());
+    let authority = if let Some(authority) = program.osc_authority.clone() {
+        if !qualified_report || promotion_owner != Some(&authority.owner) {
+            return false;
+        }
+        Some(authority)
+    } else if qualified_report && eligible {
+        let Some(owner) = promotion_owner else {
+            return false;
+        };
+        if snapshot.native_lease_active != Some(true)
+            || !snapshot.observed
+            || snapshot.state.is_none()
+        {
+            // An inactive replay advances the stream without changing presentation.
+            if let Some(program) = state.program_panes.get_mut(&pane) {
+                program.last_seen_revision = Some(snapshot.revision);
+            }
+            return false;
+        }
+        Some(OscAuthority {
+            owner: owner.clone(),
+            since_revision: snapshot.revision,
+        })
+    } else {
+        None
+    };
     let now = now_ms();
-    if !event.canonical_owned {
+    if let Some(OscAuthority { owner, .. }) = &authority {
+        state.attention_owners.remove(owner);
+        if let Some(progress) = state.hook_pane_progress.get_mut(&pane) {
+            progress.current_progress_state = None;
+        }
+        if let Some(native) = state.native_panes.get_mut(&pane) {
+            native.observation.status = status.clone();
+            native.observation.last_activity_at_ms = now;
+        }
+        if let Some(row) = state.sessions.get_mut(owner) {
+            row.status = Some(status);
+            row.last_activity_at_ms = Some(now);
+            row.current_tool = None;
+            row.attention_reason = None;
+            row.last_error = None;
+            row.attention_timestamp_ms = None;
+            row.attention_cooldown_until_ms = None;
+        }
+    } else if !event.canonical_owned {
         if let Some(native) = state.native_panes.get_mut(&pane) {
             native.observation.status = status.clone();
             native.observation.last_activity_at_ms = now;
@@ -3861,6 +4727,12 @@ fn apply_program_observation_locked(
     }
     if let Some(program) = state.program_panes.get_mut(&pane) {
         program.snapshot = Some(snapshot.clone());
+        program.last_seen_revision = Some(snapshot.revision);
+        if authority.is_some() {
+            program.prompt_retired_owner = None;
+            program.protect_retired_binding = false;
+        }
+        program.osc_authority = authority;
     }
     true
 }
@@ -3868,6 +4740,7 @@ fn apply_program_observation_locked(
 fn apply_legacy_native_observation_locked(
     state: &mut RegistryState,
     event: NativeAgentObservation,
+    receiver_replaced: bool,
 ) -> bool {
     let Ok(pane_id) = uuid::Uuid::parse_str(&event.pane_id) else {
         return false;
@@ -3918,11 +4791,12 @@ fn apply_legacy_native_observation_locked(
     }
     let old = state.native_panes.get(&pane);
     if reset {
-        if old.is_some_and(|old| event.mode_epoch <= old.observation.mode_epoch)
-            || state
-                .native_retired_epochs
-                .get(&pane_id)
-                .is_some_and(|epoch| event.mode_epoch <= *epoch)
+        if !receiver_replaced
+            && (old.is_some_and(|old| event.mode_epoch <= old.observation.mode_epoch)
+                || state
+                    .native_retired_epochs
+                    .get(&pane_id)
+                    .is_some_and(|epoch| event.mode_epoch <= *epoch))
         {
             return false;
         }
@@ -3971,7 +4845,8 @@ fn apply_legacy_native_observation_locked(
         NativeObservationKind::Progress { progress_state: 2 } => (AgentStatus::Error, true, false),
         NativeObservationKind::Progress { .. } => return false,
         NativeObservationKind::Bell => (AgentStatus::Attention, true, false),
-        NativeObservationKind::ProgramStatus { .. } => return false,
+        NativeObservationKind::ProgramStatus { .. }
+        | NativeObservationKind::ForegroundRetired { .. } => return false,
         NativeObservationKind::Removed => (AgentStatus::Ended, false, true),
     };
     let mut observation = NativePaneObservation {
@@ -4206,6 +5081,20 @@ fn upsert_locked(state: &mut RegistryState, mut info: SessionInfo) {
     info.cwd_evidence.revision = advance_cwd_revision(state);
     state.known_raw_ids.insert(info.session_id.to_string());
     let identity = SessionIdentity::from_info(&info);
+    if state.sessions.get(&identity).is_some_and(|old| {
+        old.pane_session_id.as_deref().map(pane_key)
+            != info.pane_session_id.as_deref().map(pane_key)
+    }) {
+        retire_osc_identity_locked(state, &identity);
+    }
+    if let Some(pane) = info.pane_session_id.as_deref().map(pane_key) {
+        if osc_owner(state, &pane)
+            .or_else(|| prompt_retired_owner(state, &pane))
+            .is_some_and(|owner| owner != &identity)
+        {
+            retire_osc_locked(state, &pane, false);
+        }
+    }
     if let Some(old) = state.sessions.get(&identity) {
         if let Some(native) = old
             .pane_session_id
@@ -4248,6 +5137,14 @@ fn upsert_locked(state: &mut RegistryState, mut info: SessionInfo) {
 }
 
 fn remove_identity_locked(
+    state: &mut RegistryState,
+    identity: &SessionIdentity,
+) -> Option<SessionInfo> {
+    retire_osc_identity_locked(state, identity);
+    take_identity_locked(state, identity)
+}
+
+fn take_identity_locked(
     state: &mut RegistryState,
     identity: &SessionIdentity,
 ) -> Option<SessionInfo> {
@@ -4461,6 +5358,7 @@ fn unique_matching_identity_for_raw(
 
 #[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
 fn end_entry(state: &mut RegistryState, identity: &SessionIdentity, now: u64) -> bool {
+    retire_osc_identity_locked(state, identity);
     let revision = advance_cwd_revision(state);
     let Some(entry) = state.sessions.get_mut(identity) else {
         return false;
@@ -4515,6 +5413,7 @@ fn apply_connection_failure_locked(
     let Some(identity) = state.active_by_pane.get(pane).cloned() else {
         return false;
     };
+    retire_osc_locked(state, pane, false);
     if state.sessions.get(&identity).is_some_and(|entry| {
         entry.born_bound_pane
             && matches!(entry.status, Some(AgentStatus::Idle | AgentStatus::Error))
@@ -4646,6 +5545,7 @@ fn apply_attention_event_locked(
         .then_some(now.saturating_add(crate::agent_sessions::COPILOT_ATTENTION_COOLDOWN_MS));
     entry.attention_reason = Some(message);
     entry.last_activity_at_ms = Some(now);
+    begin_hook_foreground_locked(state, &identity);
     state.attention_owners.insert(identity, owner);
     true
 }
@@ -4661,6 +5561,24 @@ fn apply_event_qualified_at_ms(
     qualified_activity: Option<&SessionIdentity>,
     now: u64,
 ) -> bool {
+    apply_event_with_location_at_ms(state, ev, qualified_activity, None, now)
+}
+
+fn apply_start_at_location_locked(
+    state: &mut RegistryState,
+    ev: SessionEvent,
+    location: SessionLocation,
+) -> bool {
+    apply_event_with_location_at_ms(state, ev, None, Some(location), now_ms())
+}
+
+fn apply_event_with_location_at_ms(
+    state: &mut RegistryState,
+    ev: SessionEvent,
+    qualified_activity: Option<&SessionIdentity>,
+    start_location: Option<SessionLocation>,
+    now: u64,
+) -> bool {
     if let SessionEvent::QualifiedHook {
         identity,
         pane_session_id,
@@ -4670,7 +5588,8 @@ fn apply_event_qualified_at_ms(
         let pane = pane_key(&pane_session_id);
         if identity.history_key.is_none()
             || state.active_by_pane.get(&pane) != Some(&identity)
-            || state.native_panes.contains_key(&pane)
+            || (state.native_panes.contains_key(&pane)
+                && osc_owner(state, &pane) != Some(&identity))
             || !state
                 .sessions
                 .get(&identity)
@@ -4688,29 +5607,44 @@ fn apply_event_qualified_at_ms(
         let key = identity.session_id.to_string();
         return apply_event_qualified_at_ms(state, event.into_event(key), Some(&identity), now);
     }
-    let unqualified_activity_key = match &ev {
+    let activity_key = match &ev {
         SessionEvent::ToolStarting { key, .. }
         | SessionEvent::ToolReturned { key, .. }
         | SessionEvent::ToolCompleted { key }
         | SessionEvent::Notification { key, .. }
-        | SessionEvent::InteractionNotification { key, .. }
-            if qualified_activity.is_none() =>
-        {
-            Some(key)
-        }
+        | SessionEvent::InteractionNotification { key, .. } => Some(key),
         _ => None,
     };
+    if activity_key.is_some_and(|key| {
+        qualified_activity
+            .cloned()
+            .or_else(|| {
+                unique_identity_for_raw(state, &acp::schema::v1::SessionId::new(key.clone()))
+            })
+            .is_some_and(|identity| {
+                state
+                    .sessions
+                    .get(&identity)
+                    .and_then(|row| row.pane_session_id.as_deref())
+                    .is_some_and(|pane| osc_owner(state, &pane_key(pane)) == Some(&identity))
+            })
+    }) {
+        return false;
+    }
     // OFF activity belongs to OSC or the explicitly qualified watcher path,
     // never an unqualified hook sharing the same raw SDK session ID.
-    if unqualified_activity_key.is_some_and(|key| {
-        state.native_panes.values().any(|native| {
-            native.bound_identity.as_ref().is_some_and(|identity| {
-                identity.session_id.0.as_ref() == key.as_str()
-                    && state.active_by_pane.get(&native.observation.pane_id) == Some(identity)
-                    && native_bound_identity(state, &native.observation).as_ref() == Some(identity)
+    if qualified_activity.is_none()
+        && activity_key.is_some_and(|key| {
+            state.native_panes.values().any(|native| {
+                native.bound_identity.as_ref().is_some_and(|identity| {
+                    identity.session_id.0.as_ref() == key.as_str()
+                        && state.active_by_pane.get(&native.observation.pane_id) == Some(identity)
+                        && native_bound_identity(state, &native.observation).as_ref()
+                            == Some(identity)
+                })
             })
         })
-    }) {
+    {
         return false;
     }
     let protected_pane = match &ev {
@@ -4724,18 +5658,19 @@ fn apply_event_qualified_at_ms(
             pane_session_id, ..
         }
         | SessionEvent::PaneClosed { pane_session_id } => Some(pane_key(pane_session_id)),
-        SessionEvent::SessionStopped { key, .. } => {
-            unique_identity_for_raw(state, &acp::schema::v1::SessionId::new(key.clone()))
-                .and_then(|identity| state.sessions.get(&identity))
-                .and_then(|row| row.pane_session_id.as_deref())
-                .map(pane_key)
-        }
+        SessionEvent::SessionStopped { key, .. } => qualified_activity
+            .cloned()
+            .or_else(|| {
+                unique_identity_for_raw(state, &acp::schema::v1::SessionId::new(key.clone()))
+            })
+            .and_then(|identity| state.sessions.get(&identity))
+            .and_then(|row| row.pane_session_id.as_deref())
+            .map(pane_key),
         _ => None,
     };
-    if protected_pane
-        .and_then(|pane| state.native_panes.get(&pane))
-        .is_some()
-    {
+    if protected_pane.is_some_and(|pane| {
+        state.native_panes.contains_key(&pane) && osc_owner(state, &pane).is_none()
+    }) {
         return false;
     }
     let ev = match ev {
@@ -4824,6 +5759,7 @@ fn apply_event_qualified_at_ms(
             let sid = acp::schema::v1::SessionId::new(key.clone());
             let pane_known = !pane_session_id.is_empty();
             let provider_id = cli_source.canonical_provider_id();
+            let location = start_location.clone().unwrap_or(SessionLocation::Host);
             // A receipt can bind this exact qualified row before its first hook.
             // Raw-ID ambiguity must not make its own pane look foreign.
             let existing_identity = state
@@ -4832,7 +5768,11 @@ fn apply_event_qualified_at_ms(
                 .filter(|identity| {
                     identity.session_id == sid
                         && state.sessions.get(*identity).is_some_and(|row| {
-                            provider_id.is_some() && row.provider_id == provider_id
+                            provider_id.is_some()
+                                && row.provider_id == provider_id
+                                && start_location
+                                    .as_ref()
+                                    .is_none_or(|location| row.location == *location)
                         })
                 })
                 .cloned()
@@ -4841,7 +5781,7 @@ fn apply_event_qualified_at_ms(
                         session_id: sid.clone(),
                         history_key: HistoryRowKey::new(
                             provider_id.as_deref()?,
-                            SessionLocation::Host,
+                            location.clone(),
                             sid.to_string(),
                             None,
                         ),
@@ -4851,7 +5791,13 @@ fn apply_event_qualified_at_ms(
                 .or_else(|| {
                     unique_identity_for_raw(state, &sid).filter(|identity| {
                         state.sessions.get(identity).is_some_and(|row| {
-                            row.provider_id.is_none() || row.provider_id == provider_id
+                            (row.provider_id.is_none() || row.provider_id == provider_id)
+                                && start_location.as_ref().is_none_or(|location| {
+                                    row.location == *location
+                                        || (*location == SessionLocation::Host
+                                            && row.location == SessionLocation::Unknown
+                                            && row.provider_id.is_none())
+                                })
                         })
                     })
                 });
@@ -4937,9 +5883,18 @@ fn apply_event_qualified_at_ms(
             }
 
             let is_new_entry = existing_identity.is_none();
+            let preserve_authority = existing_identity.as_ref().is_some_and(|identity| {
+                pane_known && osc_owner(state, &pane_key(&pane_session_id)) == Some(identity)
+            });
             let mut entry = existing_identity
                 .as_ref()
-                .and_then(|identity| remove_identity_locked(state, identity))
+                .and_then(|identity| {
+                    if preserve_authority {
+                        take_identity_locked(state, identity)
+                    } else {
+                        remove_identity_locked(state, identity)
+                    }
+                })
                 .unwrap_or_else(|| SessionInfo::new(sid.clone(), cwd.clone()));
             // remove_identity_locked already released only this row's pane binding.
             let resumed = matches!(
@@ -4965,7 +5920,7 @@ fn apply_event_qualified_at_ms(
             entry.provider_id = cli_source.canonical_provider_id();
             entry.cli_source = Some(cli_source);
             if entry.location == SessionLocation::Unknown {
-                entry.location = SessionLocation::Host;
+                entry.location = location;
             }
             // Status baseline. Preserve a live status on an EXISTING row instead
             // of clobbering it to Idle: some CLIs fire activity hooks before
@@ -4979,11 +5934,12 @@ fn apply_event_qualified_at_ms(
             // reconnect); Working/Attention/Idle are preserved. Mirrors the
             // resurrection guards on ToolStarting/ToolCompleted below and the
             // helper-side reducer in `agent_sessions.rs`.
-            if is_new_entry
-                || matches!(
-                    entry.status,
-                    Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
-                )
+            if !preserve_authority
+                && (is_new_entry
+                    || matches!(
+                        entry.status,
+                        Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
+                    ))
             {
                 entry.status = Some(AgentStatus::Idle);
                 entry.last_error = None;
@@ -4992,7 +5948,9 @@ fn apply_event_qualified_at_ms(
                 entry.attention_cooldown_until_ms = None;
                 entry.current_tool = None;
             }
-            entry.last_activity_at_ms = Some(now);
+            if !preserve_authority {
+                entry.last_activity_at_ms = Some(now);
+            }
             if pane_known {
                 entry.pane_session_id = Some(pane_session_id.clone());
             } else {
@@ -5014,7 +5972,10 @@ fn apply_event_qualified_at_ms(
                 return false;
             }
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             if state.active_by_pane.get(&pane_session_id) != Some(&identity) {
@@ -5123,6 +6084,7 @@ fn apply_event_qualified_at_ms(
             entry.attention_cooldown_until_ms = None;
             entry.current_tool = Some(tool_name);
             entry.last_activity_at_ms = Some(now);
+            begin_hook_foreground_locked(state, &identity);
             true
         }
         SessionEvent::ToolReturned { key, timestamp_ms } => {
@@ -5170,6 +6132,7 @@ fn apply_event_qualified_at_ms(
             entry.attention_cooldown_until_ms = None;
             entry.last_activity_at_ms = Some(now);
             state.attention_owners.remove(&identity);
+            begin_hook_foreground_locked(state, &identity);
             true
         }
         SessionEvent::ToolCompleted { key } => {
@@ -5244,7 +6207,10 @@ fn apply_event_qualified_at_ms(
                 return false;
             }
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             if state.active_by_pane.get(&pane_session_id) != Some(&identity)
@@ -5265,6 +6231,7 @@ fn apply_event_qualified_at_ms(
                 return false;
             }
             state.active_by_pane.remove(&pane_session_id);
+            retire_osc_locked(state, &pane_session_id, false);
             let revision = advance_cwd_revision(state);
             let row = state.sessions.get_mut(&identity).expect("checked above");
             row.pane_session_id = None;
@@ -5278,7 +6245,10 @@ fn apply_event_qualified_at_ms(
             reason,
         } => {
             let sid = acp::schema::v1::SessionId::new(key.clone());
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
             if !state.sessions.get(&identity).is_some_and(|row| {
@@ -5308,9 +6278,13 @@ fn apply_event_qualified_at_ms(
         }
         SessionEvent::SessionStopped { key, reason } => {
             let sid = acp::schema::v1::SessionId::new(key);
-            let Some(identity) = unique_identity_for_raw(state, &sid) else {
+            let Some(identity) = qualified_activity
+                .cloned()
+                .or_else(|| unique_identity_for_raw(state, &sid))
+            else {
                 return false;
             };
+            retire_osc_identity_locked(state, &identity);
             let reason_keeps_session_alive = reason == "complete";
             let pane_still_live = state
                 .sessions
@@ -5347,8 +6321,10 @@ fn apply_event_qualified_at_ms(
             entry.last_activity_at_ms = Some(now);
             true
         }
+        SessionEvent::ShellPrompt { .. } => false,
         SessionEvent::PaneClosed { pane_session_id } => {
-            let program_removed = state.program_panes.remove(&pane_session_id).is_some();
+            let program_removed = retire_osc_locked(state, &pane_session_id, false)
+                | state.program_panes.remove(&pane_session_id).is_some();
             if matches!(
                 state.pane_connections.get(&pane_session_id),
                 Some(PaneConnectionState::Connected)
@@ -5376,7 +6352,20 @@ fn apply_event_qualified_at_ms(
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
-        } => apply_connection_failure_locked(state, &pane_session_id, &reason, now),
+        } => {
+            let had_authority = osc_owner(state, &pane_session_id).is_some();
+            let applied = apply_connection_failure_locked(state, &pane_session_id, &reason, now);
+            if had_authority {
+                state.pane_connections.insert(
+                    pane_session_id,
+                    PaneConnectionState::Failed {
+                        reason,
+                        process_started: None,
+                    },
+                );
+            }
+            applied
+        }
         SessionEvent::ResumeDispatched { key } => {
             let sid = acp::schema::v1::SessionId::new(key);
             let Some(identity) = qualified_activity
@@ -9111,6 +10100,69 @@ mod tests {
                 AgentStatus::Attention,
             ),
         ]
+    }
+
+    #[tokio::test]
+    async fn wsl_osc_owner_does_not_suppress_host_watcher_with_same_id() {
+        let (registry, host_identity) = native_bound_registry().await;
+        assert!(registry
+            .apply_native_observation(native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+                1,
+            ))
+            .await);
+
+        let wsl_pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let mut row = qualified_info("real-session", "copilot", location.clone(), "WSL");
+        row.pane_session_id = Some(wsl_pane.into());
+        row.status = Some(AgentStatus::Idle);
+        let wsl_identity = SessionIdentity::from_info(&row);
+        registry.upsert(row).await;
+
+        let mut reset = native_event(
+            serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+            1,
+        );
+        reset.pane_id = wsl_pane.into();
+        reset.agent_session_id = Some("real-session".into());
+        reset.location = Some(location);
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        let mut report = reset;
+        report.event = program_event(Some("working"), 1, 1).event;
+        if let NativeObservationKind::ProgramStatus { program_status } = &mut report.event {
+            program_status.native_lease_active = Some(true);
+        }
+        assert!(registry.apply_native_observation(report).await);
+        assert_eq!(
+            osc_owner(&*registry.inner.lock().await, wsl_pane),
+            Some(&wsl_identity)
+        );
+
+        assert_eq!(
+            registry
+                .apply_native_watcher_activity(
+                    &CliSource::Copilot,
+                    "real-session",
+                    SessionEvent::Notification {
+                        key: "real-session".into(),
+                        message: "Host input requested".into(),
+                        timestamp_ms: None,
+                    },
+                )
+                .await,
+            Some(true)
+        );
+        assert_eq!(
+            registry.lookup_identity(&host_identity).await.unwrap().status,
+            Some(AgentStatus::Attention)
+        );
+        assert_eq!(
+            registry.lookup_identity(&wsl_identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
     }
 
     #[tokio::test]
