@@ -105,8 +105,7 @@ commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+
 commands.agent.summary: "Vyberte agent pro tuto kartu (/agent <id> pro přímé přepnutí)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End pro posouvání • ↑ ↓ pro navigaci • ← → pro přepínání tlačítek • Enter pro výběr • Esc pro zrušení)"
+recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání tlačítek • Enter pro výběr • Esc pro zrušení)"
 recommendations.button_run_command: "[ Spustit příkaz ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"

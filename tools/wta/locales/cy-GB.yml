@@ -96,8 +96,7 @@ commands.help_close_hint: "  Esc        Cau'r cymorth hwn"  # {Locked="Esc"}
 
 # ── Panel argymhellion (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - enwau bysellau a glyff bysell Dychwelyd, peidiwch â chyfieithu
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End i sgrolio • ↑ ↓ i lywio • ← → i newid botymau • Enter i ddewis • Esc i ganslo)"
+recommendations.nav_hint: "(↑ ↓ i lywio • ← → i newid botymau • Enter i ddewis • Esc i ganslo)"
 recommendations.button_run_command: "[ Rhedeg gorchymyn ]"
 recommendations.button_insert_in_terminal: "Mewnosod yn y Terfynell"
 recommendations.button_open_in_new_tab: "Agor mewn Tab Newydd ↵"

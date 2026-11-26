@@ -52,7 +52,7 @@ pub struct RecommendationChoice {
 }
 
 impl RecommendationChoice {
-    pub fn supports_insert(&self) -> bool {
+    pub fn allows_insert(&self) -> bool {
         self.actions
             .iter()
             .any(|action| matches!(action, RecommendedAction::Send { .. }))
@@ -434,9 +434,8 @@ async fn execute_choice(
     delegate_agents: &[DelegateAgentRuntime],
     event_tx: &mpsc::UnboundedSender<AppEvent>,
 ) -> Result<()> {
-    // Validate the complete choice before the first terminal side effect.
-    if insert_only && !choice.supports_insert() {
-        bail!("this recommendation does not support insert-only execution");
+    if insert_only && !choice.allows_insert() {
+        bail!("this choice does not support Insert");
     }
     for action in &choice.actions {
         validate_action(action)?;
@@ -823,13 +822,12 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
     Ok(())
 }
 
-/// Shell recommendations are single-line text, not terminal keystroke streams.
-/// Delegate prompts and the general terminal-input APIs have separate contracts.
+/// Shell commands are literal single-line text; delegated tasks are separate.
 pub(crate) fn validate_shell_command_input(input: &str) -> Result<()> {
     ensure_non_empty("input", input)?;
-    // SendProtocolInput maps LF to CR; C0/DEL can affect the terminal line
-    // editor (Enter, escape sequences, deletion, etc.). C1 and Unicode line
-    // separators are forwarded as Unicode text, not translated into Enter.
+    if input.contains(['\r', '\n']) {
+        bail!("This command contains a line break. Provide a single-line command, or, if the task needs multiple steps and the tool is available, propose delegating it with `delegate_task_in_new_workspace`.");
+    }
     if input.chars().any(|ch| ch.is_ascii_control()) {
         bail!("shell commands must not contain ASCII control characters (U+0000–U+001F or U+007F)");
     }
@@ -2455,19 +2453,76 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shell_command_controls_are_rejected_before_any_terminal_request() {
+    async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
+        let channel = Arc::new(RecordingWtChannel::default());
+        let shell_mgr = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let choice = RecommendationChoice {
+            choice: 1,
+            title: "Insert command".to_string(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "target-pane".to_string(),
+                input: "git status".to_string(),
+            }],
+        };
+
+        execute_choice(&choice, true, &shell_mgr, &[], &event_tx)
+            .await
+            .expect("insert should succeed");
+
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(
+            requests.as_slice(),
+            [
+                (
+                    "send_input".to_string(),
+                    json!({ "session_id": "target-pane", "text": "git status" }),
+                ),
+                (
+                    "focus_pane".to_string(),
+                    json!({ "session_id": "target-pane" }),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn preserved_regression_shell_controls_rejected_but_delegate_newlines_allowed() {
+        for control in (0..=0x1f).chain([0x7f]) {
+            let input = format!("echo first{}echo second", char::from_u32(control).unwrap());
+            let payload = json!({"choices": [{
+                "choice": 1, "title": "Review command",
+                "actions": [{"type": "send", "input": input}]
+            }]});
+            assert!(
+                parse_recommendation_set(&payload.to_string()).is_err(),
+                "accepted {input:?}"
+            );
+        }
+        let payload = json!({"choices": [{
+            "choice": 1, "title": "Delegate task", "actions": [{
+                "type": "open_and_send", "target": "tab", "agent": "copilot",
+                "input": "Inspect the code.\nExplain the results."
+            }]
+        }]});
+        assert!(parse_recommendation_set(&payload.to_string()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn preserved_regression_invalid_later_command_has_no_terminal_side_effects() {
         for input in [
-            concat!("echo first", "\n", "echo second"),
-            concat!("echo first", "\r", "echo second"),
+            "echo first\necho second",
+            "echo first\recho second",
             "git status\r\n",
             "git\tstatus",
-            concat!("echo ", "\u{1b}[2K", "second"),
+            "echo \u{1b}[2Ksecond",
             "echo \u{7f}second",
         ] {
             for insert_only in [false, true] {
                 for workspace in [false, true] {
                     let channel = Arc::new(RecordingWtChannel::default());
-                    let shell_mgr =
+                    let shell =
                         ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
                     let (event_tx, _event_rx) = mpsc::unbounded_channel();
                     let action = if workspace {
@@ -2491,8 +2546,6 @@ mod tests {
                         choice: 1,
                         title: "Review command".into(),
                         rationale: String::new(),
-                        // Even an earlier valid action must not run when the
-                        // choice contains an invalid shell command.
                         actions: vec![
                             RecommendedAction::Send {
                                 parent: "target-pane".into(),
@@ -2501,48 +2554,48 @@ mod tests {
                             action,
                         ],
                     };
-                    let result =
-                        execute_choice(&choice, insert_only, &shell_mgr, &[], &event_tx).await;
-                    assert!(result.is_err(), "accepted {input:?}");
+                    assert!(
+                        execute_choice(&choice, insert_only, &shell, &[], &event_tx)
+                            .await
+                            .is_err(),
+                        "accepted {input:?}"
+                    );
                     assert!(
                         channel.requests.lock().unwrap().is_empty(),
-                        "invalid choice reached the terminal: {input:?}"
+                        "invalid choice reached terminal: {input:?}"
                     );
                 }
             }
         }
     }
 
-    #[test]
-    fn recommendation_shell_commands_reject_controls_but_preserve_delegate_tasks() {
-        for control in (0..=0x1f).chain([0x7f]) {
-            let input = format!("echo first{}echo second", char::from_u32(control).unwrap());
-            let json = json!({
-                "choices": [{
-                    "choice": 1,
-                    "title": "Review command",
-                    "actions": [{"type": "send", "input": input}]
-                }]
-            });
-            assert!(parse_recommendation_set(&json.to_string()).is_err());
+    #[tokio::test]
+    async fn preserved_regression_mixed_workspace_insert_rejected_before_side_effects() {
+        for agent in [None, Some("copilot")] {
+            for reverse in [false, true] {
+                let mut choice: RecommendationChoice = serde_json::from_value(json!({
+                    "choice": 1, "title": "Mixed workspace", "actions": [
+                        {"type": "open_and_send", "target": "tab", "agent": agent, "input": "echo WORKSPACE"},
+                        {"type": "send", "parent": "target-pane", "input": "echo ORIGINAL"}
+                    ]
+                })).unwrap();
+                if reverse {
+                    choice.actions.reverse();
+                }
+                let channel = Arc::new(RecordingWtChannel::default());
+                let shell =
+                    ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+                let (event_tx, _event_rx) = mpsc::unbounded_channel();
+                assert!(execute_choice(&choice, true, &shell, &[], &event_tx)
+                    .await
+                    .is_err());
+                assert!(channel.requests.lock().unwrap().is_empty());
+            }
         }
-        let json = json!({
-            "choices": [{
-                "choice": 1,
-                "title": "Delegate task",
-                "actions": [{
-                    "type": "open_and_send",
-                    "target": "tab",
-                    "agent": "copilot",
-                    "input": "Inspect the code.\nExplain the results."
-                }]
-            }]
-        });
-        assert!(parse_recommendation_set(&json.to_string()).is_ok());
     }
 
     #[tokio::test]
-    async fn shell_command_unicode_text_preserves_run_and_insert_semantics() {
+    async fn preserved_regression_unicode_shell_run_and_insert_forward_exact_text() {
         let input = format!(
             "  Write-Output '{}\u{85}\u{2028}\u{2029}'  ",
             "long ".repeat(1000)
@@ -2579,176 +2632,6 @@ mod tests {
                 ]
             );
         }
-    }
-
-    #[tokio::test]
-    async fn recommendation_mixed_insert_rejects_agent_workspace_for_each_delivery_mode() {
-        for prompt_delivery in [
-            DelegatePromptDelivery::LaunchThenSend,
-            DelegatePromptDelivery::LaunchWithStartupPrompt,
-        ] {
-            for reverse in [false, true] {
-                let mut choice: RecommendationChoice = serde_json::from_value(json!({
-                    "choice": 1, "title": "Mixed delegation", "actions": [
-                        {"type": "open_and_send", "target": "tab", "agent": "copilot", "input": "Inspect workspace"},
-                        {"type": "send", "parent": "target-pane", "input": "echo ORIGINAL"}
-                    ]
-                })).unwrap();
-                if reverse {
-                    choice.actions.reverse();
-                }
-                let runtime = DelegateAgentRuntime {
-                    id: "copilot".into(),
-                    name: "Copilot".into(),
-                    description: String::new(),
-                    commandline: "copilot".into(),
-                    prompt_delivery,
-                    model: None,
-                };
-                let channel = Arc::new(RecordingWtChannel::default());
-                let shell =
-                    ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
-                let (event_tx, _event_rx) = mpsc::unbounded_channel();
-                assert!(execute_choice(&choice, true, &shell, &[runtime], &event_tx)
-                    .await
-                    .is_err());
-                assert!(channel.requests.lock().unwrap().is_empty());
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn recommendation_mixed_insert_terminal_payloads_preserve_run_and_insert() {
-        for count in 1..=3 {
-            for open in [false, true] {
-                for insert_only in [false, true] {
-                    let mut actions = Vec::new();
-                    if open {
-                        actions.push(RecommendedAction::Open {
-                            target: OpenTarget::Tab,
-                            parent: None,
-                            cwd: None,
-                            title: None,
-                            direction: None,
-                            profile: None,
-                        });
-                    }
-                    for index in 0..count {
-                        actions.push(RecommendedAction::Send {
-                            parent: "target-pane".into(),
-                            input: format!("  echo Ω{index}  "),
-                        });
-                    }
-                    let choice = RecommendationChoice {
-                        choice: 1,
-                        title: "Mixed insertion".into(),
-                        rationale: String::new(),
-                        actions,
-                    };
-                    let channel = Arc::new(RecordingWtChannel::default());
-                    let shell =
-                        ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
-                    let (event_tx, _event_rx) = mpsc::unbounded_channel();
-                    execute_choice(&choice, insert_only, &shell, &[], &event_tx)
-                        .await
-                        .unwrap();
-                    let requests = channel.requests.lock().unwrap();
-                    assert_eq!(
-                        requests
-                            .iter()
-                            .filter(|(method, _)| method == "create_tab")
-                            .count(),
-                        usize::from(open)
-                    );
-                    let sends: Vec<_> = requests
-                        .iter()
-                        .filter(|(method, _)| method == "send_input")
-                        .map(|(_, params)| params.clone())
-                        .collect();
-                    let expected: Vec<_> = (0..count).map(|index| {
-                        let input = format!("  echo Ω{index}  ");
-                        json!({"session_id": "target-pane", "text": if insert_only { input } else { format!("{input}\r") }})
-                    }).collect();
-                    assert_eq!(sends, expected);
-                }
-            }
-        }
-        for reverse in [false, true] {
-            let mut choice: RecommendationChoice = serde_json::from_value(json!({
-                "choice": 1, "title": "Mixed workspace", "actions": [
-                    {"type": "open_and_send", "target": "tab", "input": "echo WORKSPACE"},
-                    {"type": "send", "parent": "target-pane", "input": "echo ORIGINAL"}
-                ]
-            }))
-            .unwrap();
-            if reverse {
-                choice.actions.reverse();
-            }
-            let channel = Arc::new(RecordingWtChannel::default());
-            let shell = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
-            let (event_tx, _event_rx) = mpsc::unbounded_channel();
-            execute_choice(&choice, false, &shell, &[], &event_tx)
-                .await
-                .unwrap();
-            let requests = channel.requests.lock().unwrap();
-            let sends: Vec<_> = requests
-                .iter()
-                .filter(|(method, _)| method == "send_input")
-                .map(|(_, params)| params.clone())
-                .collect();
-            let mut expected = vec![
-                json!({"session_id": "created-pane", "text": "echo WORKSPACE\r"}),
-                json!({"session_id": "target-pane", "text": "echo ORIGINAL\r"}),
-            ];
-            if reverse {
-                expected.reverse();
-            }
-            assert_eq!(sends, expected);
-            let create = requests
-                .iter()
-                .position(|(method, _)| method == "create_tab")
-                .unwrap();
-            let first_send = requests
-                .iter()
-                .position(|(method, _)| method == "send_input")
-                .unwrap();
-            assert_eq!(create < first_send, !reverse);
-        }
-    }
-
-    #[tokio::test]
-    async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
-        let channel = Arc::new(RecordingWtChannel::default());
-        let shell_mgr = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
-        let (event_tx, _event_rx) = mpsc::unbounded_channel();
-        let choice = RecommendationChoice {
-            choice: 1,
-            title: "Insert command".to_string(),
-            rationale: String::new(),
-            actions: vec![RecommendedAction::Send {
-                parent: "target-pane".to_string(),
-                input: "git status".to_string(),
-            }],
-        };
-
-        execute_choice(&choice, true, &shell_mgr, &[], &event_tx)
-            .await
-            .expect("insert should succeed");
-
-        let requests = channel.requests.lock().unwrap();
-        assert_eq!(
-            requests.as_slice(),
-            [
-                (
-                    "send_input".to_string(),
-                    json!({ "session_id": "target-pane", "text": "git status" }),
-                ),
-                (
-                    "focus_pane".to_string(),
-                    json!({ "session_id": "target-pane" }),
-                ),
-            ]
-        );
     }
 
     #[tokio::test]

@@ -95,8 +95,7 @@ commands.help_close_hint: "  Esc        Isara ang tulong na ito"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End para mag-scroll • ↑ ↓ para mag-navigate • ← → para magpalit ng aksyon • Enter para pumili • Esc para magkansela)"
+recommendations.nav_hint: "(↑ ↓ para mag-navigate • ← → para magpalit ng aksyon • Enter para pumili • Esc para mag-cancel)"
 recommendations.button_run_command: "[ Patakbuhin ang command ]"
 recommendations.button_insert_in_terminal: "Ilagay sa Terminal"
 recommendations.button_open_in_new_tab: "Buksan sa Bagong Tab ↵"

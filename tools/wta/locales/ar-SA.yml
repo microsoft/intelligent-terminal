@@ -109,8 +109,7 @@ commands.agent.summary: "اختر عامل لعلامة التبويب هذه (/
 
 # ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - أسماء المفاتيح ورمز مفتاح الإدخال، لا تترجمها
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End للتمرير • ↑ ↓ للتنقل • ← → للتبديل بين الأزرار • Enter للتحديد • Esc للإلغاء)"
+recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بين الأزرار • Enter للتحديد • Esc للإلغاء)"
 recommendations.button_run_command: "[ تشغيل الأمر ]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"

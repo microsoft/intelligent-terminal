@@ -97,8 +97,7 @@ commands.help_close_hint: "[  Esc        Çĺöśé ţĥïś ĥéĺṗ!!!! !!!!]
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "[(PgUp/PgDn/Home/End ţö śçŕöĺĺ çåŕď • ↑ ↓ ţö ñåṽïğåţé śûğğéśţïöñś • ← → ţö śŵïţçĥ åçţïöñś • Enter ţö śéĺéçţ • Esc ţö çåñçéĺ)!!!! !!!! !!!! !!!!]"
+recommendations.nav_hint: "[(↑ ↓ ţö ñåṽïğåţé • ← → ţö śŵïţçĥ ɓûţţöñś • Enter ţö śéĺéçţ • Esc ţö çåñçéĺ)!!!! !!!! !!!! !!!!]"
 recommendations.button_run_command: "[[ Ŕûñ çöḿḿåñď ]!!]"
 recommendations.button_insert_in_terminal: "[Îñśéŕţ ïñ Ţéŕḿïñåĺ!!!! !!!!]"
 recommendations.button_open_in_new_tab: "[Öṗéñ ïñ Ñéŵ Ţåƀ ↵!!!! !!!!]"

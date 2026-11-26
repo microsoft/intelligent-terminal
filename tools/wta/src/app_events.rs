@@ -503,8 +503,6 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
-        // Redrawing backend events may replace the card before the next paint.
-        // Do not let a queued Enter activate the previous frame's action.
         let invalidates_card = self.event_requires_redraw(&event)
             && !matches!(
                 &event,
@@ -634,22 +632,6 @@ impl App {
                 }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
-                crossterm::event::MouseEventKind::ScrollUp
-                | crossterm::event::MouseEventKind::ScrollDown
-                    if self.recommendation_rendered
-                        && self.current_tab().rec_body_scroll.max > 0
-                        && self.recommendation_area.is_some_and(|area| {
-                            area.contains((mouse.column, mouse.row).into())
-                        }) =>
-                {
-                    self.scroll_recommendation_body(
-                        if matches!(mouse.kind, crossterm::event::MouseEventKind::ScrollUp) {
-                            -1
-                        } else {
-                            1
-                        },
-                    );
-                }
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
                     if self.current_tab().current_view == View::Agents =>
@@ -1244,6 +1226,14 @@ impl App {
                     return;
                 }
                 let is_active_tab = self.active_tab_key() == tab_id;
+                if self.tab_sessions.get(&tab_id).is_some_and(|tab| {
+                    tab.session_id
+                        .as_deref()
+                        .is_some_and(|previous| previous != session_id)
+                        && tab.turn.recommendations().is_some()
+                }) {
+                    self.request_turn_cancel_for_tab(&tab_id);
+                }
                 let replaced_session_ids: Vec<String> = self
                     .session_to_tab
                     .iter()

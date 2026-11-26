@@ -108,8 +108,7 @@ commands.agent.summary: "यो पेनका लागि एजेन्ट 
 
 # ── सिफारिस प्यानल (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - कुञ्जी नामहरू र Return-कुञ्जी ग्लिफ, अनुवाद नगर्नुहोस्
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End स्क्रोल गर्नुहोस् • ↑ ↓ नेभिगेट गर्न • ← → बटनहरू स्विच गर्न • Enter चयन गर्न • Esc रद्द गर्न)"
+recommendations.nav_hint: "(↑ ↓ नेभिगेट गर्न • ← → बटनहरू स्विच गर्न • Enter चयन गर्न • Esc रद्द गर्न)"
 recommendations.button_run_command: "[ कमाण्ड चलाउनुहोस् ]"
 recommendations.button_insert_in_terminal: "टर्मिनलमा सम्मिलित गर्नुहोस्"
 recommendations.button_open_in_new_tab: "नयाँ ट्याबमा खोल्नुहोस् ↵"

@@ -108,8 +108,7 @@ commands.agent.summary: "इस टैब के लिए एजेंट च�
 
 # ── अनुशंसा पैनल (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - कुंजी नाम और Return-कुंजी ग्लिफ़, अनुवाद न करें
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End स्क्रॉल करें • ↑ ↓ नेविगेट करें • ← → बटन बदलें • Enter चुनें • Esc रद्द करें)"
+recommendations.nav_hint: "(↑ ↓ नेविगेट करें • ← → बटन बदलें • Enter चुनें • Esc रद्द करें)"
 recommendations.button_run_command: "[ कमांड चलाएँ ]"
 recommendations.button_insert_in_terminal: "टर्मिनल में सम्मिलित करें"
 recommendations.button_open_in_new_tab: "नई टैब में खोलें ↵"

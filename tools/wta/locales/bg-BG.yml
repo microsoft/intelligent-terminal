@@ -105,8 +105,7 @@ commands.sessions.summary: "Отваряне на избора на предиш
 commands.agent.summary: "Изберете агента за този раздел (/agent <id> за директно превключване)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End за превъртане • ↑ ↓ за навигация • ← → за превключване на бутони • Enter за избор • Esc за отказ)"
+recommendations.nav_hint: "(↑ ↓ за навигация • ← → за превключване на бутони • Enter за избор • Esc за отказ)"
 recommendations.button_run_command: "[ Изпълни команда ]"
 recommendations.button_insert_in_terminal: "Вмъкване в Terminal"
 recommendations.button_open_in_new_tab: "Отваряне в нов раздел ↵"

@@ -91,8 +91,7 @@ commands.help_close_hint: "  Esc        關閉此說明"  # {Locked="Esc"}
 
 # ── 建議面板 (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - 按鍵名稱和 Return 鍵符號，請勿翻譯
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End 捲動內容 • ↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter 選取 • Esc 取消)"
+recommendations.nav_hint: "(↑ ↓ 瀏覽 • ← → 切換按鈕 • Enter 選取 • Esc 取消)"
 recommendations.button_run_command: "[ 執行命令 ]"
 recommendations.button_insert_in_terminal: "插入終端機"
 recommendations.button_open_in_new_tab: "在新索引標籤中開啟 ↵"

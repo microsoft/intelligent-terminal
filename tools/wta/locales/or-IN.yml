@@ -108,8 +108,7 @@ commands.agent.summary: "ଏହି ଟ୍ୟାବ୍ ପାଇଁ ଏଜେଣ�
 
 # ── ସୁପାରିଶ ପ୍ୟାନେଲ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - କୀ ନାମ ଏବଂ Return-କୀ ଗ୍ଲିଫ୍, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End ସ୍କ୍ରୋଲ୍ କରନ୍ତୁ • ↑ ↓ ନେଭିଗେଟ୍ କରିବାକୁ • ← → ବଟନ୍ ବଦଳାଇବାକୁ • Enter ବାଛିବାକୁ • Esc ବାତିଲ୍ କରିବାକୁ)"
+recommendations.nav_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରିବାକୁ • ← → ବଟନ୍ ବଦଳାଇବାକୁ • Enter ବାଛିବାକୁ • Esc ବାତିଲ୍ କରିବାକୁ)"
 recommendations.button_run_command: "[ କମାଣ୍ଡ ଚଳାନ୍ତୁ ]"
 recommendations.button_insert_in_terminal: "ଟର୍ମିନାଲରେ ସନ୍ନିବେଶ କରନ୍ତୁ"
 recommendations.button_open_in_new_tab: "ନୂଆ ଟ୍ୟାବରେ ଖୋଲନ୍ତୁ ↵"

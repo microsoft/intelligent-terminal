@@ -95,8 +95,7 @@ commands.help_close_hint: "  Esc        Sulge see abi"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End kerimiseks • ↑ ↓ navigeerimiseks • ← → nuppude vahetamiseks • Enter valimiseks • Esc tühistamiseks)"
+recommendations.nav_hint: "(↑ ↓ navigeerimiseks • ← → nuppude vahetamiseks • Enter valimiseks • Esc tühistamiseks)"
 recommendations.button_run_command: "[ Käivita käsk ]"
 recommendations.button_insert_in_terminal: "Lisa terminali"
 recommendations.button_open_in_new_tab: "Ava uuel vahekaardil ↵"

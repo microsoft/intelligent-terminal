@@ -108,8 +108,7 @@ commands.agent.summary: "இந்தப் பலகத்திற்கான
 
 # ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - விசைப் பெயர்கள் மற்றும் Return-விசை குறியீடு, மொழிபெயர்க்க வேண்டாம்
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End உருட்ட • ↑ ↓ வழிசெலுத்த • ← → பொத்தான்களை மாற்ற • Enter தேர்ந்தெடுக்க • Esc ரத்துசெய்ய)"
+recommendations.nav_hint: "(↑ ↓ வழிசெலுத்த • ← → பொத்தான்களை மாற்ற • Enter தேர்ந்தெடுக்க • Esc ரத்துசெய்ய)"
 recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
 recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
 recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"

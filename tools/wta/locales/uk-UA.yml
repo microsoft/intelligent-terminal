@@ -104,8 +104,7 @@ commands.sessions.summary: "Відкрити вибір історичних с�
 commands.agent.summary: "Виберіть агент для цієї вкладки (/agent <id> для прямого перемикання)"  # {Locked="/agent","<id>"}
 # ── Панель рекомендацій (src/ui/recommendations.rs) ───────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - назви клавіш і символ клавіші Enter, не перекладати
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End прокрутити • ↑ ↓ навігація • ← → перемикання кнопок • Enter вибрати • Esc скасувати)"
+recommendations.nav_hint: "(↑ ↓ навігація • ← → перемикання кнопок • Enter вибрати • Esc скасувати)"
 recommendations.button_run_command: "[ Виконати команду ]"
 recommendations.button_insert_in_terminal: "Вставити в термінал"
 recommendations.button_open_in_new_tab: "Відкрити в новій вкладці ↵"

@@ -108,8 +108,7 @@ commands.agent.summary: "ഈ ടാബിനായി ഏജന്റ് തി�
 
 # ── ശുപാര്‍ശ പാനല്‍ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - കീ പേരുകളും Return-കീ ഗ്ലിഫും, വിവര്‍ത്തനം ചെയ്യരുത്
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End സ്ക്രോൾ ചെയ്യുക • ↑ ↓ നാവിഗേറ്റ് ചെയ്യാൻ • ← → ബട്ടണുകൾ മാറ്റാൻ • Enter തിരഞ്ഞെടുക്കാൻ • Esc റദ്ദാക്കാൻ)"
+recommendations.nav_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യാൻ • ← → ബട്ടണുകൾ മാറ്റാൻ • Enter തിരഞ്ഞെടുക്കാൻ • Esc റദ്ദാക്കാൻ)"
 recommendations.button_run_command: "[ കമാന്‍ഡ് പ്രവര്‍ത്തിപ്പിക്കുക ]"
 recommendations.button_insert_in_terminal: "ടെര്‍മിനലില്‍ ചേര്‍ക്കുക"
 recommendations.button_open_in_new_tab: "പുതിയ ടാബില്‍ തുറക്കുക ↵"

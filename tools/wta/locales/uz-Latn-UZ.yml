@@ -108,8 +108,7 @@ commands.agent.summary: "Bu panel uchun agentni tanlang (toʻgʻridan-toʻgʻri 
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End aylantirish uchun • ↑ ↓ navigatsiya uchun • ← → tugmalarni almashtirish uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
+recommendations.nav_hint: "(↑ ↓ navigatsiya uchun • ← → tugmalarni almashtirish uchun • Enter tanlash uchun • Esc bekor qilish uchun)"
 recommendations.button_run_command: "[ Buyruqni bajarish ]"
 recommendations.button_insert_in_terminal: "Terminal-ga kiritish"
 recommendations.button_open_in_new_tab: "Yangi varaqda ochish ↵"

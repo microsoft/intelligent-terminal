@@ -108,8 +108,7 @@ commands.agent.summary: "اس ٹیب کے لیے ایجنٹ منتخب کریں 
 
 # ── سفارشات پینل (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - کلید کے نام اور Return-کلید گلف، ترجمہ نہ کریں
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End اسکرول کرنے کے لیے • ↑ ↓ نیویگیٹ کرنے کے لیے • ← → بٹن تبدیل کرنے کے لیے • Enter منتخب کرنے کے لیے • Esc منسوخ کرنے کے لیے)"
+recommendations.nav_hint: "(↑ ↓ نیویگیٹ کرنے کے لیے • ← → بٹن تبدیل کرنے کے لیے • Enter منتخب کرنے کے لیے • Esc منسوخ کرنے کے لیے)"
 recommendations.button_run_command: "[ کمانڈ چلائیں ]"
 recommendations.button_insert_in_terminal: "ٹرمینل میں داخل کریں"
 recommendations.button_open_in_new_tab: "نئی ٹیب میں کھولیں ↵"

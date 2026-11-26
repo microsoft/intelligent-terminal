@@ -95,8 +95,7 @@ commands.help_close_hint: "  Esc        Kay yanapata wichq'ay"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End kuyuchinapaq • ↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
+recommendations.nav_hint: "(↑ ↓ purinapaq • ← → ñit'ina t'ikranapaq • Enter akllanapaq • Esc chinkarichinapaq)"
 recommendations.button_run_command: "[ Kamachiyta purichiy ]"
 recommendations.button_insert_in_terminal: "Terminal nisqaman churay"
 recommendations.button_open_in_new_tab: "Musuq Ripa nisqapi kichay ↵"

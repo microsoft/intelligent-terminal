@@ -108,8 +108,7 @@ commands.agent.summary: "ఈ ట్యాబ్ కోసం ఏజెంట్�
 
 # ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - కీ పేర్లు మరియు Return-కీ గ్లిఫ్, అనువదించవద్దు
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End స్క్రోల్ చేయండి • ↑ ↓ నావిగేట్ చేయడానికి • ← → బటన్‌లను మార్చడానికి • Enter ఎంచుకోవడానికి • Esc రద్దు చేయడానికి)"
+recommendations.nav_hint: "(↑ ↓ నావిగేట్ చేయడానికి • ← → బటన్‌లను మార్చడానికి • Enter ఎంచుకోవడానికి • Esc రద్దు చేయడానికి)"
 recommendations.button_run_command: "[ కమాండ్ అమలు చేయండి ]"
 recommendations.button_insert_in_terminal: "టెర్మినల్‌లో చొప్పించండి"
 recommendations.button_open_in_new_tab: "కొత్త ట్యాబ్‌లో తెరవండి ↵"

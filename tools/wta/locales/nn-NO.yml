@@ -95,8 +95,7 @@ commands.help_close_hint: "  Esc        Lukk denne hjelpa"  # {Locked="Esc"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-# {Locked="PgUp","PgDn","Home","End"} - literal scrolling key names.
-recommendations.nav_hint: "(PgUp/PgDn/Home/End for å rulle • ↑ ↓ for å navigere • ← → for å byte knappar • Enter for å velje • Esc for å avbryte)"
+recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å byte knappar • Enter for å velje • Esc for å avbryte)"
 recommendations.button_run_command: "[ Køyr kommando ]"
 recommendations.button_insert_in_terminal: "Set inn i Terminal"
 recommendations.button_open_in_new_tab: "Opne i ny fane ↵"

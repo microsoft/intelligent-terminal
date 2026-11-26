@@ -524,9 +524,11 @@ pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u1
 
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
-    let mut height = pending_text
-        .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
-        .unwrap_or(0);
+    let mut height = if pending_text.is_some() || tab.turn.recommendations().is_some() {
+        rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width)
+    } else {
+        0
+    };
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
     // it off the top of the visible chat block. Always a single row —
@@ -1519,16 +1521,15 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             position
         });
 
-    // Update the scroll bound only when the build saw all of history;
-    // otherwise the true max is still unknown and the stored value (possibly
-    // stale) is the best we have.
-    if !truncated {
-        app.current_tab_mut().chat_scroll.set_max(
-            total_lines
-                .saturating_add(effective_offset.saturating_sub(local_offset))
-                .saturating_sub(visible_height),
-        );
-    }
+    let known_max = total_lines
+        .saturating_add(effective_offset.saturating_sub(local_offset))
+        .saturating_sub(visible_height);
+    let previous_max = app.current_tab().chat_scroll.max;
+    app.current_tab_mut().chat_scroll.set_max(if truncated {
+        previous_max.max(known_max)
+    } else {
+        known_max
+    });
 
     let rendered_total_rows = total_lines.saturating_add(skipped_rows_below);
     let estimated_total_rows = if truncated {
@@ -2074,6 +2075,17 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             wrap_width,
             theme::DOT_AGENT,
             theme::AGENT_TEXT,
+        );
+    }
+    if let Some(choice) = tab
+        .turn
+        .recommendations()
+        .and_then(|set| set.choices.get(tab.selected_recommendation))
+    {
+        let text = super::recommendations::recommendation_display_text(choice);
+        lines.extend(
+            text.split('\n')
+                .map(|line| Line::from(Span::styled(line.to_owned(), theme::CARD_CODE))),
         );
     }
     lines
@@ -4872,5 +4884,78 @@ mod tests {
             collapse_newlines_for_preview("no newline here"),
             Cow::Borrowed(_)
         ));
+    }
+
+    #[test]
+    fn preserved_regression_literal_projection_uses_native_wrapping() {
+        use crate::app::{SubmittedPrompt, TurnOutcome, TurnState};
+        use std::sync::{atomic::AtomicBool, Arc, Mutex};
+        use tokio::sync::mpsc::unbounded_channel;
+        let mut app = App::new(
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            unbounded_channel().0,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+            Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                false, false,
+            ))),
+        );
+        let source =
+            "  **literal** `code` [link](url)  你好 e\u{301} 👩‍💻  \n\n    indented  tail  \n";
+        app.current_tab_mut().turn = TurnState::Surfaced {
+            prompt: SubmittedPrompt {
+                id: 99,
+                text: "unrelated prompt".into(),
+                submitted_at_unix_s: 0.0,
+                context: Default::default(),
+                autofix: None,
+            },
+            outcome: TurnOutcome::Recommendation(crate::coordinator::RecommendationSet {
+                recommended_choice: Some(1),
+                choices: vec![crate::coordinator::RecommendationChoice {
+                    choice: 1,
+                    title: "summary, not the command".into(),
+                    rationale: String::new(),
+                    actions: vec![crate::coordinator::RecommendedAction::Send {
+                        parent: "pane-9".into(),
+                        input: source.into(),
+                    }],
+                }],
+            }),
+            end_pending: false,
+        };
+        let messages = app.current_tab().messages.len();
+        let history = app.current_tab().completed_turns.len();
+        for width in [8, 24, 80] {
+            let lines = build_pending_stream_lines(&app, width);
+            assert_eq!(
+                lines.iter().map(line_text).collect::<Vec<_>>().join("\n"),
+                source
+            );
+            let expected: Vec<Line> = source.split('\n').map(Line::from).collect();
+            let area = Rect::new(0, 0, width as u16, 40);
+            let mut actual_buffer = Buffer::empty(area);
+            let mut expected_buffer = Buffer::empty(area);
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .render(area, &mut actual_buffer);
+            Paragraph::new(expected)
+                .wrap(Wrap { trim: false })
+                .render(area, &mut expected_buffer);
+            for (actual, expected) in actual_buffer.content.iter().zip(&expected_buffer.content) {
+                assert_eq!(actual.symbol(), expected.symbol());
+            }
+        }
+        assert_eq!(app.current_tab().messages.len(), messages);
+        assert_eq!(app.current_tab().completed_turns.len(), history);
     }
 }
