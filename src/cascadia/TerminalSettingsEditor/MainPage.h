@@ -58,6 +58,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void SettingsSearchBox_SuggestionChosen(const Windows::UI::Xaml::Controls::AutoSuggestBox& sender, const Windows::UI::Xaml::Controls::AutoSuggestBoxSuggestionChosenEventArgs& args);
 
         void SettingsNav_Loaded(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
+        void ProfilesNavHeader_Loaded(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
         void SettingsNav_ItemInvoked(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Microsoft::UI::Xaml::Controls::NavigationViewItemInvokedEventArgs& args);
         void SettingsNav_PaneOpened(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Windows::Foundation::IInspectable& args);
         void SettingsNav_PaneClosed(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Windows::Foundation::IInspectable& args);
@@ -74,6 +75,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
         void NavigateToAIAgents();
         void SetAgentProfilesIntroductionPresentationGate(const Editor::AgentProfilesIntroductionPresentationGate& gate);
+        void WindowMoveSizeChanged(bool moving);
 
         Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;
         Editor::ExtensionsViewModel ExtensionsVM() const noexcept { return _extensionsVM; }
@@ -111,6 +113,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Microsoft::UI::Xaml::Controls::NavigationViewItem _FindProfileNavItem(winrt::guid profileGuid) const;
 
         void _AnnounceNavPaneState(bool opened);
+        void _QueueAgentProfilesIntroduction();
+        void _CloseAgentProfilesIntroduction();
         void _TryShowAgentProfilesIntroduction();
         void _UpdateAgentProfilesIntroductionPopup() noexcept;
         std::optional<Windows::Foundation::Rect> _GetAgentProfilesIntroductionTargetBounds();
@@ -141,12 +145,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         std::unordered_set<std::wstring> _availableHostAgents;
         Windows::UI::Xaml::DispatcherTimer _agentProfilesIntroductionTimer{ nullptr };
+        Windows::UI::Xaml::Controls::Border _agentProfilesIntroductionTarget{ nullptr };
+        Windows::UI::Xaml::Media::CompositionTarget::Rendering_revoker _agentProfilesIntroductionFrameRevoker;
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _agentProfilesIntroductionLayoutRevoker;
         Windows::UI::Xaml::Controls::Primitives::Popup _agentProfilesIntroductionPopup{ nullptr };
         uint64_t _agentProfilesIntroductionClaim{ 0 };
         Editor::AgentProfilesIntroductionPresentationGate _agentProfilesIntroductionPresentationGate{ nullptr };
         bool _agentProfilesIntroductionPresented{ false };
-        bool _agentProfilesIntroductionResizing{ false };
+        bool _agentProfilesIntroductionUpdateQueued{ false };
+        bool _agentProfilesIntroductionClosing{ false };
+        bool _agentProfilesIntroductionMoving{ false };
+        bool _agentProfilesIntroductionPaneOpening{ false };
+        bool _agentProfilesIntroductionRecoverNavigation{ false };
         bool _agentProfilesIntroductionDismissed{ false };
         bool _agentProfilesIntroductionRevealRequested{ false };
         bool _agentProfilesIntroductionScrollRequested{ false };
