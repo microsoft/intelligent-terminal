@@ -17364,6 +17364,7 @@ namespace winrt::TerminalApp::implementation
                         if (!showLegacyPercent)
                         {
                             itemImpl->ProgressValue(0);
+                            itemImpl->IsProgressRingActive(::Microsoft::Terminal::ProgressPresentation::HasVisibleProgress(pane.ProgressState, 0));
                         }
                         if (status.observed || status.SuppressesLegacyBadge())
                         {

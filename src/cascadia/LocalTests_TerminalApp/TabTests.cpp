@@ -14179,6 +14179,48 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(pane.IsProgressRingActive());
             VERIFY_IS_TRUE(pane.IsProgressRingIndeterminate());
         });
+
+        emit(u"\x1b]7501;state=clear\x1b\\");
+        TestOnUIThread([&]() {
+            const auto emitOnUIThread = [&](const std::u16string_view sequence) {
+                connection->TerminalOutput.raise(winrt::array_view<const char16_t>{ sequence.data(), sequence.data() + sequence.size() });
+            };
+            const auto manager = winrt::get_self<winrt::TerminalApp::implementation::ContentManager>(page->_manager);
+            const auto contentId = control.ContentId();
+            manager->SetNativeAgentSessionEventsEnabled(true);
+            const auto identity = manager->AdmitNativeAgentObservation(contentId, 1, "tab", "agent-session", "Host", true, 0, L"copilot");
+            VERIFY_ARE_NOT_EQUAL(0ull, identity.modeEpoch);
+            VERIFY_IS_TRUE(manager->BeginProgramBadgeCandidate(contentId, identity.modeEpoch, 1));
+            manager->ResolveProgramBadgeCandidate(contentId, identity, 1, true, true);
+            emitOnUIThread(u"\x1b]9;4;1;73\a");
+            VERIFY_ARE_EQUAL(73ull, control.TaskbarProgress());
+            const auto promptReceipt = manager->NativeAgentProgressReceipt(contentId);
+            VERIFY_ARE_NOT_EQUAL(0ull, promptReceipt);
+            manager->RetireNativeAgentBadge(contentId, identity.modeEpoch, promptReceipt);
+
+            const auto verifyProgress = [&](const uint64_t state, const uint32_t value, const bool ringActive) {
+                VERIFY_ARE_EQUAL(state, control.TaskbarState());
+                page->_RefreshTabStripPaneItems(owner);
+                const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+                VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+                const auto pane = display.PaneItems().GetAt(0);
+                VERIFY_IS_NOT_NULL(pane.IconSource());
+                VERIFY_ARE_EQUAL(state, pane.ProgressState());
+                VERIFY_ARE_EQUAL(value, pane.ProgressValue());
+                VERIFY_ARE_EQUAL(ringActive, pane.IsProgressRingActive());
+            };
+            emitOnUIThread(u"\x1b]9;4;2;0\a");
+            VERIFY_ARE_EQUAL(73ull, control.TaskbarProgress());
+            VERIFY_IS_TRUE(manager->NativeAgentProgressReceipt(contentId) > promptReceipt);
+            VERIFY_IS_TRUE(manager->SuppressesNativeAgentLegacyPercent(contentId));
+            verifyProgress(2, 0, false);
+            emitOnUIThread(u"\x1b]9;4;4;0\a");
+            verifyProgress(4, 0, false);
+            emitOnUIThread(u"\x1b]9;4;3\a");
+            verifyProgress(3, 0, true);
+            emitOnUIThread(u"\x1b]9;4;1;42\a");
+            verifyProgress(1, 42, true);
+        });
     }
 
     void TabTests::PureOscNonActivePaneProjectsUnread()
