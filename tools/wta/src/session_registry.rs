@@ -2848,6 +2848,9 @@ impl SessionRegistry for InMemoryRegistry {
         if state.program_panes.iter().any(|(pane, program)| {
             osc_owner(&state, pane).is_some_and(|identity| {
                 identity.session_id.0.as_ref() == key
+                    && state.sessions.get(identity).is_some_and(|row| {
+                        row.location == SessionLocation::Host && row.session_universe.is_none()
+                    })
                     && cli
                         .canonical_provider_id()
                         .as_deref()
@@ -10097,6 +10100,69 @@ mod tests {
                 AgentStatus::Attention,
             ),
         ]
+    }
+
+    #[tokio::test]
+    async fn wsl_osc_owner_does_not_suppress_host_watcher_with_same_id() {
+        let (registry, host_identity) = native_bound_registry().await;
+        assert!(registry
+            .apply_native_observation(native_event(
+                serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+                1,
+            ))
+            .await);
+
+        let wsl_pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let location = SessionLocation::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        let mut row = qualified_info("real-session", "copilot", location.clone(), "WSL");
+        row.pane_session_id = Some(wsl_pane.into());
+        row.status = Some(AgentStatus::Idle);
+        let wsl_identity = SessionIdentity::from_info(&row);
+        registry.upsert(row).await;
+
+        let mut reset = native_event(
+            serde_json::json!({"kind":"reset", "tracking_enabled":false}),
+            1,
+        );
+        reset.pane_id = wsl_pane.into();
+        reset.agent_session_id = Some("real-session".into());
+        reset.location = Some(location);
+        assert!(registry.apply_native_observation(reset.clone()).await);
+        let mut report = reset;
+        report.event = program_event(Some("working"), 1, 1).event;
+        if let NativeObservationKind::ProgramStatus { program_status } = &mut report.event {
+            program_status.native_lease_active = Some(true);
+        }
+        assert!(registry.apply_native_observation(report).await);
+        assert_eq!(
+            osc_owner(&*registry.inner.lock().await, wsl_pane),
+            Some(&wsl_identity)
+        );
+
+        assert_eq!(
+            registry
+                .apply_native_watcher_activity(
+                    &CliSource::Copilot,
+                    "real-session",
+                    SessionEvent::Notification {
+                        key: "real-session".into(),
+                        message: "Host input requested".into(),
+                        timestamp_ms: None,
+                    },
+                )
+                .await,
+            Some(true)
+        );
+        assert_eq!(
+            registry.lookup_identity(&host_identity).await.unwrap().status,
+            Some(AgentStatus::Attention)
+        );
+        assert_eq!(
+            registry.lookup_identity(&wsl_identity).await.unwrap().status,
+            Some(AgentStatus::Working)
+        );
     }
 
     #[tokio::test]

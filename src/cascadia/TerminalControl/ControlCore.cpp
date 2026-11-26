@@ -660,7 +660,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // Windows.Data.Json represents numbers as double. Preserve the revision's
         // exact UInt64 digits while leaving all untrusted text escaping to it.
         json.insert(1, L"\"revision\":" + std::to_wstring(snapshot.revision) +
-                           L",\"report_revision\":" + std::to_wstring(summary.current ? summary.current->revision : 0) + L",");
+                           L",\"report_revision\":" + std::to_wstring(snapshot.reportRevision) + L",");
         const hstring result{ json };
         auto previousRevision = _lastProgramStatusSnapshotRevision.load();
         while (previousRevision < snapshot.revision &&

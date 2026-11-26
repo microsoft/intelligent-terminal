@@ -300,7 +300,7 @@ namespace TerminalCoreUnitTests
             }
             const auto beforeRefresh = f.terminal.GetProgramStatusSnapshot().revision;
             f.Report(L"state=working:id=old/child");
-            VERIFY_ARE_EQUAL(beforeRefresh, f.terminal.GetProgramStatusSnapshot().revision);
+            VERIFY_IS_GREATER_THAN(f.terminal.GetProgramStatusSnapshot().revision, beforeRefresh);
             f.Report(L"state=working:id=new");
             snapshot = f.terminal.GetProgramStatusSnapshot();
             VERIFY_ARE_EQUAL(size_t{ 256 }, snapshot.records.size());
@@ -352,7 +352,7 @@ namespace TerminalCoreUnitTests
             f.terminal.AcknowledgeProgramStatus(repeated);
             const auto acknowledged = f.terminal.GetProgramStatusSnapshot().revision;
             f.Report(L"state=done:id=a:msg=b2s=");
-            VERIFY_ARE_EQUAL(acknowledged, f.terminal.GetProgramStatusSnapshot().revision);
+            VERIFY_IS_GREATER_THAN(f.terminal.GetProgramStatusSnapshot().revision, acknowledged);
             VERIFY_IS_FALSE(f.terminal.GetProgramStatusSnapshot().results[0].unread);
             f.Report(L"state=error:id=a:msg=ZXJyb3I=");
             f.terminal.AcknowledgeProgramStatus(repeated);
