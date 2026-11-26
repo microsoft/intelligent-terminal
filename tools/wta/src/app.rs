@@ -1548,6 +1548,7 @@ pub struct App {
     pub debug_scroll: usize,
     pub(crate) render_agent_markdown: bool,
     pub(crate) text_selection: crate::text_selection::TextSelection,
+    agent_context_menu: context_menu::AgentContextMenu,
     pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
@@ -1905,6 +1906,7 @@ impl App {
             debug_scroll: 0,
             render_agent_markdown: true,
             text_selection: crate::text_selection::TextSelection::default(),
+            agent_context_menu: context_menu::AgentContextMenu::default(),
             completed_turn_hits: Vec::new(),
             pressed_completed_turn: None,
             last_completed_turn_click: None,
@@ -6250,6 +6252,7 @@ pub(crate) struct CompletedTurnClickRecord {
 
 #[path = "app_events.rs"]
 mod app_events;
+mod context_menu;
 
 impl App {
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {

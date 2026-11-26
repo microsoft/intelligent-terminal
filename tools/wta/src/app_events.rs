@@ -503,6 +503,9 @@ impl App {
     }
 
     pub(super) fn handle_event(&mut self, event: AppEvent) {
+        if self.context_menu_input_invalidates(&event) {
+            self.invalidate_context_menu();
+        }
         self.sync_agent_markdown_selection();
         // Async cards can take and release draft ownership without a key/focus event.
         // Typing targets only the active tab; switching/renaming closes the affected groups.
@@ -660,6 +663,9 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right) => {
+                    if self.request_agent_context_menu(mouse) {
+                        return;
+                    }
                     if let Some(request) = self.handle_right_click() {
                         send_wt_protocol_event(request);
                     }
@@ -3199,6 +3205,11 @@ impl App {
                     return;
                 }
 
+                if method == "agent_context_menu_action" {
+                    self.handle_agent_context_menu_action(&params);
+                    return;
+                }
+
                 if method == "agent_paste_text" {
                     self.handle_agent_paste_request(&params);
                     return;
@@ -3880,6 +3891,7 @@ impl App {
                     {
                         self.tab_mut(&target_tab).copy_on_select = copy_on_select;
                     }
+                    self.enable_context_menu_bridge(&params);
                     // Apply `view` if present.
                     if let Some(view_str) = params.get("view").and_then(|v| v.as_str()) {
                         tracing::info!(
