@@ -46,11 +46,11 @@ unless the caller authorizes another destination.
 
 As in Accessibility Review, trusted workflow code stays checked out and a
 trusted runner step fetches the PR commits separately. It fetches only the two
-exact review revisions, at depth one. The reviewer reads diffs, source and
-unchanged consumers from those Git objects on demand. Git access goes through
-the trusted `review-source.sh` command, mounted read-only. The command handles
-Git flags and revisions itself; the model has no direct Git command grant.
-There is no bulk source export, evidence server or candidate checkout.
+exact review revisions, at depth one. Standard Git commands write the patch
+and materialize both source trees in an isolated, read-only mount. The reviewer
+uses ordinary file reads and search, including for unchanged callers. Neither
+tree replaces the trusted working directory. There is no custom reader,
+evidence server or model shell.
 
 Missing required evidence is reported with the native incomplete signal rather
 than a PR comment. The publication check fails an incomplete or missing report.

@@ -83,20 +83,19 @@ test('trusted checkout never activates candidate configuration or adds a repair 
     assert.doesNotMatch(job(source, 'prepare'), /copilot-requests|engine:/);
 });
 
-test('hosted research fetches pinned Git objects before inference and allows only the review reader', () => {
+test('hosted research prepares pinned source before inference without model shell access', () => {
     assert.match(source, /github: false/);
+    assert.match(source, /bash: false/);
     assert.doesNotMatch(source, /mcp-scripts:/);
     const agent = job(compiled, 'agent');
-    const prepare = agent.indexOf('name: Fetch the exact review revisions');
+    const prepare = agent.indexOf('name: Prepare the PR diff and source');
     assert.ok(prepare > 0 && prepare < agent.indexOf('name: Execute GitHub Copilot CLI'));
     assert.match(agent, /BASE: \$\{\{ needs.prepare.outputs.comparison_base \}\}/);
     assert.match(agent, /HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
     const execution = agent.split(/^      - /m).find(step => step.startsWith('name: Execute GitHub Copilot CLI'));
-    const shellGrants = [...execution.matchAll(/--allow-tool shell\(([^)]+)\)/g)].map(match => match[1]);
-    assert.deepEqual(shellGrants.filter(grant => /^(?:bash|git)\b/.test(grant)),
-        ['bash /opt/architecture-review/review-source.sh:*']);
-    assert.doesNotMatch(execution, /--allow-all-tools|--allow-tool shell\s/);
-    assert.match(execution, /architecture-review-source\.sh:\/opt\/architecture-review\/review-source\.sh:ro/);
+    assert.doesNotMatch(execution, /--allow-all-tools|--allow-tool shell[\s(]/);
+    assert.match(execution, /architecture-review:\/tmp\/gh-aw\/architecture-review:ro/);
+    assert.match(execution, /--no-custom-instructions/);
 });
 
 test('the compiled gate skips forks and drafts before preparation', () => {
@@ -125,27 +124,35 @@ test('evidence contains both revisions and unchanged consumers without checking 
         const base = git('rev-parse', 'HEAD');
         put('changed.txt', 'after\n');
         put('AGENTS.md', 'candidate instructions\n');
+        put('link.txt', 'consumer.txt');
         git('add', '.');
+        git('update-index', '--cacheinfo', '120000', git('hash-object', 'link.txt'), 'link.txt');
         git('commit', '-qm', 'head');
         const head = git('rev-parse', 'HEAD');
         git('branch', 'trusted-base', base);
         const checkout = path.join(root, 'checkout');
         git('clone', '--quiet', '--depth=1', '--branch', 'trusted-base', pathToFileURL(root).href, checkout);
-        git('-C', checkout, 'fetch', '--quiet', '--depth=1', '--no-tags', 'origin', base, head);
-        const reader = fileURLToPath(new URL('../scripts/review-source.sh', import.meta.url));
         const gitCore = process.platform === 'win32' ? git('--exec-path') : '';
         const bash = gitCore ? path.resolve(gitCore, '..', '..', '..', 'bin', 'bash.exe') : 'bash';
-        const read = (...args) => execFileSync(bash, [reader, ...args], { cwd: checkout, encoding: 'utf8',
-            env: { ...process.env, REVIEW_BASE: base, REVIEW_HEAD: head }, stdio: ['ignore', 'pipe', 'pipe'] });
-        assert.match(read('files'), /M\tchanged\.txt/);
-        assert.match(read('diff', 'changed.txt'), /-before\r?\n\+after/);
-        assert.equal(read('source', 'base', 'changed.txt'), 'before\n');
-        assert.equal(read('source', 'head', 'changed.txt'), 'after\n');
-        assert.equal(read('source', 'head', 'AGENTS.md'), 'candidate instructions\n');
-        assert.equal(read('source', 'head', 'consumer.txt'), 'unchanged consumer\n');
-        assert.match(read('search', 'head', 'unchanged consumer'), /consumer\.txt:1:unchanged consumer/);
-        assert.throws(() => read('source', 'main', 'changed.txt'), /Revision must be base or head/);
-        assert.throws(() => read('checkout', 'head'), /Usage:/);
+        const step = job(compiled, 'agent').split(/^      - /m)
+            .find(block => block.includes('name: Prepare the PR diff and source'));
+        const script = JSON.parse(step.match(/^ {8}run: (".*")\r?$/m)[1]);
+        const runnerTemp = path.join(root, 'runner');
+        fs.mkdirSync(runnerTemp);
+        execFileSync(bash, ['-c', script], { cwd: checkout, encoding: 'utf8',
+            env: { ...process.env, BASE: base, HEAD_SHA: head, RUNNER_TEMP: runnerTemp.replaceAll('\\', '/') },
+            stdio: ['ignore', 'pipe', 'pipe'] });
+        const evidence = path.join(runnerTemp, 'architecture-review');
+        const read = (...parts) => fs.readFileSync(path.join(evidence, ...parts), 'utf8');
+        assert.match(read('files.txt'), /M\tchanged\.txt/);
+        assert.match(read('diff.txt'), /-before\r?\n\+after/);
+        assert.equal(read('base', 'changed.txt'), 'before\n');
+        assert.equal(read('head', 'changed.txt'), 'after\n');
+        assert.equal(read('head', 'AGENTS.md'), 'candidate instructions\n');
+        assert.equal(read('head', 'consumer.txt'), 'unchanged consumer\n');
+        assert.ok(!fs.lstatSync(path.join(evidence, 'head', 'link.txt')).isSymbolicLink());
+        assert.equal(read('head', 'link.txt'), 'consumer.txt');
+        assert.ok(!fs.existsSync(path.join(evidence, 'head', '.git')));
         assert.equal(git('-C', checkout, 'rev-parse', '--is-shallow-repository'), 'true');
         assert.equal(git('-C', checkout, 'rev-parse', 'HEAD'), base);
         assert.ok(!fs.existsSync(path.join(checkout, 'AGENTS.md')));
