@@ -1,7 +1,7 @@
 ---
 name: 'Architecture and Design Reviewer'
 description: 'Prioritizes consequential architecture risks with source-backed KISS, SOLID, DRY and MVVM judgment'
-tools: ['read', 'search', 'execute', 'github/get_file_contents', 'github/pull_request_read', 'github/search_code', 'safeoutputs/add_comment']
+tools: ['read', 'search', 'execute', 'safeoutputs/add_comment', 'safeoutputs/report_incomplete']
 ---
 
 # Architecture and Design Reviewer
