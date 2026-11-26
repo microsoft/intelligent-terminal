@@ -433,9 +433,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 {
                     menu.PrimaryCommands().Append(e);
                 }
-                for (const auto& e : control->_originalSecondaryElements)
+                if (!control->_agentRightClickContextMenuEnabled)
                 {
-                    menu.SecondaryCommands().Append(e);
+                    for (const auto& e : control->_originalSecondaryElements)
+                    {
+                        menu.SecondaryCommands().Append(e);
+                    }
                 }
             }
         });
@@ -449,9 +452,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                 {
                     menu.PrimaryCommands().Append(e);
                 }
-                for (const auto& e : control->_originalSelectedSecondaryElements)
+                if (!control->_agentRightClickContextMenuEnabled)
                 {
-                    menu.SecondaryCommands().Append(e);
+                    for (const auto& e : control->_originalSelectedSecondaryElements)
+                    {
+                        menu.SecondaryCommands().Append(e);
+                    }
                 }
             }
         });
@@ -2741,6 +2747,19 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void TermControl::EnableAgentRightClickContextMenu(bool enabled)
     {
+        if (!enabled && _agentRightClickContextMenuEnabled)
+        {
+            const auto restoreSecondary = [](const auto& menu, const auto& originalElements) {
+                menu.SecondaryCommands().Clear();
+                for (const auto& element : originalElements)
+                {
+                    menu.SecondaryCommands().Append(element);
+                }
+            };
+            restoreSecondary(ContextMenu(), _originalSecondaryElements);
+            restoreSecondary(SelectionContextMenu(), _originalSelectedSecondaryElements);
+        }
+        _agentRightClickContextMenuEnabled = enabled;
         get_self<ControlInteractivity>(_interactivity)->EnableAgentRightClickContextMenu(enabled);
     }
 
@@ -4204,9 +4223,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         SelectCommandWithSelectionButton().Visibility(shouldShowSelectCommand ? Visibility::Visible : Visibility::Collapsed);
         SelectOutputWithSelectionButton().Visibility(shouldShowSelectOutput ? Visibility::Visible : Visibility::Collapsed);
 
-        (_core.HasSelection() ? SelectionContextMenu() :
-                                ContextMenu())
-            .ShowAt(*this, myOption);
+        auto menu{ _core.HasSelection() ? SelectionContextMenu() : ContextMenu() };
+        if (_agentRightClickContextMenuEnabled)
+        {
+            // Agent panes do not use the shell-specific secondary commands.
+            // Hiding them also avoids the CommandBarFlyout overflow flyout,
+            // which can crash when opened from a text selection.
+            menu.SecondaryCommands().Clear();
+        }
+        menu.ShowAt(*this, myOption);
     }
 
     void TermControl::ShowContextMenu()
