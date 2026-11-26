@@ -13,8 +13,8 @@ locale, and verify the saved Partner Center draft.
 
 Examples assume PowerShell on Windows; the current browser workflow uses Edge on Windows.
 
-- Playwright MCP configured with `--extension --browser msedge`, reached through
-  the configured Shared MCP Gateway, and the Playwright extension in Edge.
+- Playwright MCP configured with `--extension --browser msedge` and the
+  Playwright extension in Edge.
 - Node.js; the bundled scripts use built-ins only.
 - The bundled [AppName table](./references/intelligent-terminal-translations.md),
   used by `apply.mjs` for localized product names.

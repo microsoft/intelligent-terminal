@@ -1,7 +1,7 @@
 # Partner Center browser workflow
 
-Use the configured route:
-**Copilot → Shared MCP Gateway → Playwright MCP → Edge extension → signed-in Edge**.
+Use **Playwright MCP → Edge extension → signed-in Edge** through the client's
+configured MCP connection.
 MCP remains the control transport; `--extension --browser msedge` selects the
 existing browser instead of launching a separate profile.
 
@@ -10,20 +10,16 @@ Product overview:
 
 ## Connection preflight
 
-1. Discover the configured Playwright backend and tool schemas through the
-   gateway. Claim its exclusive lease, then **call** `browser_tabs` or
-   `browser_snapshot` to initiate the extension handshake.
+1. Discover the available Playwright MCP tools and their schemas, then **call**
+   `browser_tabs` or `browser_snapshot` to initiate the extension handshake.
 2. If Edge prompts, ask the user to approve the connection and select the
    Partner Center tab. Chat approval does not approve the browser connection.
    An already authorized connection may not prompt; confirm actual tab access.
 3. Open the overview and complete any interactive sign-in/MFA while the user is
    available. Confirm the product and intended draft submission.
 
-Do not switch to a new profile, extract credentials, or change global routing.
-Release the lease after browser work. For gateway errors, follow the
-`mcp-gateway-setup` skill's recovery rules; in particular, do not retry, release,
-or bypass an exclusive backend reporting `server_outcome_unknown`. Recovery
-requires coordinating an idle-time restart, not assuming a client reload worked.
+Do not switch to a new profile, extract credentials, or change the client's
+MCP configuration. Follow the configured connection's access and recovery rules.
 
 ## Export
 
@@ -57,7 +53,7 @@ Save into the run folder defined by `SKILL.md`.
    [extension-compatible upload](#extension-compatible-upload).
 3. Keep the page open until processing reports **Complete**. The UI saves
    languages sequentially (`Saving N of ... languages`); use bounded waits
-   below the gateway's downstream timeout. Inspect **View errors** on failure.
+   below the browser tool's timeout. Inspect **View errors** on failure.
 4. Perform [persisted verification](#persisted-verification). An **Updated**
    status alone is not proof that the content saved correctly.
 
