@@ -8,6 +8,7 @@
 #include "NavigateToPageArgs.g.h"
 #include "Utils.h"
 #include "SearchIndex.h"
+#include "../inc/AgentAvailability.h"
 
 #include <unordered_set>
 
@@ -121,6 +122,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _MoveXamlParsedNavItemsIntoItemSource();
         void _ApplyHostAgentAvailability(const Editor::ProfileViewModel& profile);
         safe_void_coroutine _ProbeHostAgentAvailabilityAsync();
+        safe_void_coroutine _ProbeWslAgentAvailabilityAsync();
 
         safe_void_coroutine _UpdateSearchIndex();
 
@@ -140,6 +142,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _extensionsViewModelChangedRevoker;
 
         std::unordered_set<std::wstring> _availableHostAgents;
+        std::vector<::Microsoft::Terminal::AgentAvailability::AgentSourceSnapshot> _availableWslAgents;
+        bool _updatingSettings{ false };
+        bool _wslAgentProbeInFlight{ false };
         Windows::UI::Xaml::DispatcherTimer _agentProfilesIntroductionTimer{ nullptr };
         Windows::UI::Xaml::FrameworkElement::LayoutUpdated_revoker _agentProfilesIntroductionLayoutRevoker;
         Windows::UI::Xaml::Controls::Primitives::Popup _agentProfilesIntroductionPopup{ nullptr };

@@ -48,6 +48,21 @@ Describe 'Native agent profile settings layout' -Tag 'Unit' {
         }
     }
 
+    It 'validates global agent sources including persisted Host defaults' {
+        $schema = Get-Content -LiteralPath (Join-Path $repoRoot 'doc\cascadia\profiles.schema.json') -Raw | ConvertFrom-Json
+        foreach ($property in @('acpAgentSource', 'delegateAgentSource')) {
+            $sourceSchema = $schema.'$defs'.Globals.properties.$property | ConvertTo-Json -Depth 10
+            foreach ($value in @($null, '', 'host', 'wsl:Ubuntu', 'wsl:Ubuntu-24.04', ('wsl:' + 'a' * 256))) {
+                $json = ConvertTo-Json -InputObject $value -Compress
+                Test-Json -Json $json -Schema $sourceSchema -ErrorAction Stop | Should -BeTrue
+            }
+            foreach ($value in @('Host', 'WSL:Ubuntu', 'wsl:', 'wsl:bad;name', 'wsl:two words', ('wsl:' + 'a' * 257), $true, 42)) {
+                $json = ConvertTo-Json -InputObject $value -Compress
+                Test-Json -Json $json -Schema $sourceSchema -ErrorAction SilentlyContinue | Should -BeFalse
+            }
+        }
+    }
+
     It 'keeps auxiliary assistant selectors only on the shell base page' {
         foreach ($name in @('AgentPaneBackend', 'CommandPaletteAgent')) {
             $baseControls = @($base.SelectNodes('//*') | Where-Object {

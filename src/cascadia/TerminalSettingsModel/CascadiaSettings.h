@@ -148,6 +148,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     public:
         static Model::CascadiaSettings LoadDefaults();
         static Model::CascadiaSettings LoadAll();
+        static winrt::Windows::Foundation::IAsyncOperation<winrt::hstring> DiscoverWslAgentsAsync();
 
         static winrt::hstring SettingsDirectory();
         static winrt::hstring SettingsPath();
