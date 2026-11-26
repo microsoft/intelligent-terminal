@@ -19961,6 +19961,16 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
+        sui.ShowDialogRequested([weakThis{ get_weak() }](auto&&, const ContentDialog& dialog) -> safe_void_coroutine {
+            if (const auto page = weakThis.get())
+            {
+                if (const auto presenter = page->DialogPresenter())
+                {
+                    co_await presenter.ShowDialog(dialog);
+                }
+            }
+        });
+
         sui.ShowLoadWarningsDialog([weakThis{ get_weak() }](auto&& /*s*/, const Windows::Foundation::Collections::IVectorView<winrt::Microsoft::Terminal::Settings::Model::SettingsLoadWarnings>& warnings) {
             if (auto page{ weakThis.get() })
             {

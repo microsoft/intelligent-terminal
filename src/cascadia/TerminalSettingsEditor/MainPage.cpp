@@ -1040,6 +1040,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     }
                 });
                 contentFrame().Navigate(xaml_typename<Editor::AIAgents>(), winrt::make<NavigateToPageArgs>(aiAgentsVm, *this, elementToFocus));
+                contentFrame().Content().as<Editor::AIAgents>().ShowDialogRequested([weak = get_weak()](auto&&, const ContentDialog& dialog) {
+                    if (const auto page = weak.get())
+                    {
+                        page->ShowDialogRequested.raise(*page, dialog);
+                    }
+                });
                 _breadcrumbs.Append(winrt::make<Breadcrumb>(vm, RS_(L"Nav_AIAgents/Content"), BreadcrumbSubPage::None));
 
                 // Dismiss the "NEW" badge after the user visits the page

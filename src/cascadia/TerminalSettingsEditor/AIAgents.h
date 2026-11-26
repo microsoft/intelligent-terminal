@@ -31,11 +31,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void DelegateAgentHelp_Loaded(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void ComplianceLearnMore_Click(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         static double InstalledOpacity(bool isInstalled) { return isInstalled ? 1.0 : 0.4; }
         static bool NotBool(bool value) { return !value; }
 
         til::property_changed_event PropertyChanged;
+        til::typed_event<Windows::Foundation::IInspectable, Windows::UI::Xaml::Controls::ContentDialog> ShowDialogRequested;
         WINRT_OBSERVABLE_PROPERTY(Editor::AIAgentsViewModel, ViewModel, PropertyChanged.raise, nullptr);
     };
 }

@@ -152,6 +152,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         PageSubtitlePrefix().Text(RS_(L"AIAgents_PageSubtitlePrefix"));
         PageSubtitlePrivacyLink().Text(RS_(L"AIAgents_PageSubtitlePrivacyLink"));
+        ComplianceMessage().Text(ComplianceInfoBar().Message());
 
         const auto customModelsHeader = RS_(L"AIAgents_CustomModels/Header");
         const auto customModelsCaption = RS_(L"AIAgents_CustomModels/HelpText");
@@ -184,6 +185,25 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
+    }
+
+    void AIAgents::ComplianceLearnMore_Click(const IInspectable&, const RoutedEventArgs&)
+    {
+        // Keep the dialog unparented so the window's popup-theme workaround cannot modify this page.
+        const auto dialog = Resources().Lookup(box_value(L"ComplianceDialogTemplate")).as<DataTemplate>().LoadContent().as<ContentDialog>();
+        dialog.FlowDirection(FlowDirection());
+        dialog.FindName(L"ComplianceHostingText").as<TextBlock>().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", CascadiaSettings::ApplicationDisplayName()) });
+        // The window presenter applies the application theme first; Settings can use a different theme.
+        // Wait until the popup owns the dialog before updating its ancestry.
+        dialog.Opened([theme = ActualTheme()](const ContentDialog& sender, const ContentDialogOpenedEventArgs&) {
+            auto element = sender.as<FrameworkElement>();
+            while (element)
+            {
+                element.RequestedTheme(theme);
+                element = element.Parent().try_as<FrameworkElement>();
+            }
+        });
+        ShowDialogRequested.raise(*this, dialog);
     }
 
     void AIAgents::InlineLinkText_Loaded(const IInspectable& sender, const RoutedEventArgs&)

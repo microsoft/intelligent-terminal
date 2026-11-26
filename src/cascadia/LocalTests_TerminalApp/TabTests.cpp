@@ -4,6 +4,7 @@
 #include "pch.h"
 
 #include <winrt/Microsoft.Terminal.UI.h>
+#include <winrt/Microsoft.Terminal.Settings.Editor.h>
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Storage.h>
 
@@ -497,6 +498,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(EnsureTestsActivate);
         TEST_METHOD(TryCreateConnectionType);
         TEST_METHOD(TryCreateXamlObjects);
+        TEST_METHOD(AgentComplianceRequestsUnparentedLocalizedDialog);
+        TEST_METHOD(AgentCompliancePopupPreservesSettingsTheme);
 
         TEST_METHOD(TryInitializePage);
         TEST_METHOD(FreHidesAndRestoresTabChrome);
@@ -1416,6 +1419,217 @@ namespace TerminalAppLocalTests
         });
 
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::AgentComplianceRequestsUnparentedLocalizedDialog()
+    {
+        VERIFY_SUCCEEDED(RunOnUIThread([]() {
+            const winrt::Microsoft::Terminal::Settings::Editor::AIAgents projected;
+            const auto previousDirection = projected.FlowDirection();
+            const auto restoreDirection = wil::scope_exit([&]() { projected.FlowDirection(previousDirection); });
+            projected.FlowDirection(FlowDirection::RightToLeft);
+            const auto notice = projected.FindName(L"ComplianceInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
+            VERIFY_IS_TRUE(notice.IsOpen());
+            VERIFY_IS_FALSE(notice.IsClosable());
+            VERIFY_IS_FALSE(notice.Message().empty());
+            VERIFY_ARE_EQUAL(notice.Message(), projected.FindName(L"ComplianceMessage").as<Documents::Run>().Text());
+            const Automation::Peers::HyperlinkButtonAutomationPeer peer{ projected.FindName(L"ComplianceLearnMoreButton").as<HyperlinkButton>() };
+            const auto invoke = peer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>();
+            ContentDialog first{ nullptr };
+            ContentDialog second{ nullptr };
+            auto requests = 0;
+            projected.ShowDialogRequested([&](auto&&, const ContentDialog& dialog) {
+                VERIFY_IS_NULL(dialog.Parent());
+                VERIFY_ARE_EQUAL(projected.FlowDirection(), dialog.FlowDirection());
+                VERIFY_IS_FALSE(winrt::unbox_value<winrt::hstring>(dialog.Title()).empty());
+                VERIFY_IS_FALSE(dialog.CloseButtonText().empty());
+                const auto paragraphs = dialog.Content().as<ScrollViewer>().Content().as<StackPanel>().Children();
+                VERIFY_ARE_EQUAL(3u, paragraphs.Size());
+                for (const auto& paragraph : paragraphs)
+                {
+                    VERIFY_IS_FALSE(paragraph.as<TextBlock>().Text().empty());
+                }
+                const auto hosting = paragraphs.GetAt(0).as<TextBlock>().Text();
+                VERIFY_IS_TRUE(std::wstring_view{ hosting }.find(std::wstring_view{ CascadiaSettings::ApplicationDisplayName() }) != std::wstring_view::npos);
+                VERIFY_IS_TRUE(std::wstring_view{ hosting }.find(L"{0}") == std::wstring_view::npos);
+                (++requests == 1 ? first : second) = dialog;
+            });
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, first.FlowDirection());
+            first.RequestedTheme(ElementTheme::Dark);
+            VERIFY_ARE_EQUAL(ElementTheme::Default, projected.RequestedTheme());
+            projected.FlowDirection(previousDirection);
+            invoke.Invoke();
+            VERIFY_ARE_EQUAL(2, requests);
+            VERIFY_IS_TRUE(first != second);
+            VERIFY_ARE_EQUAL(ElementTheme::Default, second.RequestedTheme());
+            VERIFY_ARE_EQUAL(previousDirection, second.FlowDirection());
+        }));
+    }
+
+    void TabTests::AgentCompliancePopupPreservesSettingsTheme()
+    {
+        winrt::Windows::Foundation::IAsyncAction exercise{ nullptr };
+        VERIFY_SUCCEEDED(RunOnUIThread([&]() {
+            exercise = []() -> winrt::Windows::Foundation::IAsyncAction {
+                const auto window = Window::Current();
+                const auto previousContent = window.Content();
+                const auto restoreContent = wil::scope_exit([&]() { window.Content(previousContent); });
+                const auto dispatcher = window.Dispatcher();
+                const auto appTheme = Application::Current().RequestedTheme() == ApplicationTheme::Light ? ElementTheme::Light : ElementTheme::Dark;
+                const auto oppositeTheme = appTheme == ElementTheme::Light ? ElementTheme::Dark : ElementTheme::Light;
+                const ScopedResourceLoader resources{ L"Microsoft.Terminal.Settings.Editor/Resources" };
+                namespace Editor = winrt::Microsoft::Terminal::Settings::Editor;
+                Grid host;
+                Frame frame;
+                host.Children().Append(frame);
+                window.Content(host);
+                window.Activate();
+                co_await wil::resume_foreground(dispatcher, CoreDispatcherPriority::Low);
+                const auto settings = CascadiaSettings::LoadDefaults();
+                const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
+                VERIFY_IS_TRUE(frame.Navigate(winrt::xaml_typename<Editor::AIAgents>(), Editor::NavigateToPageArgs{ viewModel, nullptr, L"" }));
+                const auto page = frame.Content().as<Editor::AIAgents>();
+                ::details::Event loaded;
+                const auto pageLoadedRevoker = page.Loaded(winrt::auto_revoke, [&](auto&&, auto&&) { loaded.Set(); });
+                host.UpdateLayout();
+                if (page.IsLoaded())
+                {
+                    loaded.Set();
+                }
+                co_await winrt::resume_background();
+                const auto loadedResult = WaitForSingleObject(loaded.m_handle, 10000);
+                co_await wil::resume_foreground(dispatcher);
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), loadedResult);
+                const auto notice = page.FindName(L"ComplianceInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
+                VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceInfo/Message"), notice.Message());
+                VERIFY_ARE_EQUAL(notice.Message(), page.FindName(L"ComplianceMessage").as<Documents::Run>().Text());
+
+                ContentDialog previousDialog{ nullptr };
+                for (const auto settingsTheme : { oppositeTheme, appTheme })
+                {
+                    ::details::Event changed;
+                    const auto signalReady = [&]() {
+                        if (page.IsLoaded() && page.ActualWidth() > 0 && page.ActualHeight() > 0 &&
+                            host.ActualTheme() == settingsTheme && page.ActualTheme() == settingsTheme)
+                        {
+                            changed.Set();
+                        }
+                    };
+                    const auto themeRevoker = page.ActualThemeChanged(winrt::auto_revoke, [&](auto&&, auto&&) { signalReady(); });
+                    const auto pageLayoutRevoker = page.LayoutUpdated(winrt::auto_revoke, [&](auto&&, auto&&) { signalReady(); });
+                    host.RequestedTheme(settingsTheme);
+                    host.UpdateLayout();
+                    signalReady();
+                    co_await winrt::resume_background();
+                    const auto changedResult = WaitForSingleObject(changed.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), changedResult);
+                    VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
+                    VERIFY_ARE_EQUAL(settingsTheme, page.ActualTheme());
+
+                    ContentDialog dialog{ nullptr };
+                    const auto requestRevoker = page.ShowDialogRequested(winrt::auto_revoke, [&](auto&&, const ContentDialog& requested) {
+                        dialog = requested;
+                    });
+                    const Automation::Peers::HyperlinkButtonAutomationPeer linkPeer{ page.FindName(L"ComplianceLearnMoreButton").as<HyperlinkButton>() };
+                    linkPeer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+                    VERIFY_IS_NOT_NULL(dialog);
+                    VERIFY_IS_NULL(dialog.Parent());
+                    VERIFY_IS_TRUE(dialog != previousDialog);
+                    VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceDialog/Title"), winrt::unbox_value<winrt::hstring>(dialog.Title()));
+                    VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceDialog/CloseButtonText"), dialog.CloseButtonText());
+                    const auto paragraphs = dialog.Content().as<ScrollViewer>().Content().as<StackPanel>().Children();
+                    VERIFY_ARE_EQUAL(3u, paragraphs.Size());
+                    std::wstring hosting{ resources.GetLocalizedString(L"AIAgents_ComplianceHosting") };
+                    const auto placeholder = hosting.find(L"{0}");
+                    VERIFY_IS_TRUE(placeholder != std::wstring::npos);
+                    hosting.replace(placeholder, 3, std::wstring_view{ CascadiaSettings::ApplicationDisplayName() });
+                    VERIFY_ARE_EQUAL(winrt::hstring{ hosting }, paragraphs.GetAt(0).as<TextBlock>().Text());
+                    VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceModels/Text"), paragraphs.GetAt(1).as<TextBlock>().Text());
+                    VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceRegulations/Text"), paragraphs.GetAt(2).as<TextBlock>().Text());
+
+                    dialog.XamlRoot(host.XamlRoot());
+                    dialog.RequestedTheme(appTheme);
+                    // Model the presenter's application-theme pass without claiming native-window coverage.
+                    const auto loadedRevoker = dialog.Loaded(winrt::auto_revoke, [appTheme](const winrt::Windows::Foundation::IInspectable& sender, const RoutedEventArgs&) {
+                        sender.as<FrameworkElement>().RequestedTheme(appTheme);
+                    });
+                    bool opened = false;
+                    bool closeClicked = false;
+                    ::details::Event popupReady;
+                    ::details::Event closed;
+                    const auto signalPopupReady = [&]() {
+                        if (opened && dialog.IsLoaded() && dialog.Parent() &&
+                            dialog.ActualWidth() > 0 && dialog.ActualHeight() > 0 &&
+                            dialog.ActualTheme() == settingsTheme)
+                        {
+                            popupReady.Set();
+                        }
+                    };
+                    const auto layoutRevoker = dialog.LayoutUpdated(winrt::auto_revoke, [&](auto&&, auto&&) { signalPopupReady(); });
+                    const auto dialogThemeRevoker = dialog.ActualThemeChanged(winrt::auto_revoke, [&](auto&&, auto&&) { signalPopupReady(); });
+                    const auto closeRevoker = dialog.CloseButtonClick(winrt::auto_revoke, [&](const ContentDialog&, const ContentDialogButtonClickEventArgs&) {
+                        closeClicked = true;
+                    });
+                    const auto closedRevoker = dialog.Closed(winrt::auto_revoke, [&](auto&&, auto&&) { closed.Set(); });
+                    const auto openedRevoker = dialog.Opened(winrt::auto_revoke, [&](const ContentDialog&, const ContentDialogOpenedEventArgs&) {
+                        opened = true;
+                        signalPopupReady();
+                    });
+                    const auto operation = dialog.ShowAsync(ContentDialogPlacement::Popup);
+                    bool invoked = false;
+                    const auto dismissOnFailure = wil::scope_exit([&]() {
+                        if (!invoked)
+                        {
+                            dialog.Hide();
+                        }
+                    });
+                    co_await winrt::resume_background();
+                    const auto popupResult = WaitForSingleObject(popupReady.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), popupResult);
+                    VERIFY_IS_NOT_NULL(dialog.Parent());
+                    VERIFY_IS_TRUE(dialog.ActualWidth() > 0);
+                    VERIFY_IS_TRUE(dialog.ActualHeight() > 0);
+                    VERIFY_ARE_EQUAL(settingsTheme, dialog.RequestedTheme());
+                    VERIFY_ARE_EQUAL(settingsTheme, dialog.ActualTheme());
+                    VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
+                    const auto findCloseButton = [](auto&& self, const DependencyObject& element) -> Button {
+                        if (const auto button = element.try_as<Button>(); button && button.Name() == L"CloseButton")
+                        {
+                            return button;
+                        }
+                        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+                        {
+                            if (const auto found = self(self, Media::VisualTreeHelper::GetChild(element, index)))
+                            {
+                                return found;
+                            }
+                        }
+                        return nullptr;
+                    };
+                    const auto closeButton = findCloseButton(findCloseButton, dialog);
+                    VERIFY_IS_NOT_NULL(closeButton);
+                    const Automation::Peers::ButtonAutomationPeer closePeer{ closeButton };
+                    closePeer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+                    invoked = true;
+                    const auto result = co_await operation;
+                    co_await winrt::resume_background();
+                    const auto closedResult = WaitForSingleObject(closed.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), closedResult);
+                    VERIFY_IS_TRUE(opened);
+                    VERIFY_IS_TRUE(closeClicked);
+                    VERIFY_ARE_EQUAL(ContentDialogResult::None, result);
+                    VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
+                    VERIFY_ARE_EQUAL(settingsTheme, page.ActualTheme());
+                    VERIFY_ARE_EQUAL(settingsTheme, host.RequestedTheme());
+                    previousDialog = dialog;
+                }
+            }();
+        }));
+        exercise.get();
     }
 
     void TabTests::CreateSimpleTerminalXamlType()

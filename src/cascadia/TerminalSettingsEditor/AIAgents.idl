@@ -12,5 +12,6 @@ namespace Microsoft.Terminal.Settings.Editor
 
         static Double InstalledOpacity(Boolean isInstalled);
         static Boolean NotBool(Boolean value);
+        event Windows.Foundation.TypedEventHandler<Object, Windows.UI.Xaml.Controls.ContentDialog> ShowDialogRequested;
     }
 }
