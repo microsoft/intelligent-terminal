@@ -322,6 +322,7 @@ jobs:
           retention-days: 14
 
 safe-outputs:
+  github-token: ${{ secrets.GITHUB_TOKEN }}
   staged: true
   threat-detection:
     post-steps:
@@ -351,6 +352,7 @@ safe-outputs:
           if-no-files-found: error
           retention-days: 14
   report-failure-as-issue: false
+  report-failed-jobs: false
   create-check-run:
     max: 1
     staged: true
@@ -659,9 +661,10 @@ max-ai-credits: 800
 max-daily-ai-credits: 5000
 
 concurrency:
-  group: 'ghaw-pr-security-repair-${{ github.event.inputs.pr_number }}'
+  group: 'PR CI-${{ github.event.inputs.pr_number }}'
   job-discriminator: ${{ github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+  queue: max
 
 run-name: 'Security Repair ${{ github.event.inputs.dispatch_id }}'
 ---

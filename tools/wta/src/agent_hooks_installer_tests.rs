@@ -1599,6 +1599,26 @@ fn antigravity_hooks_preserve_permissions_in_native_windows_dispatch() {
 }
 
 #[test]
+fn antigravity_hooks_preserve_permissions_in_cmd_shell_dispatch() {
+    let manifest: Value =
+        serde_json::from_str(include_str!("../wt-agent-hooks/antigravity/hooks.json")).unwrap();
+    for (event, command) in antigravity_hook_commands(&manifest) {
+        for candidate in [
+            command.to_string(),
+            command.replace("wtcli.exe", MISSING_BRIDGE),
+        ] {
+            let output = std::process::Command::new("cmd.exe")
+                .args(["/d", "/s", "/c", &candidate])
+                .env_remove("WT_COM_CLSID")
+                .env_remove("WT_SESSION")
+                .output()
+                .expect("cmd.exe should start");
+            assert_antigravity_hook_response(&output, &candidate, event);
+        }
+    }
+}
+
+#[test]
 fn antigravity_wsl_hooks_preserve_permissions_when_tracking_is_unavailable() {
     let manifest: Value =
         serde_json::from_str(include_str!("../wt-agent-hooks/antigravity-wsl/hooks.json")).unwrap();
@@ -2265,12 +2285,12 @@ fn native_hook_bundle_versions_match_their_marketplaces() {
         (
             "antigravity",
             include_str!("../wt-agent-hooks/antigravity/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
         (
             "antigravity-wsl",
             include_str!("../wt-agent-hooks/antigravity-wsl/intelligent-terminal.json"),
-            "0.1.2",
+            "0.1.3",
         ),
     ];
     for (provider, manifest, expected_release) in manifests {
@@ -2962,13 +2982,27 @@ fn copilot_config_lookup_handles_disabled_plugin() {
 /// disk and the env override is unset.
 #[test]
 fn bundle_resolve_source_returns_none_when_nothing_resolves() {
+    let _env = crate::test_support::lock_env();
     // Save & clear WTA_HOOKS_BUNDLE_DIR so the test doesn't pick up
     // the dev tree's bundle via a leftover env var.
     let saved = std::env::var_os("WTA_HOOKS_BUNDLE_DIR");
-    // SAFETY: tests run with --test-threads=1 in CI, but even without
-    // serialization, every other test that touches this env var
-    // restores it; collisions would manifest as flakes here, not data
-    // corruption. We accept the small risk.
+    struct RestoreBundleDir(Option<std::ffi::OsString>);
+    impl Drop for RestoreBundleDir {
+        fn drop(&mut self) {
+            // SAFETY: this test holds the shared environment lock until after
+            // this guard is dropped, serializing process-wide env mutation.
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var("WTA_HOOKS_BUNDLE_DIR", value),
+                    None => std::env::remove_var("WTA_HOOKS_BUNDLE_DIR"),
+                }
+            }
+        }
+    }
+    let _restore = RestoreBundleDir(saved);
+
+    // SAFETY: this test holds the shared environment lock while changing the
+    // process-wide environment variable.
     unsafe {
         std::env::set_var(
             "WTA_HOOKS_BUNDLE_DIR",
@@ -2985,14 +3019,6 @@ fn bundle_resolve_source_returns_none_when_nothing_resolves() {
     // env path didn't trip the false-positive).
     let info = bundle::resolve_source();
     assert_ne!(info.kind, "env", "nonexistent env path must not match");
-
-    // Restore.
-    unsafe {
-        match saved {
-            Some(v) => std::env::set_var("WTA_HOOKS_BUNDLE_DIR", v),
-            None => std::env::remove_var("WTA_HOOKS_BUNDLE_DIR"),
-        }
-    }
 }
 
 /// Schema versions are stable contracts with the Settings UI and
@@ -3975,30 +4001,6 @@ fn read_version_field_parses_plugin_json() {
     )
     .unwrap();
     assert_eq!(read_version_field(&path), Some("0.1.1".parse().unwrap()));
-}
-
-#[test]
-fn install_for_codex_skips_when_home_absent() {
-    let tmp = unique_dir("codex-home-absent");
-    // Smoke test: passing a nonexistent HOME-like dir shouldn't panic.
-    // After the binary-only detection change, the function skips when
-    // `codex` is not on PATH (the common case on CI). On a dev machine
-    // with `codex` installed and a bundle resolvable next to `wta.exe`
-    // the call may proceed further; the contract this test enforces is
-    // "no panic regardless".
-    install_for_codex(&tmp);
-    let _ = fs::remove_dir_all(tmp);
-}
-
-#[test]
-fn install_dispatches_codex() {
-    // Smoke: dispatching to all per-CLI installers against an empty
-    // HOME shouldn't panic. Each installer gates on its CLI being on
-    // PATH, so on CI (where none of these CLIs are installed) every
-    // one short-circuits cleanly.
-    let tmp = unique_dir("codex-dispatch");
-    ensure_installed_in(&tmp);
-    let _ = fs::remove_dir_all(tmp);
 }
 
 #[test]

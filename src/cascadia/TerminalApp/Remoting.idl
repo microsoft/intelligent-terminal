@@ -55,5 +55,6 @@ namespace TerminalApp
         Microsoft.Terminal.Settings.Model.WindowLayout PersistedLayout;
         Windows.Foundation.Collections.IVector<Microsoft.Terminal.Settings.Model.ActionAndArgs> StartupActions;
         Windows.Foundation.Collections.IVector<Guid> KeptGroupIds;
+        Windows.Foundation.IReference<Microsoft.Terminal.Settings.Model.LaunchPosition> KeptLaunchPosition;
     };
 }

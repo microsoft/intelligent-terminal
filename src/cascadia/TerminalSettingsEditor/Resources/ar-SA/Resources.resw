@@ -3070,7 +3070,7 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>أدخل معرّف نموذج يدعمه هذا الوكيل. اتركه فارغًا لاستخدام تكوين الوكيل الخاص به. ينطبق على الجلسات الجديدة.</value>
+    <value>أدخل معرّف نموذج يدعمه هذا الوكيل. اتركه فارغًا لاستخدام تكوين الوكيل الخاص به.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3147,5 +3147,17 @@ Alt+Shift+/ إدخال طلب؛ Alt+Shift+B التشغيل دون طلب أول�
   <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
     <value>أنت مسؤول أيضًا عن ضمان امتثال استخدامك لأي لوائح سارية تتعلق بالذكاء الاصطناعي، ومتطلبات معالجة البيانات و/أو التزامات إقامة البيانات.</value>
     <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>ملف تعريف الوكيل</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>وسيطات الاستئناف</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>تُضاف بعد وسيطات بدء التشغيل العادية فقط عند استئناف جلسة. يُلحق معرّف الجلسة تلقائيًا.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

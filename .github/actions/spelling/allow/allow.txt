@@ -38,6 +38,7 @@ cmark
 cmdkey
 cmdlines
 CMMI
+coalescer
 colorbrewer
 commandlines
 consvc
@@ -65,6 +66,7 @@ drx
 dtx
 eef
 eku
+ellipsized
 Emacspeak
 entrancy
 ession

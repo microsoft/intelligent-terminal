@@ -20,6 +20,27 @@
 
             <x:Double x:Key="CustomProviderInputWidth">496</x:Double>
 
+            <DataTemplate x:Key="ComplianceDialogTemplate">
+                <ContentDialog x:Uid="AIAgents_ComplianceDialog"
+                               AutomationProperties.AutomationId="AgentComplianceDialog"
+                               DefaultButton="Close">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="16">
+                            <TextBlock x:Name="ComplianceHostingText"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_ComplianceModels"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap" />
+                            <TextBlock x:Uid="AIAgents_ComplianceRegulations"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </ContentDialog>
+            </DataTemplate>
+
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
                 <Grid>
@@ -241,7 +262,8 @@
                                TextWrapping="Wrap">
                     <Paragraph>
                         <Run x:Name="ComplianceMessage" /><Run Text=" " /><InlineUIContainer>
-                            <HyperlinkButton AutomationProperties.AutomationId="AgentComplianceLearnMoreButton"
+                            <HyperlinkButton x:Name="ComplianceLearnMoreButton"
+                                             AutomationProperties.AutomationId="AgentComplianceLearnMoreButton"
                                              Click="ComplianceLearnMore_Click"
                                              Style="{StaticResource InlineSettingsLinkStyle}">
                                 <TextBlock x:Uid="AIAgents_ComplianceLearnMore"
@@ -701,25 +723,5 @@
             </local:SettingContainer>
 
         </StackPanel>
-        <ContentDialog x:Name="ComplianceDialog"
-                       x:Uid="AIAgents_ComplianceDialog"
-                       x:Load="False"
-                       AutomationProperties.AutomationId="AgentComplianceDialog"
-                       DefaultButton="Close">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-                <StackPanel Spacing="16">
-                    <TextBlock x:Name="ComplianceHostingText"
-                               IsTextSelectionEnabled="True"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Uid="AIAgents_ComplianceModels"
-                               IsTextSelectionEnabled="True"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Uid="AIAgents_ComplianceRegulations"
-                               IsTextSelectionEnabled="True"
-                               TextWrapping="Wrap" />
-                </StackPanel>
-            </ScrollViewer>
-        </ContentDialog>
     </StackPanel>
 </Page>

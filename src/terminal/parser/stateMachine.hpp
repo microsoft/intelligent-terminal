@@ -219,6 +219,8 @@ namespace Microsoft::Console::VirtualTerminal
 
         std::wstring _oscString;
         VTInt _oscParameter;
+        size_t _oscPrefixLength = 0;
+        bool _oscDiscarded = false;
 
         IStateMachineEngine::StringHandler _dcsStringHandler;
 

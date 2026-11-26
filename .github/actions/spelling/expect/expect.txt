@@ -88,6 +88,7 @@ azurecr
 backgrounded
 Backgrounder
 backgrounding
+backlink
 backstory
 Bazz
 bbccb
@@ -681,6 +682,8 @@ GHgh
 GHIJK
 GHIJKL
 gitcheckin
+gitdir
+gitfile
 gitfilters
 gle
 GLOBALFOCUS
@@ -689,6 +692,7 @@ GMEM
 Goldmine
 gonce
 goutput
+gpgsign
 gpo
 GPUs
 GREENSCROLL
@@ -836,6 +840,7 @@ Ith
 IUI
 IWIC
 IXP
+ixx
 jconcpp
 JOBOBJECT
 JOBOBJECTINFOCLASS
@@ -1182,7 +1187,6 @@ OEMFONT
 OEMFORMAT
 OEMs
 oleaut
-OLEAUT
 OLECHAR
 onebranch
 onecore
@@ -1836,6 +1840,7 @@ uwu
 uxtheme
 Vanara
 vararg
+VCINSTALLDIR
 vclib
 vcxitems
 VERCTRL
@@ -1961,6 +1966,7 @@ WNDCLASSEX
 WNDCLASSEXW
 WNDCLASSW
 Wndproc
+Wno
 wordiswrapped
 workarea
 worktree
@@ -2106,3 +2112,5 @@ workstream
 AXSTATIC
 ghaw
 OTLP
+testhost
+ucrtbased

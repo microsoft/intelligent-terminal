@@ -69,7 +69,7 @@ fn locale_initialization_fits_small_worker_stack() {
         .spawn(|| {
             for locale in _rust_i18n_available_locales() {
                 assert!(
-                    rust_i18n::Backend::translate(&ShardedLocaleBackend, locale, "queue.recall")
+                    rust_i18n::Backend::translate(&StaticLocaleBackend, locale, "queue.recall")
                         .is_some(),
                     "missing queue translation for {locale}"
                 );

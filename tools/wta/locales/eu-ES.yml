@@ -137,6 +137,8 @@ agents.status.active: "Lanean"
 agents.status.waiting_for_input: "Sarreraren zain"
 agents.status.error: "Errorea"
 agents.status.idle: "Inaktibo"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Osatuta"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Erabiltzen ari da"
 

@@ -72,6 +72,7 @@ namespace winrt::TerminalApp::implementation
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
         void SetRichTabPresentation(const std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation>& presentation);
+        void SetProgramStatusPresentation(const winrt::hstring& text, const winrt::hstring& details, std::vector<Pane::TaskbarStateWithContentId> states, std::string_view status = "Idle", bool visible = true);
         void SetUnreadAgentActivity(bool unread, bool needsAttention = false);
 
         void Close();
@@ -413,6 +414,11 @@ namespace winrt::TerminalApp::implementation
 
         winrt::hstring _runtimeTabText{};
         std::optional<::Microsoft::Terminal::RichTab::Provider::Presentation> _richTabPresentation;
+        winrt::hstring _programStatusText;
+        winrt::hstring _programStatusDetails;
+        std::string _programStatusId;
+        bool _programStatusVisible{ true };
+        std::vector<Pane::TaskbarStateWithContentId> _programTaskbarStates;
         winrt::hstring _richTabTooltipText{};
         winrt::hstring _richTabAccessibilityText{};
         bool _unreadAgentActivityNeedsAttention{ false };

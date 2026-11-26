@@ -29,14 +29,6 @@
                 <!--  Keep the hit target larger than the visible affordance.  -->
                 <Grid x:Name="RailToggleRoot"
                       Background="Transparent">
-                    <Border x:Name="CollapsedBackground"
-                            Width="{StaticResource SidebarHoverBackgroundExtent}"
-                            Height="{StaticResource SidebarHoverBackgroundExtent}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            CornerRadius="4"
-                            Visibility="Collapsed" />
                     <ContentPresenter x:Name="RailTogglePresenter"
                                       Width="{StaticResource SidebarHoverBackgroundExtent}"
                                       Height="{StaticResource SidebarHoverBackgroundExtent}"
@@ -80,11 +72,7 @@
                         </VisualStateGroup>
                         <VisualStateGroup x:Name="RailStates">
                             <VisualState x:Name="RailExpanded" />
-                            <VisualState x:Name="RailCollapsed">
-                                <VisualState.Setters>
-                                    <Setter Target="CollapsedBackground.Visibility" Value="Visible" />
-                                </VisualState.Setters>
-                            </VisualState>
+                            <VisualState x:Name="RailCollapsed" />
                         </VisualStateGroup>
                     </VisualStateManager.VisualStateGroups>
                 </Grid>

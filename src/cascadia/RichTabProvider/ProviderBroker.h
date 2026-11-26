@@ -35,11 +35,21 @@ namespace Microsoft::Terminal::RichTab::Provider
             bool operator==(const TextRange&) const = default;
         };
 
+        struct FieldRange
+        {
+            std::string field;
+            size_t start;
+            size_t length;
+
+            bool operator==(const FieldRange&) const = default;
+        };
+
         std::wstring text;
         std::wstring tooltip;
         std::wstring accessibilityText;
         std::vector<TextRange> agentStatusRanges;
         std::string agentStatus;
+        std::vector<FieldRange> fieldRanges;
 
         bool operator==(const Presentation&) const = default;
     };
@@ -116,6 +126,10 @@ namespace Microsoft::Terminal::RichTab::Provider
             const std::unordered_map<std::string, Snapshot>& snapshots,
             const VisibleFieldMap& visibleFields = {},
             const FieldDisplayNameMap& fieldDisplayNames = {});
+        static std::optional<Presentation> OverlayAgentStatus(
+            const std::optional<Presentation>& presentation,
+            std::wstring_view text,
+            std::string_view status);
 
     private:
         friend class ::TerminalAppUnitTests::RichTabProviderTests;

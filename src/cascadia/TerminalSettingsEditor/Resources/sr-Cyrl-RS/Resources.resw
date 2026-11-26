@@ -3047,7 +3047,7 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>Унесите идентификатор модела који овај агент подржава. Оставите празно да бисте користили сопствену конфигурацију агента. Примењује се на нове сесије.</value>
+    <value>Унесите идентификатор модела који овај агент подржава. Оставите празно да бисте користили сопствену конфигурацију агента.</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3144,5 +3144,17 @@ Alt+Shift+/ унесите упит; Alt+Shift+B покрените без по�
   <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
     <value>Такође сте одговорни за то да ваша употреба буде усклађена са свим важећим прописима о вештачкој интелигенцији, захтевима за руковање подацима и/или обавезама у вези са локацијом чувања и обраде података.</value>
     <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>Профил агента</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>Аргументи за наставак</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>Додају се после уобичајених аргумената за покретање само при наставку сесије. Идентификатор сесије се аутоматски додаје на крај.</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

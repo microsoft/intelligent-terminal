@@ -3007,7 +3007,7 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>輸入此智能體支援的模型識別碼。留空即可使用智能體本身的設定。適用於新工作階段。</value>
+    <value>輸入此智能體支援的模型識別碼。留空即可使用智能體本身的設定。</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3104,5 +3104,17 @@ Alt+Shift+/ 輸入提問；Alt+Shift+B 不帶初始提問啟動。</value><comme
   <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
     <value>您也有責任確保您的使用符合任何適用的 AI 法規、資料處理要求及/或資料落地承諾。</value>
     <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>智能體設定檔</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>恢復引數</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>僅在恢復工作階段時，才會新增至一般啟動引數之後。工作階段 ID 會自動附加至結尾。</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

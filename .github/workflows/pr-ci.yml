@@ -1,0 +1,54 @@
+name: PR CI
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'installer/**'
+      - 'build/**'
+      - 'dep/**'
+      - 'oss/**'
+      - 'res/**'
+      - '.cargo/**'
+      - '.github/**'
+      - '**/.github/**'
+      - '**/AGENTS.md'
+      - '**/CLAUDE.md'
+      - '**/GEMINI.md'
+      - '**/copilot-instructions.md'
+      - '**/SKILL.md'
+      - '**/*.instructions.md'
+      - '**/*.agent.md'
+      - '**/.mcp.json'
+      - '**/.claude/**'
+      - '**/.copilot/**'
+      - '**/.agents/**'
+      - '**/.gemini/**'
+      - 'test/accessibility/**'
+      - '*.props'
+      - '*.targets'
+      - '*.sln*'
+      - 'NuGet.Config'
+      - 'vcpkg.json'
+      - 'dirs'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    uses: ./.github/workflows/pr-ci-native.yml
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read

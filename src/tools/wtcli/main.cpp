@@ -17,6 +17,8 @@
 #include "ITerminalProtocol.h"
 #include "../../cascadia/inc/TerminalProtocolProxyRegistration.h"
 #include "../../cascadia/inc/WslDistroName.h"
+#include "../../cascadia/inc/AgentPolicy.h"
+#include "../../cascadia/inc/CustomAcpAgentCommands.h"
 
 #include <CLI/CLI.hpp>
 
@@ -659,7 +661,18 @@ int wmain(int argc, wchar_t** argv)
 
     // ── get-settings ──
     auto* getSettingsCmd = app.add_subcommand("get-settings", "Read the current Terminal settings");
+    bool customAcpCommands = false;
+    getSettingsCmd->add_flag("--custom-acp-commands", customAcpCommands, "Project the policy-allowed configured custom ACP commands");
     getSettingsCmd->callback([&]() {
+        if (customAcpCommands)
+        {
+            Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+            if (!Microsoft::Terminal::Settings::Model::AgentPolicy::IsCustomAgentAllowed())
+            {
+                PrintJson(Json::Value{ Json::objectValue });
+                return;
+            }
+        }
         auto server = connect();
         if (!server) return;
         Json::Value settings;
@@ -669,6 +682,19 @@ int wmain(int argc, wchar_t** argv)
             fprintf(stderr, "GetSettings failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
             return;
+        }
+        if (customAcpCommands)
+        {
+            try
+            {
+                settings = Microsoft::Terminal::Settings::Model::ProjectCustomAcpAgentCommands(settings);
+            }
+            catch (...)
+            {
+                fprintf(stderr, "Custom ACP catalog projection failed: invalid catalog settings\n");
+                exitCode = 1;
+                return;
+            }
         }
         PrintJson(settings);
     });
@@ -867,6 +893,40 @@ int wmain(int argc, wchar_t** argv)
             PrintJson(result);
         else
             FormatCreatedTabHuman(result);
+    });
+
+    // Internal native resume creation uses the same direct result transport as new-tab.
+    std::string nativeResumeJson;
+    uint64_t nativeResumeWindowId = 0;
+    auto* nativeResumeCmd = app.add_subcommand("native-profile-resume", "Create a native profile resume tab and return its receipt");
+    nativeResumeCmd->add_option("json", nativeResumeJson, "Native resume request JSON")->required();
+    nativeResumeCmd->add_option("-w,--window-id", nativeResumeWindowId, "Exact target window ID")->required();
+    nativeResumeCmd->callback([&]() {
+        auto server = ConnectToTerminal(nullptr, nullptr, false, false, false, TerminalConnectionMode::ExistingOnly);
+        if (!server)
+        {
+            fprintf(stderr, "Native profile resume requires a running Terminal.\n");
+            exitCode = 1;
+            return;
+        }
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) {
+            const auto support = SupportsCapability(server.get(), "create_native_profile_resume_tab");
+            RETURN_IF_FAILED(support);
+            RETURN_HR_IF(E_NOINTERFACE, support != S_OK);
+            winrt::com_ptr<ITerminalProtocolNativeAgent> nativeAgent;
+            RETURN_IF_FAILED(server->QueryInterface(__uuidof(ITerminalProtocolNativeAgent), nativeAgent.put_void()));
+            wil::unique_bstr request{ Bstr(nativeResumeJson) };
+            return nativeAgent->CreateNativeProfileResumeTab(nativeResumeWindowId, request.get(), j);
+        },
+                           result);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "Native profile resume failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        PrintJson(result);
     });
 
     // ── split-pane ──

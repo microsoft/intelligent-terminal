@@ -63,6 +63,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::
     STDMETHODIMP ListProfiles(BSTR* json) override;
     STDMETHODIMP CreateAgentCliTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, BSTR providerId, BSTR* json) override;
     STDMETHODIMP SplitAgentCliPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, BSTR providerId, BSTR* json) override;
+    STDMETHODIMP CreateNativeProfileResumeTab(unsigned __int64 windowId, BSTR eventJson, BSTR* json) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

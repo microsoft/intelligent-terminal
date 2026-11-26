@@ -146,6 +146,8 @@ agents.status.active: "Pracuje"
 agents.status.waiting_for_input: "Čaká na vstup"
 agents.status.error: "Chyba"
 agents.status.idle: "Nečinný"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Dokončené"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Používa sa"
 

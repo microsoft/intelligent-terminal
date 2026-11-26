@@ -518,9 +518,9 @@
     <value>ট্যাব মেটাডেটা</value>
     <comment>Section heading above the options that choose which metadata appears in sidebar tab rows.</comment>
   </data>
-  <data name="VerticalTabsMetadataAgentStatus.Text" xml:space="preserve">
-    <value>এজেন্ট অবস্থা</value>
-    <comment>Option that shows an agent's current status in sidebar tab rows.</comment>
+  <data name="VerticalTabsMetadataStatus.Text" xml:space="preserve">
+    <value>অবস্থা</value>
+    <comment>Option that shows the current status in sidebar tab rows.</comment>
   </data>
   <data name="VerticalTabsMetadataWorkingDirectory.Text" xml:space="preserve">
     <value>বর্তমান কাজের ডিরেক্টরি</value>
@@ -822,5 +822,24 @@
   <data name="HorizontalTabsIntroductionDescription" xml:space="preserve">
     <value>আপনার এজেন্টের কার্যকলাপ এক নজরে দেখতে উল্লম্ব ট্যাবে পাল্টান। একটি ট্যাবে ডান-ক্লিক করুন এবং {0} বেছে নিন।</value>
     <comment>Description of the introduction tooltip shown in the horizontal tab layout. Agent activity means the activity of AI agents, not people. Vertical tabs means the tab layout in the sidebar. {0} is the already-localized "Switch to sidebar" command label from the tab's right-click context menu (SwitchToVerticalTabsText); insert it unchanged and do not translate it here.</comment>
+  </data>
+  <data name="ProgramStatusCompleted" xml:space="preserve">
+    <value>সম্পন্ন হয়েছে</value>
+    <comment>Program status: a terminal program has completed work. This is not process exit or connection closure.</comment>
+  </data>
+  <data name="ProgramStatusPreviousResult" xml:space="preserve">
+    <value>আগের ফলাফল</value>
+    <comment>Task-detail label for a retained completed or failed report after the task has changed state again. Distinguishes that past result from the program's current state.</comment>
+  </data>
+  <data name="ProgramStatusPermissionRequested" xml:space="preserve">
+    <value>অনুমতি অনুরোধ করা হয়েছে</value>
+    <comment>Compact agent-status label for a program reporting that permission is required. Descriptive only; it does not create an actionable permission request. Reuses the localized WTA permission-card description.</comment>
+  </data>
+  <data name="ProgramStatusWaitingAuthentication" xml:space="preserve">
+    <value>অনুমোদনের জন্য অপেক্ষা করা হচ্ছে...</value>
+    <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
+  </data>
+  <data name="SidebarPanePosition" xml:space="preserve">
+    <value>পেন {0}, মোট {1}</value>
   </data>
 </root>

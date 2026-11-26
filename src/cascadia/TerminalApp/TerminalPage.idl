@@ -29,6 +29,7 @@ namespace TerminalApp
         Windows.Foundation.Collections.IVectorView<Tab> KeptTabs(TerminalPage owner);
         TerminalPage KeptGroupOwner(Guid groupId);
         Windows.Foundation.Rect KeptGroupBounds(Guid groupId);
+        WindowRequestedArgs KeptWindowRequest(Windows.Foundation.Collections.IVectorView<Guid> groups);
         Tab BeginReattachKeptGroup(Guid groupId);
         void CompleteKeptGroupReattach(Guid groupId, Boolean committed);
         void DiscardKeptGroup(Guid groupId);
@@ -260,5 +261,6 @@ namespace TerminalApp
         void ShutdownPanes();
         Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
         Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.ProfileInfo> > GetProtocolProfiles();
+        Windows.Foundation.IAsyncOperation<String> CreateNativeProfileResumeTab(String eventJson);
     }
 }

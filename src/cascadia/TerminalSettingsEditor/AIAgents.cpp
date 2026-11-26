@@ -187,25 +187,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
     }
 
-    safe_void_coroutine AIAgents::ComplianceLearnMore_Click(const IInspectable&, const RoutedEventArgs&)
+    void AIAgents::ComplianceLearnMore_Click(const IInspectable&, const RoutedEventArgs&)
     {
-        const auto lifetime = get_strong();
-        const auto dialog = FindName(L"ComplianceDialog").as<ContentDialog>();
-        ComplianceHostingText().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", CascadiaSettings::ApplicationDisplayName()) });
-
-        dialog.XamlRoot(XamlRoot());
-        // XAML island popups do not inherit the page's theme. Match TerminalWindow::ShowDialog.
-        const auto applyTheme = [theme = ActualTheme()](const IInspectable& sender, const RoutedEventArgs&) {
-            auto element = sender.as<FrameworkElement>();
-            while (element)
-            {
-                element.RequestedTheme(theme);
-                element = element.Parent().try_as<FrameworkElement>();
-            }
-        };
-        applyTheme(dialog, nullptr);
-        const auto loadedRevoker = dialog.Loaded(winrt::auto_revoke, applyTheme);
-        co_await dialog.ShowAsync();
+        // Keep the dialog unparented so the window's popup-theme workaround cannot modify this page.
+        const auto dialog = Resources().Lookup(box_value(L"ComplianceDialogTemplate")).as<DataTemplate>().LoadContent().as<ContentDialog>();
+        dialog.FindName(L"ComplianceHostingText").as<TextBlock>().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", CascadiaSettings::ApplicationDisplayName()) });
+        ShowDialogRequested.raise(*this, dialog);
     }
 
     void AIAgents::InlineLinkText_Loaded(const IInspectable& sender, const RoutedEventArgs&)

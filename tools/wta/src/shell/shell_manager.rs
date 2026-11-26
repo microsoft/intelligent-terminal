@@ -558,9 +558,15 @@ impl ShellManager {
         if let Some(p) = profile {
             params.insert("profile".into(), p.into());
         }
-        self.wt()?
-            .request("create_tab", serde_json::Value::Object(params))
+        self.wt_create_tab_request(serde_json::Value::Object(params))
             .await
+    }
+
+    pub(crate) async fn wt_create_tab_request(
+        &self,
+        params: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.wt()?.request("create_tab", params).await
     }
 
     /// Split an existing pane. Returns the raw response JSON.

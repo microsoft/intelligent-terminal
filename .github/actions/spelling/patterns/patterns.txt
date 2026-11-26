@@ -12,6 +12,12 @@
 # App Package trailer
 __[a-z\d]{13}\b
 
+# Authenticode test signature placeholder
+(?<=# )MIIC(?=\.{3}signature-data\.{3})
+
+# CI security analysis warning ID prefix
+\bCISEC(?=-)
+
 # src/host/ut_host/TextBufferTests.cpp
 // \d\|.{10}\|
 
@@ -368,3 +374,12 @@ env_remove\("[A-Z_]+"\)
 # tools/wta/src/agent_sessions.rs - lowercased agent tool name (Claude AskUserQuestion)
 # matched as a string literal in is_user_input_tool.
 \baskuserquestion\b
+
+# OSC 7501 title and message fields contain base64 text, not prose.
+(?<=[:;])(?:title|msg)=\K[A-Za-z0-9+/]+={0,3}(?=[:;"\\])
+
+# Program status tests: invalid UTF-8 and repeated base64 size-limit chunks.
+(?<=")(?:9JCAgA==|QUFB)(?=")
+
+# RichTabProviderTests.cpp: retain the text after escaped fixture line breaks.
+\\n(?=(?:feature/long|repo)")

@@ -3007,7 +3007,7 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
     <comment>Model identifier passed to the native interactive AI agent command-line application.</comment>
   </data>
   <data name="Profile_AgentModel.HelpText" xml:space="preserve">
-    <value>このエージェントがサポートするモデル識別子を入力してください。空欄にすると、エージェント独自の構成が使用されます。新しいセッションに適用されます。</value>
+    <value>このエージェントがサポートするモデル識別子を入力してください。空欄にすると、エージェント独自の構成が使用されます。</value>
     <comment>The model is a free-text CLI identifier, not a model discovered through ACP.</comment>
   </data>
   <data name="Profile_AgentArguments.Header" xml:space="preserve">
@@ -3104,5 +3104,17 @@ Alt+Shift+/ プロンプトを入力; Alt+Shift+B 初期プロンプトなしで
   <data name="AIAgents_ComplianceRegulations.Text" xml:space="preserve">
     <value>また、お客様の使用が、適用される AI 規制、データ取り扱い要件、およびデータ所在地に関する義務に準拠していることを確認する責任も、お客様にあります。</value>
     <comment>Third dialog paragraph. Data residency commitments concern the geographic locations where data is stored or processed.</comment>
+  </data>
+  <data name="Profile_AgentIndicator.Text" xml:space="preserve">
+    <value>エージェント プロファイル</value>
+    <comment>Indicator identifying a native interactive AI agent profile, including user-created copies. This does not indicate whether the profile can be deleted.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.Header" xml:space="preserve">
+    <value>再開時の引数</value>
+    <comment>Profile setting: native agent CLI arguments used only when resuming an existing conversation.</comment>
+  </data>
+  <data name="Profile_AgentResumeArguments.HelpText" xml:space="preserve">
+    <value>セッションを再開するときにのみ、通常の起動引数の後に追加されます。セッション ID は自動的に末尾に追加されます。</value>
+    <comment>The user enters arguments, never a placeholder for the session identifier.</comment>
   </data>
 </root>

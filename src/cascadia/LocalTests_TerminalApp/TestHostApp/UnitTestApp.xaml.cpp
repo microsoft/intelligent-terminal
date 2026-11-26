@@ -111,6 +111,13 @@ namespace TestHostApp
                         {
                             throw ref new Platform::FailureException(L"Settings Agents navigation failed.");
                         }
+                        const auto page = safe_cast<Microsoft::Terminal::Settings::Editor::AIAgents^>(frame->Content);
+                        page->ShowDialogRequested += ref new Windows::Foundation::TypedEventHandler<Platform::Object^, Windows::UI::Xaml::Controls::ContentDialog^>(
+                            [frame](Platform::Object^, Windows::UI::Xaml::Controls::ContentDialog^ dialog) {
+                                dialog->XamlRoot = frame->XamlRoot;
+                                dialog->RequestedTheme = frame->RequestedTheme;
+                                dialog->ShowAsync();
+                            });
                     }
                     catch (Platform::Exception ^ error)
                     {

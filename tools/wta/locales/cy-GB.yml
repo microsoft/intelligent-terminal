@@ -138,6 +138,8 @@ agents.status.active: "Yn gweithio"
 agents.status.waiting_for_input: "Yn aros am fewnbwn"
 agents.status.error: "Gwall"
 agents.status.idle: "Segur"
+# Program status: a terminal program has completed work. This is not process exit or connection closure.
+agents.status.completed: "Wedi cwblhau"
 # Status badge for a session in use outside Intelligent Terminal's live registrations; detailed activity is not shown.
 agents.status.in_use: "Yn cael ei ddefnyddio"
 

@@ -109,6 +109,19 @@ All requested tabs are queued into one receiver window, sized from the retained
 windows. Restoration waits for host registration and a nonzero content layout,
 then runs on a later UI turn. A failed tab remains available in the tray and
 does not close the receiver before other tabs in the batch can restore.
+The retained geometry is runtime-only and independent of startup-layout settings.
+Closing a window captures its whole-page size in DIPs and its native launch
+origin in physical pixels once, before detaching any tabs. Individually closing
+a tab captures that window's geometry at that time. A new receiver adds only
+the externally hosted titlebar to the retained page size; in-page tabs and the
+bottom toolbar are already included. The saved origin selects the monitor and
+DPI and overrides centering, with the existing offscreen-position recovery.
+For tabs from multiple snapshots, the receiver takes the maximum width and
+height independently and the most recently captured available origin. Equal
+capture ordinals use the lowest stable tab GUID as a deterministic tie-breaker.
+If no origin was available, normal launch positioning applies. Reattaching to an
+existing window does not move or resize it. This does not change maximized,
+fullscreen, or quake-mode launch preferences.
 Explicit profile launches keep their normal new-tab behavior.
 Initial and re-armed layout callbacks hold a weak page reference, so a queued
 layout notification cannot dereference a page that was destroyed before delivery.

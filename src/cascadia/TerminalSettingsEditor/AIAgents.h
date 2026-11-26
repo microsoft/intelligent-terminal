@@ -31,7 +31,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void DelegateAgentHelp_Loaded(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
-        safe_void_coroutine ComplianceLearnMore_Click(
+        void ComplianceLearnMore_Click(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
@@ -39,6 +39,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static bool NotBool(bool value) { return !value; }
 
         til::property_changed_event PropertyChanged;
+        til::typed_event<Windows::Foundation::IInspectable, Windows::UI::Xaml::Controls::ContentDialog> ShowDialogRequested;
         WINRT_OBSERVABLE_PROPERTY(Editor::AIAgentsViewModel, ViewModel, PropertyChanged.raise, nullptr);
     };
 }

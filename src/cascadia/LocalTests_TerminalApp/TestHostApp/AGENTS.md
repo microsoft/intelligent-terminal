@@ -20,6 +20,11 @@ This exercises the page's normal `OnNavigatedTo` initialization, not a
 TestHost-only Agents constructor. No native window root is supplied because
 this page's initialization does not require one.
 
+Agents mode handles the page's `ShowDialogRequested` event to show the production
+compliance dialog in the host's XamlRoot. This validates dialog content and
+interaction only; production dialog serialization and dismissal use
+TerminalWindow through the Settings MainPage and TerminalPage event relay.
+
 Do not construct the full Settings MainPage in this AppContainer host.
 MainPage eagerly loads Extensions; its filesystem discovery fails with access
 denied in AppContainer and reaches the debug coroutine assertion. This was
@@ -39,7 +44,8 @@ For TAEF, also build `TerminalApp.LocalTests.dll`; `runut` in a razzle environme
 runs it from the TestHostApp output, not the LocalTests output.
 
 For native scans, use `test\accessibility\Invoke-AxeWindowsTestHost.ps1` with
-`-Surface` set to `fre`, `fre-settings`, or `agents`. Supply the built manifest,
+`-Surface` set to `fre`, `fre-settings`, `agents`, or `sidebar`. Sidebar uses the
+existing visual route and requires visible production tab rows. Supply the built manifest,
 Axe.Windows path, output directory, and exact source SHA. An interactive Windows
 desktop and the app's framework dependencies are required. Setup and artifact
 limitations are documented in `doc\ghaw\ghaw-pr-accessibility.md`.

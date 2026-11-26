@@ -644,11 +644,17 @@ namespace winrt::TerminalApp::implementation
         bool focusMode = _appArgs && _appArgs->ParsedArgs().GetLaunchMode().value_or(_settings.GlobalSettings().LaunchMode()) == LaunchMode::FocusMode;
 
         const auto scale = static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
+        winrt::Windows::Foundation::Size persistedPageSize{};
         if (const auto layout = LoadPersistedLayout())
         {
             if (layout.LaunchMode())
             {
                 focusMode = layout.LaunchMode().Value() == LaunchMode::FocusMode;
+            }
+
+            if (const auto pageSize = layout.InitialPageSize())
+            {
+                persistedPageSize = pageSize.Value();
             }
 
             if (layout.InitialSize())
@@ -663,6 +669,33 @@ namespace winrt::TerminalApp::implementation
         }
 
         const bool hasExplicitSize = _appArgs && _appArgs->ParsedArgs().GetSize().has_value();
+        const bool hasStartupKeptSize = _startupKeptSize.Width > 0 && _startupKeptSize.Height > 0;
+        const bool hasContentBounds = static_cast<bool>(_contentBounds);
+        const bool usePersistedPageSize = !hasExplicitSize && !hasContentBounds && persistedPageSize.Width > 0 && persistedPageSize.Height > 0;
+        if (hasStartupKeptSize || usePersistedPageSize)
+        {
+            // The saved page includes in-page tabs and the bottom toolbar,
+            // but not the titlebar hosted above it in the native window.
+            // After Initialize, native non-client sizing includes that titlebar.
+            const auto pageSize = hasStartupKeptSize ? _startupKeptSize : persistedPageSize;
+            const auto hostedTitlebar = !_root &&
+                                        _settings.GlobalSettings().ShowTabsInTitlebar() &&
+                                        !WI_IsFlagSet(GetLaunchMode(), LaunchMode::FocusMode);
+            const auto titlebarHeight = hostedTitlebar ? 40.0f : 0.0f;
+            return { pageSize.Width * scale, (pageSize.Height + titlebarHeight) * scale };
+        }
+
+        if (hasContentBounds)
+        {
+            // If we've been created as a torn-out window, then we'll need to
+            // use that size instead. _contentBounds is in DIPs. Scale
+            // accordingly to the new pixel size.
+            return {
+                _contentBounds.Value().Width * scale,
+                _contentBounds.Value().Height * scale
+            };
+        }
+
         if (hasExplicitSize || (proposedSize.Width == 0 && proposedSize.Height == 0))
         {
             // Use the default profile to determine how big of a window we need.
@@ -674,26 +707,6 @@ namespace winrt::TerminalApp::implementation
                                                               dpi,
                                                               commandlineSize.width,
                                                               commandlineSize.height);
-        }
-
-        const bool hasStartupKeptSize = _startupKeptSize.Width > 0 && _startupKeptSize.Height > 0;
-        if (hasStartupKeptSize)
-        {
-            // Restore the usable size without changing normal window-position
-            // or maximize preferences as a drag/tear-out would.
-            return { _startupKeptSize.Width * scale, _startupKeptSize.Height * scale };
-        }
-
-        const bool hasContentBounds = static_cast<bool>(_contentBounds);
-        if (hasContentBounds)
-        {
-            // If we've been created as a torn-out window, then we'll need to
-            // use that size instead. _contentBounds is in DIPs. Scale
-            // accordingly to the new pixel size.
-            return {
-                _contentBounds.Value().Width * scale,
-                _contentBounds.Value().Height * scale
-            };
         }
 
         const bool freRequired = IsFreRequired();
@@ -799,6 +812,11 @@ namespace winrt::TerminalApp::implementation
     // - a point containing the requested initial position in pixels.
     TerminalApp::InitialPosition TerminalWindow::GetInitialPosition(int64_t defaultInitialX, int64_t defaultInitialY)
     {
+        if (_startupKeptPosition)
+        {
+            const auto position = _startupKeptPosition.Value();
+            return { position.X.Value(), position.Y.Value() };
+        }
         auto initialPosition{ _settings.GlobalSettings().InitialPosition() };
 
         if (const auto layout = LoadPersistedLayout())
@@ -845,7 +863,8 @@ namespace winrt::TerminalApp::implementation
             hadPersistedPosition = (bool)layout.InitialPosition();
         }
 
-        return !_contentBounds &&
+        return !_startupKeptPosition &&
+               !_contentBounds &&
                !hadPersistedPosition &&
                _settings.GlobalSettings().CenterOnLaunch() &&
                (_appArgs && !_appArgs->ParsedArgs().GetPosition().has_value());
@@ -1186,10 +1205,14 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalWindow::SetStartupKeptGroups(const IVectorView<winrt::guid>& groups,
-                                              const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds)
+                                              const Windows::Foundation::IReference<Windows::Foundation::Rect>& bounds,
+                                              const Windows::Foundation::IReference<LaunchPosition>& position)
     {
         THROW_HR_IF(E_INVALIDARG, !groups || groups.Size() == 0);
+        THROW_HR_IF(E_INVALIDARG, position && (!position.Value().X || !position.Value().Y));
         _startupKeptGroups = wil::to_vector(groups);
+        _startupKeptPosition = position;
+        _startupKeptSize = {};
         if (bounds && bounds.Value().Width > 0 && bounds.Value().Height > 0)
         {
             _startupKeptSize = { bounds.Value().Width, bounds.Value().Height };

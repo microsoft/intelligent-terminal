@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Fail-closed routing for the small agent-written Markdown handoffs.
+"""Validate producer delivery and the small machine-consumed decisions.
 
-This parses decisions, never renders the human summary or judges accessibility.
+Human Markdown is passed through unchanged, not parsed or rendered.
 """
 import argparse
+import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 
 def triage(text, changed):
@@ -35,28 +37,72 @@ def native(text):
         raise ValueError("invalid native-check selection")
     if len(text.encode("utf-8")) > 16384:
         raise ValueError("native selection exceeds 16 KiB")
-    return "true" if text.startswith("# Native checks: Axe.Windows\n") else "false"
+
+
+def read_output(path, limit):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"missing regular producer output: {path.name}")
+    if path.stat().st_size > limit:
+        raise ValueError(f"producer output exceeds {limit} bytes: {path.name}")
+    text = path.read_text(encoding="utf-8")
+    if not text.lstrip("\ufeff").strip():
+        raise ValueError(f"empty producer output: {path.name}")
+    return text
+
+
+def producer(outcome, safe_outputs):
+    if outcome != "success":
+        raise ValueError(f"producer execution was {outcome or 'unknown'}")
+    # Native infrastructure failures are recorded in the real safe-output queue,
+    # not inferred from the framework's {"items": []} output placeholder.
+    for line in read_output(safe_outputs, 1048576).splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str):
+            raise ValueError("invalid native safe-output entry")
+        if item.get("type") in ("report_incomplete", "missing_data", "missing_tool"):
+            raise ValueError(f"producer reported {item['type']}")
+
+
+def deep(path):
+    report = json.loads(read_output(path / "final.json", 1048576))
+    required = {"version", "source_sha", "runtime_checks", "findings", "patch_files"}
+    if not isinstance(report, dict) or not required.issubset(report):
+        raise ValueError("incomplete deep structured output")
+    read_output(path / "deep-summary.md", 32768)
+    native(read_output(path / "native-checks.md", 16384))
+    return "Complete"
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("triage", "native"))
+    parser.add_argument("kind", choices=("triage", "deep"))
     parser.add_argument("path", type=Path)
     parser.add_argument("--base")
     parser.add_argument("--head")
+    parser.add_argument("--producer-outcome")
+    parser.add_argument("--safe-outputs", type=Path)
     args = parser.parse_args()
-    text = args.path.read_text(encoding="utf-8")
-    if args.kind == "triage":
-        if not all(value and re.fullmatch(r"[0-9a-fA-F]{40}", value) for value in (args.base, args.head)):
-            raise ValueError("triage requires immutable base/head SHAs")
-        data = subprocess.check_output(
-            ["git", "diff", "--no-ext-diff", "--name-only", "-z", f"{args.base}...{args.head}"], text=True
-        )
-        result = triage(text, set(data.rstrip("\0").split("\0")))
-    else:
-        result = native(text)
-    print(result)
+    if args.producer_outcome is not None:
+        if args.safe_outputs is None:
+            raise ValueError("producer validation requires the native safe-output queue")
+        producer(args.producer_outcome, args.safe_outputs)
+    if args.kind == "deep":
+        print(deep(args.path))
+        return
+    if not all(value and re.fullmatch(r"[0-9a-fA-F]{40}", value) for value in (args.base, args.head)):
+        raise ValueError("triage requires immutable base/head SHAs")
+    text = read_output(args.path, 16384)
+    data = subprocess.check_output(
+        ["git", "diff", "--no-ext-diff", "--name-only", "-z", f"{args.base}...{args.head}"], text=True
+    )
+    print(triage(text, set(data.rstrip("\0").split("\0"))))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        print(f"No result: {error}", file=sys.stderr)
+        sys.exit(1)

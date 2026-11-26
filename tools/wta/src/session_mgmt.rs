@@ -111,9 +111,9 @@ pub enum EnterAction {
     /// in-place. A known unsupported target is rejected before dispatch;
     /// an unknown target validates capability after it starts.
     ResumeInAgentPane { key: AgentKey, cli: CliSource },
-    /// Open a new WT tab + plain pane running `<cli> <resume_flag>
-    /// <key>` so the CLI itself rehydrates from its on-disk session
-    /// store. Requires `cli_supports_resume_flag`.
+    /// Request native CLI resume in a new tab. Host sessions use their
+    /// Terminal profile; WSL keeps its provider-specific command.
+    /// Requires `cli_supports_resume_flag`.
     ResumeCliFlag { key: AgentKey, cli: CliSource },
     /// No path applies; caller surfaces a message and stays on the
     /// session manager view.
@@ -134,11 +134,8 @@ pub struct RowSnapshot {
     /// execution source. Cross-provider/source restores validate capability
     /// after the target starts.
     pub load_session_capability: LoadSessionCapability,
-    /// Whether the CLI exposes a resume flag or verb of its own. The
-    /// spelling varies per agent — `--resume` for Claude/Copilot/Gemini,
-    /// the `resume` subcommand for Codex, `--session` for OpenCode — so
-    /// this is sourced from `AgentProfile::resume_flag` rather than
-    /// assumed.
+    /// Host native sessions route through their Terminal profile; no CLI flag
+    /// is selected here. WSL retains its existing provider resume capability.
     pub cli_supports_resume_flag: bool,
     /// Whether CLI resume can read the provider's ACP conversation store.
     pub cli_can_resume_acp_sessions: bool,
@@ -159,9 +156,16 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
             },
         },
         Liveness::Ended | Liveness::Historical => {
-            // Unknown CLI: we don't know how to spawn it for either
-            // path, regardless of origin.
-            if matches!(row.cli_source, CliSource::Unknown(_)) {
+            let custom_native = row.origin == SessionOrigin::Unknown
+                && !row.is_wsl
+                && row.cli_supports_resume_flag
+                && row.cli_source.canonical_provider_id().is_some_and(|id| {
+                    id.strip_prefix("custom:")
+                        .is_some_and(|name| !name.is_empty())
+                });
+            // Only explicitly identified custom native profiles extend the
+            // unknown-provider case. ACP and WSL routing remain unchanged.
+            if matches!(row.cli_source, CliSource::Unknown(_)) && !custom_native {
                 return EnterAction::NotResumable {
                     reason: NotResumableReason::UnknownCli,
                 };
@@ -556,6 +560,36 @@ mod tests {
     }
 
     // --- Dead rows: Unknown CLI --------------------------------------
+
+    #[test]
+    fn custom_native_profile_resume_does_not_change_unknown_acp_or_wsl_routing() {
+        let mut r = row(
+            SessionOrigin::Unknown,
+            Liveness::Historical,
+            CliSource::Unknown("custom:example".into()),
+            true,
+            true,
+        );
+        assert!(matches!(
+            decide_enter_action(&r),
+            EnterAction::ResumeCliFlag { .. }
+        ));
+        r.is_wsl = true;
+        assert_eq!(
+            decide_enter_action(&r),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::UnknownCli
+            }
+        );
+        r.is_wsl = false;
+        r.origin = SessionOrigin::AgentPane;
+        assert_eq!(
+            decide_enter_action(&r),
+            EnterAction::NotResumable {
+                reason: NotResumableReason::UnknownCli
+            }
+        );
+    }
 
     #[test]
     fn unknown_cli_not_resumable_for_any_origin_or_liveness() {
