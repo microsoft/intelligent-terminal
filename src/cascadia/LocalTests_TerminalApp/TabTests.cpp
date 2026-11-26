@@ -1425,6 +1425,9 @@ namespace TerminalAppLocalTests
     {
         VERIFY_SUCCEEDED(RunOnUIThread([]() {
             const winrt::Microsoft::Terminal::Settings::Editor::AIAgents projected;
+            const auto previousDirection = projected.FlowDirection();
+            const auto restoreDirection = wil::scope_exit([&]() { projected.FlowDirection(previousDirection); });
+            projected.FlowDirection(FlowDirection::RightToLeft);
             const auto notice = projected.FindName(L"ComplianceInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
             VERIFY_IS_TRUE(notice.IsOpen());
             VERIFY_IS_FALSE(notice.IsClosable());
@@ -1437,6 +1440,7 @@ namespace TerminalAppLocalTests
             auto requests = 0;
             projected.ShowDialogRequested([&](auto&&, const ContentDialog& dialog) {
                 VERIFY_IS_NULL(dialog.Parent());
+                VERIFY_ARE_EQUAL(projected.FlowDirection(), dialog.FlowDirection());
                 VERIFY_IS_FALSE(winrt::unbox_value<winrt::hstring>(dialog.Title()).empty());
                 VERIFY_IS_FALSE(dialog.CloseButtonText().empty());
                 const auto paragraphs = dialog.Content().as<ScrollViewer>().Content().as<StackPanel>().Children();
@@ -1451,12 +1455,15 @@ namespace TerminalAppLocalTests
                 (++requests == 1 ? first : second) = dialog;
             });
             invoke.Invoke();
+            VERIFY_ARE_EQUAL(FlowDirection::RightToLeft, first.FlowDirection());
             first.RequestedTheme(ElementTheme::Dark);
             VERIFY_ARE_EQUAL(ElementTheme::Default, projected.RequestedTheme());
+            projected.FlowDirection(previousDirection);
             invoke.Invoke();
             VERIFY_ARE_EQUAL(2, requests);
             VERIFY_IS_TRUE(first != second);
             VERIFY_ARE_EQUAL(ElementTheme::Default, second.RequestedTheme());
+            VERIFY_ARE_EQUAL(previousDirection, second.FlowDirection());
         }));
     }
 
