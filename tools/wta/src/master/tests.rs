@@ -14064,6 +14064,222 @@ async fn sidebar_activation_survives_disconnect_and_deduplicates_pending_retries
     .expect("disconnect/retry test finishes within 15 seconds");
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_reservation_deduplicates_distinct_activation_ids() {
+    use crate::agent_sessions::{
+        AgentStatus, CliSource, SessionEvent, SessionLocation, SessionOrigin,
+    };
+    use crate::session_registry::{
+        parse_session_activate_response, SessionActivateParams, SessionIdentity, SessionInfo,
+    };
+    use std::sync::Mutex as StdMutex;
+    use std::time::Duration;
+
+    let _resolver = mock_native_delegate_executables();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    struct PausedCreate {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        calls: StdMutex<Vec<String>>,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for PausedCreate {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.calls.lock().unwrap().push(method.to_string());
+            if method == "create_tab" {
+                self.entered.notify_one();
+                tokio::time::timeout(Duration::from_secs(5), self.release.notified())
+                    .await
+                    .context("test did not release create_tab")?;
+            } else {
+                assert_eq!(method, "focus_pane");
+            }
+            Ok(serde_json::json!({
+                "session_id": "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+            }))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    let wt = Arc::new(PausedCreate {
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+        calls: StdMutex::new(Vec::new()),
+    });
+    let state = make_state_with_wt(wt.clone());
+    let sid = SessionId::new("cross-activation-resume");
+    let mut row = SessionInfo::new(sid.clone(), "C:\\repo".into());
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Historical);
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+
+    let first = SessionActivateParams {
+        identity: identity.clone(),
+        window_id: 42,
+        activation_id: "first-activation".into(),
+    };
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let caller = tokio::task::spawn_local({
+                let state = state.clone();
+                let first = first.clone();
+                async move { handle_session_activate(&state, &first).await }
+            });
+            tokio::time::timeout(Duration::from_secs(5), wt.entered.notified())
+                .await
+                .expect("first activation reaches create_tab");
+
+            let second = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 43,
+                activation_id: "second-activation".into(),
+            };
+            let second_response = handle_session_activate(&state, &second).await.unwrap();
+            let second_receipt = parse_session_activate_response(&second_response.0).unwrap();
+            assert!(!second_receipt.accepted);
+            assert_eq!(second_receipt.action, "resume_cli");
+            assert!(second_receipt
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("already being resumed")));
+            assert_eq!(*wt.calls.lock().unwrap(), vec!["create_tab".to_string()]);
+
+            handle_session_hook(
+                &state,
+                SessionEvent::SessionStarted {
+                    key: sid.to_string(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+                    cwd: "C:\\repo".into(),
+                    title: "Resumed session".into(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+
+            let after_hook = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 44,
+                activation_id: "focus-bound-pane".into(),
+            };
+            let focus_response = handle_session_activate(&state, &after_hook).await.unwrap();
+            let focus_receipt = parse_session_activate_response(&focus_response.0).unwrap();
+            assert!(focus_receipt.accepted);
+            assert_eq!(focus_receipt.action, "focus");
+            assert_eq!(
+                *wt.calls.lock().unwrap(),
+                vec!["create_tab".to_string(), "focus_pane".to_string()]
+            );
+
+            wt.release.notify_one();
+            let first_response = caller.await.unwrap().unwrap();
+            let first_receipt = parse_session_activate_response(&first_response.0).unwrap();
+            assert!(first_receipt.accepted);
+            assert_eq!(
+                *wt.calls.lock().unwrap(),
+                vec![
+                    "create_tab".to_string(),
+                    "focus_pane".to_string(),
+                    "focus_pane".to_string(),
+                ]
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sidebar_activation_releases_reservation_after_definitive_create_failure() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+    use crate::session_registry::{
+        parse_session_activate_response, SessionActivateParams, SessionIdentity, SessionInfo,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex as StdMutex;
+
+    let _resolver = mock_native_delegate_executables();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
+    struct FailFirstCreate {
+        create_calls: AtomicUsize,
+        methods: StdMutex<Vec<String>>,
+    }
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for FailFirstCreate {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.methods.lock().unwrap().push(method.to_string());
+            if method == "create_tab" && self.create_calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(anyhow::anyhow!("terminal rejected resume before dispatch"));
+            }
+            Ok(serde_json::json!({ "session_id": "retry-pane" }))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    let wt = Arc::new(FailFirstCreate {
+        create_calls: AtomicUsize::new(0),
+        methods: StdMutex::new(Vec::new()),
+    });
+    let state = make_state_with_wt(wt.clone());
+    let mut row = SessionInfo::new(SessionId::new("retry-after-failure"), "C:\\repo".into());
+    row.provider_id = Some("copilot".into());
+    row.cli_source = Some(CliSource::Copilot);
+    row.location = SessionLocation::Host;
+    row.origin = Some(SessionOrigin::Unknown);
+    row.status = Some(AgentStatus::Historical);
+    let identity = SessionIdentity::from_info(&row);
+    state.registry.upsert(row).await;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let first = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 42,
+                activation_id: "failed-creation".into(),
+            };
+            let first_response = handle_session_activate(&state, &first).await.unwrap();
+            let first_receipt = parse_session_activate_response(&first_response.0).unwrap();
+            assert!(!first_receipt.accepted);
+            assert_eq!(first_receipt.action, "resume_cli");
+            assert_eq!(wt.create_calls.load(Ordering::SeqCst), 1);
+
+            let retry = SessionActivateParams {
+                identity: identity.clone(),
+                window_id: 43,
+                activation_id: "retry-creation".into(),
+            };
+            let retry_response = handle_session_activate(&state, &retry).await.unwrap();
+            let retry_receipt = parse_session_activate_response(&retry_response.0).unwrap();
+            assert!(retry_receipt.accepted);
+            assert_eq!(retry_receipt.action, "resume_cli");
+            assert_eq!(wt.create_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(
+                *wt.methods.lock().unwrap(),
+                vec![
+                    "create_tab".to_string(),
+                    "create_tab".to_string(),
+                    "focus_pane".to_string(),
+                ]
+            );
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn sidebar_activation_receipt_capacity_preserves_pending_operations() {
     use crate::session_registry::{
