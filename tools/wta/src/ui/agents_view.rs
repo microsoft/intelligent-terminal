@@ -1362,12 +1362,13 @@ mod tests {
     fn program_status_badge_appends_current_messages_without_result_badges() {
         let _guard = crate::test_support::lock_locale();
         set_test_locale();
-        for (state, label) in [
-            ("idle", "Idle"),
-            ("working", "Working"),
-            ("blocked", "Waiting for input"),
-            ("done", "Completed"),
-            ("error", "Error"),
+        for (state, label, unseen_done, unseen_error) in [
+            ("idle", "Idle", 0, 0),
+            ("working", "Working", 1, 1),
+            ("blocked", "Waiting for input", 1, 1),
+            ("done", "Completed", 1, 0),
+            ("error", "Error", 1, 1),
+            ("error", "Error", 0, 0),
         ] {
             let mut pane: PaneAgentStatus = serde_json::from_value(serde_json::json!({
                 "pane_id": "pane", "provider_id": "codex", "status": "Idle",
@@ -1377,8 +1378,8 @@ mod tests {
                     "blocked": u32::from(state == "blocked"),
                     "done": u32::from(state == "done"),
                     "error": u32::from(state == "error"),
-                    "unseen_done": u32::from(state != "idle"),
-                    "unseen_error": u32::from(state != "idle" && state != "done"),
+                    "unseen_done": unseen_done,
+                    "unseen_error": unseen_error,
                     "title": "Task title",
                     "message": "Current\u{202e} message"
                 }

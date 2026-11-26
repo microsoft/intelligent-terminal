@@ -40,6 +40,12 @@ cannot be answered by a program reporting Working, Done or Clear. Unseen errors
 and completions remain observable even when a subsequent report immediately
 returns to Idle. Focusing a pane does not acknowledge a result; deliberate input
 does. Acknowledging a result never clears a blocked task.
+A current Error record also remains Error after its unread result is
+acknowledged. Replacing that record with Idle or clearing it ends the current
+error; a retained unread error can still require attention independently.
+Blocked or Error without progress keeps the tab or pane identity icon instead
+of replacing it with an empty zero-percent ring. Reported nonzero progress and
+the indeterminate Working spinner still replace the icon.
 
 Tab and pane tooltips show bounded, plain-text task details, including task IDs,
 application labels, titles, blocking reasons and messages. Program text is
@@ -73,6 +79,7 @@ Ordinary CLIs could previously have no Agent status field at all.
 | Done replaced by Idle, completion unread, no current message | `Idle` | `Idle` | `Completed` |
 | Done acknowledged; otherwise inactive | `Idle` | `Idle` | `Idle` |
 | `error`, `msg=Build failed`, unread | `Error` | `Error` | `Error · Build failed` |
+| The same Error record after acknowledgement | `Error` | `Error` | `Error · Build failed` |
 | The same Error report, plus another unread Done | `Error` | `Error` | `Error · Build failed` |
 | Clear removes all records/results; otherwise inactive | `Idle` | `Idle` | `Idle` |
 | Live session in another window, Done unread, `msg=Tests passed` | `Idle` | `Idle · In another window` | `Completed · Tests passed · In another window` |
