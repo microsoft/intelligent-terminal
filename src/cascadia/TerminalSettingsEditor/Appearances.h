@@ -26,7 +26,7 @@ Author(s):
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
-    struct AppearanceViewModel;
+    struct FontKeyValuePair;
 
     struct Font : FontT<Font>
     {
@@ -34,30 +34,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         WINRT_PROPERTY(hstring, Name);
         WINRT_PROPERTY(hstring, LocalizedName);
-    };
-
-    struct FontKeyValuePair : FontKeyValuePairT<FontKeyValuePair>
-    {
-        static bool SortAscending(const Editor::FontKeyValuePair& lhs, const Editor::FontKeyValuePair& rhs);
-
-        FontKeyValuePair(winrt::weak_ref<AppearanceViewModel> vm, winrt::hstring keyDisplayString, uint32_t key, float value, bool isFontFeature);
-
-        winrt::hstring KeyDisplayString();
-        const winrt::hstring& KeyDisplayStringRef();
-        uint32_t Key() const noexcept;
-        float Value() const noexcept;
-        void Value(float v);
-        winrt::hstring AutomationName();
-
-        void SetValueDirect(float v);
-        bool IsFontFeature() const noexcept;
-
-    private:
-        winrt::weak_ref<AppearanceViewModel> _vm;
-        winrt::hstring _keyDisplayString;
-        uint32_t _key;
-        float _value;
-        bool _isFontFeature;
     };
 
     struct AppearanceViewModel : AppearanceViewModelT<AppearanceViewModel>, ViewModelHelper<AppearanceViewModel>
@@ -183,6 +159,30 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Model::AppearanceConfig _appearance;
         winrt::hstring _lastBgImagePath;
         std::optional<FontFaceDependentsData> _fontFaceDependents;
+    };
+
+    struct FontKeyValuePair : FontKeyValuePairT<FontKeyValuePair>
+    {
+        static bool SortAscending(const Editor::FontKeyValuePair& lhs, const Editor::FontKeyValuePair& rhs);
+
+        FontKeyValuePair(winrt::weak_ref<AppearanceViewModel> vm, winrt::hstring keyDisplayString, uint32_t key, float value, bool isFontFeature);
+
+        winrt::hstring KeyDisplayString();
+        const winrt::hstring& KeyDisplayStringRef();
+        uint32_t Key() const noexcept;
+        float Value() const noexcept;
+        void Value(float v);
+        winrt::hstring AutomationName();
+
+        void SetValueDirect(float v);
+        bool IsFontFeature() const noexcept;
+
+    private:
+        winrt::weak_ref<AppearanceViewModel> _vm;
+        winrt::hstring _keyDisplayString;
+        uint32_t _key;
+        float _value;
+        bool _isFontFeature;
     };
 
     struct Appearances : AppearancesT<Appearances>
