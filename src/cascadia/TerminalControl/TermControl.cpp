@@ -5,6 +5,7 @@
 #include "TermControl.h"
 
 #include <inputpaneinterop.h>
+#include <winrt/Windows.Data.Json.h>
 
 #include "TermControlAutomationPeer.h"
 #include "../../renderer/atlas/AtlasEngine.h"
@@ -427,6 +428,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             if (auto control{ weakThis.get() }; control && !control->_IsClosing())
             {
                 const auto& menu{ control->ContextMenu() };
+                control->_agentContextMenuClosed(menu);
                 menu.PrimaryCommands().Clear();
                 menu.SecondaryCommands().Clear();
                 for (const auto& e : control->_originalPrimaryElements)
@@ -443,6 +445,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             if (auto control{ weakThis.get() }; control && !control->_IsClosing())
             {
                 const auto& menu{ control->SelectionContextMenu() };
+                control->_agentContextMenuClosed(menu);
                 menu.PrimaryCommands().Clear();
                 menu.SecondaryCommands().Clear();
                 for (const auto& e : control->_originalSelectedPrimaryElements)
@@ -601,6 +604,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     }
     void TermControl::Connection(const TerminalConnection::ITerminalConnection& newConnection)
     {
+        _invalidateAgentContextMenu();
+        get_self<ControlInteractivity>(_interactivity)->ResetAgentContextMenu();
         _core.Connection(newConnection);
     }
 
@@ -1627,6 +1632,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     void TermControl::RawWriteString(const winrt::hstring& text)
     {
+        _invalidateAgentContextMenu();
         _core.SendInput(text);
     }
 
@@ -1670,6 +1676,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
     bool TermControl::_KeyHandler(WORD vkey, WORD scanCode, ControlKeyStates modifiers, bool keyDown)
     {
+        if (keyDown)
+        {
+            _invalidateAgentContextMenu();
+        }
         // If the current focused element is a child element of searchbox,
         // we do not send this event up to terminal
         if (_searchBox && _searchBox->ContainsFocus())
@@ -2038,6 +2048,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                        const winrt::Microsoft::Terminal::Core::ControlKeyStates modifiers,
                                        const bool keyDown)
     {
+        if (keyDown)
+        {
+            _invalidateAgentContextMenu();
+        }
         // If the terminal translated the key, mark the event as handled.
         // This will prevent the system from trying to get the character out
         // of it and sending us a CharacterReceived event.
@@ -2274,6 +2288,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             return;
         }
 
+        _invalidateAgentContextMenu();
         RestorePointerCursor.raise(*this, nullptr);
 
         const auto point = args.GetCurrentPoint(*this);
@@ -2553,6 +2568,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         RestorePointerCursor.raise(*this, nullptr);
 
         _focused = false;
+        if (!_agentContextMenuVisible)
+        {
+            _invalidateAgentContextMenu();
+        }
 
         // This will disable the accessibility notifications, because the
         // UiaEngine lives in ControlInteractivity
@@ -2585,6 +2604,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
 
         const auto newSize = e.NewSize();
+        _invalidateAgentContextMenu();
         _core.SizeChanged(newSize.Width, newSize.Height);
 
         if (_automationPeer)
@@ -2742,6 +2762,89 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::EnableAgentRightClickContextMenu(bool enabled)
     {
         get_self<ControlInteractivity>(_interactivity)->EnableAgentRightClickContextMenu(enabled);
+    }
+
+    bool TermControl::RegisterAgentContextMenu(const hstring& epoch)
+    {
+        const auto accepted = get_self<ControlInteractivity>(_interactivity)->RegisterAgentContextMenu(epoch);
+        if (!accepted)
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Agent context-menu helper epoch mismatch");
+        }
+        return accepted;
+    }
+
+    bool TermControl::ShowAgentContextMenu(const hstring& epoch, uint64_t sequence, const hstring& token, bool hasSelection, int32_t column, int32_t row)
+    {
+        const auto interactivity = get_self<ControlInteractivity>(_interactivity);
+        const auto position = interactivity->AgentContextMenuPosition(epoch, sequence, { column, row });
+        if (!position || token.empty() || _IsClosing() || _core.HasSelection() ||
+            (epoch == _agentContextEpoch && sequence <= _agentContextSequence))
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Rejecting stale Agent context-menu request");
+            return false;
+        }
+        _agentContextEpoch = epoch;
+        _agentContextSequence = sequence;
+        _agentContextToken = token;
+        _agentContextCell = { column, row };
+        if (!_core.Settings().RightClickContextMenu())
+        {
+            _agentContextMenuAction(L"direct");
+            return true;
+        }
+        const auto inverseScale = 1.0f / static_cast<float>(XamlRoot().RasterizationScale());
+        const auto padding = GetPadding();
+        _showContextMenuAt({
+                               position->X * inverseScale + static_cast<float>(padding.Left),
+                               position->Y * inverseScale + static_cast<float>(padding.Top),
+                           },
+                           hasSelection);
+        return true;
+    }
+
+    void TermControl::_agentContextMenuClosed(const Controls::Primitives::FlyoutBase& menu)
+    {
+        if (menu == _agentContextFlyout && !menu.IsOpen())
+        {
+            _agentContextMenuVisible = false;
+            _agentContextFlyout = nullptr;
+            _agentContextMenuAction(L"dismiss");
+        }
+    }
+
+    void TermControl::_agentContextMenuAction(std::wstring_view action)
+    {
+        if (_agentContextToken.empty())
+        {
+            return;
+        }
+        using namespace Windows::Data::Json;
+        JsonObject params;
+        params.Insert(L"action", JsonValue::CreateStringValue(action));
+        params.Insert(L"epoch", JsonValue::CreateStringValue(_agentContextEpoch));
+        params.Insert(L"token", JsonValue::CreateStringValue(_agentContextToken));
+        params.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(_agentContextSequence)));
+        const auto valid = get_self<ControlInteractivity>(_interactivity)->AgentContextMenuPosition(_agentContextEpoch, _agentContextSequence, _agentContextCell).has_value();
+        // Consume before Hide raises Closed: dismissal must not cancel an authorized Copy.
+        _agentContextToken.clear();
+        if (valid || action == L"dismiss")
+        {
+            AgentContextMenuAction.raise(*this, params.Stringify());
+        }
+        else
+        {
+            LOG_HR_MSG(E_INVALIDARG, "Agent context-menu action expired");
+        }
+    }
+
+    void TermControl::_invalidateAgentContextMenu()
+    {
+        _agentContextMenuAction(L"dismiss");
+        if (_interactivity)
+        {
+            get_self<ControlInteractivity>(_interactivity)->InvalidateAgentContextMenu();
+        }
     }
 
     void TermControl::SelectAll()
@@ -3124,6 +3227,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - <none>
     void TermControl::WindowVisibilityChanged(const bool showOrHide)
     {
+        if (!showOrHide)
+        {
+            _invalidateAgentContextMenu();
+        }
         _core.WindowVisibilityChanged(showOrHide);
     }
 
@@ -3874,6 +3981,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::_coreFontSizeChanged(const IInspectable& /*sender*/,
                                            const Control::FontSizeChangedArgs& args)
     {
+        _invalidateAgentContextMenu();
         // scale the selection markers to be the size of a cell
         const auto dpiScale = SwapChainPanel().CompositionScaleX();
         auto scaleMarker = [&args, &dpiScale](const Windows::UI::Xaml::Shapes::Path& shape) {
@@ -4188,8 +4296,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         });
     }
 
-    void TermControl::_showContextMenuAt(const winrt::Windows::Foundation::Point& controlRelativePos)
+    void TermControl::_showContextMenuAt(const winrt::Windows::Foundation::Point& controlRelativePos,
+                                         std::optional<bool> agentSelection)
     {
+        if (!agentSelection.has_value())
+        {
+            _invalidateAgentContextMenu();
+            _agentContextMenuVisible = false;
+            _agentContextFlyout = nullptr;
+        }
         Controls::Primitives::FlyoutShowOptions myOption{};
         myOption.ShowMode(Controls::Primitives::FlyoutShowMode::Standard);
         myOption.Placement(Controls::Primitives::FlyoutPlacementMode::TopEdgeAlignedLeft);
@@ -4204,9 +4319,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         SelectCommandWithSelectionButton().Visibility(shouldShowSelectCommand ? Visibility::Visible : Visibility::Collapsed);
         SelectOutputWithSelectionButton().Visibility(shouldShowSelectOutput ? Visibility::Visible : Visibility::Collapsed);
 
-        (_core.HasSelection() ? SelectionContextMenu() :
-                                ContextMenu())
-            .ShowAt(*this, myOption);
+        const auto menu = agentSelection.value_or(_core.HasSelection()) ? SelectionContextMenu() : ContextMenu();
+        if (agentSelection.has_value())
+        {
+            _agentContextFlyout = menu;
+            _agentContextMenuVisible = true;
+        }
+        menu.ShowAt(*this, myOption);
     }
 
     void TermControl::ShowContextMenu()
@@ -4359,6 +4478,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::_PasteCommandHandler(const IInspectable& /*sender*/,
                                            const IInspectable& /*args*/)
     {
+        _agentContextMenuAction(L"dismiss");
         _acknowledgeProgramStatusForUserInput(false);
         _interactivity.RequestPasteTextFromClipboard();
         ContextMenu().Hide();
@@ -4367,8 +4487,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void TermControl::_CopyCommandHandler(const IInspectable& /*sender*/,
                                           const IInspectable& /*args*/)
     {
-        // formats = nullptr -> copy all formats
-        _interactivity.CopySelectionToClipboard(false, false, _core.Settings().CopyFormatting());
+        if (_agentContextMenuVisible)
+        {
+            _agentContextMenuAction(L"copy");
+        }
+        else
+        {
+            // formats = nullptr -> copy all formats
+            _interactivity.CopySelectionToClipboard(false, false, _core.Settings().CopyFormatting());
+        }
         ContextMenu().Hide();
         SelectionContextMenu().Hide();
     }

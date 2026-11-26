@@ -1358,6 +1358,9 @@ try
     case ProtocolParsing::SendEventRoute::DefaultPaste:
         _dispatchDefaultPasteToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentContextMenu:
+        _dispatchAgentContextMenuToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentState:
         // Per-tab agent-pane UI snapshot from wta. Page-side handler
         // routes by `tab_id` to the matching AgentPaneContent (creating
@@ -1575,6 +1578,30 @@ void TerminalProtocolComServer::_dispatchCloseAgentPaneToPage(const winrt::hstri
                     // Swallow: page may have been torn down during dispatch.
                 }
             });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentContextMenuToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (page && page.Dispatcher())
+        {
+            page.Dispatcher().RunAsync(
+                winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                [page, eventJson]() {
+                    try
+                    {
+                        page.OnAgentContextMenuRequested(eventJson);
+                    }
+                    CATCH_LOG()
+                });
+        }
     }
 }
 

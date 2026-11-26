@@ -17,6 +17,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(ProtocolParsingTests);
 
         TEST_METHOD(DefaultPasteRequestUsesDirectRoute);
+        TEST_METHOD(AgentContextMenuDoesNotBroadcastSelectionRequests);
         TEST_METHOD(AgentAvailabilityUsesDirectRoute);
         TEST_METHOD(AgentInstallationNotifiesPageAndSubscribers);
         TEST_METHOD(AgentSessionsRetiredUsesDirectRoute);
@@ -229,6 +230,16 @@ namespace TerminalAppUnitTests
 
         VERIFY_ARE_EQUAL(SendEventRoute::DefaultPaste, route);
         VERIFY_ARE_EQUAL("request_default_paste", event["method"].asString());
+    }
+
+    void ProtocolParsingTests::AgentContextMenuDoesNotBroadcastSelectionRequests()
+    {
+        Json::Value event;
+        const auto route = ClassifySendEvent(
+            R"({"type":"event","method":"agent_context_menu","params":{"action":"show","window_id":"1","tab_id":"tab-a","pane_id":"pane-a","epoch":"helper-a","sequence":1,"token":"selection-a","has_selection":true}})",
+            event);
+        VERIFY_ARE_EQUAL(SendEventRoute::AgentContextMenu, route);
+        VERIFY_ARE_EQUAL("show", event["params"]["action"].asString());
     }
 
     void ProtocolParsingTests::AgentAvailabilityUsesDirectRoute()

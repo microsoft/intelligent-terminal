@@ -1032,8 +1032,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                      const unsigned int uiButton,
                                      const ControlKeyStates states,
                                      const short wheelDelta,
-                                     const TerminalInput::MouseButtonState state)
+                                     const TerminalInput::MouseButtonState state,
+                                     bool* inputSubmitted)
     {
+        if (inputSubmitted)
+        {
+            *inputSubmitted = false;
+        }
         TerminalInput::OutputType out;
         {
             const auto lock = _terminal->LockForReading();
@@ -1041,7 +1046,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
         if (out)
         {
+            const auto submitted = !out->empty() && !_isReadOnly;
             SendInput(*out);
+            if (inputSubmitted)
+            {
+                *inputSubmitted = submitted;
+            }
             return true;
         }
         return false;

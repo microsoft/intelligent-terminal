@@ -204,6 +204,7 @@ namespace TerminalApp
         // {method:"request_default_paste",params:{window_id,tab_id,pane_id}}.
         // Routes WTA's no-selection right-click through the existing host paste action.
         void OnDefaultPasteRequested(String eventJson);
+        void OnAgentContextMenuRequested(String eventJson);
 
         // Inbound event from WTA carrying
         // {method:"agent_state_changed",params:{tab_id,view,pane_open}}.

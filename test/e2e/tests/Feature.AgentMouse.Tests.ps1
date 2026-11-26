@@ -597,6 +597,76 @@ Describe 'Feature: completed-turn triangle mouse click' -Tag 'CompletedTurnMouse
         $inputFocused | Should -BeTrue -Because 'clicking the input dialog must clear completed-turn selection and route typing to the current draft'
     }
 
+    It 'The native agent context menu copies only the selected reply substring' -Tag 'AgentContextMenuCopy' {
+        $profiles = (Get-WtSettingsObject -App $script:app).profiles
+        $savedProfiles = $profiles | ConvertTo-Json -Depth 64
+        $savedCopyOnSelect = (Get-WtSettingsObject -App $script:app).copyOnSelect
+        $id = [guid]::NewGuid().ToString('N')
+        $selected = "$id`_$([char]0x03BB)"
+        $prompt = "SCROLL_TURN_00_$($selected)_END"
+        $reply = "ACK_$prompt"
+        $sentinel = "CONTEXT_MENU_SENTINEL_$id"
+        try {
+            if (-not $profiles.defaults) {
+                $profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $profiles.defaults | Add-Member -NotePropertyName rightClickContextMenu -NotePropertyValue $true -Force
+            foreach ($profile in @($profiles.list)) {
+                if ($profile) {
+                    $profile | Add-Member -NotePropertyName rightClickContextMenu -NotePropertyValue $true -Force
+                }
+            }
+            $settingsListener = Start-WtEventListener -App $script:app -WaitForReady
+            try {
+                Set-WtSettings -App $script:app -Settings @{ profiles = $profiles; copyOnSelect = $false } | Out-Null
+                Wait-WtEvent -Listener $settingsListener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'set_agent_state' -and
+                    "$($_.params.tab_id)".Trim('{}') -eq "$($script:ownerTabId)".Trim('{}') -and
+                    $_.params.copy_on_select -eq $false
+                } | Should -Not -BeNullOrEmpty -Because 'the fixture must observe the reloaded profile settings'
+            }
+            finally { Stop-WtEventListener -Listener $settingsListener }
+
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $prompt | Out-Null
+            Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+                -Pattern ([regex]::Escape($reply)) -TimeoutSec 10
+            $rectangles = @(Get-UiTextBounds -App $script:app -Text $reply)
+            $rectangles.Count | Should -Be 1
+            $rect = $rectangles[0]
+            $cellWidth = $rect.Width / $reply.Length
+            $firstColumn = $reply.IndexOf($selected)
+            $fromX = [Math]::Round($rect.Left + (($firstColumn + $selected.Length - 0.5) * $cellWidth))
+            $toX = [Math]::Round($rect.Left + (($firstColumn + 0.5) * $cellWidth))
+            $y = [Math]::Round($rect.Top + ($rect.Height / 2))
+            $promptCount = @(Get-Content -LiteralPath $script:fixtureLog | Where-Object { $_ -match '\|prompt\|' }).Count
+            Invoke-UiMouseDrag -App $script:app -FromX $fromX -FromY $y -ToX $toX -ToY $y | Out-Null
+            Set-Clipboard -Value $sentinel
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
+            try {
+                Invoke-UiMouseDrag -App $script:app -FromX $toX -FromY $y -ToX $toX -ToY $y -Right | Out-Null
+                (Get-Clipboard -Raw) | Should -Be $sentinel -Because 'opening the menu must not execute Copy'
+                Invoke-UiElement -App $script:app -Selector CopyCommandButton -TimeoutSec 10 | Out-Null
+                Test-Until -TimeoutSec 5 -IntervalSec 0.1 -Condition {
+                    (Get-Clipboard -Raw) -ceq $selected
+                } | Should -BeTrue -Because 'native Copy must copy the exact WTA substring, including Unicode'
+                @(Get-WtEvents -Listener $listener -Predicate { $_.method -eq 'agent_paste_text' }).Count |
+                    Should -Be 0 -Because 'Copy must not request Paste'
+                @(Get-Content -LiteralPath $script:fixtureLog | Where-Object { $_ -match '\|prompt\|' }).Count |
+                    Should -Be $promptCount -Because 'Copy must not submit an Agent prompt'
+                Get-AgentPaneSession -App $script:app -PaneSessionId $script:agentPane |
+                    Should -Not -BeNullOrEmpty -Because 'Copy must not close the Agent pane'
+            }
+            finally { Stop-WtEventListener -Listener $listener }
+        }
+        finally {
+            Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Escape | Out-Null
+            Set-WtSettings -App $script:app -Settings @{
+                profiles = ($savedProfiles | ConvertFrom-Json)
+                copyOnSelect = [bool]$savedCopyOnSelect
+            } | Out-Null
+        }
+    }
+
     It 'Right-click copies the agent text selection with physical mouse input' -Tag 'RightClickCopy' {
         $originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
         $id = [guid]::NewGuid().ToString('N')

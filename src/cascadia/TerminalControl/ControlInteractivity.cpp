@@ -252,6 +252,43 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         PasteFromClipboard.raise(*this, std::move(args));
     }
 
+    bool ControlInteractivity::RegisterAgentContextMenu(const winrt::hstring& epoch)
+    {
+        if (epoch.empty() || (!_agentContextEpoch.empty() && _agentContextEpoch != epoch))
+        {
+            _agentContextReady = false;
+            InvalidateAgentContextMenu();
+            return false;
+        }
+        _agentContextEpoch = epoch;
+        _agentContextReady = true;
+        return true;
+    }
+
+    void ControlInteractivity::ResetAgentContextMenu()
+    {
+        _agentContextEpoch.clear();
+        _agentContextReady = false;
+        _agentContextSequence = 0;
+        _agentRightClickForwarded = false;
+        InvalidateAgentContextMenu();
+    }
+
+    std::optional<Core::Point> ControlInteractivity::AgentContextMenuPosition(
+        const winrt::hstring& epoch,
+        uint64_t sequence,
+        til::point cell) const
+    {
+        if (!_agentContextReady || epoch != _agentContextEpoch ||
+            sequence != _agentContextSequence || !_agentContextPosition ||
+            cell != *_agentContextPosition ||
+            std::chrono::steady_clock::now() - _agentContextPressedAt > std::chrono::seconds{ 60 })
+        {
+            return std::nullopt;
+        }
+        return _agentContextPixels;
+    }
+
     void ControlInteractivity::PointerPressed(const uint32_t /*pointerId*/,
                                               Control::MouseButtonState buttonState,
                                               const unsigned int pointerUpdateKind,
@@ -265,6 +302,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         const auto altEnabled = modifiers.IsAltPressed();
         const auto shiftEnabled = modifiers.IsShiftPressed();
         const auto ctrlEnabled = modifiers.IsCtrlPressed();
+        InvalidateAgentContextMenu();
+        const auto agentRightClick = _agentRightClickContextMenuEnabled && pointerUpdateKind == WM_RBUTTONDOWN;
 
         // Mark that this pointer event actually started within our bounds.
         // We'll need this later, for PointerMoved events.
@@ -289,11 +328,22 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             }
         }
         else if (_canSendVTMouseInput(modifiers) &&
-                 !(_agentRightClickContextMenuEnabled &&
-                   pointerUpdateKind == WM_RBUTTONDOWN &&
-                   _core->Settings().RightClickContextMenu()))
+                 (!agentRightClick || (_agentContextReady && !_core->HasSelection() && !_core->IsInReadOnlyMode())))
         {
-            _sendMouseEventHelper(terminalPosition, pointerUpdateKind, modifiers, 0, buttonState);
+            bool inputSubmitted = false;
+            _sendMouseEventHelper(terminalPosition, pointerUpdateKind, modifiers, 0, buttonState, agentRightClick ? &inputSubmitted : nullptr);
+            if (agentRightClick && inputSubmitted)
+            {
+                _agentRightClickForwarded = true;
+                ++_agentContextSequence;
+                const auto adjustment = _core->BufferHeight() - _core->ScrollOffset() - _core->ViewHeight();
+                _agentContextPosition = til::point{
+                    std::clamp(terminalPosition.x, 0, _core->ViewWidth() - 1),
+                    std::clamp(terminalPosition.y - adjustment, 0, _core->ViewHeight() - 1)
+                };
+                _agentContextPixels = pixelPosition;
+                _agentContextPressedAt = std::chrono::steady_clock::now();
+            }
         }
         else if (WI_IsFlagSet(buttonState, MouseButtonState::IsLeftButtonDown))
         {
@@ -344,9 +394,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         }
         else if (WI_IsFlagSet(buttonState, MouseButtonState::IsRightButtonDown))
         {
+            _agentRightClickContextMenuPressed = _agentRightClickContextMenuEnabled;
             if (_core->Settings().RightClickContextMenu())
             {
-                _agentRightClickContextMenuPressed = _agentRightClickContextMenuEnabled;
                 // Let the core know we're about to open a menu here. It has
                 // some separate conditional logic based on _where_ the user
                 // wanted to open the menu.
@@ -387,11 +437,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                             const Core::Point pixelPosition)
     {
         const auto terminalPosition = _getTerminalPosition(til::point{ pixelPosition }, false);
+        if (WI_IsFlagSet(buttonState, MouseButtonState::IsLeftButtonDown))
+        {
+            InvalidateAgentContextMenu();
+        }
         // Returning true from this function indicates that the caller should do no further processing of this movement.
-        bool handledCompletely = false;
+        const auto nativeAgentRightDrag = _agentRightClickContextMenuEnabled &&
+                                          WI_IsFlagSet(buttonState, MouseButtonState::IsRightButtonDown) &&
+                                          !_agentRightClickForwarded;
+        bool handledCompletely = nativeAgentRightDrag;
 
         // Short-circuit isReadOnly check to avoid warning dialog
-        if (_focused && !_core->IsInReadOnlyMode() && _canSendVTMouseInput(modifiers))
+        if (_focused && !_core->IsInReadOnlyMode() && _canSendVTMouseInput(modifiers) && !nativeAgentRightDrag)
         {
             _sendMouseEventHelper(terminalPosition, pointerUpdateKind, modifiers, 0, buttonState);
             handledCompletely = true;
@@ -491,6 +548,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         _pointerPressedInBounds = false;
 
         const auto terminalPosition = _getTerminalPosition(til::point{ pixelPosition }, false);
+        if (pointerUpdateKind == WM_RBUTTONUP && _agentRightClickForwarded)
+        {
+            _agentRightClickForwarded = false;
+            _sendMouseEventHelper(terminalPosition, pointerUpdateKind, modifiers, 0, buttonState);
+            return;
+        }
         if (pointerUpdateKind == WM_RBUTTONUP && _agentRightClickContextMenuPressed)
         {
             _agentRightClickContextMenuPressed = false;
@@ -790,12 +853,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                                      const unsigned int pointerUpdateKind,
                                                      const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
                                                      const SHORT wheelDelta,
-                                                     Control::MouseButtonState buttonState)
+                                                     Control::MouseButtonState buttonState,
+                                                     bool* inputSubmitted)
     {
         const auto adjustment = _core->BufferHeight() - _core->ScrollOffset() - _core->ViewHeight();
         // If the click happened outside the active region, core should get a chance to filter it out or clamp it.
         const auto adjustedY = terminalPosition.y - adjustment;
-        return _core->SendMouseEvent({ terminalPosition.x, adjustedY }, pointerUpdateKind, modifiers, wheelDelta, toInternalMouseState(buttonState));
+        return _core->SendMouseEvent({ terminalPosition.x, adjustedY }, pointerUpdateKind, modifiers, wheelDelta, toInternalMouseState(buttonState), inputSubmitted);
     }
 
     // Method Description:

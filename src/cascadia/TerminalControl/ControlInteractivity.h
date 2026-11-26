@@ -93,6 +93,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                       const CopyFormat formats);
         void RequestPasteTextFromClipboard();
         void EnableAgentRightClickContextMenu(bool enabled) noexcept { _agentRightClickContextMenuEnabled = enabled; }
+        bool RegisterAgentContextMenu(const winrt::hstring& epoch);
+        void ResetAgentContextMenu();
+        void InvalidateAgentContextMenu() noexcept { _agentContextPosition.reset(); }
+        std::optional<Core::Point> AgentContextMenuPosition(const winrt::hstring& epoch, uint64_t sequence, til::point cell) const;
         void SetEndSelectionPoint(const Core::Point pixelPosition);
 
         uint64_t Id();
@@ -153,6 +157,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _pointerPressedInBounds{ false };
         bool _agentRightClickContextMenuEnabled{ false };
         bool _agentRightClickContextMenuPressed{ false };
+        bool _agentRightClickForwarded{ false };
+        bool _agentContextReady{ false };
+        winrt::hstring _agentContextEpoch;
+        uint64_t _agentContextSequence{ 0 };
+        std::optional<til::point> _agentContextPosition;
+        Core::Point _agentContextPixels{};
+        std::chrono::steady_clock::time_point _agentContextPressedAt{};
 
         unsigned int _numberOfClicks(Core::Point clickPos, Timestamp clickTime);
         void _updateSystemParameterSettings() noexcept;
@@ -173,7 +184,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                    const unsigned int pointerUpdateKind,
                                    const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
                                    const SHORT wheelDelta,
-                                   Control::MouseButtonState buttonState);
+                                   Control::MouseButtonState buttonState,
+                                   bool* inputSubmitted = nullptr);
 
         friend class ControlUnitTests::ControlCoreTests;
         friend class ControlUnitTests::ControlInteractivityTests;
