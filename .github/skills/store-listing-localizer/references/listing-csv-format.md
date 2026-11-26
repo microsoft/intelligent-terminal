@@ -1,10 +1,11 @@
 # listingData CSV format (Partner Center export/import)
 
-The Partner Center **Export listings** button produces a UTF-8 (BOM),
-comma-delimited, CRLF CSV. Each **row** is one listing field; each **column** is
-one locale. Values legitimately contain embedded newlines (ReleaseNotes,
-Description), so always parse with a quote-aware parser — `scripts/csvlib.mjs`
-does this; never split on `\n` or use a naive CSV reader.
+The working `listingData` file is a UTF-8 (BOM), comma-delimited, CRLF CSV.
+The browser [export workflow](./partner-center-mcp-workflow.md#export) also
+handles column-oriented JSON responses. Each **row** is one listing field;
+each **column** is one locale. Values legitimately contain embedded newlines
+(ReleaseNotes, Description), so always parse with a quote-aware parser —
+`scripts/csvlib.mjs` does this; never split on `\n` or use a naive CSV reader.
 
 ## Shape (Intelligent Terminal, Store ID `9NMQC2SSJX24`)
 

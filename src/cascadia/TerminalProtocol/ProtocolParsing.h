@@ -67,6 +67,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
+        AgentContextMenu,
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
         PaneAgentSession,     // Direct to TerminalPage, no broadcast — hookless delegate pane/session binding
@@ -133,6 +134,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "request_default_paste")
             {
                 return SendEventRoute::DefaultPaste;
+            }
+            if (method == "agent_context_menu")
+            {
+                return SendEventRoute::AgentContextMenu;
             }
             if (method == "agent_state_changed")
             {

@@ -66,6 +66,11 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
+        if (const auto control = GetTermControl())
+        {
+            control.EnableAgentRightClickContextMenu(true);
+        }
+
         // The wta TermControl is owned by the inner TerminalPaneContent.
         // Its GetRoot() returns the TermControl itself; pin it below the chrome.
         if (_inner)

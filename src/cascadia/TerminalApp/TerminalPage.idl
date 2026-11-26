@@ -262,6 +262,7 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Boolean> GetProtocolPaneIsBackground(Guid paneSessionId);
         Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVector<Microsoft.Terminal.Protocol.ProfileInfo> > GetProtocolProfiles();
         Windows.Foundation.IAsyncOperation<String> CreateNativeProfileResumeTab(String eventJson);
+        void OnAgentContextMenuRequested(String eventJson);
         void OnVerifiedNativeHook(String eventJson, Guid paneId, UInt64 rootProcessHandle);
     }
 }

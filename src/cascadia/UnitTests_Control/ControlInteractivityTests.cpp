@@ -44,6 +44,7 @@ namespace ControlUnitTests
         TEST_METHOD(GetMouseEventsInTest);
         TEST_METHOD(AgentPaneCtrlWheelZoomsBeforeVtMouse);
         TEST_METHOD(AgentRightClickContextMenuRespectsSettingsAndVtMouse);
+        TEST_METHOD(AgentContextMenuBindsTheLatestForwardedRightClick);
         TEST_METHOD(AltBufferClampMouse);
         TEST_METHOD(ParseCompletedTurnActionHyperlinks);
         TEST_METHOD(CompletedTurnActionHyperlinksSuppressUnderlines);
@@ -1074,7 +1075,7 @@ namespace ControlUnitTests
                 auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
                 _standardInit(core, interactivity);
                 interactivity->EnableAgentRightClickContextMenu(agentPane);
-                core->_terminal->Write(L"\x1b[?1000h\x1b[?1006h");
+                core->_terminal->Write(L"\x1b[?1002h\x1b[?1006h");
 
                 std::deque<std::wstring> expectedOutput;
                 auto validateDrained = _addInputCallback(conn, expectedOutput);
@@ -1088,7 +1089,8 @@ namespace ControlUnitTests
                 {
                     settings->RightClickContextMenu(contextMenu);
                     menus = 0;
-                    if (!agentPane || !contextMenu)
+                    // Agent right clicks stay native until the owning helper registers.
+                    if (!agentPane)
                     {
                         expectedOutput.push_back(L"\x1b[<2;1;1M");
                         expectedOutput.push_back(L"\x1b[<2;1;1m");
@@ -1099,6 +1101,10 @@ namespace ControlUnitTests
                                                   0,
                                                   {},
                                                   {});
+                    if (agentPane)
+                    {
+                        interactivity->PointerMoved(0, Control::MouseButtonState::IsRightButtonDown, WM_MOUSEMOVE, {}, { 10, 0 });
+                    }
                     if (reloadBeforeRelease)
                     {
                         settings->RightClickContextMenu(!contextMenu);
@@ -1109,6 +1115,49 @@ namespace ControlUnitTests
                 }
             }
         }
+    }
+
+    void ControlInteractivityTests::AgentContextMenuBindsTheLatestForwardedRightClick()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->RightClickContextMenu(true);
+        auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+        _standardInit(core, interactivity);
+        interactivity->EnableAgentRightClickContextMenu(true);
+        core->_terminal->Write(L"\x1b[?1000h\x1b[?1006h");
+        std::deque<std::wstring> expectedOutput;
+        auto validateDrained = _addInputCallback(conn, expectedOutput);
+        VERIFY_IS_TRUE(interactivity->RegisterAgentContextMenu(L"helper-a"));
+        int nativeMenus = 0;
+        interactivity->ContextMenuRequested([&](auto&&, auto&&) { ++nativeMenus; });
+        core->SetReadOnlyMode(true);
+        interactivity->PointerPressed(0, Control::MouseButtonState::IsRightButtonDown, WM_RBUTTONDOWN, 0, {}, {});
+        interactivity->PointerReleased(0, {}, WM_RBUTTONUP, {}, {});
+        VERIFY_IS_FALSE(interactivity->AgentContextMenuPosition(L"helper-a", 1, {}).has_value());
+        VERIFY_ARE_EQUAL(1, nativeMenus);
+        core->SetReadOnlyMode(false);
+        for (uint64_t sequence = 1; sequence <= 2; ++sequence)
+        {
+            const til::point cell = sequence == 1 ? til::point{} : til::point{ core->ViewWidth() - 1, core->ViewHeight() - 1 };
+            const auto pixels = sequence == 1 ? til::point{} : (cell + til::point{ 2, 2 }) * core->GetFont().GetSize();
+            expectedOutput.push_back(fmt::format(L"\x1b[<2;{};{}M", cell.x + 1, cell.y + 1));
+            expectedOutput.push_back(fmt::format(L"\x1b[<6;{};{}m", cell.x + 1, cell.y + 1));
+            interactivity->PointerPressed(0, Control::MouseButtonState::IsRightButtonDown, WM_RBUTTONDOWN, 0, {}, pixels.to_core_point());
+            // A modifier change must not strand the matching physical release.
+            interactivity->PointerReleased(0, {}, WM_RBUTTONUP, ControlKeyStates{ SHIFT_PRESSED }, pixels.to_core_point());
+            VERIFY_IS_TRUE(interactivity->AgentContextMenuPosition(L"helper-a", sequence, cell).has_value());
+            VERIFY_IS_FALSE(interactivity->AgentContextMenuPosition(L"helper-a", sequence - 1, cell).has_value());
+            VERIFY_IS_FALSE(interactivity->AgentContextMenuPosition(L"helper-a", sequence, { cell.x + 1, cell.y }).has_value());
+            // Duplicate registration/reconnection cannot reset the sequence.
+            VERIFY_IS_TRUE(interactivity->RegisterAgentContextMenu(L"helper-a"));
+            VERIFY_IS_TRUE(interactivity->AgentContextMenuPosition(L"helper-a", sequence, cell).has_value());
+        }
+        const til::point lastCell{ core->ViewWidth() - 1, core->ViewHeight() - 1 };
+        interactivity->InvalidateAgentContextMenu();
+        VERIFY_IS_FALSE(interactivity->AgentContextMenuPosition(L"helper-a", 2, lastCell).has_value());
+        VERIFY_IS_FALSE(interactivity->RegisterAgentContextMenu(L"helper-b"));
+        VERIFY_IS_FALSE(interactivity->AgentContextMenuPosition(L"helper-a", 2, lastCell).has_value());
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
     }
 
     void ControlInteractivityTests::AltBufferClampMouse()

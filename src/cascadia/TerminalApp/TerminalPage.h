@@ -288,6 +288,7 @@ namespace winrt::TerminalApp::implementation
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnDefaultPasteRequested(hstring eventJson);
+        void OnAgentContextMenuRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
         Windows::Foundation::IAsyncOperation<hstring> CreateNativeProfileResumeTab(hstring eventJson);

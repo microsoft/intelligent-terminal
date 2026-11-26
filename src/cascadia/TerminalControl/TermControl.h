@@ -72,6 +72,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void EnableAgentPasteShortcutFallback(bool enabled) noexcept { _agentPasteShortcutFallbackEnabled = enabled; }
         void EnableAgentMouseWheelZoom(bool enabled) noexcept { _agentMouseWheelZoomEnabled = enabled; }
         void EnableAgentRightClickContextMenu(bool enabled);
+        bool RegisterAgentContextMenu(const hstring& epoch);
+        bool ShowAgentContextMenu(const hstring& epoch, uint64_t sequence, const hstring& token, bool hasSelection, int32_t column, int32_t row);
         void SelectAll();
         bool ToggleBlockSelection();
         void ToggleMarkMode();
@@ -234,6 +236,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         til::typed_event<IInspectable, Control::StringSentEventArgs> StringSent;
         til::typed_event<IInspectable, Control::SearchMissingCommandEventArgs> SearchMissingCommand;
         til::typed_event<IInspectable, winrt::hstring> VtSequenceReceived;
+        til::typed_event<IInspectable, winrt::hstring> AgentContextMenuAction;
         til::typed_event<IInspectable, Control::WindowSizeChangedEventArgs> WindowSizeChanged;
 
         // UNDER NO CIRCUMSTANCES SHOULD YOU ADD A (PROJECTED_)FORWARDED_TYPED_EVENT HERE
@@ -308,6 +311,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _quickFixButtonCollapsible{ false };
         bool _quickFixesAvailable{ false };
         bool _agentPasteShortcutFallbackEnabled{ false };
+        bool _agentContextMenuVisible{ false };
+        winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBase _agentContextFlyout{ nullptr };
+        hstring _agentContextEpoch;
+        hstring _agentContextToken;
+        uint64_t _agentContextSequence{ 0 };
+        til::point _agentContextCell{};
+        void _agentContextMenuAction(std::wstring_view action);
+        void _agentContextMenuClosed(const winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutBase& menu);
+        void _invalidateAgentContextMenu();
         til::CoordType _quickFixBufferPos{};
 
         std::shared_ptr<ThrottledFunc<>> _playWarningBell;
@@ -463,7 +475,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void _pasteTextWithBroadcast(const winrt::hstring& text);
 
         void _contextMenuHandler(IInspectable sender, Control::ContextMenuRequestedEventArgs args);
-        void _showContextMenuAt(const winrt::Windows::Foundation::Point& controlRelativePos);
+        void _showContextMenuAt(const winrt::Windows::Foundation::Point& controlRelativePos,
+                                std::optional<bool> agentSelection = std::nullopt);
 
         void _bubbleSearchMissingCommand(const IInspectable& sender, const Control::SearchMissingCommandEventArgs& args);
         void _bubbleVtSequenceReceived(const IInspectable& sender, const winrt::hstring& seq);

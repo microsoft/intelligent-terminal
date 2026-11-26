@@ -4134,6 +4134,8 @@ namespace winrt::TerminalApp::implementation
                 if (const auto control = pane->GetTerminalControl())
                 {
                     params["copy_on_select"] = control.Settings().CopyOnSelect();
+                    params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(pane->GetSessionId()));
+                    params["context_menu_bridge"] = true;
                 }
             }
         }
@@ -11257,6 +11259,71 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
+    void TerminalPage::OnAgentContextMenuRequested(hstring eventJson)
+    {
+        Json::Value event;
+        Json::CharReaderBuilder reader;
+        std::istringstream stream{ winrt::to_string(eventJson) };
+        std::string errors;
+        if (!Json::parseFromStream(reader, stream, &event, &errors) || !event["params"].isObject())
+        {
+            _agentPaneLog("Agent context menu: malformed request");
+            return;
+        }
+        const auto& params = event["params"];
+        if (!params["window_id"].isString() || !params["tab_id"].isString() ||
+            !params["pane_id"].isString() || !params["epoch"].isString() || !params["action"].isString())
+        {
+            _agentPaneLog("Agent context menu: missing request identity");
+            return;
+        }
+        if (params["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
+        {
+            return;
+        }
+        const auto tab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
+        const auto requestedPane = _TryParsePaneSessionId(params["pane_id"].asString());
+        const auto pane = tab ? tab->FindAgentPane() : nullptr;
+        if (!pane || !requestedPane || pane->GetSessionId() != *requestedPane)
+        {
+            _agentPaneLog("Agent context menu: stale owner connection");
+            return;
+        }
+        const auto control = pane->GetTerminalControl();
+        if (!control)
+        {
+            return;
+        }
+        const auto action = params["action"].asString();
+        if (action == "ready")
+        {
+            control.RegisterAgentContextMenu(winrt::to_hstring(params["epoch"].asString()));
+            return;
+        }
+        const auto focused = _GetFocusedTabImpl();
+        if (!focused || focused->StableId() != tab->StableId() || pane->IsHidden())
+        {
+            _agentPaneLog("Agent context menu: owner is not visible and active");
+            return;
+        }
+        if (action == "complete")
+        {
+            if (!params["success"].isBool() || !params["success"].asBool())
+            {
+                _agentPaneLog("Agent context menu: clipboard operation failed");
+            }
+            return;
+        }
+        if (action != "show" || !params["sequence"].isUInt64() || !params["token"].isString() ||
+            !params["has_selection"].isBool() || !params["column"].isInt() || !params["row"].isInt())
+        {
+            _agentPaneLog("Agent context menu: invalid menu request");
+            return;
+        }
+        control.ShowAgentContextMenu(
+            winrt::to_hstring(params["epoch"].asString()), params["sequence"].asUInt64(), winrt::to_hstring(params["token"].asString()), params["has_selection"].asBool(), params["column"].asInt(), params["row"].asInt());
+    }
+
     void TerminalPage::OnDefaultPasteRequested(hstring eventJson)
     {
         _agentPaneLog("OnDefaultPasteRequested: received");
@@ -15413,6 +15480,37 @@ namespace winrt::TerminalApp::implementation
 
         term.WriteToClipboard({ get_weak(), &TerminalPage::_copyToClipboard });
         term.PasteFromClipboard({ this, &TerminalPage::_PasteFromClipboardHandler });
+        term.AgentContextMenuAction([weakThis = get_weak(), weakTerm = winrt::weak_ref{ term }, publication](auto&&, const hstring& payload) {
+            const auto page = weakThis.get();
+            const auto control = weakTerm.get();
+            if (!page || !control || (publication && !publication->load(std::memory_order_acquire)))
+            {
+                return;
+            }
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto pane = tab ? tab->FindAgentPane() : nullptr;
+            if (!pane || pane->IsHidden() || pane->GetTerminalControl() != control)
+            {
+                _agentPaneLog("Agent context menu: action owner is no longer active");
+                return;
+            }
+            Json::Value params;
+            Json::CharReaderBuilder reader;
+            std::istringstream stream{ winrt::to_string(payload) };
+            std::string errors;
+            if (!Json::parseFromStream(reader, stream, &params, &errors) ||
+                !params.isObject() || !params["sequence"].isUInt64())
+            {
+                _agentPaneLog("Agent context menu: invalid control action");
+                return;
+            }
+            // Preserve integer sequences across the WinRT JSON number boundary.
+            params["sequence"] = params["sequence"].asUInt64();
+            params["window_id"] = std::to_string(page->_WindowProperties.WindowId());
+            params["tab_id"] = winrt::to_string(tab->StableId());
+            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(pane->GetSessionId()));
+            page->_RaiseProtocolEvent("agent_context_menu_action", params);
+        });
 
         term.OpenHyperlink({ this, &TerminalPage::_OpenHyperlinkHandler });
 

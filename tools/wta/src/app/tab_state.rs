@@ -1136,9 +1136,9 @@ impl TabSession {
             .completed_turn_layout
             .visible_anchors
             .iter()
+            .rev()
             .copied()
-            .filter(|anchor| anchor.row_offset == 0)
-            .last();
+            .find(|anchor| anchor.row_offset == 0);
         let expand = tool_calls
             .iter()
             .any(|id| !self.expanded_completed_tool_calls.contains(id));

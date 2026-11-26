@@ -309,6 +309,44 @@ fn agent_prefix_match_ranks_before_client_substring_match() {
 }
 
 #[test]
+fn agent_command_completion_preserves_provider_order_within_prefix_groups() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.model_picker_models = vec![AcpModelInfo {
+        id: "test-model".into(),
+        name: "Test model".into(),
+        description: None,
+    }];
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![
+            session_command("middle-delta", "Substring", None),
+            session_command("DeltaTwo", "First prefix", None),
+            session_command("model", "Reserved collision", None),
+            session_command("deltaOne", "Second prefix", None),
+            session_command("after-delta", "Last substring", None),
+        ],
+    });
+    type_input(&mut app, "/DEL");
+    assert_eq!(
+        popup_command_names(&app),
+        [
+            "DeltaTwo",
+            "deltaOne",
+            "model",
+            "middle-delta",
+            "after-delta"
+        ]
+    );
+
+    for input in ["ordinary text", "//delta", "/no-such-command"] {
+        app.current_tab_mut().clear_input();
+        type_input(&mut app, input);
+        assert!(!app.command_popup_visible(), "unexpected popup for {input}");
+    }
+}
+
+#[test]
 fn optional_fix_completion_prepares_then_second_enter_runs() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();

@@ -19728,6 +19728,247 @@ fn right_click_copies_and_clears_text_selection() {
 }
 
 #[test]
+fn right_click_context_menu_defers_copy_until_the_native_copy_action() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.window_id = Some("1".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().input = "copy this draft".into();
+    app.current_tab_mut().select_all_input();
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".into(),
+        pane_id: "pane-a".into(),
+        tab_id: Some("tab-a".into()),
+        params: json!({
+            "window_id": "1", "tab_id": "tab-a", "pane_id": "pane-a",
+            "context_menu_bridge": true,
+        }),
+    });
+    crate::wt_protocol_events::take_test_published_events();
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 8,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    }));
+
+    let events = crate::wt_protocol_events::take_test_published_events();
+    let request = events
+        .iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+        .find(|event| event["method"] == "agent_context_menu")
+        .expect(
+            "a bridged right-click must request the native menu instead of copying immediately",
+        );
+    assert_eq!(request["params"]["action"], "show");
+    assert_eq!(request["params"]["has_selection"], true);
+    assert_eq!(request["params"]["sequence"], 1);
+    assert_eq!(request["params"]["window_id"], "1");
+    assert_eq!(request["params"]["tab_id"], "tab-a");
+    assert_eq!(request["params"]["pane_id"], "pane-a");
+    assert!(request["params"].get("text").is_none());
+    assert!(app.current_tab().input_all_selected);
+    assert!(app.transient_hint.is_none(), "opening a menu must not copy");
+}
+
+#[test]
+fn right_click_context_menu_without_selection_does_not_paste_on_open() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.window_id = Some("1".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".into(),
+        pane_id: "pane-a".into(),
+        tab_id: Some("tab-a".into()),
+        params: json!({
+            "window_id": "1", "tab_id": "tab-a", "pane_id": "pane-a",
+            "context_menu_bridge": true,
+        }),
+    });
+    crate::wt_protocol_events::take_test_published_events();
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 8,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    }));
+    let events: Vec<serde_json::Value> = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str(event).unwrap())
+        .collect();
+    assert!(
+        events.iter().any(|event| {
+            event["method"] == "agent_context_menu"
+                && event["params"]["action"] == "show"
+                && event["params"]["has_selection"] == false
+        }),
+        "right-click without a selection must request a Paste menu, not execute Paste"
+    );
+    assert!(!events
+        .iter()
+        .any(|event| event["method"] == "request_default_paste"));
+}
+
+#[test]
+fn right_click_context_menu_copies_the_frozen_snapshot_once_after_focus_loss() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.window_id = Some("1".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    let text = "selected \u{03bb} \u{4e2d}";
+    app.current_tab_mut().input = text.into();
+    app.current_tab_mut().select_all_input();
+    app.handle_event(AppEvent::WtEvent {
+        method: "set_agent_state".into(),
+        pane_id: "pane-a".into(),
+        tab_id: Some("tab-a".into()),
+        params: json!({
+            "window_id": "1", "tab_id": "tab-a", "pane_id": "pane-a",
+            "context_menu_bridge": true,
+        }),
+    });
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 8,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    }));
+    let mut action = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+        .find(|event| event["params"]["action"] == "show")
+        .unwrap()["params"]
+        .clone();
+    action["action"] = json!("copy");
+    app.handle_event(AppEvent::FocusChanged(false));
+    assert!(!app.current_tab().input_all_selected);
+    let mut copied = Vec::new();
+    app.handle_agent_context_menu_action_with(&action, |value| {
+        copied.push(value.to_string());
+        Ok(())
+    });
+    app.handle_agent_context_menu_action_with(&action, |_| panic!("duplicate Copy"));
+    assert_eq!(copied, [text]);
+    let events = crate::wt_protocol_events::take_test_published_events();
+    assert!(events.iter().any(|event| {
+        let event: serde_json::Value = serde_json::from_str(event).unwrap();
+        event["params"]["action"] == "complete" && event["params"]["success"] == true
+    }));
+}
+
+#[test]
+fn right_click_context_menu_rejects_foreign_stale_and_mutated_selections() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.window_id = Some("1".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().input = "first snapshot".into();
+    app.current_tab_mut().select_all_input();
+    app.enable_context_menu_bridge(&json!({
+        "window_id": "1", "tab_id": "tab-a", "pane_id": "pane-a",
+        "context_menu_bridge": true,
+    }));
+    let right = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 8,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    };
+    app.handle_event(AppEvent::Mouse(right));
+    let mut action = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+        .find(|event| event["params"]["action"] == "show")
+        .unwrap()["params"]
+        .clone();
+    action["action"] = json!("copy");
+    let mut foreign = action.clone();
+    foreign["pane_id"] = json!("pane-b");
+    app.handle_agent_context_menu_action_with(&foreign, |_| panic!("foreign pane Copy"));
+    app.handle_event(AppEvent::Mouse(right));
+    app.handle_agent_context_menu_action_with(&action, |_| panic!("old right-click Copy"));
+    action = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+        .find(|event| event["params"]["action"] == "show")
+        .unwrap()["params"]
+        .clone();
+    action["action"] = json!("copy");
+    app.handle_event(AppEvent::Resize(90, 20));
+    app.handle_agent_context_menu_action_with(&action, |_| panic!("invalidated Copy"));
+}
+
+#[test]
+fn right_click_context_menu_copy_failure_never_falls_through_to_paste() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+    let _events = crate::wt_protocol_events::capture_test_published_events();
+    let mut app = test_app();
+    app.window_id = Some("1".into());
+    app.owner_tab_id = Some("tab-a".into());
+    app.tab_id = Some("tab-a".into());
+    app.pane_id = Some("pane-a".into());
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().input = "copy failure".into();
+    app.current_tab_mut().select_all_input();
+    app.current_tab_mut().copy_on_select = true;
+    app.enable_context_menu_bridge(&json!({
+        "window_id": "1", "tab_id": "tab-a", "pane_id": "pane-a",
+        "context_menu_bridge": true,
+    }));
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 8,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+    }));
+    let mut action = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str::<serde_json::Value>(event).unwrap())
+        .find(|event| event["params"]["action"] == "show")
+        .unwrap()["params"]
+        .clone();
+    action["action"] = json!("direct");
+    app.handle_agent_context_menu_action_with(&action, |_| {
+        Err(std::io::Error::other("clipboard unavailable"))
+    });
+    let events: Vec<serde_json::Value> = crate::wt_protocol_events::take_test_published_events()
+        .iter()
+        .map(|event| serde_json::from_str(event).unwrap())
+        .collect();
+    assert!(!events
+        .iter()
+        .any(|event| event["method"] == "request_default_paste"));
+    assert!(events.iter().any(|event| {
+        event["params"]["action"] == "complete" && event["params"]["success"] == false
+    }));
+}
+
+#[test]
 fn right_click_without_text_selection_requests_owner_default_paste() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;

@@ -193,5 +193,9 @@ namespace Microsoft.Terminal.Control
         String ProgramStatusJson();
         void AcknowledgeProgramStatus(UInt64 revision);
         event Windows.Foundation.TypedEventHandler<Object, Object> ProgramStatusChanged;
+
+        Boolean RegisterAgentContextMenu(String epoch);
+        Boolean ShowAgentContextMenu(String epoch, UInt64 sequence, String token, Boolean hasSelection, Int32 column, Int32 row);
+        event Windows.Foundation.TypedEventHandler<Object, String> AgentContextMenuAction;
     }
 }

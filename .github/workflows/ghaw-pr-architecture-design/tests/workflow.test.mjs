@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../../ghaw-pr-architecture-design.md', import.meta.url), 'utf8');
@@ -80,16 +83,85 @@ test('trusted checkout never activates candidate configuration or adds a repair 
     assert.doesNotMatch(job(source, 'prepare'), /copilot-requests|engine:/);
 });
 
-test('hosted research reuses only native read-only GitHub tools without custom readers or shell', () => {
+test('hosted research prepares pinned source before inference without model shell access', () => {
+    assert.match(source, /github: false/);
     assert.match(source, /bash: false/);
-    assert.match(source, /read-only: true/);
-    assert.doesNotMatch(source, /mcp-scripts:|pre-agent-steps:|scope\.json|read-architecture-evidence/);
-    assert.match(source, /get_file_contents.*`ref`/);
-    assert.match(source, /Code search is a navigation aid, not commit-pinned evidence/);
-    assert.match(compiled, /"GITHUB_READ_ONLY": "1"/);
+    assert.doesNotMatch(source, /mcp-scripts:/);
+    const agent = job(compiled, 'agent');
+    const prepare = agent.indexOf('name: Prepare the PR diff and source');
+    assert.ok(prepare > 0 && prepare < agent.indexOf('name: Execute GitHub Copilot CLI'));
+    assert.match(agent, /BASE: \$\{\{ needs.prepare.outputs.comparison_base \}\}/);
+    assert.match(agent, /HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
+    const execution = agent.split(/^      - /m).find(step => step.startsWith('name: Execute GitHub Copilot CLI'));
+    assert.doesNotMatch(execution, /--allow-all-tools|--allow-tool shell[\s(]/);
+    assert.match(execution, /architecture-review:\/tmp\/gh-aw\/architecture-review:ro/);
+    assert.match(execution, /--no-custom-instructions/);
 });
 
-test('selected reviewer exposes the compiled evidence and report MCP tools', () => {
+test('the compiled gate skips forks and drafts before preparation', () => {
+    const condition = job(compiled, 'prepare').match(/^ {4}if: (.+)$/m)?.[1];
+    assert.ok(condition);
+    const eligible = new Function('github', `return ${condition};`);
+    for (const [draft, id, result] of [[false, 1, true], [false, 2, false], [true, 1, false]]) {
+        assert.equal(eligible({ repository_id: 1, event: { pull_request: { draft, head: { repo: { id } } } } }), result);
+    }
+});
+
+test('evidence contains both revisions and unchanged consumers without checking out candidate instructions', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arch-evidence-'));
+    const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=' +
+        (process.platform === 'win32' ? 'NUL' : '/dev/null'), '-c', 'commit.gpgsign=false',
+    '-c', 'core.autocrlf=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
+    try {
+        git('init', '-q');
+        git('config', 'user.name', 'Evidence Fixture');
+        git('config', 'user.email', 'fixture@example.invalid');
+        const put = (name, data) => fs.writeFileSync(path.join(root, name), data);
+        put('changed.txt', 'before\n');
+        put('consumer.txt', 'unchanged consumer\n');
+        git('add', '.');
+        git('commit', '-qm', 'base');
+        const base = git('rev-parse', 'HEAD');
+        put('changed.txt', 'after\n');
+        put('AGENTS.md', 'candidate instructions\n');
+        put('link.txt', 'consumer.txt');
+        git('add', '.');
+        git('update-index', '--cacheinfo', '120000', git('hash-object', 'link.txt'), 'link.txt');
+        git('commit', '-qm', 'head');
+        const head = git('rev-parse', 'HEAD');
+        git('branch', 'trusted-base', base);
+        const checkout = path.join(root, 'checkout');
+        git('clone', '--quiet', '--depth=1', '--branch', 'trusted-base', pathToFileURL(root).href, checkout);
+        const gitCore = process.platform === 'win32' ? git('--exec-path') : '';
+        const bash = gitCore ? path.resolve(gitCore, '..', '..', '..', 'bin', 'bash.exe') : 'bash';
+        const step = job(compiled, 'agent').split(/^      - /m)
+            .find(block => block.includes('name: Prepare the PR diff and source'));
+        const script = JSON.parse(step.match(/^ {8}run: (".*")\r?$/m)[1]);
+        const runnerTemp = path.join(root, 'runner');
+        fs.mkdirSync(runnerTemp);
+        execFileSync(bash, ['-c', script], { cwd: checkout, encoding: 'utf8',
+            env: { ...process.env, BASE: base, HEAD_SHA: head, RUNNER_TEMP: runnerTemp.replaceAll('\\', '/') },
+            stdio: ['ignore', 'pipe', 'pipe'] });
+        const evidence = path.join(runnerTemp, 'architecture-review');
+        const read = (...parts) => fs.readFileSync(path.join(evidence, ...parts), 'utf8');
+        assert.match(read('files.txt'), /M\tchanged\.txt/);
+        assert.match(read('diff.txt'), /-before\r?\n\+after/);
+        assert.equal(read('base', 'changed.txt'), 'before\n');
+        assert.equal(read('head', 'changed.txt'), 'after\n');
+        assert.equal(read('head', 'AGENTS.md'), 'candidate instructions\n');
+        assert.equal(read('head', 'consumer.txt'), 'unchanged consumer\n');
+        assert.ok(!fs.lstatSync(path.join(evidence, 'head', 'link.txt')).isSymbolicLink());
+        assert.equal(read('head', 'link.txt'), 'consumer.txt');
+        assert.ok(!fs.existsSync(path.join(evidence, 'head', '.git')));
+        assert.equal(git('-C', checkout, 'rev-parse', '--is-shallow-repository'), 'true');
+        assert.equal(git('-C', checkout, 'rev-parse', 'HEAD'), base);
+        assert.ok(!fs.existsSync(path.join(checkout, 'AGENTS.md')));
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('selected reviewer can report insufficient evidence and the run fails visibly', () => {
     const selected = source.match(/^ {2}agent: ([\w-]+)$/m)?.[1];
     assert.ok(selected);
     const profilePath = `.github/agents/${selected}.agent.md`;
@@ -97,11 +169,11 @@ test('selected reviewer exposes the compiled evidence and report MCP tools', () 
     const profile = fs.readFileSync(new URL(`../../../agents/${selected}.agent.md`, import.meta.url), 'utf8');
     const tools = JSON.parse(profile.match(/^tools: (\[.+\])$/m)[1].replaceAll("'", '"'));
     const manifest = JSON.parse(compiled.match(/^# gh-aw-manifest: (.+)$/m)[1]);
-    for (const name of ['get_file_contents', 'pull_request_read', 'search_code', 'add_comment']) {
-        const server = manifest.mcp_servers.find(server => server.tools.includes(name));
-        assert.ok(server, `Missing compiled tool ${name}`);
-        assert.ok(tools.includes(`${server.name}/${name}`), `Selected profile excludes ${server.name}/${name}`);
-    }
+    assert.ok(tools.includes('read'));
+    assert.ok(manifest.mcp_servers.some(server => server.name === 'safeoutputs' && server.tools.includes('add_comment')));
+    assert.match(job(compiled, 'agent'), /"report_incomplete": \{/);
+    assert.ok(tools.includes('safeoutputs/add_comment'));
+    assert.ok(tools.includes('safeoutputs/report_incomplete'));
 });
 
 test('new PR heads preempt the old run independently of size admission or CI events', () => {
@@ -128,7 +200,7 @@ test('compiled inference steps isolate telemetry while native runner configurati
 test('compiled publisher revalidates after detection and artifact setup before native mutation', () => {
     const publisher = job(compiled, 'safe_outputs');
     const steps = publisher.split(/^      - /m);
-    const check = steps.findIndex(step => step.startsWith('name: Reject stale review before publication'));
+    const check = steps.findIndex(step => step.startsWith('name: Reject stale or incomplete review before publication'));
     const handler = steps.findIndex(step => step.startsWith('name: Process Safe Outputs'));
     const download = steps.findIndex(step => step.includes('uses: actions/download-artifact@'));
     assert.ok(check > download && download > 0);
@@ -140,7 +212,7 @@ test('compiled publisher revalidates after detection and artifact setup before n
     assert.match(publisher, /permissions:\r?\n {6}contents: read/);
 });
 
-test('actual publisher check rejects changes during detection before handler execution', async () => {
+test('actual publisher check rejects drift and missing or incomplete reports', async () => {
     const block = source.match(/^safe-outputs:\r?\n([\s\S]*?)(?=^\S)/m)?.[1];
     const script = block?.match(/script: \|\r?\n((?: {10}[^\r\n]*(?:\r?\n|$))+)/)?.[1].split(/\r?\n/)
         .map(line => line.slice(10)).join('\n');
@@ -152,7 +224,8 @@ test('actual publisher check rejects changes during detection before handler exe
         head: { sha: 'a'.repeat(40), ref: 'feature', repo } };
     const context = { payload: { pull_request: expected, repository: repo }, repo: { owner: 'example', repo: 'project' } };
     const environment = { env: { GITHUB_WORKSPACE: fileURLToPath(new URL('../../../../', import.meta.url)) } };
-    for (const mutation of [null, 'head', 'base', 'closed', 'draft']) {
+    const require = createRequire(import.meta.url);
+    for (const mutation of [null, 'head', 'base', 'closed', 'draft', 'incomplete', 'missing', 'mixed']) {
         const pr = structuredClone(expected);
         if (mutation === 'head') pr.head.sha = 'c'.repeat(40);
         if (mutation === 'base') pr.base.sha = 'c'.repeat(40);
@@ -162,12 +235,18 @@ test('actual publisher check rejects changes during detection before handler exe
             assert.equal(request.pull_number, 2);
             return { data: pr };
         } } } };
+        const report = { type: 'add_comment', body: 'Review at the admitted head' };
+        const incomplete = { type: 'report_incomplete', reason: 'Source unavailable' };
+        const items = mutation === 'incomplete' ? [incomplete] : mutation === 'missing' ? [] :
+            mutation === 'mixed' ? [report, incomplete] : [report];
+        const read = module => module === 'node:fs' ? { readFileSync: () => JSON.stringify({ items }) } :
+            require(module);
         let published = false;
         const publishAfterDetection = async () => {
-            await execute(github, context, environment, createRequire(import.meta.url));
+            await execute(github, context, environment, read);
             published = true;
         };
-        if (mutation) await assert.rejects(publishAfterDetection(), /stale/);
+        if (mutation) await assert.rejects(publishAfterDetection(), /stale|complete report/);
         else await publishAfterDetection();
         assert.equal(published, mutation === null);
     }
