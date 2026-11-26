@@ -1490,6 +1490,17 @@ namespace TerminalAppLocalTests
                 const Editor::AIAgentsViewModel viewModel{ settings.GlobalSettings() };
                 VERIFY_IS_TRUE(frame.Navigate(winrt::xaml_typename<Editor::AIAgents>(), Editor::NavigateToPageArgs{ viewModel, nullptr, L"" }));
                 const auto page = frame.Content().as<Editor::AIAgents>();
+                ::details::Event loaded;
+                const auto pageLoadedRevoker = page.Loaded(winrt::auto_revoke, [&](auto&&, auto&&) { loaded.Set(); });
+                host.UpdateLayout();
+                if (page.IsLoaded())
+                {
+                    loaded.Set();
+                }
+                co_await winrt::resume_background();
+                const auto loadedResult = WaitForSingleObject(loaded.m_handle, 10000);
+                co_await wil::resume_foreground(dispatcher);
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), loadedResult);
                 const auto notice = page.FindName(L"ComplianceInfoBar").as<winrt::Microsoft::UI::Xaml::Controls::InfoBar>();
                 VERIFY_ARE_EQUAL(resources.GetLocalizedString(L"AIAgents_ComplianceInfo/Message"), notice.Message());
                 VERIFY_ARE_EQUAL(notice.Message(), page.FindName(L"ComplianceMessage").as<Documents::Run>().Text());
@@ -1497,9 +1508,21 @@ namespace TerminalAppLocalTests
                 ContentDialog previousDialog{ nullptr };
                 for (const auto settingsTheme : { oppositeTheme, appTheme })
                 {
+                    ::details::Event changed;
+                    const auto signalReady = [&]() {
+                        if (host.ActualTheme() == settingsTheme && page.ActualTheme() == settingsTheme)
+                        {
+                            changed.Set();
+                        }
+                    };
+                    const auto themeRevoker = page.ActualThemeChanged(winrt::auto_revoke, [&](auto&&, auto&&) { signalReady(); });
                     host.RequestedTheme(settingsTheme);
-                    co_await wil::resume_foreground(dispatcher, CoreDispatcherPriority::Low);
                     host.UpdateLayout();
+                    signalReady();
+                    co_await winrt::resume_background();
+                    const auto changedResult = WaitForSingleObject(changed.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), changedResult);
                     VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
                     VERIFY_ARE_EQUAL(settingsTheme, page.ActualTheme());
 
