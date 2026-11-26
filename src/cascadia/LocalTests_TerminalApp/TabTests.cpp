@@ -1510,12 +1510,14 @@ namespace TerminalAppLocalTests
                 {
                     ::details::Event changed;
                     const auto signalReady = [&]() {
-                        if (host.ActualTheme() == settingsTheme && page.ActualTheme() == settingsTheme)
+                        if (page.IsLoaded() && page.ActualWidth() > 0 && page.ActualHeight() > 0 &&
+                            host.ActualTheme() == settingsTheme && page.ActualTheme() == settingsTheme)
                         {
                             changed.Set();
                         }
                     };
                     const auto themeRevoker = page.ActualThemeChanged(winrt::auto_revoke, [&](auto&&, auto&&) { signalReady(); });
+                    const auto pageLayoutRevoker = page.LayoutUpdated(winrt::auto_revoke, [&](auto&&, auto&&) { signalReady(); });
                     host.RequestedTheme(settingsTheme);
                     host.UpdateLayout();
                     signalReady();
@@ -1555,47 +1557,68 @@ namespace TerminalAppLocalTests
                     });
                     bool opened = false;
                     bool closeClicked = false;
+                    ::details::Event popupReady;
+                    ::details::Event closed;
+                    const auto signalPopupReady = [&]() {
+                        if (opened && dialog.IsLoaded() && dialog.Parent() &&
+                            dialog.ActualWidth() > 0 && dialog.ActualHeight() > 0 &&
+                            dialog.ActualTheme() == settingsTheme)
+                        {
+                            popupReady.Set();
+                        }
+                    };
+                    const auto layoutRevoker = dialog.LayoutUpdated(winrt::auto_revoke, [&](auto&&, auto&&) { signalPopupReady(); });
+                    const auto dialogThemeRevoker = dialog.ActualThemeChanged(winrt::auto_revoke, [&](auto&&, auto&&) { signalPopupReady(); });
                     const auto closeRevoker = dialog.CloseButtonClick(winrt::auto_revoke, [&](const ContentDialog&, const ContentDialogButtonClickEventArgs&) {
                         closeClicked = true;
                     });
-                    const auto openedRevoker = dialog.Opened(winrt::auto_revoke, [&](const ContentDialog& shown, const ContentDialogOpenedEventArgs&) {
+                    const auto closedRevoker = dialog.Closed(winrt::auto_revoke, [&](auto&&, auto&&) { closed.Set(); });
+                    const auto openedRevoker = dialog.Opened(winrt::auto_revoke, [&](const ContentDialog&, const ContentDialogOpenedEventArgs&) {
                         opened = true;
-                        dispatcher.RunAsync(CoreDispatcherPriority::Low, [shown, settingsTheme, page]() {
-                            bool invoked = false;
-                            const auto dismissOnFailure = wil::scope_exit([&]() {
-                                if (!invoked)
-                                {
-                                    shown.Hide();
-                                }
-                            });
-                            VERIFY_IS_NOT_NULL(shown.Parent());
-                            VERIFY_IS_TRUE(shown.ActualWidth() > 0);
-                            VERIFY_IS_TRUE(shown.ActualHeight() > 0);
-                            VERIFY_ARE_EQUAL(settingsTheme, shown.RequestedTheme());
-                            VERIFY_ARE_EQUAL(settingsTheme, shown.ActualTheme());
-                            VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
-                            const auto findCloseButton = [](auto&& self, const DependencyObject& element) -> Button {
-                                if (const auto button = element.try_as<Button>(); button && button.Name() == L"CloseButton")
-                                {
-                                    return button;
-                                }
-                                for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
-                                {
-                                    if (const auto found = self(self, Media::VisualTreeHelper::GetChild(element, index)))
-                                    {
-                                        return found;
-                                    }
-                                }
-                                return nullptr;
-                            };
-                            const auto closeButton = findCloseButton(findCloseButton, shown);
-                            VERIFY_IS_NOT_NULL(closeButton);
-                            const Automation::Peers::ButtonAutomationPeer closePeer{ closeButton };
-                            closePeer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
-                            invoked = true;
-                        });
+                        signalPopupReady();
                     });
-                    const auto result = co_await dialog.ShowAsync(ContentDialogPlacement::Popup);
+                    const auto operation = dialog.ShowAsync(ContentDialogPlacement::Popup);
+                    bool invoked = false;
+                    const auto dismissOnFailure = wil::scope_exit([&]() {
+                        if (!invoked)
+                        {
+                            dialog.Hide();
+                        }
+                    });
+                    co_await winrt::resume_background();
+                    const auto popupResult = WaitForSingleObject(popupReady.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), popupResult);
+                    VERIFY_IS_NOT_NULL(dialog.Parent());
+                    VERIFY_IS_TRUE(dialog.ActualWidth() > 0);
+                    VERIFY_IS_TRUE(dialog.ActualHeight() > 0);
+                    VERIFY_ARE_EQUAL(settingsTheme, dialog.RequestedTheme());
+                    VERIFY_ARE_EQUAL(settingsTheme, dialog.ActualTheme());
+                    VERIFY_ARE_EQUAL(ElementTheme::Default, page.RequestedTheme());
+                    const auto findCloseButton = [](auto&& self, const DependencyObject& element) -> Button {
+                        if (const auto button = element.try_as<Button>(); button && button.Name() == L"CloseButton")
+                        {
+                            return button;
+                        }
+                        for (int32_t index = 0; index < Media::VisualTreeHelper::GetChildrenCount(element); ++index)
+                        {
+                            if (const auto found = self(self, Media::VisualTreeHelper::GetChild(element, index)))
+                            {
+                                return found;
+                            }
+                        }
+                        return nullptr;
+                    };
+                    const auto closeButton = findCloseButton(findCloseButton, dialog);
+                    VERIFY_IS_NOT_NULL(closeButton);
+                    const Automation::Peers::ButtonAutomationPeer closePeer{ closeButton };
+                    closePeer.GetPattern(Automation::Peers::PatternInterface::Invoke).as<Automation::Provider::IInvokeProvider>().Invoke();
+                    invoked = true;
+                    const auto result = co_await operation;
+                    co_await winrt::resume_background();
+                    const auto closedResult = WaitForSingleObject(closed.m_handle, 10000);
+                    co_await wil::resume_foreground(dispatcher);
+                    VERIFY_ARE_EQUAL(static_cast<DWORD>(WAIT_OBJECT_0), closedResult);
                     VERIFY_IS_TRUE(opened);
                     VERIFY_IS_TRUE(closeClicked);
                     VERIFY_ARE_EQUAL(ContentDialogResult::None, result);
