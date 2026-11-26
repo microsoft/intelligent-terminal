@@ -192,6 +192,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Keep the dialog unparented so the window's popup-theme workaround cannot modify this page.
         const auto dialog = Resources().Lookup(box_value(L"ComplianceDialogTemplate")).as<DataTemplate>().LoadContent().as<ContentDialog>();
         dialog.FindName(L"ComplianceHostingText").as<TextBlock>().Text(winrt::hstring{ RS_fmt(L"AIAgents_ComplianceHosting", CascadiaSettings::ApplicationDisplayName()) });
+        // The window presenter applies the application theme first; Settings can use a different theme.
+        // Wait until the popup owns the dialog before updating its ancestry.
+        dialog.Opened([theme = ActualTheme()](const ContentDialog& sender, const ContentDialogOpenedEventArgs&) {
+            auto element = sender.as<FrameworkElement>();
+            while (element)
+            {
+                element.RequestedTheme(theme);
+                element = element.Parent().try_as<FrameworkElement>();
+            }
+        });
         ShowDialogRequested.raise(*this, dialog);
     }
 

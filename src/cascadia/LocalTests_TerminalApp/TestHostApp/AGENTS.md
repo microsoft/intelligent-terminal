@@ -24,6 +24,12 @@ Agents mode handles the page's `ShowDialogRequested` event to show the productio
 compliance dialog in the host's XamlRoot. This validates dialog content and
 interaction only; production dialog serialization and dismissal use
 TerminalWindow through the Settings MainPage and TerminalPage event relay.
+`TabTests::AgentCompliancePopupPreservesSettingsTheme` navigates the production
+Agents page, opens and closes its real disclosure twice through UI Automation,
+checks the localized dialog content, and changes the inherited Settings theme
+between openings. It deliberately applies an application-theme pass before
+opening; this covers Settings/application theme differences, not native
+TerminalWindow serialization or competing dialogs.
 
 Do not construct the full Settings MainPage in this AppContainer host.
 MainPage eagerly loads Extensions; its filesystem discovery fails with access
