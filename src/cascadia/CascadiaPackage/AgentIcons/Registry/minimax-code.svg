@@ -1,0 +1,6 @@
+<!-- Derived from agentclientprotocol/registry 2a27ff18b5816f47d7ec538e22943ff194e05131/minimax-code/icon.svg.
+     Modified for Intelligent Terminal: currentColor resolved for theme; geometry unchanged.
+     Registry license: Apache-2.0; see LICENSE-ACP-Registry.txt and NOTICE.txt. No trademark permission implied. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#FFFFFF" d="M2 3h3l3 5 3-5h3v10h-2V6.5l-4 6-4-6V13H2V3Z"/>
+</svg>

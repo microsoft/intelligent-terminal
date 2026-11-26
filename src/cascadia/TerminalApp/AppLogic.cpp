@@ -501,6 +501,13 @@ namespace winrt::TerminalApp::implementation
             _settings.LogSettingChanges(true);
         }
 
+        if (initialLoad)
+        {
+            // Process-owned installed-agent snapshot. Settings reloads, tabs and
+            // helper/configuration polling must not rediscover installations.
+            _settings.GlobalSettings().InitializeAcpAgentCatalog();
+        }
+
         // Seed from the settings actually applied, including initial-load defaults.
         // Failed later reloads returned above and must not replace this baseline.
         const auto globalsForTelemetry = _settings.GlobalSettings();

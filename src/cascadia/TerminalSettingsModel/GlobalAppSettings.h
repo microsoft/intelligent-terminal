@@ -26,6 +26,8 @@ Author(s):
 #include "NewTabMenuEntry.h"
 #include "CustomModelProvider.h"
 #include "RemainingProfilesEntry.h"
+#include "../inc/AcpAgentCatalog.h"
+#include <functional>
 
 // fwdecl unittest classes
 namespace SettingsModelUnitTests
@@ -92,7 +94,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         // These return the user setting value after applying GPO policy
         // overrides. If the selected agent is blocked by policy, returns
         // empty. If a feature is blocked by policy, returns false.
+        void InitializeAcpAgentCatalog() const;
+        void RefreshAcpAgentCatalog() const;
+        Windows::Foundation::Collections::IVectorView<hstring> InstalledAcpAgents() const;
         hstring EffectiveAcpAgent() const;
+        hstring EffectiveAcpCustomCommand() const;
         hstring EffectiveDelegateAgent() const;
         bool EffectiveAutoErrorDetectionEnabled() const;
         bool EffectiveAutoFixEnabled() const;
@@ -119,6 +125,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         // NOT for production use.
         static void _TestHookSetAgentPolicy(std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> snap);
         static void _TestHookResetAgentPolicy();
+        static void _TestHookSetAcpAgentDetector(std::function<std::vector<::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::InstalledAgent>()> detector);
+        static void _TestHookResetAcpAgentCatalog();
 
         INHERITABLE_SETTING(Model::GlobalAppSettings, hstring, UnparsedDefaultProfile, L"");
 

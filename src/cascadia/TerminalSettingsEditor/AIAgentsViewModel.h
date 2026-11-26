@@ -24,6 +24,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring Id() const { return _id; }
         winrt::hstring DisplayName() const { return _displayName; }
         winrt::hstring DisplayLabel() const;
+        winrt::hstring IconPath() const;
         bool IsInstalled() const { return _isInstalled; }
         bool IsAddNew() const { return _isAddNew; }
         winrt::hstring CustomCommand() const { return _customCommand; }

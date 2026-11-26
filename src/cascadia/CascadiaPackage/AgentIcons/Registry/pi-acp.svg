@@ -1,0 +1,7 @@
+<!-- Derived from agentclientprotocol/registry 2a27ff18b5816f47d7ec538e22943ff194e05131/pi-acp/icon.svg.
+     Modified for Intelligent Terminal: currentColor resolved for theme; geometry unchanged.
+     Registry license: Apache-2.0; see LICENSE-ACP-Registry.txt and NOTICE.txt. No trademark permission implied. -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M1 1H11.7692V7.9999H8.17942V11.4999H4.58982V15H1V1ZM4.58982 4.50005V7.9999H8.17942V4.50005H4.58982Z" fill="#FFFFFF"/>
+<path d="M11.7692 7.46154H15V15H11.7692V7.46154Z" fill="#FFFFFF"/>
+</svg>

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "AcpAgentCatalog.h"
+
 namespace Microsoft::Terminal
 {
     inline void BindAgentIconTheme(const winrt::Windows::UI::Xaml::FrameworkElement& element,
@@ -21,7 +23,21 @@ namespace Microsoft::Terminal
         }
         if (originalPath.empty())
         {
-            return;
+            namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+            for (const auto& agent : Catalog::Agents)
+            {
+                const auto path = Catalog::IconPath(agent);
+                const auto stem = path.substr(0, path.size() - 4);
+                if (uri == path || uri == stem + L"-light.svg")
+                {
+                    originalPath = winrt::hstring{ stem };
+                    break;
+                }
+            }
+            if (originalPath.empty())
+            {
+                return;
+            }
         }
 
         const auto update = [source, originalPath](const auto& sender, const auto&) {

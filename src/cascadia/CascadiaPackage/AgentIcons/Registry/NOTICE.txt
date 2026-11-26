@@ -1,0 +1,36 @@
+ACP Registry icon artwork
+Source: https://github.com/agentclientprotocol/registry
+Revision: 2a27ff18b5816f47d7ec538e22943ff194e05131
+Upstream licensing statement:
+https://github.com/agentclientprotocol/registry/blob/2a27ff18b5816f47d7ec538e22943ff194e05131/README.md#license
+License: Apache License, Version 2.0 (see LICENSE-ACP-Registry.txt).
+
+These are derivatives of the SVG artwork distributed by the ACP Registry,
+not copies of the agents' executable code. Individual agents' code licenses
+and service terms are not being asserted as licenses for third-party logos.
+The registry repository's Apache-2.0 statement is the copyright provenance
+basis for these registry-contributed files; it is not an independent
+verification that every contributor controlled all underlying brand rights.
+
+Modifications for Intelligent Terminal:
+- currentColor resolved to white for dark-theme SVGs and black for -light SVGs;
+- artwork converted to transparent 128x128 PNG alpha masks;
+- Qoder's external SVG 1.1 DTD declaration removed without resolving it;
+- no artwork geometry or provider lettering was deliberately redesigned;
+- Dirac text converted to a local Windows Georgia italic glyph outline
+  according to its supplied font family, removing the runtime font dependency;
+- Codebuddy viewport expanded from 16x16 to 21x21 to retain the complete paths.
+
+The following registry IDs are included:
+amp-acp, autohand, bob,
+cline, codebuddy-code, cortex-code, corust-agent, crow-cli, cursor,
+devin, dimcode, dirac,
+glm-acp-agent, goose, grok-build, harn, junie, kilo, kimchi, kimi-code,
+minimax-code, mistral-vibe, nova,
+pi-acp, poolside, qoder, qwen-code, sigit, stakpak.
+
+Names, logos and other marks remain the property of their respective owners.
+Apache-2.0 section 6 does not grant general trademark rights. Inclusion only
+identifies an agent; no sponsorship, endorsement or affiliation is asserted.
+Provider-specific brand permission has not been independently certified.
+This notice does not grant permission beyond the upstream license.

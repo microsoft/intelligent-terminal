@@ -26,6 +26,8 @@
 #include "NewTabMenu.h"
 #include "NavConstants.h"
 #include "..\inc\AgentAvailability.h"
+#include "..\inc\AcpAgentCatalog.h"
+#include "..\inc\WtaProcess.h"
 #include "..\inc\AgentProfileUtils.h"
 #include "..\types\inc\utils.hpp"
 #include <..\WinRTUtils\inc\Utils.h>
@@ -951,6 +953,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     // - elementToFocus: the name of the element to focus on the target page
     void MainPage::_Navigate(const IInspectable& vm, BreadcrumbSubPage subPage, hstring elementToFocus)
     {
+        // Reload/reset can rebuild the current page through this same function.
+        // Capture the real current page before _PreNavigateHelper changes state.
+        const bool wasAgentsPage = contentFrame().Content().try_as<Editor::AIAgents>() != nullptr;
         _PreNavigateHelper();
 
         hstring selectedNavTag;
@@ -1032,6 +1037,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             }
             else if (*clickedItemTag == aiAgentsTag)
             {
+                // Preserve the existing PATH refresh for built-in availability,
+                // but never rediscover catalog agents while reconstructing Agents.
+                try
+                {
+                    ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
+                }
+                catch (...)
+                {
+                    LOG_CAUGHT_EXCEPTION();
+                }
+                ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::RefreshOnAgentsPageEntry(wasAgentsPage, [this]() {
+                    _settingsClone.GlobalSettings().RefreshAcpAgentCatalog();
+                });
                 auto aiAgentsVm = winrt::make<AIAgentsViewModel>(_settingsClone.GlobalSettings());
                 aiAgentsVm.InitShellIntegrationRequested([weak = get_weak()](auto&&, auto target) {
                     if (auto s = weak.get())

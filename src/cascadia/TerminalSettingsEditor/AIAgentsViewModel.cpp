@@ -10,6 +10,7 @@
 #include "EnumEntry.h"
 #include "../inc/AcpModelUtils.h"
 #include "../inc/AgentAvailability.h"
+#include "../inc/AcpAgentCatalog.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomAgentId.h"
 #include "../inc/CustomModelCredential.h"
@@ -109,6 +110,23 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_isAddNew) return L"+ Add New...";
         if (_isInstalled) return _displayName;
         return _displayName + L" (not installed)";
+    }
+
+    winrt::hstring AgentEntry::IconPath() const
+    {
+        namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+        if (const auto agent = Catalog::Find(_id))
+        {
+            return winrt::hstring{ Catalog::IconPath(*agent, true) };
+        }
+        for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents)
+        {
+            if (agent.id == _id)
+            {
+                return winrt::hstring{ L"ms-appx:///AgentIcons/Masks/" } + _id + L".png";
+            }
+        }
+        return L"ms-appx:///AgentIcons/Masks/generic.png";
     }
 
     void AgentEntry::Remove()
@@ -366,7 +384,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         for (uint32_t i = 0; i < list.Size();)
         {
-            if (_StartsWithCustom(list.GetAt(i).Id()))
+            if (_StartsWithCustom(list.GetAt(i).Id()) &&
+                (!isAcpAgent || !::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(list.GetAt(i).Id())))
             {
                 list.RemoveAt(i);
             }
@@ -437,7 +456,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             settings.ClearAcpCustomCommand();
         }
         _RebuildCustomEntries(list, commands, true);
-        if (_StartsWithCustom(selectedId) && selectedCommand.empty())
+        if (_StartsWithCustom(selectedId) && selectedCommand.empty() &&
+            !::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(selectedId))
         {
             const auto idStr = winrt::to_string(selectedId);
             const auto bareId = winrt::to_hstring(idStr.substr(7));
@@ -531,18 +551,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
+        // Construction also happens during settings reload/reset. Only MainPage
+        // owns the genuine page-entry refresh; reconstruction reuses its snapshot.
         _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
-
-        // Refresh PATH from the Windows registry so SearchPathW can find
-        // CLIs installed after Terminal launched (e.g. WinGet\Links).
-        try
-        {
-            ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
-        }
-        catch (...)
-        {
-            LOG_CAUGHT_EXCEPTION();
-        }
 
         // ACP-capable agents — use GPO-filtered list so only policy-allowed
         // agents appear in the dropdown. Also skip agents whose CLI isn't
@@ -566,6 +577,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Only show custom entry and "Add New" if custom agents are allowed by policy.
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
+            namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+            for (const auto& id : _GlobalSettings.InstalledAcpAgents())
+            {
+                if (const auto agent = Catalog::Find(id))
+                {
+                    _acpAgentList.Append(winrt::make<AgentEntry>(
+                        id,
+                        winrt::hstring{ agent->name },
+                        true));
+                }
+            }
             _NormalizeCustomAcpSettings(_GlobalSettings, _acpAgentList);
             _AppendAddNewEntry(_acpAgentList);
         }
@@ -1115,7 +1137,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         if (const auto preferred = _FindEntryById(list, preferredId))
         {
-            if (!preferred.IsAddNew() && !_StartsWithCustom(preferred.Id()))
+            if (!preferred.IsAddNew() &&
+                (!_StartsWithCustom(preferred.Id()) ||
+                 ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(preferred.Id())))
             {
                 return preferred;
             }
@@ -1124,7 +1148,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         for (uint32_t i = 0; i < list.Size(); ++i)
         {
             const auto entry = list.GetAt(i);
-            if (!entry.IsAddNew() && !_StartsWithCustom(entry.Id()))
+            if (!entry.IsAddNew() &&
+                (!_StartsWithCustom(entry.Id()) ||
+                 ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(entry.Id())))
             {
                 return entry;
             }
@@ -1150,18 +1176,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // if the raw setting still has a custom: value from before policy
         // was applied.
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return false;
-        return _StartsWithCustom(_GlobalSettings.AcpAgent());
+        return _StartsWithCustom(_GlobalSettings.AcpAgent()) &&
+               !::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(_GlobalSettings.AcpAgent());
     }
 
     winrt::hstring AIAgentsViewModel::CustomAcpCommandPreview()
     {
         if (_GlobalSettings.IsCustomAgentPolicyLocked()) return winrt::hstring{};
-        return _StartsWithCustom(_GlobalSettings.AcpAgent()) ? _GlobalSettings.AcpCustomCommand() : winrt::hstring{};
+        return _StartsWithCustom(_GlobalSettings.AcpAgent()) ? _GlobalSettings.EffectiveAcpCustomCommand() : winrt::hstring{};
     }
 
     void AIAgentsViewModel::EditCustomAcpAgent()
     {
-        if (_StartsWithCustom(_GlobalSettings.AcpAgent()))
+        if (IsCustomAcpAgentSelected())
         {
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = _GlobalSettings.AcpAgent();
@@ -1328,7 +1355,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return;
         }
         auto idStr = winrt::to_string(value.Id());
-        if (idStr.starts_with("custom:"))
+        if (idStr.starts_with("custom:") &&
+            !::Microsoft::Terminal::Settings::Model::AcpAgentCatalog::IsCatalogId(value.Id()))
         {
             if (_GlobalSettings.AcpAgent() == value.Id())
             {
@@ -1894,11 +1922,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (winrt::to_string(acpAgent).starts_with("custom:"))
         {
-            const auto customCmd = _GlobalSettings.AcpCustomCommand();
-            if (!customCmd.empty())
-            {
-                return std::wstring{ customCmd };
-            }
+            const auto customCmd = _GlobalSettings.EffectiveAcpCustomCommand();
+            return std::wstring{ customCmd };
         }
 
         const auto acpModel = _GlobalSettings.AcpModel();

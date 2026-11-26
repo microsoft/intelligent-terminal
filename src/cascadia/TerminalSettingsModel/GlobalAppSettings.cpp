@@ -5,10 +5,12 @@
 #include "GlobalAppSettings.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AcpAgentCatalog.h"
 #include "../inc/AgentYoloPolicy.h"
 #include "../../types/inc/Utils.hpp"
 #include "JsonUtils.h"
 #include "KeyChordSerialization.h"
+#include <mutex>
 
 #include "GlobalAppSettings.g.cpp"
 
@@ -584,6 +586,106 @@ void GlobalAppSettings::LogSettingChanges(std::set<std::string>& changes, const 
 // (meaning "nothing selected"). If a feature is policy-blocked, returns
 // false regardless of what settings.json says.
 
+namespace
+{
+    namespace Catalog = ::Microsoft::Terminal::Settings::Model::AcpAgentCatalog;
+
+    // Owned by SettingsModel.dll, not by each settings clone, tab, window or
+    // header consumer. Only startup and Agents-page entry replace this snapshot.
+    struct InstalledAcpAgentState
+    {
+        std::mutex mutex;
+        bool initialized{ false };
+        std::vector<Catalog::InstalledAgent> installed;
+        std::function<std::vector<Catalog::InstalledAgent>()> detector{ [] { return Catalog::Discover(); } };
+
+        void Refresh()
+        {
+            initialized = true;
+            installed.clear();
+            if (AgentPolicy::IsCustomAgentAllowed())
+            {
+                try
+                {
+                    installed = detector();
+                }
+                CATCH_LOG()
+            }
+        }
+
+        winrt::hstring Command(const std::wstring_view id) const
+        {
+            for (const auto& agent : installed)
+            {
+                if (Catalog::Id(*agent.metadata) == id)
+                {
+                    return winrt::hstring{ agent.command };
+                }
+            }
+            return {};
+        }
+    };
+
+    InstalledAcpAgentState& InstalledAcpAgentsForProcess()
+    {
+        static InstalledAcpAgentState state;
+        return state;
+    }
+
+    winrt::hstring InstalledAcpCommand(const std::wstring_view id)
+    {
+        auto& state = InstalledAcpAgentsForProcess();
+        const std::lock_guard lock{ state.mutex };
+        return state.Command(id);
+    }
+}
+
+void GlobalAppSettings::InitializeAcpAgentCatalog() const
+{
+    auto& state = InstalledAcpAgentsForProcess();
+    const std::lock_guard lock{ state.mutex };
+    if (!state.initialized)
+    {
+        state.Refresh();
+    }
+}
+
+void GlobalAppSettings::RefreshAcpAgentCatalog() const
+{
+    auto& state = InstalledAcpAgentsForProcess();
+    const std::lock_guard lock{ state.mutex };
+    state.Refresh();
+}
+
+winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> GlobalAppSettings::InstalledAcpAgents() const
+{
+    auto ids = winrt::single_threaded_vector<winrt::hstring>();
+    if (AgentPolicy::IsCustomAgentAllowed())
+    {
+        auto& state = InstalledAcpAgentsForProcess();
+        const std::lock_guard lock{ state.mutex };
+        for (const auto& agent : state.installed)
+        {
+            ids.Append(winrt::hstring{ Catalog::Id(*agent.metadata) });
+        }
+    }
+    return ids.GetView();
+}
+
+void GlobalAppSettings::_TestHookSetAcpAgentDetector(std::function<std::vector<Catalog::InstalledAgent>()> detector)
+{
+    auto& state = InstalledAcpAgentsForProcess();
+    const std::lock_guard lock{ state.mutex };
+    state.installed.clear();
+    state.initialized = false;
+    state.detector = std::move(detector);
+}
+
+void GlobalAppSettings::_TestHookResetAcpAgentCatalog()
+{
+    _TestHookSetAcpAgentDetector([] { return Catalog::Discover(); });
+}
+
 winrt::hstring GlobalAppSettings::EffectiveAcpAgent() const
 {
     const auto agent = AcpAgent();
@@ -601,6 +703,9 @@ winrt::hstring GlobalAppSettings::EffectiveAcpAgent() const
         {
             return winrt::hstring{};
         }
+        // Preserve an explicit catalog selection even if its cached command is
+        // unavailable. Empty means "auto-detect" to launchers, not "unavailable".
+        // EffectiveAcpCustomCommand stays empty and the launch must fail closed.
         return agent;
     }
 
@@ -610,6 +715,19 @@ winrt::hstring GlobalAppSettings::EffectiveAcpAgent() const
         return winrt::hstring{};
     }
     return agent;
+}
+
+winrt::hstring GlobalAppSettings::EffectiveAcpCustomCommand() const
+{
+    if (!AgentPolicy::IsCustomAgentAllowed())
+    {
+        return {};
+    }
+    if (Catalog::IsCatalogId(AcpAgent()))
+    {
+        return InstalledAcpCommand(AcpAgent());
+    }
+    return AcpCustomCommand();
 }
 
 winrt::hstring GlobalAppSettings::EffectiveDelegateAgent() const

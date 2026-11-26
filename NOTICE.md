@@ -1678,3 +1678,20 @@ Copyright 2020 Tomasz "Soveu" Marx
 ```
 
 <!-- END wta-rust-deps -->
+
+## ACP Registry icon artwork
+
+**Source**: [agentclientprotocol/registry, revision 2a27ff18b5816f47d7ec538e22943ff194e05131](https://github.com/agentclientprotocol/registry/tree/2a27ff18b5816f47d7ec538e22943ff194e05131)
+
+The registry-supplied icons in `src/cascadia/CascadiaPackage/AgentIcons/Registry`
+are distributed on the basis of the registry repository's
+[Apache-2.0 licensing statement](https://github.com/agentclientprotocol/registry/blob/2a27ff18b5816f47d7ec538e22943ff194e05131/README.md#license).
+The full license is in that directory's `LICENSE-ACP-Registry.txt`, and its
+`NOTICE.txt` records the included agents and modifications (theme color
+resolution, transparent PNG rasterization, and removal of Qoder's external
+SVG DTD declaration).
+
+Agent code licenses are not asserted as licenses for brand assets. Names and
+marks belong to their respective owners; the registry license does not grant
+general trademark rights or imply endorsement. Independent provider permission
+has not been certified.

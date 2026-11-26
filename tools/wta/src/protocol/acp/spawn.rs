@@ -324,12 +324,12 @@ fn spawn_host_agent_process(
     environment_policy: ChildEnvironmentPolicy,
     provider_selection: SharedProviderSelection<'_>,
 ) -> Result<AgentSpawn> {
-    let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
+    let parts = parse_host_agent_command(agent_cmd)?;
     let raw_program = parts
         .first()
-        .copied()
+        .map(String::as_str)
         .ok_or_else(|| anyhow!("empty agent command"))?;
-    let args: Vec<&str> = parts[1..].to_vec();
+    let args = &parts[1..];
     let base_path = crate::agent_check::spawn_path()
         .map(std::ffi::OsString::from)
         .or_else(|| std::env::var_os("PATH"));
@@ -439,7 +439,7 @@ fn spawn_host_agent_process(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    cmd.args(&args)
+    cmd.args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -453,6 +453,36 @@ fn spawn_host_agent_process(
         resolved_program,
         adapter_package,
     })
+}
+
+fn parse_host_agent_command(agent_cmd: &str) -> Result<Vec<String>> {
+    let agent_cmd = agent_cmd.trim_start();
+    if agent_cmd.is_empty() || agent_cmd.contains('\0') {
+        return Err(anyhow!("empty or invalid agent command"));
+    }
+    let command: Vec<u16> = agent_cmd.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut count = 0;
+    // SAFETY: command is NUL-terminated and lives through the call.
+    // CommandLineToArgvW owns count valid NUL-terminated argument pointers in
+    // one allocation, which remains valid until LocalFree below.
+    unsafe {
+        let argv = windows_sys::Win32::UI::Shell::CommandLineToArgvW(command.as_ptr(), &mut count);
+        if argv.is_null() {
+            return Err(std::io::Error::last_os_error()).context("parse host agent command");
+        }
+        let arguments = std::slice::from_raw_parts(argv, count as usize)
+            .iter()
+            .map(|&argument| {
+                let mut length = 0;
+                while *argument.add(length) != 0 {
+                    length += 1;
+                }
+                String::from_utf16_lossy(std::slice::from_raw_parts(argument, length))
+            })
+            .collect();
+        windows_sys::Win32::Foundation::LocalFree(argv.cast());
+        Ok(arguments)
+    }
 }
 
 fn host_agent_command(
@@ -478,7 +508,8 @@ fn host_agent_command(
     };
     // Rust's Windows batch launcher quotes a pinned .cmd path and its argv.
     // Do not feed an already-tokenized full path to a command-line parser.
-    let command = if !pinned_opencode && crate::coordinator::needs_shell_launch(&resolved_program) {
+    let pinned_program = pinned_opencode || Path::new(&resolved_program).is_absolute();
+    let command = if !pinned_program && crate::coordinator::needs_shell_launch(&resolved_program) {
         let mut command = tokio::process::Command::new("cmd");
         command.arg("/c").arg(&resolved_program);
         command
@@ -825,6 +856,107 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_command_parser_preserves_windows_escaping_and_empty_arguments() {
+        let arguments = [
+            r"C:\Program Files\ACP\agent.exe",
+            "--acp",
+            "",
+            r#"literal "quoted" value"#,
+            r"C:\agent files\",
+            "\u{4e2d}\u{6587}",
+        ];
+        let command = arguments
+            .iter()
+            .map(|argument| crate::coordinator::quote_windows_commandline_arg(argument))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(parse_host_agent_command(&command).unwrap(), arguments);
+        assert_eq!(
+            parse_host_agent_command("  agent --acp").unwrap(),
+            ["agent", "--acp"]
+        );
+        assert!(parse_host_agent_command(" \t").is_err());
+        assert!(parse_host_agent_command("agent\0ignored").is_err());
+    }
+
+    #[test]
+    fn catalog_host_command_fixture() {
+        let args: Vec<_> = std::env::args()
+            .skip_while(|arg| arg != "--")
+            .skip(1)
+            .collect();
+        if args.first().map(String::as_str) == Some("ACP_CATALOG_FIXTURE") {
+            println!(
+                "CATALOG_HOST_FIXTURE:{}",
+                serde_json::json!({ "argv": args, "cwd": std::env::current_dir().unwrap() })
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_commands_spawn_quoted_exe_and_cmd_paths_with_atomic_arguments() {
+        use tokio::io::AsyncReadExt;
+
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                std::fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let fixture = Fixture(
+            std::env::temp_dir().join(format!("wta-catalog-spawn-{}", uuid::Uuid::new_v4())),
+        );
+        for directory in ["plain", "spaces & \u{65e5}\u{672c}\u{8a9e}"] {
+            let directory = fixture.0.join(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let executable = directory.join("catalog-agent.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
+            let shim = directory.join("catalog-agent.cmd");
+            std::fs::write(&shim, "@echo off\r\n\"%~dp0catalog-agent.exe\" %*\r\n").unwrap();
+            for program in [&executable, &shim] {
+                let command = format!(
+                    "\"{}\" --exact protocol::acp::spawn::tests::catalog_host_command_fixture --nocapture -- ACP_CATALOG_FIXTURE \"literal & value\" \u{4e2d}\u{6587}",
+                    program.display()
+                );
+                // This executes only this test binary (or our local batch shim),
+                // through the production host spawner, never a provider or WTA.
+                let mut spawned = spawn_host_agent_process(
+                    &command,
+                    Some(&directory),
+                    Some("custom:acp-registry:spawn-fixture"),
+                    ChildEnvironmentPolicy::CleanCloudDiscovery,
+                    SharedProviderSelection::Disabled,
+                )
+                .unwrap();
+                assert_eq!(Path::new(&spawned.raw_program), program);
+                assert_eq!(Path::new(&spawned.resolved_program), program);
+                let mut stdout = spawned.child.take_stdout().await.unwrap();
+                let mut output = String::new();
+                tokio::time::timeout(Duration::from_secs(10), stdout.read_to_string(&mut output))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let status = spawned.child.wait().await.unwrap();
+                assert!(status.success(), "{program:?}: {output}");
+                let payload = output
+                    .lines()
+                    .find_map(|line| line.strip_prefix("CATALOG_HOST_FIXTURE:"))
+                    .unwrap_or_else(|| panic!("missing fixture output: {program:?}: {output}"));
+                let value: serde_json::Value = serde_json::from_str(payload).unwrap();
+                assert_eq!(
+                    value["argv"],
+                    serde_json::json!([
+                        "ACP_CATALOG_FIXTURE",
+                        "literal & value",
+                        "\u{4e2d}\u{6587}"
+                    ])
+                );
+                assert_eq!(value["cwd"], serde_json::json!(directory));
+            }
+        }
+    }
 
     #[test]
     fn opencode_host_command_fixture() {
