@@ -28,6 +28,7 @@ jerrysh
 kaitao
 Kaiyu
 Kimi
+kimi
 Kiro
 leonardder
 lhecker

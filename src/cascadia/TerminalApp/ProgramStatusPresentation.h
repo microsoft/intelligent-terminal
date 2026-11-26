@@ -41,6 +41,7 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
         std::wstring title;
         std::wstring message;
         std::wstring inputMessage;
+        uint32_t error{};
         bool oscOwned{};
         bool suppressLegacyProgress{};
 
@@ -97,7 +98,7 @@ namespace Microsoft::Terminal::ProgramStatusPresentation
             result.workingPanes += pane.working != 0 || pane.canonicalWorking;
             result.blockedPanes += pane.blocked != 0;
             result.completedPanes += pane.unseenDone != 0;
-            result.errorPanes += pane.unseenError != 0 || pane.connectionError;
+            result.errorPanes += pane.error != 0 || pane.taskState == "error" || pane.unseenError != 0 || pane.connectionError;
             workingRecords += pane.working;
             if (pane.working == 1 && pane.progress && *pane.progress <= 100)
             {

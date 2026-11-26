@@ -1187,7 +1187,6 @@ OEMFONT
 OEMFORMAT
 OEMs
 oleaut
-OLEAUT
 OLECHAR
 onebranch
 onecore

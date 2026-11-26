@@ -14095,6 +14095,90 @@ namespace TerminalAppLocalTests
         const auto errorBaseline = waitForWorking();
         emit(u"\x1b]7501;state=error\x1b\\\x1b]7501;state=idle\x1b\\");
         waitForAcknowledgedResult(errorBaseline, "unseen_error");
+
+        emit(u"\x1b]7501;state=working\x1b\\");
+        const auto currentErrorBaseline = waitForWorking();
+        emit(u"\x1b]7501;state=error\x1b\\");
+        waitForAcknowledgedResult(currentErrorBaseline, "unseen_error");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Error" &&
+                   owner->GetCombinedTaskbarState().State() == 2;
+        });
+        TestOnUIThread([&]() {
+            const auto value = snapshot();
+            VERIFY_ARE_EQUAL(std::string{ "error" }, value["state"].asString());
+            VERIFY_ARE_EQUAL(1u, value["error"].asUInt());
+            VERIFY_ARE_EQUAL(0u, value["unseen_error"].asUInt());
+            VERIFY_IS_FALSE(owner->_headerControl.Presentation().HasUnreadActivity());
+        });
+        emit(u"\x1b]7501;state=idle\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Idle" &&
+                   owner->GetCombinedTaskbarState().State() == 0;
+        });
+
+        emit(u"\x1b]7501;state=blocked:kind=question\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Attention" &&
+                   owner->GetCombinedTaskbarState().State() == 4;
+        });
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(owner->_tabStatus.IsProgressRingActive());
+            VERIFY_IS_FALSE(owner->_tabStatus.IsProgressRingIndeterminate());
+            owner->UpdateIcon(L"\xE8A5", IconStyle::Default);
+            VERIFY_IS_NOT_NULL(owner->TabViewItem().IconSource());
+            VERIFY_IS_TRUE(owner->TabViewItem().IconSource() == owner->_iconSource);
+            VERIFY_ARE_EQUAL(0ull, owner->GetCombinedTaskbarState().Progress());
+        });
+        emit(u"\x1b]7501;state=working:progress=0\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_programStatusId == "Working" &&
+                   owner->GetCombinedTaskbarState().State() == 1 &&
+                   owner->GetCombinedTaskbarState().Progress() == 0;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_IS_NOT_NULL(display);
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_IS_NOT_NULL(pane.IconSource());
+            VERIFY_ARE_EQUAL(uint64_t{ 1 }, pane.ProgressState());
+            VERIFY_ARE_EQUAL(0u, pane.ProgressValue());
+            VERIFY_IS_FALSE(pane.IsProgressRingActive());
+            VERIFY_IS_FALSE(pane.IsProgressRingIndeterminate());
+        });
+        emit(u"\x1b]7501;state=working:progress=37\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->_tabStatus.IsProgressRingActive() &&
+                   owner->_tabStatus.ProgressValue() == 37;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 1 }, pane.ProgressState());
+            VERIFY_ARE_EQUAL(37u, pane.ProgressValue());
+            VERIFY_IS_TRUE(pane.IsProgressRingActive());
+            VERIFY_IS_FALSE(pane.IsProgressRingIndeterminate());
+        });
+        emit(u"\x1b]7501;state=working\x1b\\");
+        _waitForContentTransferReviewUI([&]() {
+            return owner->GetCombinedTaskbarState().State() == 3;
+        });
+        TestOnUIThread([&]() {
+            page->_RefreshTabStripPaneItems(owner);
+            const auto display = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip)->DisplayItemForTab(owner->TabViewItem());
+            VERIFY_ARE_EQUAL(1u, display.PaneItems().Size());
+            const auto pane = display.PaneItems().GetAt(0);
+            VERIFY_ARE_EQUAL(control.ContentId(), pane.ContentId());
+            VERIFY_ARE_EQUAL(uint64_t{ 3 }, pane.ProgressState());
+            VERIFY_IS_TRUE(pane.IsProgressRingActive());
+            VERIFY_IS_TRUE(pane.IsProgressRingIndeterminate());
+        });
     }
 
     void TabTests::PureOscNonActivePaneProjectsUnread()
@@ -22708,7 +22792,7 @@ namespace TerminalAppLocalTests
             };
             const auto verifySelection = [&](const winrt::TerminalApp::TabStripDisplayItem& display, const int32_t selectedPane) {
                 host.UpdateLayout();
-                const auto container = strip.ContainerFromIndex(display == firstDisplay ? 0 : 1).as<ListViewItem>();
+                const auto container = strip.ContainerFromIndex(display == firstDisplay ? 0 : 1).template as<ListViewItem>();
                 VERIFY_IS_NOT_NULL(container);
                 const auto nativePresenter = findPresenter(findPresenter, container);
                 VERIFY_IS_NOT_NULL(nativePresenter);
@@ -22716,16 +22800,16 @@ namespace TerminalAppLocalTests
                 {
                     VERIFY_IS_FALSE(nativePresenter.SelectionIndicatorVisualEnabled());
                 }
-                const auto root = container.ContentTemplateRoot().as<StackPanel>();
+                const auto root = container.ContentTemplateRoot().template as<StackPanel>();
                 VERIFY_IS_NOT_NULL(root);
-                const auto paneList = root.Children().GetAt(1).as<ItemsControl>();
-                const auto groupIndicator = Media::VisualTreeHelper::GetChild(paneList, 0).as<Grid>().Children().GetAt(0).as<Border>();
+                const auto paneList = root.Children().GetAt(1).template as<ItemsControl>();
+                const auto groupIndicator = Media::VisualTreeHelper::GetChild(paneList, 0).template as<Grid>().Children().GetAt(0).template as<Border>();
                 const auto boundsInStrip = [&](const FrameworkElement& element) {
                     return element.TransformToVisual(strip).TransformBounds(
                         { 0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
                 };
                 const auto indicatorBounds = boundsInStrip(groupIndicator);
-                const auto dropdownBounds = boundsInStrip(root.FindName(L"TabGroupToggleButton").as<FrameworkElement>());
+                const auto dropdownBounds = boundsInStrip(root.FindName(L"TabGroupToggleButton").template as<FrameworkElement>());
                 VERIFY_IS_TRUE(std::abs(indicatorBounds.X - dropdownBounds.X) <= 1.0f);
                 VERIFY_IS_NULL(paneList.Tag());
                 VERIFY_ARE_EQUAL(Visibility::Visible, groupIndicator.Visibility());
@@ -22733,14 +22817,14 @@ namespace TerminalAppLocalTests
                 {
                     const auto expected = static_cast<int32_t>(index) == selectedPane ? Visibility::Visible : Visibility::Collapsed;
                     VERIFY_ARE_EQUAL(expected, display.PaneItems().GetAt(index).ActiveIndicatorVisibility());
-                    const auto presenter = paneList.ContainerFromIndex(index).as<ContentPresenter>();
+                    const auto presenter = paneList.ContainerFromIndex(index).template as<ContentPresenter>();
                     VERIFY_IS_NOT_NULL(presenter);
-                    const auto paneRoot = Media::VisualTreeHelper::GetChild(presenter, 0).as<FrameworkElement>();
-                    const auto background = paneRoot.FindName(L"PaneActiveBackground").as<Border>();
+                    const auto paneRoot = Media::VisualTreeHelper::GetChild(presenter, 0).template as<FrameworkElement>();
+                    const auto background = paneRoot.FindName(L"PaneActiveBackground").template as<Border>();
                     VERIFY_ARE_EQUAL(expected, background.Visibility());
                     for (const auto name : { L"PaneActiveBackground", L"PaneColorSelectionBackground" })
                     {
-                        const auto card = paneRoot.FindName(name).as<FrameworkElement>();
+                        const auto card = paneRoot.FindName(name).template as<FrameworkElement>();
                         if (card.Visibility() == Visibility::Visible)
                         {
                             const auto cardBounds = boundsInStrip(card);
@@ -26629,7 +26713,7 @@ namespace TerminalAppLocalTests
         });
         const auto headerVisible = [&](const winrt::com_ptr<Tab>& tab) {
             const auto strip = winrt::get_self<winrt::TerminalApp::implementation::TabStrip>(page->_tabStrip);
-            const auto header = strip->HeaderForTab(tab->TabViewItem()).try_as<FrameworkElement>();
+            const auto header = strip->HeaderForTab(tab->TabViewItem()).template try_as<FrameworkElement>();
             if (!header || !header.IsLoaded() || header.ActualHeight() <= 0)
             {
                 return false;
@@ -30268,7 +30352,7 @@ namespace TerminalAppLocalTests
                 const auto hover = headerGrid(0).FindName(L"TabColorHoverBackground").as<Border>().Background().as<Media::SolidColorBrush>();
                 VERIFY_ARE_EQUAL(horizontalHover.Color(), hover.Color());
                 VERIFY_ARE_EQUAL(horizontalHover.Opacity(), hover.Opacity());
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A);
                 winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(display)->SetPointerOver(false, false);
                 strip->RefreshTabColor(tab->TabViewItem());
             }
@@ -30284,7 +30368,7 @@ namespace TerminalAppLocalTests
                 const auto hover = headerGrid(1).FindName(L"TabColorHoverBackground").as<Border>().Background().as<Media::SolidColorBrush>();
                 VERIFY_ARE_EQUAL(coloredHover.Color(), hover.Color());
                 VERIFY_ARE_EQUAL(coloredHover.Opacity(), hover.Opacity());
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, coloredPresenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, coloredPresenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A);
                 VERIFY_ARE_EQUAL(uint8_t{ 0 }, sidebarTabColor(1).A);
                 winrt::get_self<winrt::TerminalApp::implementation::TabStripDisplayItem>(
                     strip->DisplayItemForTab(coloredTab->TabViewItem()))->SetPointerOver(false, false);
@@ -30357,7 +30441,7 @@ namespace TerminalAppLocalTests
                 }
                 VERIFY_ARE_EQUAL(0.0, nativeHover.Opacity());
                 VERIFY_ARE_EQUAL(1.0, colorHover.Opacity());
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A);
                 for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
                 {
                     if (display.PaneItems().GetAt(index).ActiveIndicatorVisibility() == Visibility::Visible)
@@ -30378,7 +30462,7 @@ namespace TerminalAppLocalTests
                     const auto defaultHover = sidebarDefaultHover();
                     VERIFY_ARE_EQUAL(theme, headerGrid(0).ActualTheme());
                     VERIFY_ARE_EQUAL(defaultHover.Color(), headerGrid(0).FindName(L"TabHoverBackground").as<Border>().Background().as<Media::SolidColorBrush>().Color());
-                    VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+                    VERIFY_ARE_EQUAL(uint8_t{ 0 }, parentPresenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A);
                     for (uint32_t index = 0; index < display.PaneItems().Size(); ++index)
                     {
                         if (display.PaneItems().GetAt(index).ActiveIndicatorVisibility() == Visibility::Collapsed)
@@ -30531,7 +30615,7 @@ namespace TerminalAppLocalTests
                 strip.UpdateLayout();
                 VERIFY_ARE_EQUAL(theme, headerGrid.ActualTheme());
                 const auto expectedHover = strip.Content().as<Grid>().FindName(L"SidebarDefaultHoverBrush").as<Border>().Background().as<Media::SolidColorBrush>();
-                const auto actualHover = presenter.PointerOverBackground().as<Media::SolidColorBrush>();
+                const auto actualHover = presenter.PointerOverBackground().template as<Media::SolidColorBrush>();
                 const auto rowHover = hoverBackground.Background().as<Media::SolidColorBrush>();
                 VERIFY_IS_NOT_NULL(selectionBackground.Background());
                 VERIFY_ARE_EQUAL(expectedHover.Color(), rowHover.Color());
@@ -30549,13 +30633,13 @@ namespace TerminalAppLocalTests
             strip.RequestedTheme(ElementTheme::Default);
             if (highContrast)
             {
-                VERIFY_IS_TRUE(presenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A > 0);
+                VERIFY_IS_TRUE(presenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A > 0);
             }
             else
             {
-                VERIFY_ARE_EQUAL(uint8_t{ 0 }, presenter.PointerOverBackground().as<Media::SolidColorBrush>().Color().A);
+                VERIFY_ARE_EQUAL(uint8_t{ 0 }, presenter.PointerOverBackground().template as<Media::SolidColorBrush>().Color().A);
             }
-            VERIFY_IS_TRUE(presenter.PressedBackground().as<Media::SolidColorBrush>().Color().A > 0);
+            VERIFY_IS_TRUE(presenter.PressedBackground().template as<Media::SolidColorBrush>().Color().A > 0);
             for (const auto brush : {
                      presenter.SelectedBackground(),
                      presenter.SelectedPointerOverBackground(),
@@ -30948,7 +31032,7 @@ namespace TerminalAppLocalTests
                 for (const auto state : { L"PointerOver", L"Pressed" })
                 {
                     VERIFY_IS_TRUE(VisualStateManager::GoToState(close, state, false));
-                    const auto background = presenter.Background().as<Media::SolidColorBrush>();
+                    const auto background = presenter.Background().template as<Media::SolidColorBrush>();
                     VERIFY_IS_TRUE(background.Color().A > 0 && background.Opacity() > 0);
                 }
                 VERIFY_IS_TRUE(VisualStateManager::GoToState(close, L"Normal", false));
@@ -37106,7 +37190,7 @@ namespace TerminalAppLocalTests
             focusedTab->HidePane();
             focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (!pane->IsHidden() &&
-                    pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                    pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     VERIFY_IS_FALSE(pane->_focusBorderEnabled);
                     VERIFY_IS_TRUE(!pane->_agentChip ||
@@ -37121,7 +37205,7 @@ namespace TerminalAppLocalTests
             visibleChipCount = 0;
             focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
                 if (!pane->IsHidden() &&
-                    pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                    pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++shellPaneCount;
                     VERIFY_IS_TRUE(pane->_focusBorderEnabled);
@@ -37167,7 +37251,7 @@ namespace TerminalAppLocalTests
             int nonTerminalPaneCount = 0;
             int visibleChipCount = 0;
             focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
-                if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                if (pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++terminalPaneCount;
                     VERIFY_IS_FALSE(pane->_focusBorderEnabled);
@@ -37232,7 +37316,7 @@ namespace TerminalAppLocalTests
             int terminalPaneCount = 0;
             int visibleChipCount = 0;
             focusedTab->GetRootPane()->WalkTree([&](const std::shared_ptr<Pane>& pane) {
-                if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                if (pane->GetContent().template try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++terminalPaneCount;
                     VERIFY_IS_FALSE(pane->_focusBorderEnabled);

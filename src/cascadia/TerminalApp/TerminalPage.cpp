@@ -5,6 +5,7 @@
 #include "pch.h"
 #include "TerminalPage.h"
 #include "ProgramStatusPresentation.h"
+#include "ProgressPresentation.h"
 #include "TabStrip.h"
 #include "TabHeaderControl.h"
 #include "CommandPalette.h"
@@ -13600,6 +13601,7 @@ namespace winrt::TerminalApp::implementation
         result.nativeLeaseActive = snapshot.get("native_lease_active", result.observed).asBool();
         result.working = snapshot.get("working", 0).asUInt();
         result.blocked = snapshot.get("blocked", 0).asUInt();
+        result.error = snapshot.get("error", 0).asUInt();
         result.unseenDone = snapshot.get("unseen_done", 0).asUInt();
         result.unseenError = snapshot.get("unseen_error", 0).asUInt();
         const auto receiver = SharedWta::Instance().MasterGeneration();
@@ -13645,6 +13647,7 @@ namespace winrt::TerminalApp::implementation
         const auto strings = { "state", "kind", "title", "message", "task_id" };
         if (statuses.size() != 1 || !program.isObject() || !program["observed"].isBool() ||
             (!program["native_lease_active"].isNull() && !program["native_lease_active"].isBool()) ||
+            (!program["error"].isNull() && (!program["error"].isUInt() || program["error"].asUInt() > 256)) ||
             std::ranges::any_of(counts, [&](const auto key) { return !program[key].isUInt() || program[key].asUInt() > 256; }) ||
             std::ranges::any_of(strings, [&](const auto key) { return !program[key].isNull() && !program[key].isString(); }) ||
             (!program["progress"].isNull() && (!program["progress"].isUInt() || program["progress"].asUInt() > 100)))
@@ -13670,6 +13673,7 @@ namespace winrt::TerminalApp::implementation
             program["progress"].isUInt() ? std::optional<uint32_t>{ program["progress"].asUInt() } : std::nullopt,
             canonical.canonicalWorking,
         };
+        result.error = program.get("error", 0).asUInt();
         _ProgramTaskDescription(result, program);
         result.inputMessage = winrt::to_hstring(canonical.inputMessage);
         return result;
@@ -17226,7 +17230,7 @@ namespace winrt::TerminalApp::implementation
             bool unreadNeedsAttention = false;
             itemImpl->HasUnreadActivity(_HasUnreadAgentActivity(sourceControl, &unreadNeedsAttention));
             itemImpl->ProgressState(pane.ProgressState);
-            itemImpl->IsProgressRingActive(pane.ProgressState != 0);
+            itemImpl->IsProgressRingActive(::Microsoft::Terminal::ProgressPresentation::HasVisibleProgress(pane.ProgressState, pane.ProgressValue));
             itemImpl->IsProgressRingIndeterminate(pane.ProgressState == 3);
             itemImpl->ProgressValue(gsl::narrow<uint32_t>(pane.ProgressValue));
             bool useLegacyRing = true;
@@ -17295,7 +17299,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 itemImpl->ProgressState(1);
                                 itemImpl->ProgressValue(*summary.progress);
-                                itemImpl->IsProgressRingActive(true);
+                                itemImpl->IsProgressRingActive(::Microsoft::Terminal::ProgressPresentation::HasVisibleProgress(1, *summary.progress));
                                 itemImpl->IsProgressRingIndeterminate(false);
                             }
                             else if (!useLegacyRing && summary.workingPanes != 0)
