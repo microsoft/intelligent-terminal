@@ -1,0 +1,11 @@
+global-credential-providers = [
+    "artifacts-cargo-credprovider",
+    "cargo:token",
+    "cargo:wincred",
+]
+
+[registries.intelligent_terminal_public_packages]
+index = "sparse+https://microsoft.pkgs.visualstudio.com/Dart/_packaging/intelligent_terminal_public_packages/Cargo/index/"
+
+[source.crates-io]
+replace-with = "intelligent_terminal_public_packages"
