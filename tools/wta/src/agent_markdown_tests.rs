@@ -346,7 +346,7 @@ fn agent_markdown_raw_mode_never_submits_rendering_work() {
 }
 
 #[test]
-fn agent_markdown_restores_history_with_heading_tasks_and_code_fences() {
+fn agent_markdown_restores_history_with_heading_tasks_and_highlighted_code() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let source = "# Heading\r\n- [x] **DONE**\r\n\r\n```rust\r\nlet value = 1;\r\n```\r\n";
@@ -366,9 +366,21 @@ fn agent_markdown_restores_history_with_heading_tasks_and_code_fences() {
     let text = plain(&buffer);
     assert!(text.contains("**USER_LITERAL**"), "{text}");
     assert!(text.contains("DONE"), "{text}");
-    assert!(text.contains("```rust"), "{text}");
+    assert!(!text.contains("```"), "{text}");
     assert!(text.contains("let value = 1;"), "{text}");
-    assert_eq!(text.matches("```").count(), 2, "{text}");
+    let code_row = buffer
+        .content
+        .chunks(usize::from(buffer.area.width))
+        .find(|row| {
+            row.iter()
+                .map(|cell| cell.symbol())
+                .collect::<String>()
+                .contains("let value = 1;")
+        })
+        .unwrap();
+    assert!(code_row
+        .iter()
+        .any(|cell| matches!(cell.fg, ratatui::style::Color::Rgb(..))));
     assert!(!text.contains('\r'), "{text:?}");
     assert_eq!(
         serde_json::to_string(&app.current_tab().completed_turns).unwrap(),
