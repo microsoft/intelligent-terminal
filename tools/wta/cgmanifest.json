@@ -1284,7 +1284,7 @@
         "type": "cargo",
         "cargo": {
           "name": "libc",
-          "version": "0.2.183"
+          "version": "0.2.191"
         }
       }
     },
@@ -2732,6 +2732,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "typed-path",
+          "version": "0.12.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "typenum",
           "version": "1.19.0"
         }
@@ -2984,6 +2993,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "windows_x86_64_msvc",
+          "version": "0.52.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "windows-link",
           "version": "0.2.1"
         }
@@ -3030,6 +3048,15 @@
         "type": "cargo",
         "cargo": {
           "name": "windows-sys",
+          "version": "0.52.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-sys",
           "version": "0.61.2"
         }
       }
@@ -3040,6 +3067,15 @@
         "cargo": {
           "name": "windows-targets",
           "version": "0.48.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "windows-targets",
+          "version": "0.52.6"
         }
       }
     },
@@ -3147,7 +3183,7 @@
         "type": "cargo",
         "cargo": {
           "name": "zip",
-          "version": "6.0.0"
+          "version": "9.0.5"
         }
       }
     },
