@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
-pub(crate) const VERSION: &str = "1.4.0";
+pub(crate) const VERSION: &str = "1.5.2";
 const OWNER_FILE: &str = ".intelligent-terminal-acp.json";
 const MAX_ARCHIVE_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 1200 * 1024 * 1024;
@@ -41,21 +41,21 @@ impl Platform {
 
     fn archive_url(self) -> &'static str {
         match self {
-            Self::WindowsX64 => "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.4.0-windows-x86_64.zip",
-            Self::WindowsArm64 => "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.4.0-windows-arm64.zip",
-            Self::LinuxX64 => "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.0-linux-x86_64.zip",
-            Self::LinuxArm64 => "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.0-linux-arm64.zip",
+            Self::WindowsX64 => "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.5.2-windows-x86_64.zip",
+            Self::WindowsArm64 => "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.5.2-windows-arm64.zip",
+            Self::LinuxX64 => "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.5.2-linux-x86_64.zip",
+            Self::LinuxArm64 => "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.5.2-linux-arm64.zip",
         }
     }
 
     fn archive_sha256(self) -> &'static str {
         match self {
-            Self::WindowsX64 => "d737aad2d6388e071bc907db415c129a256915d275f436e68f10dcdf6af896da",
+            Self::WindowsX64 => "5cbadd4f4df698572473d8890fc26ec2dc1724501f06e3a963941daec2bd21d6",
             Self::WindowsArm64 => {
-                "37fac14835f06caf05b4b93fed59a0e16e7c716e3ec95f03d4779a61abe3c2e6"
+                "8a4b2ea8df2ffefae33309348752e9119d21a6d36090c0eb48631c2e8f5781ab"
             }
-            Self::LinuxX64 => "fbb2d54dd94fb897845308d3b6b46187c627f1c60078ded81adeeaf8b90c5d7a",
-            Self::LinuxArm64 => "3dc43a21f5402b23a4dba7b320a6745e9dbf4b6ead912ce9fc76011ea3a08a7e",
+            Self::LinuxX64 => "99dd8612450805011619d7b8447ce374c289e00549d8557f36790e1dd6256852",
+            Self::LinuxArm64 => "e729e05ef54ef0763e48900032466b47fa7c9939cde257f93ba49410ab577acb",
         }
     }
 
